@@ -99,13 +99,27 @@ interface DocumentRenderData {
 /**
  * Convierte el blocksSnapshot en ContentBlock[] filtrando solo los bloques
  * imprimibles con contenido no vacío. Misma lógica que buildPdfContent de page.tsx.
+ *
+ * Adicionalmente, inyecta bloques sintéticos para datos estructurados que NO
+ * viven en blocksSnapshot sino en tablas propias del backend:
+ *   - prescription  → lista compacta de medicamentos desde savedPrescriptions
+ *   - paraclinical  → no disponible server-side todavía (ver nota abajo)
+ *
+ * Nota: el bloque `paraclinical` (exámenes ordenados) se persiste SOLO en
+ * `blocks_snapshot` cuando el doctor llena el campo y guarda la consulta. Si el
+ * valor está en blocksSnapshot se incluye automáticamente. Si no (lista todavía
+ * no guardada al compartir), no se puede reconstruir server-side porque no hay
+ * tabla de exámenes independiente hoy — queda como mejora futura en el backend.
  */
 function buildInformeContent(
   consultationBlocks: ConsultationBlock[],
   blocksSnapshot: Record<string, unknown> | null,
+  savedPrescriptions: ReturnType<typeof mapPrescriptions>,
 ): ContentBlock[] {
   const snap = blocksSnapshot ?? {};
-  return consultationBlocks
+
+  // Bloques del snapshot
+  const snapshotBlocks = consultationBlocks
     .filter((b) => b.printable !== false)
     .map((b) => {
       const raw = snap[b.key];
@@ -118,6 +132,32 @@ function buildInformeContent(
     .filter(
       (b) => b.value !== null && b.value !== '' && (!Array.isArray(b.value) || b.value.length > 0),
     );
+
+  // Si el bloque 'prescription' no tiene valor en el snapshot pero hay prescripciones
+  // guardadas en BD, inyectarlo como lista compacta "nombre — dosis".
+  const hasPrescriptionBlock = snapshotBlocks.some((b) => b.key === 'prescription');
+  if (!hasPrescriptionBlock && savedPrescriptions.length > 0) {
+    const rxItems: string[] = savedPrescriptions.flatMap((rx) =>
+      rx.medications
+        .filter((med) => (med.name ?? '').trim().length > 0)
+        .map((med) => {
+          const name = (med.name ?? '').trim();
+          const dose = (med.dose ?? '').trim();
+          return dose ? `${name} — ${dose}` : name;
+        }),
+    );
+    if (rxItems.length > 0) {
+      // Encontrar el label del bloque prescription en consultationBlocks (si existe)
+      const prescBlock = consultationBlocks.find((b) => b.key === 'prescription');
+      snapshotBlocks.push({
+        key: 'prescription',
+        label: prescBlock?.label ?? 'Prescripción',
+        value: rxItems,
+      });
+    }
+  }
+
+  return snapshotBlocks;
 }
 
 /**
@@ -247,11 +287,12 @@ export async function GET(
   }
 
   // 2. Map data to helper inputs
+  const savedPrescriptions = mapPrescriptions(renderData.prescriptions);
   const informeContent = buildInformeContent(
     renderData.consultationBlocks,
     renderData.consultation.blocksSnapshot,
+    savedPrescriptions,
   );
-  const savedPrescriptions = mapPrescriptions(renderData.prescriptions);
   const ehrRecords = mapEhrRecords(renderData.ehrRecords);
 
   // 3. Resolve doc selection

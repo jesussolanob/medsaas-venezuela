@@ -2,10 +2,15 @@ import { Inject, Injectable } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { Patient, type PatientSource } from '../../../domain/entities/patient.entity';
 import { DuplicatePatientError } from '../../../domain/errors/duplicate-patient.error';
+import { PatientEmailIsDoctorError } from '../../../domain/errors/patient-email-is-doctor.error';
 import {
   PATIENT_REPOSITORY,
   type IPatientRepository,
 } from '../../../domain/repositories/patient.repository';
+import {
+  DOCTOR_PROFILE_REPOSITORY,
+  type IDoctorProfileRepository,
+} from '../../../../doctor-settings/domain/repositories/doctor-profile.repository';
 import { CryptoService } from '../../../../../infrastructure/crypto/crypto.service';
 import { ResolvePatientIdentityUseCase } from '../../../../patient-identities/application/use-cases/resolve-patient-identity.use-case';
 
@@ -36,6 +41,8 @@ export class CreatePatientUseCase {
   constructor(
     @Inject(PATIENT_REPOSITORY)
     private readonly patientRepo: IPatientRepository,
+    @Inject(DOCTOR_PROFILE_REPOSITORY)
+    private readonly doctorProfileRepo: IDoctorProfileRepository,
     private readonly crypto: CryptoService,
     private readonly resolveIdentity: ResolvePatientIdentityUseCase,
   ) {}
@@ -50,12 +57,15 @@ export class CreatePatientUseCase {
       }
     }
 
-    // Guard: prevent duplicate email per doctor
+    // Guard: prevent using the doctor's own email for a patient
     if (input.email) {
-      const emailHash = this.crypto.hashForSearch(input.email);
-      const existingByEmail = await this.patientRepo.findByEmailHash(emailHash, input.doctorId);
-      if (existingByEmail) {
-        throw new DuplicatePatientError('email');
+      const normalizedPatientEmail = input.email.trim().toLowerCase();
+      const doctorProfile = await this.doctorProfileRepo.findByDoctorId(input.doctorId);
+      if (doctorProfile) {
+        const normalizedDoctorEmail = doctorProfile.email.trim().toLowerCase();
+        if (normalizedPatientEmail === normalizedDoctorEmail) {
+          throw new PatientEmailIsDoctorError();
+        }
       }
     }
 

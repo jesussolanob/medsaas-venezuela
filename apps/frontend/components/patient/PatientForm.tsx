@@ -149,6 +149,11 @@ export default function PatientForm({
       setError('El email no tiene un formato válido');
       return;
     }
+    // Al menos un canal de contacto (email O teléfono) es obligatorio.
+    if (!data.email?.trim() && !data.phone?.trim()) {
+      setError('Indica al menos un correo o un teléfono');
+      return;
+    }
     // Fecha de nacimiento (opcional) no puede ser futura.
     const bdError = validateBirthDate(data.birth_date);
     if (bdError) {
@@ -220,7 +225,7 @@ export default function PatientForm({
           </div>
           <div>
             <label className={lbl}>
-              <Mail className="w-3 h-3" /> Email
+              <Mail className="w-3 h-3" /> Email <span className="text-red-500">*</span>
             </label>
             <input
               type="email"
@@ -234,10 +239,11 @@ export default function PatientForm({
 
         <div>
           <label className={lbl}>
-            <Phone className="w-3 h-3" /> Teléfono
+            <Phone className="w-3 h-3" /> Teléfono <span className="text-red-500">*</span>
           </label>
           {/* L6 (2026-04-29): prefijo +58 fijo + 10 digitos. Devuelve canonico 584XXXXXXXXX */}
           <PhoneInput value={data.phone ?? ''} onChange={(v) => set('phone', v)} />
+          <p className="text-[11px] text-slate-400 mt-1">Indica al menos uno: correo o teléfono.</p>
         </div>
       </section>
 

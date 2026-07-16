@@ -16,11 +16,15 @@ import { DeletePatientUseCase } from './application/use-cases/patients/delete-pa
 
 import { PatientsController } from './presentation/controllers/patients.controller';
 import { PatientIdentitiesModule } from '../patient-identities/patient-identities.module';
+import { DoctorSettingsModule } from '../doctor-settings/doctor-settings.module';
 
 @Module({
   imports: [
     SequelizeModule.forFeature([PatientModel, AccessAuditLogModel]),
     PatientIdentitiesModule,
+    // Provides DOCTOR_PROFILE_REPOSITORY for the doctor-email guard in
+    // CreatePatientUseCase and UpdatePatientUseCase.
+    DoctorSettingsModule,
   ],
   controllers: [PatientsController],
   providers: [

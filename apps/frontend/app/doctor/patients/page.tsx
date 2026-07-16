@@ -17,7 +17,6 @@ import {
   CheckCircle,
   Clock,
   AlertCircle,
-  Filter,
   User,
   Edit3,
   Hash,
@@ -64,6 +63,7 @@ import {
 import Paginator from '@/components/ui/Paginator';
 import { getDoctorServices } from '@/app/doctor/services/actions';
 import { getDoctorProfile } from '@/app/doctor/actions';
+import { useDoctorFeatures } from '@/hooks/useDoctorFeatures';
 import NewAppointmentFlow from '@/components/appointment-flow/NewAppointmentFlow';
 import PatientForm, { type PatientFormData } from '@/components/patient/PatientForm';
 import { validateBirthDate, todayCaracasISO } from '@/lib/date-validation';
@@ -184,6 +184,11 @@ type View = 'list' | 'detail' | 'new-consultation';
 // RONDA 40: nueva pestaña "Seguimiento" (Shared Health Space)
 type DetailTab = 'consultas' | 'historial' | 'seguimiento';
 
+// Los cuadros "Pedirle algo al paciente" e "Historial compartido" (archivos
+// compartidos doctor↔paciente) se desactivan por pedido del usuario: la feature
+// no está operativa. Sólo se conserva "Solicitudes de documentos".
+const SHOW_SHARED_FILES_CARDS = false;
+
 export default function PatientsPage() {
   const router = useRouter();
   // Deep-link: /doctor/patients?open=<patientId> abre directo la ficha del paciente
@@ -208,14 +213,16 @@ export default function PatientsPage() {
   const [detailLoaded, setDetailLoaded] = useState(false);
   const [consultations, setConsultations] = useState<Consultation[]>([]);
   const [showAddModal, setShowAddModal] = useState(false);
-  const [filterSource, setFilterSource] = useState<string>('all');
   const [detailTab, setDetailTab] = useState<DetailTab>('consultas');
   const [isPending, startTransition] = useTransition();
   // Historial Médico — consulta seleccionada en sidebar (default: la más reciente)
   const [selectedConsultaId, setSelectedConsultaId] = useState<string | null>(null);
-  // Resumen IA del paciente — display-only (no se genera en delta_base; se ofrece upgrade).
+  // Resumen IA del paciente — habilitado por plan (feature ai_assistant, Delta Plus).
+  // Si el plan no lo incluye, se ofrece upgrade en vez de generar.
   const [aiSummary, setAiSummary] = useState<string>('');
   const [aiError, setAiError] = useState('');
+  const [aiLoading, setAiLoading] = useState(false);
+  const { features: planFeatures, loading: planLoading } = useDoctorFeatures();
   // RONDA 40: Seguimiento tab — no backend endpoint in Etapa 1; always empty.
   const [sharedFiles, setSharedFiles] = useState<SharedFile[]>([]);
   const [sharedLoading, setSharedLoading] = useState(false);
@@ -520,6 +527,38 @@ export default function PatientsPage() {
     setSavingEdit(false);
   }
 
+  // Resumen del historial del paciente con IA (Gemini). Gating por plan:
+  // requiere feature `ai_assistant` (Delta Plus). El backend re-valida el plan
+  // efectivo; si no lo incluye devuelve un error que mostramos.
+  async function generatePatientAiSummary() {
+    if (!selected || aiLoading) return;
+    setAiLoading(true);
+    setAiError('');
+    setAiSummary('');
+    try {
+      const res = await fetch('/api/doctor/ai', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'patient_history', patientId: selected.id }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        setAiError(json?.error ?? 'No se pudo generar el resumen con IA');
+        return;
+      }
+      const text = typeof json?.result === 'string' ? json.result.trim() : '';
+      if (!text) {
+        setAiError('La IA no devolvió un resumen. Intenta de nuevo.');
+        return;
+      }
+      setAiSummary(text);
+    } catch {
+      setAiError('Error de red al generar el resumen con IA');
+    } finally {
+      setAiLoading(false);
+    }
+  }
+
   function openPatient(p: Patient) {
     setSelected(p);
     setView('detail');
@@ -806,12 +845,9 @@ export default function PatientsPage() {
     setUploadingReceipt(false);
   }
 
-  // La búsqueda por texto es server-side (searchPatients). Aquí solo filtramos
-  // por canal de origen (client-side, ya que es un campo de la lista actual).
-  const filtered = patients.filter((p) => {
-    const matchSource = filterSource === 'all' || p.source === filterSource;
-    return matchSource;
-  });
+  // La búsqueda por texto es server-side (searchPatients). El filtro por canal
+  // se eliminó (no aportaba búsqueda real), así que la lista se muestra completa.
+  const filtered = patients;
 
   return (
     <>
@@ -852,7 +888,7 @@ export default function PatientsPage() {
             </div>
           </div>
 
-          {/* Filters */}
+          {/* Search (el filtro por canal se eliminó: no aportaba búsqueda real) */}
           <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
@@ -862,23 +898,6 @@ export default function PatientsPage() {
                 placeholder="Buscar por nombre, teléfono o cédula..."
                 className="w-full pl-9 pr-4 py-2.5 text-sm border border-slate-200 rounded-xl outline-none focus:border-teal-400 focus:ring-2 focus:ring-teal-500/10 bg-white"
               />
-            </div>
-            <div className="flex items-center gap-1.5 bg-white border border-slate-200 rounded-xl px-3 shrink-0">
-              <Filter className="w-4 h-4 text-slate-400 hidden sm:block" />
-              <select
-                value={filterSource}
-                onChange={(e) => setFilterSource(e.target.value)}
-                className="text-sm text-slate-600 outline-none bg-transparent py-2.5 pr-2 flex-1 sm:flex-none"
-              >
-                <option value="all">Todos los canales</option>
-                <option value="consultorio">Consultorio</option>
-                <option value="redes_sociales">Redes Sociales</option>
-                <option value="seguro">Seguro</option>
-                <option value="whatsapp">WhatsApp</option>
-                <option value="invitation">Invitación</option>
-                <option value="manual">Manual</option>
-                <option value="otro">Otro</option>
-              </select>
             </div>
           </div>
 
@@ -1576,14 +1595,29 @@ export default function PatientsPage() {
                           </div>
                         )}
                       </div>
-                      {/* Bug 3: en delta_base no hay IA; el botón lleva a /doctor/upgrade
-                          donde el médico puede ver los planes que incluyen IA. */}
-                      <button
-                        onClick={() => router.push('/doctor/upgrade')}
-                        className="px-3 py-2 bg-gradient-to-r from-violet-500 to-teal-500 hover:from-violet-600 hover:to-teal-600 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 flex-shrink-0"
-                      >
-                        <Sparkles className="w-3.5 h-3.5" /> Ver planes
-                      </button>
+                      {/* Con plan Delta Plus (feature ai_assistant) se genera el resumen;
+                          sin IA en el plan, el botón lleva a /doctor/upgrade. */}
+                      {!planLoading && planFeatures.ai_assistant ? (
+                        <button
+                          onClick={generatePatientAiSummary}
+                          disabled={aiLoading}
+                          className="px-3 py-2 bg-gradient-to-r from-violet-500 to-teal-500 hover:from-violet-600 hover:to-teal-600 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 flex-shrink-0 disabled:opacity-60"
+                        >
+                          {aiLoading ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          ) : (
+                            <Sparkles className="w-3.5 h-3.5" />
+                          )}
+                          {aiLoading ? 'Generando…' : aiSummary ? 'Regenerar' : 'Generar resumen'}
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => router.push('/doctor/upgrade')}
+                          className="px-3 py-2 bg-gradient-to-r from-violet-500 to-teal-500 hover:from-violet-600 hover:to-teal-600 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 flex-shrink-0"
+                        >
+                          <Sparkles className="w-3.5 h-3.5" /> Ver planes
+                        </button>
+                      )}
                     </div>
                   </div>
                 )}
@@ -1757,22 +1791,7 @@ export default function PatientsPage() {
                   </div>
                 </div>
 
-                {/* RONDA 43: warning si el paciente NO tiene cuenta vinculada */}
-                {!(selected as any).auth_user_id && (
-                  <div className="bg-amber-50 border border-amber-300 rounded-xl px-4 py-3 flex items-start gap-3">
-                    <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
-                    <div className="flex-1">
-                      <p className="text-sm font-bold text-amber-900">
-                        Este paciente aún no tiene cuenta
-                      </p>
-                      <p className="text-xs text-amber-800 mt-0.5">
-                        Las tareas y archivos que envíes quedarán guardados en tu historial, pero el
-                        paciente no podrá verlos desde su portal hasta que se registre con su email
-                        o por el link de invitación.
-                      </p>
-                    </div>
-                  </div>
-                )}
+                {/* Aviso "Este paciente aún no tiene cuenta" ocultado por pedido del usuario. */}
 
                 {/* Solicitudes de documentos (patient-requests, backend real) */}
                 <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
@@ -1843,279 +1862,292 @@ export default function PatientsPage() {
                   )}
                 </div>
 
-                {/* Crear instruccion / tarea para el paciente */}
-                <div className="bg-gradient-to-br from-teal-50 to-cyan-50 border border-teal-200 rounded-xl p-4 sm:p-5">
-                  <div className="flex items-start gap-3 mb-3">
-                    <div className="w-9 h-9 rounded-xl bg-teal-500 flex items-center justify-center flex-shrink-0">
-                      <Send className="w-4 h-4 text-white" />
+                {/* Cuadros "Pedirle algo" e "Historial compartido" desactivados
+                    (feature de archivos compartidos no operativa). */}
+                {SHOW_SHARED_FILES_CARDS && (
+                  <>
+                    {/* Crear instruccion / tarea para el paciente */}
+                    <div className="bg-gradient-to-br from-teal-50 to-cyan-50 border border-teal-200 rounded-xl p-4 sm:p-5">
+                      <div className="flex items-start gap-3 mb-3">
+                        <div className="w-9 h-9 rounded-xl bg-teal-500 flex items-center justify-center flex-shrink-0">
+                          <Send className="w-4 h-4 text-white" />
+                        </div>
+                        <div className="flex-1">
+                          <p className="text-sm font-bold text-slate-800">
+                            Pedirle algo al paciente
+                          </p>
+                          <p className="text-xs text-slate-600 mt-0.5">
+                            Crea una tarea o pídele que adjunte un examen, foto o documento. Le
+                            aparecerá como pendiente.
+                          </p>
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <input
+                          value={newInstructionTitle}
+                          onChange={(e) => setNewInstructionTitle(e.target.value)}
+                          placeholder="Ej: Radiografía de tórax, Foto del moretón..."
+                          className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:border-teal-400 outline-none"
+                        />
+                        <textarea
+                          value={newInstructionDesc}
+                          onChange={(e) => setNewInstructionDesc(e.target.value)}
+                          placeholder="Instrucciones (opcional): cómo tomar la foto, qué examen pedir, etc."
+                          rows={2}
+                          className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm resize-none focus:border-teal-400 outline-none"
+                        />
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            onClick={async () => {
+                              if (!selected || !newInstructionTitle.trim()) return;
+                              setSavingInstruction(true);
+                              try {
+                                const res = await fetch('/api/doctor/shared-files', {
+                                  method: 'POST',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({
+                                    patientId: selected.id,
+                                    title: newInstructionTitle.trim(),
+                                    description: newInstructionDesc.trim() || null,
+                                    category: 'instruction',
+                                  }),
+                                });
+                                const json = (await res.json()) as
+                                  | { success: true }
+                                  | { error: string };
+                                if (!res.ok || !('success' in json)) {
+                                  showToast({
+                                    type: 'error',
+                                    message:
+                                      ('error' in json ? json.error : null) ??
+                                      'Error al enviar la tarea',
+                                  });
+                                  return;
+                                }
+                                showToast({
+                                  type: 'success',
+                                  message: 'Tarea enviada al paciente',
+                                });
+                                setNewInstructionTitle('');
+                                setNewInstructionDesc('');
+                                void loadSharedFiles(selected.id);
+                              } catch {
+                                showToast({
+                                  type: 'error',
+                                  message: 'Error de conexión al enviar la tarea',
+                                });
+                              } finally {
+                                setSavingInstruction(false);
+                              }
+                            }}
+                            disabled={savingInstruction || !newInstructionTitle.trim()}
+                            className="flex items-center gap-1.5 px-4 py-2 bg-teal-500 hover:bg-teal-600 text-white text-sm font-bold rounded-lg disabled:opacity-50"
+                          >
+                            {savingInstruction ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                              <Send className="w-4 h-4" />
+                            )}
+                            Enviar tarea
+                          </button>
+                          <button
+                            onClick={() => {
+                              setDoctorUploadTitle(newInstructionTitle.trim());
+                              setDoctorUploadDesc(newInstructionDesc.trim());
+                              setDoctorUploadModal(true);
+                            }}
+                            className="flex items-center gap-1.5 px-4 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-bold rounded-lg"
+                          >
+                            <Upload className="w-4 h-4" /> Subir archivo
+                          </button>
+                        </div>
+                      </div>
                     </div>
-                    <div className="flex-1">
-                      <p className="text-sm font-bold text-slate-800">Pedirle algo al paciente</p>
-                      <p className="text-xs text-slate-600 mt-0.5">
-                        Crea una tarea o pídele que adjunte un examen, foto o documento. Le
-                        aparecerá como pendiente.
-                      </p>
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <input
-                      value={newInstructionTitle}
-                      onChange={(e) => setNewInstructionTitle(e.target.value)}
-                      placeholder="Ej: Radiografía de tórax, Foto del moretón..."
-                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:border-teal-400 outline-none"
-                    />
-                    <textarea
-                      value={newInstructionDesc}
-                      onChange={(e) => setNewInstructionDesc(e.target.value)}
-                      placeholder="Instrucciones (opcional): cómo tomar la foto, qué examen pedir, etc."
-                      rows={2}
-                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm resize-none focus:border-teal-400 outline-none"
-                    />
-                    <div className="flex flex-wrap gap-2">
-                      <button
-                        onClick={async () => {
-                          if (!selected || !newInstructionTitle.trim()) return;
-                          setSavingInstruction(true);
-                          try {
-                            const res = await fetch('/api/doctor/shared-files', {
-                              method: 'POST',
-                              headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify({
-                                patientId: selected.id,
-                                title: newInstructionTitle.trim(),
-                                description: newInstructionDesc.trim() || null,
-                                category: 'instruction',
-                              }),
-                            });
-                            const json = (await res.json()) as
-                              | { success: true }
-                              | { error: string };
-                            if (!res.ok || !('success' in json)) {
-                              showToast({
-                                type: 'error',
-                                message:
-                                  ('error' in json ? json.error : null) ??
-                                  'Error al enviar la tarea',
-                              });
-                              return;
-                            }
-                            showToast({ type: 'success', message: 'Tarea enviada al paciente' });
-                            setNewInstructionTitle('');
-                            setNewInstructionDesc('');
-                            void loadSharedFiles(selected.id);
-                          } catch {
-                            showToast({
-                              type: 'error',
-                              message: 'Error de conexión al enviar la tarea',
-                            });
-                          } finally {
-                            setSavingInstruction(false);
-                          }
-                        }}
-                        disabled={savingInstruction || !newInstructionTitle.trim()}
-                        className="flex items-center gap-1.5 px-4 py-2 bg-teal-500 hover:bg-teal-600 text-white text-sm font-bold rounded-lg disabled:opacity-50"
-                      >
-                        {savingInstruction ? (
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                        ) : (
-                          <Send className="w-4 h-4" />
-                        )}
-                        Enviar tarea
-                      </button>
-                      <button
-                        onClick={() => {
-                          setDoctorUploadTitle(newInstructionTitle.trim());
-                          setDoctorUploadDesc(newInstructionDesc.trim());
-                          setDoctorUploadModal(true);
-                        }}
-                        className="flex items-center gap-1.5 px-4 py-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-bold rounded-lg"
-                      >
-                        <Upload className="w-4 h-4" /> Subir archivo
-                      </button>
-                    </div>
-                  </div>
-                </div>
 
-                {/* Feed de archivos compartidos */}
-                <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
-                  <div className="px-4 sm:px-5 py-3 border-b border-slate-100 flex items-center justify-between">
-                    <h3 className="text-sm font-bold text-slate-900">
-                      Historial compartido ({sharedFiles.length})
-                    </h3>
-                    {sharedLoading && <Loader2 className="w-4 h-4 animate-spin text-slate-400" />}
-                  </div>
-                  {sharedFiles.length === 0 ? (
-                    <div className="text-center py-12 px-4">
-                      <FolderHeart className="w-10 h-10 text-slate-300 mx-auto mb-3" />
-                      <p className="text-sm text-slate-500 font-medium">
-                        Sin archivos compartidos aún
-                      </p>
-                      <p className="text-xs text-slate-400 mt-1">
-                        Empieza pidiéndole al paciente un examen o foto.
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="divide-y divide-slate-100">
-                      {sharedFiles.map((f) => {
-                        const isImage =
-                          f.fileType != null &&
-                          ['png', 'jpg', 'jpeg', 'webp', 'gif'].includes(f.fileType);
-                        const isInstructionTask = f.category === 'instruction';
-                        const isComment = f.category === 'comment';
-                        const isPendingTask = isInstructionTask && f.status === 'pending';
-                        const isCompletedTask = isInstructionTask && f.status === 'completed';
-                        return (
-                          <div key={f.id} className="p-4 sm:p-5 flex items-start gap-3">
-                            <div
-                              className={`shrink-0 p-2.5 rounded-lg ${
-                                isPendingTask
-                                  ? 'bg-amber-50 text-amber-600'
-                                  : isCompletedTask
-                                    ? 'bg-emerald-50 text-emerald-600'
-                                    : isComment
-                                      ? 'bg-slate-100 text-slate-600'
-                                      : isImage
-                                        ? 'bg-teal-50 text-teal-600'
-                                        : 'bg-red-50 text-red-600'
-                              }`}
-                            >
-                              {isInstructionTask ? (
-                                <Clock className="w-5 h-5" />
-                              ) : isComment ? (
-                                <Send className="w-5 h-5" />
-                              ) : isImage ? (
-                                <ImageIcon className="w-5 h-5" />
-                              ) : (
-                                <FileText className="w-5 h-5" />
-                              )}
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <p className="text-sm font-bold text-slate-900 truncate">
-                                  {f.title}
-                                </p>
-                                <span
-                                  className={`text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded ${
-                                    f.createdBy === 'doctor'
-                                      ? 'bg-blue-100 text-blue-700'
-                                      : 'bg-emerald-100 text-emerald-700'
+                    {/* Feed de archivos compartidos */}
+                    <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+                      <div className="px-4 sm:px-5 py-3 border-b border-slate-100 flex items-center justify-between">
+                        <h3 className="text-sm font-bold text-slate-900">
+                          Historial compartido ({sharedFiles.length})
+                        </h3>
+                        {sharedLoading && (
+                          <Loader2 className="w-4 h-4 animate-spin text-slate-400" />
+                        )}
+                      </div>
+                      {sharedFiles.length === 0 ? (
+                        <div className="text-center py-12 px-4">
+                          <FolderHeart className="w-10 h-10 text-slate-300 mx-auto mb-3" />
+                          <p className="text-sm text-slate-500 font-medium">
+                            Sin archivos compartidos aún
+                          </p>
+                          <p className="text-xs text-slate-400 mt-1">
+                            Empieza pidiéndole al paciente un examen o foto.
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="divide-y divide-slate-100">
+                          {sharedFiles.map((f) => {
+                            const isImage =
+                              f.fileType != null &&
+                              ['png', 'jpg', 'jpeg', 'webp', 'gif'].includes(f.fileType);
+                            const isInstructionTask = f.category === 'instruction';
+                            const isComment = f.category === 'comment';
+                            const isPendingTask = isInstructionTask && f.status === 'pending';
+                            const isCompletedTask = isInstructionTask && f.status === 'completed';
+                            return (
+                              <div key={f.id} className="p-4 sm:p-5 flex items-start gap-3">
+                                <div
+                                  className={`shrink-0 p-2.5 rounded-lg ${
+                                    isPendingTask
+                                      ? 'bg-amber-50 text-amber-600'
+                                      : isCompletedTask
+                                        ? 'bg-emerald-50 text-emerald-600'
+                                        : isComment
+                                          ? 'bg-slate-100 text-slate-600'
+                                          : isImage
+                                            ? 'bg-teal-50 text-teal-600'
+                                            : 'bg-red-50 text-red-600'
                                   }`}
                                 >
-                                  {f.createdBy === 'doctor' ? 'Tú' : 'Paciente'}
-                                </span>
-                                {isPendingTask && (
-                                  <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-100 text-amber-700">
-                                    Pendiente
-                                  </span>
-                                )}
-                                {isCompletedTask && (
-                                  <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700">
-                                    Respondida
-                                  </span>
-                                )}
-                                {isComment && (
-                                  <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">
-                                    Comentario
-                                  </span>
-                                )}
+                                  {isInstructionTask ? (
+                                    <Clock className="w-5 h-5" />
+                                  ) : isComment ? (
+                                    <Send className="w-5 h-5" />
+                                  ) : isImage ? (
+                                    <ImageIcon className="w-5 h-5" />
+                                  ) : (
+                                    <FileText className="w-5 h-5" />
+                                  )}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <p className="text-sm font-bold text-slate-900 truncate">
+                                      {f.title}
+                                    </p>
+                                    <span
+                                      className={`text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded ${
+                                        f.createdBy === 'doctor'
+                                          ? 'bg-blue-100 text-blue-700'
+                                          : 'bg-emerald-100 text-emerald-700'
+                                      }`}
+                                    >
+                                      {f.createdBy === 'doctor' ? 'Tú' : 'Paciente'}
+                                    </span>
+                                    {isPendingTask && (
+                                      <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-100 text-amber-700">
+                                        Pendiente
+                                      </span>
+                                    )}
+                                    {isCompletedTask && (
+                                      <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700">
+                                        Respondida
+                                      </span>
+                                    )}
+                                    {isComment && (
+                                      <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">
+                                        Comentario
+                                      </span>
+                                    )}
+                                  </div>
+                                  {f.description && (
+                                    <p className="text-xs text-slate-600 mt-1 line-clamp-2">
+                                      {f.description}
+                                    </p>
+                                  )}
+                                  <p className="text-[10px] text-slate-400 mt-1">
+                                    {new Date(f.createdAt).toLocaleString('es-VE', {
+                                      day: 'numeric',
+                                      month: 'short',
+                                      year: 'numeric',
+                                      hour: '2-digit',
+                                      minute: '2-digit',
+                                    })}
+                                    {f.fileSizeBytes != null && (
+                                      <> · {(f.fileSizeBytes / 1024).toFixed(0)} KB</>
+                                    )}
+                                  </p>
+                                </div>
+                                <div className="flex items-center gap-1 shrink-0">
+                                  {f.fileUrl && (
+                                    <a
+                                      href={f.fileUrl}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="p-2 text-teal-600 hover:bg-teal-50 rounded-lg transition-colors"
+                                      title="Abrir archivo"
+                                    >
+                                      <ExternalLink className="w-4 h-4" />
+                                    </a>
+                                  )}
+                                  {/* Lapiz + papelera SOLO si el item es del doctor (createdBy='doctor') */}
+                                  {f.createdBy === 'doctor' && (
+                                    <>
+                                      <button
+                                        onClick={() => {
+                                          setEditingFile(f);
+                                          setEditTitle(f.title);
+                                          setEditDesc(f.description ?? '');
+                                        }}
+                                        className="p-2 text-slate-400 hover:text-teal-600 hover:bg-teal-50 rounded-lg transition-colors"
+                                        title="Editar"
+                                      >
+                                        <Pencil className="w-4 h-4" />
+                                      </button>
+                                      <button
+                                        onClick={async () => {
+                                          if (
+                                            !confirm(
+                                              `¿Eliminar "${f.title}"? Esta acción no se puede deshacer.`,
+                                            )
+                                          )
+                                            return;
+                                          try {
+                                            const res = await fetch(
+                                              `/api/doctor/shared-files/${f.id}`,
+                                              {
+                                                method: 'DELETE',
+                                              },
+                                            );
+                                            const json = (await res.json()) as
+                                              | { success: true }
+                                              | { error: string };
+                                            if (!res.ok || !('success' in json)) {
+                                              showToast({
+                                                type: 'error',
+                                                message:
+                                                  ('error' in json ? json.error : null) ??
+                                                  'Error al eliminar',
+                                              });
+                                              return;
+                                            }
+                                            showToast({
+                                              type: 'success',
+                                              message: 'Elemento eliminado',
+                                            });
+                                            if (selected) void loadSharedFiles(selected.id);
+                                          } catch {
+                                            showToast({
+                                              type: 'error',
+                                              message: 'Error de conexión al eliminar',
+                                            });
+                                          }
+                                        }}
+                                        className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                        title="Eliminar"
+                                      >
+                                        <Trash2 className="w-4 h-4" />
+                                      </button>
+                                    </>
+                                  )}
+                                </div>
                               </div>
-                              {f.description && (
-                                <p className="text-xs text-slate-600 mt-1 line-clamp-2">
-                                  {f.description}
-                                </p>
-                              )}
-                              <p className="text-[10px] text-slate-400 mt-1">
-                                {new Date(f.createdAt).toLocaleString('es-VE', {
-                                  day: 'numeric',
-                                  month: 'short',
-                                  year: 'numeric',
-                                  hour: '2-digit',
-                                  minute: '2-digit',
-                                })}
-                                {f.fileSizeBytes != null && (
-                                  <> · {(f.fileSizeBytes / 1024).toFixed(0)} KB</>
-                                )}
-                              </p>
-                            </div>
-                            <div className="flex items-center gap-1 shrink-0">
-                              {f.fileUrl && (
-                                <a
-                                  href={f.fileUrl}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="p-2 text-teal-600 hover:bg-teal-50 rounded-lg transition-colors"
-                                  title="Abrir archivo"
-                                >
-                                  <ExternalLink className="w-4 h-4" />
-                                </a>
-                              )}
-                              {/* Lapiz + papelera SOLO si el item es del doctor (createdBy='doctor') */}
-                              {f.createdBy === 'doctor' && (
-                                <>
-                                  <button
-                                    onClick={() => {
-                                      setEditingFile(f);
-                                      setEditTitle(f.title);
-                                      setEditDesc(f.description ?? '');
-                                    }}
-                                    className="p-2 text-slate-400 hover:text-teal-600 hover:bg-teal-50 rounded-lg transition-colors"
-                                    title="Editar"
-                                  >
-                                    <Pencil className="w-4 h-4" />
-                                  </button>
-                                  <button
-                                    onClick={async () => {
-                                      if (
-                                        !confirm(
-                                          `¿Eliminar "${f.title}"? Esta acción no se puede deshacer.`,
-                                        )
-                                      )
-                                        return;
-                                      try {
-                                        const res = await fetch(
-                                          `/api/doctor/shared-files/${f.id}`,
-                                          {
-                                            method: 'DELETE',
-                                          },
-                                        );
-                                        const json = (await res.json()) as
-                                          | { success: true }
-                                          | { error: string };
-                                        if (!res.ok || !('success' in json)) {
-                                          showToast({
-                                            type: 'error',
-                                            message:
-                                              ('error' in json ? json.error : null) ??
-                                              'Error al eliminar',
-                                          });
-                                          return;
-                                        }
-                                        showToast({
-                                          type: 'success',
-                                          message: 'Elemento eliminado',
-                                        });
-                                        if (selected) void loadSharedFiles(selected.id);
-                                      } catch {
-                                        showToast({
-                                          type: 'error',
-                                          message: 'Error de conexión al eliminar',
-                                        });
-                                      }
-                                    }}
-                                    className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                                    title="Eliminar"
-                                  >
-                                    <Trash2 className="w-4 h-4" />
-                                  </button>
-                                </>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
+                  </>
+                )}
               </div>
             )}
           </div>

@@ -100,6 +100,29 @@ export class DoctorTemplate {
     });
   }
 
+  /**
+   * Returns a new DoctorTemplate with image URLs replaced by freshly signed ones.
+   * Used by use cases that re-sign GCS URLs at read time.
+   * Pure domain method — no external dependencies.
+   */
+  withRefreshedImageUrls(logoUrl: string | null, signatureUrl: string | null): DoctorTemplate {
+    return DoctorTemplate.create({
+      id: this.id,
+      doctorId: this.doctorId,
+      templateType: this.templateType,
+      logoUrl,
+      signatureUrl,
+      fontFamily: this.fontFamily,
+      headerText: this.headerText,
+      footerText: this.footerText,
+      showLogo: this.showLogo,
+      showSignature: this.showSignature,
+      primaryColor: this.primaryColor,
+      createdAt: this.createdAt,
+      updatedAt: this.updatedAt,
+    });
+  }
+
   /** Factory — creates a DoctorTemplate from raw params. Does not persist. */
   static create(params: DoctorTemplateCreateParams): DoctorTemplate {
     return new DoctorTemplate(params);

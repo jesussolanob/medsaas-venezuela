@@ -50,6 +50,9 @@ import { OfficesModule } from '../offices/offices.module';
 
 // AvailabilityBlocksModule exports AVAILABILITY_BLOCK_REPOSITORY for slot filtering.
 import { AvailabilityBlocksModule } from '../availability-blocks/availability-blocks.module';
+// StorageModule exports STORAGE_PORT, used by GetBookingDoctorInfoUseCase to re-sign
+// GCS avatar URLs at read time so the booking widget always displays fresh images.
+import { StorageModule } from '../storage/storage.module';
 // ConsultationsModule exports CreateConsultationUseCase for auto-creating consultations after booking.
 // No circular dependency: ConsultationsModule does NOT import BookingModule.
 import { ConsultationsModule } from '../consultations/consultations.module';
@@ -90,6 +93,8 @@ import { DoctorScheduleModel } from '../doctor-settings/infrastructure/database/
     // ConsultationsModule exports CreateConsultationUseCase for auto-creating consultations
     // after a public booking is completed (non-fatal, best-effort).
     ConsultationsModule,
+    // StorageModule provides STORAGE_PORT for GCS URL re-signing in GetBookingDoctorInfoUseCase.
+    StorageModule,
   ],
   controllers: [BookingController, DoctorBookingController],
   providers: [

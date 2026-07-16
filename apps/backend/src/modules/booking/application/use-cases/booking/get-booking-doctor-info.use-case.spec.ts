@@ -5,6 +5,12 @@ import type {
   DoctorPublicInfo,
 } from '../../../domain/repositories/booking-doctor.repository';
 import type { IBookingFeatureChecker } from '../../../domain/repositories/booking-feature-checker.repository';
+import type { IStoragePort } from '../../../../storage/application/ports/storage.port';
+
+const GCS_URL =
+  'https://storage.googleapis.com/my-bucket/avatar/doc.png?X-Goog-Algorithm=GOOG4-RSA-SHA256';
+const FRESH_URL =
+  'https://storage.googleapis.com/my-bucket/avatar/doc.png?X-Goog-Algorithm=GOOG4-RSA-SHA256&refreshed=1';
 
 const DOCTOR: DoctorPublicInfo = {
   id: 'doc-001',
@@ -28,6 +34,7 @@ describe('GetBookingDoctorInfoUseCase', () => {
   beforeEach(() => {
     mockLoader = { findById: jest.fn() };
     mockFeatureChecker = { isBookingEnabled: jest.fn() };
+    // storagePort is @Optional — not injected in most tests (backward compat)
     useCase = new GetBookingDoctorInfoUseCase(mockLoader, mockFeatureChecker);
   });
 
@@ -108,6 +115,54 @@ describe('GetBookingDoctorInfoUseCase', () => {
         specialty: 'Cardiología',
         bookingEnabled: true,
       });
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // GCS avatar URL re-signing
+  // ---------------------------------------------------------------------------
+
+  describe('GCS avatar URL re-signing', () => {
+    let mockStorage: jest.Mocked<IStoragePort>;
+
+    beforeEach(() => {
+      mockStorage = {
+        upload: jest.fn(),
+        getSignedUrl: jest.fn().mockResolvedValue(FRESH_URL),
+      };
+      // Re-create use-case with storage port injected
+      useCase = new GetBookingDoctorInfoUseCase(mockLoader, mockFeatureChecker, null, mockStorage);
+    });
+
+    it('re-signs GCS avatar URL when storage port is provided', async () => {
+      mockLoader.findById.mockResolvedValue({ ...DOCTOR, avatarUrl: GCS_URL });
+      mockFeatureChecker.isBookingEnabled.mockResolvedValue(true);
+
+      const result = await useCase.execute('doc-001');
+
+      expect(result.avatarUrl).toBe(FRESH_URL);
+      expect(mockStorage.getSignedUrl).toHaveBeenCalledWith('avatar/doc.png', expect.any(Number));
+    });
+
+    it('returns original null avatarUrl as-is (no sign call needed)', async () => {
+      mockLoader.findById.mockResolvedValue({ ...DOCTOR, avatarUrl: null });
+      mockFeatureChecker.isBookingEnabled.mockResolvedValue(true);
+
+      const result = await useCase.execute('doc-001');
+
+      expect(result.avatarUrl).toBeNull();
+      expect(mockStorage.getSignedUrl).not.toHaveBeenCalled();
+    });
+
+    it('does not sign non-GCS avatarUrl', async () => {
+      const nonGcs = 'https://cdn.example.com/avatar.png';
+      mockLoader.findById.mockResolvedValue({ ...DOCTOR, avatarUrl: nonGcs });
+      mockFeatureChecker.isBookingEnabled.mockResolvedValue(true);
+
+      const result = await useCase.execute('doc-001');
+
+      expect(result.avatarUrl).toBe(nonGcs);
+      expect(mockStorage.getSignedUrl).not.toHaveBeenCalled();
     });
   });
 });

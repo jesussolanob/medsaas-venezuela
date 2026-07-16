@@ -515,6 +515,11 @@ export function useAppointmentFlow(
       setGlobalError('El email no tiene un formato válido.');
       return;
     }
+    // Al menos un canal de contacto (email O teléfono) es obligatorio.
+    if (!newPatient.email?.trim() && !newPatient.phone?.trim()) {
+      setGlobalError('Indica al menos un correo o un teléfono');
+      return;
+    }
     setCreatingPatient(true);
     setGlobalError(null);
     try {

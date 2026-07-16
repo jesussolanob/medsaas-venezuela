@@ -94,10 +94,11 @@ export default function StepServiceType({
                       >
                         {plan.name}
                       </p>
-                      <p className="text-xs text-slate-400 mt-0.5">
-                        {plan.duration_minutes ? `${plan.duration_minutes} min` : ''}
-                        {plan.sessions_count > 1 ? ` · ${plan.sessions_count} sesiones` : ''}
-                      </p>
+                      {plan.sessions_count > 1 && (
+                        <p className="text-xs text-slate-400 mt-0.5">
+                          {plan.sessions_count} sesiones
+                        </p>
+                      )}
                     </div>
                     <span
                       className={`text-sm font-bold ${isSelected ? 'text-teal-700' : 'text-slate-700'}`}

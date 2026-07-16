@@ -13,6 +13,11 @@ import {
   DOCTOR_SCHEDULE_REPOSITORY,
   type IDoctorScheduleRepository,
 } from '../../../../doctor-settings/domain/repositories/doctor-schedule.repository';
+import {
+  STORAGE_PORT,
+  type IStoragePort,
+} from '../../../../storage/application/ports/storage.port';
+import { resignGcsImageUrl } from '../../../../storage/application/helpers/resign-gcs-image.helper';
 
 export interface DoctorPublicInfoWithBooking extends DoctorPublicInfo {
   /** Whether the doctor's effective subscription plan includes online booking. */
@@ -48,6 +53,14 @@ export class GetBookingDoctorInfoUseCase {
     @Optional()
     @Inject(DOCTOR_SCHEDULE_REPOSITORY)
     private readonly scheduleRepo: IDoctorScheduleRepository | null = null,
+    /**
+     * Storage port — optional for backward compatibility with existing tests.
+     * When present, GCS avatar URLs are re-signed at read time so they are
+     * always accessible (GCS v4 signed URLs expire after at most 7 days).
+     */
+    @Optional()
+    @Inject(STORAGE_PORT)
+    private readonly storagePort: IStoragePort | null = null,
   ) {}
 
   async execute(doctorId: string): Promise<DoctorPublicInfoWithBooking> {
@@ -62,8 +75,14 @@ export class GetBookingDoctorInfoUseCase {
       this.scheduleRepo ? this.scheduleRepo.findByDoctorId(doctorId) : Promise.resolve(null),
     ]);
 
+    // Re-sign the avatar URL if this is a GCS URL (may be expired).
+    const freshAvatarUrl = this.storagePort
+      ? await resignGcsImageUrl(info.avatarUrl, this.storagePort)
+      : info.avatarUrl;
+
     return {
       ...info,
+      avatarUrl: freshAvatarUrl,
       bookingEnabled,
       requireReason: schedule?.bookingRequireReason ?? false,
       minLeadDays: schedule?.bookingMinLeadDays ?? 0,

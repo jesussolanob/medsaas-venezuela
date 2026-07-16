@@ -1,11 +1,16 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { Patient, type PatientSource } from '../../../domain/entities/patient.entity';
 import { PatientNotFoundError } from '../../../domain/errors/patient-not-found.error';
+import { PatientEmailIsDoctorError } from '../../../domain/errors/patient-email-is-doctor.error';
 import { UnauthorizedError } from '../../../../../domain/errors/domain.error';
 import {
   PATIENT_REPOSITORY,
   type IPatientRepository,
 } from '../../../domain/repositories/patient.repository';
+import {
+  DOCTOR_PROFILE_REPOSITORY,
+  type IDoctorProfileRepository,
+} from '../../../../doctor-settings/domain/repositories/doctor-profile.repository';
 
 export interface UpdatePatientInput {
   patientId: string;
@@ -34,6 +39,8 @@ export class UpdatePatientUseCase {
   constructor(
     @Inject(PATIENT_REPOSITORY)
     private readonly patientRepo: IPatientRepository,
+    @Inject(DOCTOR_PROFILE_REPOSITORY)
+    private readonly doctorProfileRepo: IDoctorProfileRepository,
   ) {}
 
   async execute(input: UpdatePatientInput): Promise<Patient> {
@@ -44,6 +51,18 @@ export class UpdatePatientUseCase {
     }
     if (!patient.canBeAccessedBy(input.doctorId)) {
       throw new UnauthorizedError();
+    }
+
+    // Guard: prevent using the doctor's own email for a patient (when email is being updated)
+    if (input.email !== undefined && input.email !== null) {
+      const normalizedPatientEmail = input.email.trim().toLowerCase();
+      const doctorProfile = await this.doctorProfileRepo.findByDoctorId(input.doctorId);
+      if (doctorProfile) {
+        const normalizedDoctorEmail = doctorProfile.email.trim().toLowerCase();
+        if (normalizedPatientEmail === normalizedDoctorEmail) {
+          throw new PatientEmailIsDoctorError();
+        }
+      }
     }
 
     // Build an update payload that only includes fields explicitly provided by the caller.

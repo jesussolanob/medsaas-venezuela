@@ -130,4 +130,43 @@ export class DoctorProfile {
   static create(params: DoctorProfileCreateParams): DoctorProfile {
     return new DoctorProfile(params);
   }
+
+  /**
+   * Returns a new DoctorProfile with image URLs replaced by freshly signed ones.
+   * Used by use cases that re-sign GCS URLs at read time.
+   * Pure domain method — no external dependencies.
+   */
+  withRefreshedImageUrls(
+    avatarUrl: string | null,
+    logoUrl: string | null,
+    signatureUrl: string | null,
+  ): DoctorProfile {
+    return DoctorProfile.create({
+      id: this.id,
+      fullName: this.fullName,
+      email: this.email,
+      specialty: this.specialty,
+      professionalTitle: this.professionalTitle,
+      clinicId: this.clinicId,
+      clinicRole: this.clinicRole,
+      paymentMethods: this.paymentMethods,
+      paymentDetails: this.paymentDetails,
+      allowsOnline: this.allowsOnline,
+      officeAddress: this.officeAddress,
+      city: this.city,
+      avatarUrl,
+      plan: this.plan,
+      subscriptionStatus: this.subscriptionStatus,
+      logoUrl,
+      signatureUrl,
+      licenseNumber: this.licenseNumber,
+      phone: this.phone,
+      currencyMode: this.currencyMode,
+      customRate: this.customRate,
+      customRateLabel: this.customRateLabel,
+      cedula: this.cedula,
+      birthDate: this.birthDate,
+      onboardingCompleted: this.onboardingCompleted,
+    });
+  }
 }

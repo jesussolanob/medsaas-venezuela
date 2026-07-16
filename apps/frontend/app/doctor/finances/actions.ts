@@ -510,7 +510,9 @@ export async function addIncome(input: AddIncomeInput): Promise<AddIncomeResult>
   if (input.conceptId) payload.conceptId = input.conceptId;
   if (input.date) payload.date = `${input.date}T12:00:00.000Z`;
   if (input.relatedConsultationId) {
-    payload.relatedConsultationId = input.relatedConsultationId;
+    // Backend RecordFinanceEntryDto is `.strict()` and expects snake_case here
+    // (`related_consultation_id`). Sending camelCase triggers "Unrecognized key".
+    payload.related_consultation_id = input.relatedConsultationId;
   } else if (input.patientId) {
     payload.patientId = input.patientId;
   }

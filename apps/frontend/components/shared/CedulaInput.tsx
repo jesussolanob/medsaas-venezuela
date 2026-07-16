@@ -6,8 +6,8 @@
 // El parent recibe siempre ese formato via onChange.
 //
 // Prefijos disponibles:
-//   V — Venezolano (solo dígitos, 6-10 caracteres)
-//   E — Extranjero (solo dígitos, 6-10 caracteres)
+//   V — Venezolano (solo dígitos, 4-15 caracteres)
+//   E — Extranjero (solo dígitos, 4-15 caracteres)
 //   P — Pasaporte  (alfanumérico, 5-20 caracteres)
 //
 // Acepta como input inicial (parsea):
@@ -25,9 +25,9 @@ const PREFIXES: Prefix[] = ['V', 'E', 'P'];
 /** Pasaporte: permite alfanumérico, 5-20 caracteres */
 const PASSPORT_MAX = 20;
 const PASSPORT_MIN = 5;
-/** Cédula venezolana/extranjera: solo dígitos, 6-10 caracteres */
-const CEDULA_MAX = 10;
-const CEDULA_MIN = 6;
+/** Cédula venezolana/extranjera: solo dígitos, 4-15 caracteres */
+const CEDULA_MAX = 15;
+const CEDULA_MIN = 4;
 
 type Props = {
   /** Valor canonico, ej 'V-12345678' */

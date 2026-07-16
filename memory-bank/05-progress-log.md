@@ -2,6 +2,75 @@
 
 > Registro cronológico. Una entrada por fase/hito completado.
 
+## 2026-07-16 — LOTE grande "Prueba 15-07.txt" (~27 obs) + WhatsApp recordatorio — 1 batch, ⏳ deploy+QA Playwright
+
+Observaciones del usuario en `~/Downloads/Prueba 15-07.txt`. Pedido: **aplicar TODO → 1 deploy → 1 QA
+Playwright en prod** + actualizar memory-bank y guion QA. Metodología equipo: el lead hizo inline los fixes
+frontend simples; **2 `frontend-agent`** (uno "consultas", otro "booking") y **1 `backend-agent`**
+(email/imágenes/plantilla) en paralelo con sets de archivos DISJUNTOS. Verificación en disco por el lead:
+`tsc` front+back **EXIT 0**, eslint sin errores nuevos (los `no-explicit-any`/`set-state-in-effect` son
+pre-existentes en el codebase), **jest backend 76/76**, migración `20260716000001` segura (REPLACE idempotente,
+`email_templates.updated_at` existe), DI **sin ciclos** (StorageModule es hoja y exporta `STORAGE_PORT`;
+DoctorSettingsModule exporta `DOCTOR_PROFILE_REPOSITORY`; grafo acíclico). Guion QA: sección **D-2026-07-16**.
+
+**Frontend (lead inline):**
+
+- **`relatedConsultationId` → `related_consultation_id`** (`app/doctor/finances/actions.ts`): el DTO backend
+  `RecordFinanceEntryDto` es `.strict()` y espera snake_case; el modal "Registrar ingreso" enviaba camelCase →
+  `Unrecognized key`. (Aplica en Inicio y Consultas.)
+- **Cédula 4-15 dígitos** (`components/shared/CedulaInput.tsx` `CEDULA_MIN/MAX=4/15` + `libs/shared-types`
+  `create-patient.dto.ts` `min(4)`).
+- **Email O teléfono obligatorio** (al menos uno): DTO `.refine`, `components/patient/PatientForm.tsx`
+  (asteriscos + validación + hint), `components/appointment-flow/useAppointmentFlow.ts` `createPatientInline`.
+- **Quitar la duración** del selector de tipo de consulta (`appointment-flow/steps/StepServiceType.tsx`).
+- **Pacientes:** quitado el filtro por canal a la derecha del buscador (no buscaba nada); IA **"Resumen del
+  paciente con IA"** ahora se GENERA si el plan incluye `ai_assistant` (Delta Plus) llamando `/api/doctor/ai`
+  action `patient_history` (hook `useDoctorFeatures`, botón Generar/Regenerar); sin la feature → "Ver planes".
+  Aviso "Este paciente aún no tiene cuenta" **oculto**. Cuadros "Pedirle algo al paciente" e "Historial
+  compartido" **desactivados** con flag `SHOW_SHARED_FILES_CARDS=false` (feature no operativa; queda solo
+  "Solicitudes de documentos").
+- **Descarga de archivo del paciente** en **pestaña nueva** (`patient-requests/RequestDetailModal.tsx`, botón
+  Descargar + `target="_blank"`). Aplica en módulo Solicitudes.
+- **Recibo (plantillas):** quitado el aviso "Configuración del recibo guardada localmente"; `TemplatePdfPreview`
+  memoiza `docDate` + el documento (antes `new Date().toISOString()` en cada render → el visor regeneraba el PDF
+  **en bucle**).
+- **WhatsApp recordatorio** (`app/doctor/reminders/page.tsx` `buildWAMessage`): quitada la línea "Si necesitas
+  reagendar, contáctanos con anticipación."; emojis via **escapes Unicode `\u{...}`** (el literal se corrompía en
+  el pipeline de build → mojibake "◆?"). Mismo runtime, inmune a corrupción de bytes.
+- **Tasa de cambio unificada** (`lib/useBcvRate.tsx`): raíz = el backend `GetDoctorExchangeRateUseCase` devolvía
+  la tasa **USDT/global** (`rateStore`) para `usd_bcv`/`eur_bcv`, distinta a la **BCV** que muestra "Métodos de
+  pago". Ahora `useBcvRate` resuelve por modo desde la MISMA fuente (`/api/admin/bcv-rate` USD/EUR; custom desde
+  `/api/doctor/exchange-rate`). Unifica los ~8 consumidores (cobros/consultas/finanzas/servicios/billing/
+  dashboard/booking/panel suscripción). Deuda menor: el edit-por-fecha de cobros sigue con BCV USD histórico.
+
+**Frontend (frontend-agent "consultas"):** `ConsultationsClient.tsx` `buildPdfContent` inyecta el valor de los
+bloques ESTRUCTURADOS (récipe desde savedPrescriptions/recipe; paraclínico desde estado `prescripciones`) → ahora
+aparecen y se pueden marcar en el sub-selector del **Informe** (antes récipe/paraclínico no se podían incluir). La
+ruta `app/api/documents/[token]/pdf/route.ts` inyecta las prescripciones guardadas en el informe server-side para
+que **Compartir** ya no mande solo "motivo" (edge: paraclínico requiere que el doctor haya GUARDADO la consulta →
+está en `blocks_snapshot`; si no, no hay tabla de exámenes que reconstruir → deuda backend menor). Swap
+Referencia↔Paraclínico ya consistente en generación. **`PaymentMethodModal.tsx` (nuevo):** al marcar pagada/
+aprobar SIN método, abre modal (método obligatorio + referencia + comprobante opcionales) → `PATCH
+:id/payment-details` → aprueba (antes daba error `PaymentMethodRequiredError`).
+
+**Frontend (frontend-agent "booking"):** `book/[doctorId]/BookingClient.tsx` — quita la duración del tipo de
+consulta; marca **ocupados y bloqueados** deshabilitados usando el `available:false` del endpoint (el frontend lo
+ignoraba con `bookedSlots=[]` hardcodeado); error del slot se muestra **junto a la grilla** (antes solo arriba). El
+backend ya devolvía ocupados + availability-blocks (sin cambio).
+
+**Backend (backend-agent):** (1) **email de paciente ya no es único** (personas sin correo asisten con familiares)
+— se elimina el guard de email duplicado por doctor; se agrega guard nuevo `PatientEmailIsDoctorError` (409,
+create+update) que rechaza sólo si el email del paciente = el del **propio doctor** (inyecta
+`DOCTOR_PROFILE_REPOSITORY` vía import de `DoctorSettingsModule`). (2) **botón "Responder solicitud"** blanco:
+migración `20260716000001-email-button-inline-color.cjs` agrega `style="color:#ffffff !important"` inline en el
+`<a>` de `patient_request_code` y `shared_documents_code` (Gmail ignoraba la clase `.btn` → letras azules). (3)
+**re-firmar imágenes GCS al leer** — helper `resignGcsImageUrl` (módulo storage) re-firma avatar/logo/firma en
+`get-booking-doctor-info`, `get-doctor-profile` y `list-doctor-templates`; las imágenes se guardaban como signed
+URL con TTL 7 días → expiraban → no se veían. Sin migración de datos (extrae el path de la URL). 76 tests.
+
+⚠️ **Pendiente:** QA visual Playwright en prod (`delta-frontend-knliodnwza-ue.a.run.app`) + boot real del dist en
+Cloud Run (deploy). Deudas menores: paraclínico en compartir sin guardar; edit-por-fecha de tasa en cobros.
+
 ## 2026-07-15 — Fix QA pagos: orden del panel + candado, y consulta visible en ingreso adicional — commit `ee8488f`, DESPLEGADO ✅ (run success) ⏳ QA usuario
 
 Dos observaciones del usuario, ambas frontend-only en `app/doctor/consultations/ConsultationsClient.tsx`

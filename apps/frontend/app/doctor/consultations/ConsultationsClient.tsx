@@ -102,6 +102,7 @@ import { useDoctorFeatures } from '@/hooks/useDoctorFeatures';
 import { showToast } from '@/components/ui/Toaster';
 import ShareDocumentsModal from './ShareDocumentsModal';
 import ApprovePaymentModal, { type ExistingExtraItem } from './ApprovePaymentModal';
+import PaymentMethodModal from './PaymentMethodModal';
 import IncomeModal, { type IncomeForm } from '@/components/finances/IncomeModal';
 import {
   getIncomeConcepts,
@@ -401,15 +402,52 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
       notes: report.notes,
       informe: report.notes,
     };
-    return blocks
+
+    // Valores sintéticos para bloques estructurados que NO viven en blocks_data:
+    // - prescription: estado `recipe` / `savedPrescriptions` en el editor
+    // - paraclinical: estado `prescripciones` (exámenes ordenados) en el editor
+    const structuredValues: Record<string, string | string[] | null> = {};
+
+    // prescription → lista compacta "nombre — dosis" desde savedPrescriptions / recipe en curso
+    const rxItems: string[] = [];
+    if (savedPrescriptions.length > 0) {
+      for (const rx of savedPrescriptions) {
+        for (const med of rx.medications) {
+          const name = (med.name ?? '').trim();
+          if (!name) continue;
+          const dose = (med.dose ?? '').trim();
+          rxItems.push(dose ? `${name} — ${dose}` : name);
+        }
+      }
+    } else if (recipe.medications.length > 0) {
+      for (const med of recipe.medications) {
+        const name = (med.name ?? '').trim();
+        if (!name) continue;
+        const dose = (med.dose ?? '').trim();
+        rxItems.push(dose ? `${name} — ${dose}` : name);
+      }
+    }
+    if (rxItems.length > 0) structuredValues['prescription'] = rxItems;
+
+    // paraclinical → lista de exámenes desde `prescripciones` (estado del editor)
+    const validExams = prescripciones.filter((p) => p.exam_name.trim());
+    if (validExams.length > 0) {
+      structuredValues['paraclinical'] = validExams.map((p) =>
+        p.notes ? `${p.exam_name} — ${p.notes}` : p.exam_name,
+      );
+    }
+
+    const result = blocks
       .filter((b) => b.printable !== false)
       .map((b) => {
+        // 1. Valor desde blocks_data (fuente de verdad para bloques de texto)
         const raw = bd[b.key];
         let value: string | string[] | null = null;
         if (typeof raw === 'string') value = raw.trim() || null;
         else if (Array.isArray(raw)) value = (raw as string[]).filter(Boolean);
         else if (raw != null) value = String(raw);
-        // Fallback al valor vivo del editor para campos legacy
+
+        // 2. Fallback a campos legacy vivos (chief_complaint, diagnosis, etc.)
         if (
           (value === null || value === '') &&
           Object.prototype.hasOwnProperty.call(legacyLive, b.key)
@@ -417,12 +455,23 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
           const live = legacyLive[b.key];
           if (live && live.trim()) value = live.trim();
         }
+
+        // 3. Fallback a valores sintéticos de bloques estructurados (prescription, paraclinical)
+        if (
+          (value === null || value === '') &&
+          Object.prototype.hasOwnProperty.call(structuredValues, b.key)
+        ) {
+          value = structuredValues[b.key];
+        }
+
         return { key: b.key, label: b.label, value };
       })
       .filter(
         (b) =>
           b.value !== null && b.value !== '' && (!Array.isArray(b.value) || b.value.length > 0),
       );
+
+    return result;
   }
 
   // Report fields (editable during consultation)
@@ -485,6 +534,10 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
   const [pagoDetailsSaving, setPagoDetailsSaving] = useState(false);
   // Modal de aprobación de pago (con monto base + extras)
   const [showApprovePaymentModal, setShowApprovePaymentModal] = useState(false);
+  // Modal de método de pago — se abre cuando el doctor intenta aprobar sin método seleccionado
+  const [showPaymentMethodModal, setShowPaymentMethodModal] = useState(false);
+  // Callback pendiente tras seleccionar el método en el modal (aprobación o marcar pagado)
+  const [pendingApprovalAfterMethod, setPendingApprovalAfterMethod] = useState(false);
   // Modal de confirmación al salir de una consulta no atendida
   const [showExitConsultationModal, setShowExitConsultationModal] = useState(false);
   // Modal de ingreso adicional (consulta ya pagada)
@@ -4525,13 +4578,11 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                             onChange={(e) => {
                               const next = e.target.value as 'pending' | 'approved';
                               if (next === normalizePaymentStatus(report.payment_status)) return;
-                              // Candado: no se puede marcar "Aprobado" sin método de pago.
+                              // Candado: sin método de pago → abre el modal para capturarlo
+                              // en vez de bloquear con un toast de error.
                               if (next === 'approved' && !pagoMethod.trim()) {
-                                showToast({
-                                  type: 'error',
-                                  message:
-                                    'Selecciona el método de pago antes de marcar el cobro como aprobado',
-                                });
+                                setPendingApprovalAfterMethod(true);
+                                setShowPaymentMethodModal(true);
                                 return;
                               }
                               updatePagoStatus(selected.id, next, selected.appointment_id);
@@ -4621,11 +4672,9 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                           const isApproving =
                             normalizePaymentStatus(report.payment_status) === 'approved';
                           if (isApproving && !pagoMethod.trim()) {
-                            showToast({
-                              type: 'error',
-                              message:
-                                'Selecciona el método de pago antes de guardar el cobro aprobado',
-                            });
+                            // Abrir modal de método de pago en lugar de bloquear con toast.
+                            setPendingApprovalAfterMethod(false);
+                            setShowPaymentMethodModal(true);
                             return;
                           }
                           setPagoDetailsSaving(true);
@@ -5336,6 +5385,42 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
             paymentMethod={pagoMethod || undefined}
             onClose={() => setShowApprovePaymentModal(false)}
             onApproved={handlePaymentApproved}
+          />
+        )}
+
+        {/* Modal de método de pago obligatorio */}
+        {selected && (
+          <PaymentMethodModal
+            open={showPaymentMethodModal}
+            consultationId={selected.id}
+            availablePaymentMethods={doctorPaymentMethods}
+            onClose={() => {
+              setShowPaymentMethodModal(false);
+              setPendingApprovalAfterMethod(false);
+            }}
+            onPersist={async (id, method, reference, receiptPath) => {
+              const res = await updateConsultationPaymentDetails(id, {
+                payment_method: method,
+                payment_reference: reference,
+                payment_receipt_url: receiptPath,
+              });
+              return res.success
+                ? { success: true as const }
+                : { success: false as const, error: (res as { error?: string }).error };
+            }}
+            onConfirmed={(method, reference, receiptPath) => {
+              // Actualizar el estado local del método/referencia/comprobante
+              setPagoMethod(method);
+              if (reference) setPagoReference(reference);
+              if (receiptPath) setPagoReceiptPath(receiptPath);
+              // Si el doctor venía del select "Aprobado", continuar con el flujo de aprobación
+              if (pendingApprovalAfterMethod && selected) {
+                setPendingApprovalAfterMethod(false);
+                updatePagoStatus(selected.id, 'approved', selected.appointment_id);
+              } else {
+                setPendingApprovalAfterMethod(false);
+              }
+            }}
           />
         )}
 
@@ -6367,6 +6452,40 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
             paymentMethod={pagoMethod || undefined}
             onClose={() => setShowApprovePaymentModal(false)}
             onApproved={handlePaymentApproved}
+          />
+        )}
+
+        {/* === Modal de método de pago obligatorio (lista view) === */}
+        {selected && (
+          <PaymentMethodModal
+            open={showPaymentMethodModal}
+            consultationId={selected.id}
+            availablePaymentMethods={doctorPaymentMethods}
+            onClose={() => {
+              setShowPaymentMethodModal(false);
+              setPendingApprovalAfterMethod(false);
+            }}
+            onPersist={async (id, method, reference, receiptPath) => {
+              const res = await updateConsultationPaymentDetails(id, {
+                payment_method: method,
+                payment_reference: reference,
+                payment_receipt_url: receiptPath,
+              });
+              return res.success
+                ? { success: true as const }
+                : { success: false as const, error: (res as { error?: string }).error };
+            }}
+            onConfirmed={(method, reference, receiptPath) => {
+              setPagoMethod(method);
+              if (reference) setPagoReference(reference);
+              if (receiptPath) setPagoReceiptPath(receiptPath);
+              if (pendingApprovalAfterMethod && selected) {
+                setPendingApprovalAfterMethod(false);
+                updatePagoStatus(selected.id, 'approved', selected.appointment_id);
+              } else {
+                setPendingApprovalAfterMethod(false);
+              }
+            }}
           />
         )}
 

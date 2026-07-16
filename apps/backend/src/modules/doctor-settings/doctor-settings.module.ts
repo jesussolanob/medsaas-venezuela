@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { SequelizeModule } from '@nestjs/sequelize';
 import { FinancesModule } from '../finances/finances.module';
 import { OfficesModule } from '../offices/offices.module';
+import { StorageModule } from '../storage/storage.module';
 
 // Models
 import { DoctorProfileModel } from './infrastructure/database/models/doctor-profile.model';
@@ -78,6 +79,9 @@ import { DoctorController } from './presentation/controllers/doctor.controller';
     FinancesModule,
     // Import OfficesModule to resolve OFFICE_REPOSITORY for office ownership checks.
     OfficesModule,
+    // StorageModule exports STORAGE_PORT, used by GetDoctorProfileUseCase to re-sign
+    // GCS image URLs (avatar, logo, signature) at read time.
+    StorageModule,
   ],
   controllers: [DoctorController],
   providers: [

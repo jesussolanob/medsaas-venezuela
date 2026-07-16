@@ -28,10 +28,14 @@ export interface StorageUploadResult {
 export interface IStoragePort {
   upload(input: StorageUploadInput): Promise<StorageUploadResult>;
   /**
-   * Returns a fresh signed URL (1 h TTL) for an already-stored private object.
-   * Required for the GET /api/storage/signed-url endpoint.
+   * Returns a fresh signed URL for an already-stored object.
+   *
+   * @param path    Object path within the bucket (e.g. "avatar/doctor-123.png").
+   * @param ttlMs   Optional TTL in milliseconds. Defaults to 1 hour (3 600 000 ms).
+   *                GCS v4 signed URLs support a maximum of 7 days.
+   *                MinIO adapters may ignore this parameter and always use 1 hour.
    */
-  getSignedUrl(path: string): Promise<string>;
+  getSignedUrl(path: string, ttlMs?: number): Promise<string>;
 }
 
 export const STORAGE_PORT = 'STORAGE_PORT' as const;

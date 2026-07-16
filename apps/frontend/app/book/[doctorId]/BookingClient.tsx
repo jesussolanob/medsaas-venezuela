@@ -3,10 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import {
   Calendar,
-  Clock,
   User,
-  Phone,
-  Mail,
   CheckCircle,
   Activity,
   AlertCircle,
@@ -18,7 +15,6 @@ import {
   MapPin,
   CreditCard,
   FileText,
-  Shield,
   Check,
   LogIn,
   UserPlus,
@@ -425,9 +421,13 @@ export default function BookingClient({
   // Slot navigation
   const [weekOffset, setWeekOffset] = useState(0);
 
-  // Fase 5: slots bloqueados por availability-blocks del doctor, indexados por fecha.
-  // Map: YYYY-MM-DD → Set<HH:MM> (horas bloqueadas en esa fecha).
-  const [blockedTimes, setBlockedTimes] = useState<Map<string, Set<string>>>(new Map());
+  // #24/#25: disponibilidad por fecha — Map: YYYY-MM-DD → Set<HH:MM> de slots NO disponibles.
+  // Incluye tanto citas ocupadas como availability-blocks del doctor (el backend no distingue).
+  // Se usa para deshabilitar y mostrar como no disponibles los slots en la grilla.
+  const [unavailableTimes, setUnavailableTimes] = useState<Map<string, Set<string>>>(new Map());
+
+  // #27: error específico del paso de horario (se muestra inline cerca de la grilla).
+  const [slotError, setSlotError] = useState('');
 
   // Slot generation uses the selected office (single-office or user-chosen),
   // or all offices together before an office is selected (shows union of schedules).
@@ -441,10 +441,13 @@ export default function BookingClient({
   const dates = Object.keys(grouped).sort();
   const weekDates = dates.slice(weekOffset * 5, weekOffset * 5 + 5);
 
-  const isSlotBooked = (date: string, time: string): boolean => {
-    // Primero verificar bloqueado por availability-blocks
-    if (blockedTimes.get(date)?.has(time)) return true;
+  // #24/#25: un slot es "no disponible" si el endpoint por-fecha lo marcó así (available===false),
+  // o si existe en bookedSlots del server component (fallback legacy, normalmente vacío).
+  const isSlotUnavailable = (date: string, time: string): boolean => {
+    // Verificar contra los datos del endpoint GET /slots?date=
+    if (unavailableTimes.get(date)?.has(time)) return true;
 
+    // Fallback: bookedSlots del server component (hardcodeado a [] en Etapa 1)
     // RONDA 28: forzar Caracas para comparar correctamente con bookedSlots de BD
     const slotISO = new Date(`${date}T${time}:00-04:00`).toISOString();
     const slotTime = new Date(slotISO).getTime();
@@ -482,19 +485,19 @@ export default function BookingClient({
   // No client-side fetch is needed — initialOffices prop already contains the data.
 
   /**
-   * Fase 5: cuando el paciente selecciona una fecha, consultar el endpoint
+   * #24/#25: cuando el paciente selecciona una fecha, consultar el endpoint
    * GET /api/booking/:doctorId/slots?date=YYYY-MM-DD para obtener los slots
-   * con `available=false` (bloqueados por availability-blocks o pasados).
-   * Los slots bloqueados se indexan en `blockedTimes` y se muestran deshabilitados.
+   * con `available=false` (ocupados por citas O bloqueados por availability-blocks).
+   * El backend no distingue entre ambos tipos — ambos se marcan como no disponibles.
    *
-   * Degrada silenciosamente: si el endpoint falla, `blockedTimes` queda vacío
-   * y se muestra todo disponible (experiencia degradada pero no rota).
+   * Degrada silenciosamente: si el endpoint falla, `unavailableTimes` queda sin
+   * entrada para esa fecha y se muestra todo disponible (experiencia degradada pero no rota).
    */
   useEffect(() => {
     if (!selectedDate) return;
 
-    // Evitar re-fetch si ya tenemos datos para esta fecha
-    if (blockedTimes.has(selectedDate)) return;
+    // Evitar re-fetch si ya tenemos datos para esta fecha (incluso si el set está vacío)
+    if (unavailableTimes.has(selectedDate)) return;
 
     const fetchDateSlots = async () => {
       try {
@@ -504,25 +507,24 @@ export default function BookingClient({
         const rawSlots = json?.slots;
         if (!Array.isArray(rawSlots)) return;
 
-        // Construir set de horas bloqueadas (available=false)
-        const blocked = new Set<string>();
+        // Construir set de horas no disponibles (available=false)
+        const notAvailable = new Set<string>();
         for (const s of rawSlots) {
           if (s.available === false && s.time) {
             // El backend devuelve time en formato HH:MM o HH:MM:SS — normalizar a HH:MM
-            blocked.add(s.time.slice(0, 5));
+            notAvailable.add(s.time.slice(0, 5));
           }
         }
 
-        if (blocked.size > 0) {
-          setBlockedTimes((prev) => new Map(prev).set(selectedDate, blocked));
-        }
+        // Siempre almacenar la fecha (aunque el set esté vacío) para evitar re-fetches
+        setUnavailableTimes((prev) => new Map(prev).set(selectedDate, notAvailable));
       } catch {
         // Degrade silently
       }
     };
 
     void fetchDateSlots();
-  }, [selectedDate, doctor.id, blockedTimes]);
+  }, [selectedDate, doctor.id, unavailableTimes]);
 
   // When there are 2+ offices and a date is selected but no office is chosen yet,
   // do NOT auto-assign — the user must pick an office explicitly in step 2.
@@ -575,6 +577,7 @@ export default function BookingClient({
     submittingRef.current = true;
 
     setError('');
+    setSlotError('');
 
     if (!selectedSlot) {
       setError('Selecciona una fecha y hora');
@@ -704,9 +707,22 @@ export default function BookingClient({
 
       const result = await res.json();
       if (!res.ok || result.error) {
-        // RONDA 23: mensaje claro cuando el slot ya esta tomado (code 23505 desde BD)
+        // RONDA 23 / #27: cuando el slot ya fue tomado, mostrarlo INLINE cerca de la grilla
+        // y volver al paso 3 para que el paciente elija otro horario sin hacer scroll.
         if (result.code === 'slot_taken' || res.status === 409) {
-          setError('Este horario ya no está disponible, por favor elige otro.');
+          const slotMsg = 'Este horario ya no está disponible, por favor elige otro.';
+          setSlotError(slotMsg);
+          // Marcar el slot como no disponible localmente para feedback inmediato
+          if (selectedSlot) {
+            setUnavailableTimes((prev) => {
+              const next = new Map(prev);
+              const existing = next.get(selectedSlot.date) ?? new Set<string>();
+              next.set(selectedSlot.date, new Set([...existing, selectedSlot.time]));
+              return next;
+            });
+          }
+          setSelectedSlot(null);
+          setActiveStep(3);
         } else {
           setError(result.error || 'Error al agendar cita');
         }
@@ -1143,15 +1159,14 @@ export default function BookingClient({
                         <p className="font-bold" style={{ color: BRAND.ink }}>
                           {plan.name}
                         </p>
-                        <div className="flex items-center gap-2 mt-1">
-                          <Clock className="w-3 h-3 text-slate-400" />
-                          <p className="text-xs text-slate-500">{plan.duration_minutes} min</p>
-                          {plan.sessions_count && plan.sessions_count > 1 && (
+                        {/* #23: se eliminó el indicador de duración (Clock + min) */}
+                        {plan.sessions_count && plan.sessions_count > 1 && (
+                          <div className="mt-1">
                             <span className="text-[10px] font-bold text-violet-600 bg-violet-50 px-2 py-0.5 rounded-full">
                               {plan.sessions_count} sesiones
                             </span>
-                          )}
-                        </div>
+                          </div>
+                        )}
                         {plan.description && (
                           <p className="text-xs text-slate-500 mt-1.5 leading-snug max-w-[15rem]">
                             {plan.description}
@@ -1397,10 +1412,7 @@ export default function BookingClient({
                   const monthName = d.toLocaleDateString('es-VE', { month: 'short' });
                   const isSel = selectedDate === date;
                   const availCount =
-                    grouped[date]?.filter(
-                      (s) =>
-                        !isSlotBooked(s.date, s.time) && !blockedTimes.get(s.date)?.has(s.time),
-                    ).length || 0;
+                    grouped[date]?.filter((s) => !isSlotUnavailable(s.date, s.time)).length || 0;
 
                   return (
                     <button
@@ -1446,13 +1458,7 @@ export default function BookingClient({
                   </p>
                   {(() => {
                     const daySlots = grouped[selectedDate] ?? [];
-                    // #25: ocultar por completo los horarios BLOQUEADOS por el médico
-                    // (antes se mostraban tachados). Los OCUPADOS sí se siguen viendo
-                    // tachados para que el paciente sepa que ese horario ya está tomado.
-                    const visibleSlots = daySlots.filter(
-                      (slot) => !(blockedTimes.get(slot.date)?.has(slot.time) ?? false),
-                    );
-                    if (visibleSlots.length === 0) {
+                    if (daySlots.length === 0) {
                       return (
                         <p className="text-xs text-slate-400">
                           No hay horarios disponibles para este día.
@@ -1460,36 +1466,50 @@ export default function BookingClient({
                       );
                     }
                     return (
-                      <div className="flex flex-wrap gap-2">
-                        {visibleSlots.map((slot) => {
-                          const booked = isSlotBooked(slot.date, slot.time);
-                          const isSel =
-                            selectedSlot?.date === slot.date && selectedSlot?.time === slot.time;
-                          return (
-                            <button
-                              key={slot.time}
-                              onClick={() => {
-                                if (!booked) {
-                                  setSelectedSlot(slot);
-                                  setActiveStep(4);
-                                }
-                              }}
-                              disabled={booked}
-                              title={booked ? 'Horario ocupado' : undefined}
-                              className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-all ${
-                                booked
-                                  ? 'bg-slate-100 text-slate-300 cursor-not-allowed line-through'
-                                  : isSel
-                                    ? 'text-white shadow-md shadow-cyan-500/20'
-                                    : 'bg-white border border-slate-200 text-slate-700 hover:border-cyan-400'
-                              }`}
-                              style={isSel ? { background: BRAND.turquoise } : undefined}
-                            >
-                              {slot.time}
-                            </button>
-                          );
-                        })}
-                      </div>
+                      <>
+                        <div className="flex flex-wrap gap-2">
+                          {daySlots.map((slot) => {
+                            // #24/#25: deshabilitar si viene como no disponible del endpoint
+                            // (cubre tanto citas ocupadas como availability-blocks del doctor)
+                            const unavailable = isSlotUnavailable(slot.date, slot.time);
+                            const isSel =
+                              selectedSlot?.date === slot.date && selectedSlot?.time === slot.time;
+                            return (
+                              <button
+                                key={slot.time}
+                                type="button"
+                                onClick={() => {
+                                  if (!unavailable) {
+                                    setSelectedSlot(slot);
+                                    setSlotError('');
+                                    setActiveStep(4);
+                                  }
+                                }}
+                                disabled={unavailable}
+                                title={unavailable ? 'Horario no disponible' : undefined}
+                                aria-disabled={unavailable}
+                                className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-all ${
+                                  unavailable
+                                    ? 'bg-slate-100 text-slate-300 cursor-not-allowed'
+                                    : isSel
+                                      ? 'text-white shadow-md shadow-cyan-500/20'
+                                      : 'bg-white border border-slate-200 text-slate-700 hover:border-cyan-400 hover:bg-cyan-50/30'
+                                }`}
+                                style={isSel ? { background: BRAND.turquoise } : undefined}
+                              >
+                                {slot.time}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        {/* #27: error inline del paso de horario */}
+                        {slotError && (
+                          <div className="flex items-start gap-2 text-xs text-red-600 bg-red-50 border border-red-200 rounded-xl px-3 py-2.5 mt-1">
+                            <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                            <span>{slotError}</span>
+                          </div>
+                        )}
+                      </>
                     );
                   })()}
                 </div>

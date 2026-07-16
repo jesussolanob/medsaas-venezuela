@@ -1,10 +1,14 @@
 import { CreatePatientUseCase } from './create-patient.use-case';
 import { DuplicatePatientError } from '../../../domain/errors/duplicate-patient.error';
+import { PatientEmailIsDoctorError } from '../../../domain/errors/patient-email-is-doctor.error';
 import type { IPatientRepository } from '../../../domain/repositories/patient.repository';
+import type { IDoctorProfileRepository } from '../../../../doctor-settings/domain/repositories/doctor-profile.repository';
+import { DoctorProfile } from '../../../../doctor-settings/domain/entities/doctor-profile.entity';
 import { Patient } from '../../../domain/entities/patient.entity';
 import type { ResolvePatientIdentityUseCase } from '../../../../patient-identities/application/use-cases/resolve-patient-identity.use-case';
 
 const DOCTOR_ID = 'dddddddd-0000-0000-0000-000000000001';
+const DOCTOR_EMAIL = 'doctor@example.com';
 const now = new Date('2026-06-01T00:00:00Z');
 
 function makePatient(overrides: Partial<ConstructorParameters<typeof Patient>[0]> = {}): Patient {
@@ -19,6 +23,36 @@ function makePatient(overrides: Partial<ConstructorParameters<typeof Patient>[0]
   });
 }
 
+function makeDoctorProfile(email = DOCTOR_EMAIL): DoctorProfile {
+  return DoctorProfile.create({
+    id: DOCTOR_ID,
+    fullName: 'Dr. García',
+    email,
+    specialty: null,
+    professionalTitle: null,
+    clinicId: null,
+    clinicRole: null,
+    paymentMethods: [],
+    paymentDetails: {},
+    allowsOnline: false,
+    officeAddress: null,
+    city: null,
+    avatarUrl: null,
+    plan: null,
+    subscriptionStatus: null,
+    logoUrl: null,
+    signatureUrl: null,
+    licenseNumber: null,
+    phone: null,
+    currencyMode: null,
+    customRate: null,
+    customRateLabel: null,
+    cedula: null,
+    birthDate: null,
+    onboardingCompleted: true,
+  });
+}
+
 function makeMockRepo(): jest.Mocked<IPatientRepository> {
   return {
     findById: jest.fn(),
@@ -30,6 +64,14 @@ function makeMockRepo(): jest.Mocked<IPatientRepository> {
     update: jest.fn(),
     softDelete: jest.fn(),
     logReveal: jest.fn(),
+  };
+}
+
+function makeMockDoctorProfileRepo(): jest.Mocked<IDoctorProfileRepository> {
+  return {
+    findByDoctorId: jest.fn(),
+    update: jest.fn(),
+    updateExchangeRate: jest.fn(),
   };
 }
 
@@ -48,14 +90,18 @@ function makeMockResolveIdentity(): jest.Mocked<ResolvePatientIdentityUseCase> {
 describe('CreatePatientUseCase', () => {
   let useCase: CreatePatientUseCase;
   let repo: jest.Mocked<IPatientRepository>;
+  let doctorProfileRepo: jest.Mocked<IDoctorProfileRepository>;
   let crypto: ReturnType<typeof makeMockCrypto>;
   let resolveIdentity: jest.Mocked<ResolvePatientIdentityUseCase>;
 
   beforeEach(() => {
     repo = makeMockRepo();
+    doctorProfileRepo = makeMockDoctorProfileRepo();
     crypto = makeMockCrypto();
     resolveIdentity = makeMockResolveIdentity();
-    useCase = new CreatePatientUseCase(repo, crypto as never, resolveIdentity);
+    useCase = new CreatePatientUseCase(repo, doctorProfileRepo, crypto as never, resolveIdentity);
+    // Default: doctor profile found with known email
+    doctorProfileRepo.findByDoctorId.mockResolvedValue(makeDoctorProfile());
   });
 
   it('creates a patient successfully', async () => {
@@ -158,9 +204,8 @@ describe('CreatePatientUseCase', () => {
   });
 
   it('passes all optional fields to the saved patient', async () => {
-    const saved = makePatient({ phone: '+58412000000', email: 'j@example.com' });
+    const saved = makePatient({ phone: '+58412000000', email: 'patient@example.com' });
     repo.findByCedulaHash.mockResolvedValue(null);
-    repo.findByEmailHash.mockResolvedValue(null);
     repo.save.mockResolvedValue(saved);
 
     await useCase.execute({
@@ -168,12 +213,12 @@ describe('CreatePatientUseCase', () => {
       fullName: 'Juan',
       cedula: 'V-12345678',
       phone: '+58412000000',
-      email: 'j@example.com',
+      email: 'patient@example.com',
     });
 
     const callArg = repo.save.mock.calls[0]?.[0];
     expect(callArg?.phone).toBe('+58412000000');
-    expect(callArg?.email).toBe('j@example.com');
+    expect(callArg?.email).toBe('patient@example.com');
   });
 
   it('passes emergencyContactRelationship to the saved patient when provided', async () => {
@@ -203,65 +248,84 @@ describe('CreatePatientUseCase', () => {
   });
 
   // ---------------------------------------------------------------------------
-  // Email duplicate guard
+  // Doctor-email guard (replaces old per-doctor email-duplicate guard)
   // ---------------------------------------------------------------------------
 
-  it('throws DuplicatePatientError (409) when the same doctor already has a patient with the same email', async () => {
+  it('throws PatientEmailIsDoctorError (409) when the patient email matches the doctor own email', async () => {
     resolveIdentity.execute.mockResolvedValue(null);
-    repo.findByEmailHash.mockResolvedValue(makePatient({ cedula: null, email: 'dup@example.com' }));
 
     const error = await useCase
-      .execute({ doctorId: DOCTOR_ID, fullName: 'Otro', email: 'dup@example.com' })
+      .execute({ doctorId: DOCTOR_ID, fullName: 'Otro', email: DOCTOR_EMAIL })
       .catch((e: unknown) => e);
 
-    expect(error).toBeInstanceOf(DuplicatePatientError);
-    expect((error as DuplicatePatientError).code).toBe('PATIENT_DUPLICATE');
-    expect((error as DuplicatePatientError).httpStatus).toBe(409);
-    expect(repo.findByEmailHash).toHaveBeenCalledWith('hash:dup@example.com', DOCTOR_ID);
+    expect(error).toBeInstanceOf(PatientEmailIsDoctorError);
+    expect((error as PatientEmailIsDoctorError).code).toBe('PATIENT_EMAIL_IS_DOCTOR');
+    expect((error as PatientEmailIsDoctorError).httpStatus).toBe(409);
     expect(repo.save).not.toHaveBeenCalled();
   });
 
-  it('does not check email duplicate when email is absent', async () => {
+  it('is case-insensitive when comparing patient email to doctor email', async () => {
+    resolveIdentity.execute.mockResolvedValue(null);
+
+    const error = await useCase
+      .execute({ doctorId: DOCTOR_ID, fullName: 'Otro', email: 'DOCTOR@EXAMPLE.COM' })
+      .catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(PatientEmailIsDoctorError);
+  });
+
+  it('trims whitespace when comparing emails', async () => {
+    resolveIdentity.execute.mockResolvedValue(null);
+
+    const error = await useCase
+      .execute({ doctorId: DOCTOR_ID, fullName: 'Otro', email: '  doctor@example.com  ' })
+      .catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(PatientEmailIsDoctorError);
+  });
+
+  it('allows a DIFFERENT email to be used for a patient', async () => {
+    const saved = makePatient({ cedula: null, email: 'patient@example.com' });
+    repo.save.mockResolvedValue(saved);
+
+    await expect(
+      useCase.execute({ doctorId: DOCTOR_ID, fullName: 'Paciente', email: 'patient@example.com' }),
+    ).resolves.toBeDefined();
+
+    expect(repo.save).toHaveBeenCalledTimes(1);
+  });
+
+  it('allows multiple patients to share the same email (no per-doctor email-duplicate guard)', async () => {
+    const saved = makePatient({ cedula: null, email: 'shared@example.com' });
+    repo.save.mockResolvedValue(saved);
+
+    // Should NOT call findByEmailHash and should succeed
+    await expect(
+      useCase.execute({ doctorId: DOCTOR_ID, fullName: 'Hermano', email: 'shared@example.com' }),
+    ).resolves.toBeDefined();
+
+    expect(repo.findByEmailHash).not.toHaveBeenCalled();
+    expect(repo.save).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not check doctor email when email is absent', async () => {
     const saved = makePatient({ cedula: null });
     repo.save.mockResolvedValue(saved);
 
     await useCase.execute({ doctorId: DOCTOR_ID, fullName: 'Sin email' });
 
-    expect(repo.findByEmailHash).not.toHaveBeenCalled();
+    // doctorProfileRepo should not be called when no email is provided
+    expect(doctorProfileRepo.findByDoctorId).not.toHaveBeenCalled();
   });
 
-  it('does NOT throw email duplicate when a DIFFERENT doctor has a patient with the same email (scoped per doctor)', async () => {
-    // findByEmailHash is scoped to doctorId — another doctor's patient won't be returned.
-    resolveIdentity.execute.mockResolvedValue(null);
-    repo.findByEmailHash.mockResolvedValue(null);
-    const saved = makePatient({ cedula: null, email: 'shared@example.com' });
+  it('does not throw if doctor profile is not found (graceful degradation)', async () => {
+    doctorProfileRepo.findByDoctorId.mockResolvedValue(null);
+    const saved = makePatient({ cedula: null, email: DOCTOR_EMAIL });
     repo.save.mockResolvedValue(saved);
 
+    // If no doctor profile is found, the guard is skipped (safe default)
     await expect(
-      useCase.execute({ doctorId: DOCTOR_ID, fullName: 'Nuevo', email: 'shared@example.com' }),
+      useCase.execute({ doctorId: DOCTOR_ID, fullName: 'Paciente', email: DOCTOR_EMAIL }),
     ).resolves.toBeDefined();
-
-    expect(repo.findByEmailHash).toHaveBeenCalledWith('hash:shared@example.com', DOCTOR_ID);
-  });
-
-  it('checks email duplicate independently of cédula guard', async () => {
-    // Both cédula and email provided; cédula guard passes, email guard fires.
-    repo.findByCedulaHash.mockResolvedValue(null);
-    repo.findByEmailHash.mockResolvedValue(makePatient({ email: 'taken@example.com' }));
-
-    const error = await useCase
-      .execute({
-        doctorId: DOCTOR_ID,
-        fullName: 'Otro',
-        cedula: 'V-99999999',
-        email: 'taken@example.com',
-      })
-      .catch((e: unknown) => e);
-
-    expect(error).toBeInstanceOf(DuplicatePatientError);
-    expect((error as DuplicatePatientError).httpStatus).toBe(409);
-    expect(repo.findByCedulaHash).toHaveBeenCalledWith('hash:V-99999999', DOCTOR_ID);
-    expect(repo.findByEmailHash).toHaveBeenCalledWith('hash:taken@example.com', DOCTOR_ID);
-    expect(repo.save).not.toHaveBeenCalled();
   });
 });

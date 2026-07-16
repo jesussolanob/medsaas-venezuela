@@ -1,12 +1,16 @@
 import { UpdatePatientUseCase } from './update-patient.use-case';
 import { PatientNotFoundError } from '../../../domain/errors/patient-not-found.error';
+import { PatientEmailIsDoctorError } from '../../../domain/errors/patient-email-is-doctor.error';
 import { UnauthorizedError } from '../../../../../domain/errors/domain.error';
 import type { IPatientRepository } from '../../../domain/repositories/patient.repository';
+import type { IDoctorProfileRepository } from '../../../../doctor-settings/domain/repositories/doctor-profile.repository';
+import { DoctorProfile } from '../../../../doctor-settings/domain/entities/doctor-profile.entity';
 import { Patient } from '../../../domain/entities/patient.entity';
 
 const DOCTOR_ID = 'dddddddd-0000-0000-0000-000000000001';
 const OTHER_DOCTOR = 'ffffffff-0000-0000-0000-000000000099';
 const PATIENT_ID = 'aaaaaaaa-0000-0000-0000-000000000001';
+const DOCTOR_EMAIL = 'doctor@example.com';
 const now = new Date('2026-06-01T00:00:00Z');
 
 function makePatient(overrides: Partial<ConstructorParameters<typeof Patient>[0]> = {}): Patient {
@@ -17,6 +21,36 @@ function makePatient(overrides: Partial<ConstructorParameters<typeof Patient>[0]
     createdAt: now,
     updatedAt: now,
     ...overrides,
+  });
+}
+
+function makeDoctorProfile(email = DOCTOR_EMAIL): DoctorProfile {
+  return DoctorProfile.create({
+    id: DOCTOR_ID,
+    fullName: 'Dr. García',
+    email,
+    specialty: null,
+    professionalTitle: null,
+    clinicId: null,
+    clinicRole: null,
+    paymentMethods: [],
+    paymentDetails: {},
+    allowsOnline: false,
+    officeAddress: null,
+    city: null,
+    avatarUrl: null,
+    plan: null,
+    subscriptionStatus: null,
+    logoUrl: null,
+    signatureUrl: null,
+    licenseNumber: null,
+    phone: null,
+    currencyMode: null,
+    customRate: null,
+    customRateLabel: null,
+    cedula: null,
+    birthDate: null,
+    onboardingCompleted: true,
   });
 }
 
@@ -34,13 +68,24 @@ function makeMockRepo(): jest.Mocked<IPatientRepository> {
   };
 }
 
+function makeMockDoctorProfileRepo(): jest.Mocked<IDoctorProfileRepository> {
+  return {
+    findByDoctorId: jest.fn(),
+    update: jest.fn(),
+    updateExchangeRate: jest.fn(),
+  };
+}
+
 describe('UpdatePatientUseCase', () => {
   let useCase: UpdatePatientUseCase;
   let repo: jest.Mocked<IPatientRepository>;
+  let doctorProfileRepo: jest.Mocked<IDoctorProfileRepository>;
 
   beforeEach(() => {
     repo = makeMockRepo();
-    useCase = new UpdatePatientUseCase(repo);
+    doctorProfileRepo = makeMockDoctorProfileRepo();
+    useCase = new UpdatePatientUseCase(repo, doctorProfileRepo);
+    doctorProfileRepo.findByDoctorId.mockResolvedValue(makeDoctorProfile());
   });
 
   it('updates the patient when owned by the doctor', async () => {
@@ -222,5 +267,85 @@ describe('UpdatePatientUseCase', () => {
       DOCTOR_ID,
       expect.objectContaining({ cedula: null, phone: null }),
     );
+  });
+
+  // ---------------------------------------------------------------------------
+  // Doctor-email guard
+  // ---------------------------------------------------------------------------
+
+  it('throws PatientEmailIsDoctorError (409) when updating email to the doctor own email', async () => {
+    const patient = makePatient();
+    repo.findById.mockResolvedValue(patient);
+
+    const error = await useCase
+      .execute({ patientId: PATIENT_ID, doctorId: DOCTOR_ID, email: DOCTOR_EMAIL })
+      .catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(PatientEmailIsDoctorError);
+    expect((error as PatientEmailIsDoctorError).code).toBe('PATIENT_EMAIL_IS_DOCTOR');
+    expect((error as PatientEmailIsDoctorError).httpStatus).toBe(409);
+    expect(repo.update).not.toHaveBeenCalled();
+  });
+
+  it('is case-insensitive when comparing email to doctor email on update', async () => {
+    const patient = makePatient();
+    repo.findById.mockResolvedValue(patient);
+
+    const error = await useCase
+      .execute({ patientId: PATIENT_ID, doctorId: DOCTOR_ID, email: 'DOCTOR@EXAMPLE.COM' })
+      .catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(PatientEmailIsDoctorError);
+  });
+
+  it('does not check doctor email when email is not being updated (undefined)', async () => {
+    const patient = makePatient();
+    repo.findById.mockResolvedValue(patient);
+    repo.update.mockResolvedValue(patient);
+
+    await useCase.execute({ patientId: PATIENT_ID, doctorId: DOCTOR_ID, fullName: 'Nuevo Nombre' });
+
+    expect(doctorProfileRepo.findByDoctorId).not.toHaveBeenCalled();
+    expect(repo.update).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not throw doctor-email guard when email is being cleared to null', async () => {
+    const patient = makePatient({ email: 'old@example.com' });
+    repo.findById.mockResolvedValue(patient);
+    repo.update.mockResolvedValue(patient);
+
+    // Clearing email to null should not trigger the doctor-email guard
+    await expect(
+      useCase.execute({ patientId: PATIENT_ID, doctorId: DOCTOR_ID, email: null }),
+    ).resolves.toBeDefined();
+
+    expect(doctorProfileRepo.findByDoctorId).not.toHaveBeenCalled();
+  });
+
+  it('allows a different email to be set on a patient', async () => {
+    const patient = makePatient();
+    repo.findById.mockResolvedValue(patient);
+    repo.update.mockResolvedValue(patient);
+
+    await expect(
+      useCase.execute({
+        patientId: PATIENT_ID,
+        doctorId: DOCTOR_ID,
+        email: 'different@example.com',
+      }),
+    ).resolves.toBeDefined();
+
+    expect(repo.update).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not throw if doctor profile is not found during email check (graceful degradation)', async () => {
+    doctorProfileRepo.findByDoctorId.mockResolvedValue(null);
+    const patient = makePatient();
+    repo.findById.mockResolvedValue(patient);
+    repo.update.mockResolvedValue(patient);
+
+    await expect(
+      useCase.execute({ patientId: PATIENT_ID, doctorId: DOCTOR_ID, email: DOCTOR_EMAIL }),
+    ).resolves.toBeDefined();
   });
 });

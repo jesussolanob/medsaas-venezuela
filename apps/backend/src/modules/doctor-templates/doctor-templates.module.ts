@@ -9,6 +9,7 @@ import { ListDoctorTemplatesUseCase } from './application/use-cases/doctor-templ
 import { UpsertDoctorTemplateUseCase } from './application/use-cases/doctor-templates/upsert-doctor-template.use-case';
 
 import { DoctorTemplatesController } from './presentation/controllers/doctor-templates.controller';
+import { StorageModule } from '../storage/storage.module';
 
 /**
  * DoctorTemplatesModule — PDF template configuration for doctors.
@@ -16,9 +17,12 @@ import { DoctorTemplatesController } from './presentation/controllers/doctor-tem
  * IMPORTANT: Sequelize is provided globally via SequelizeModule.forRootAsync in
  * AppModule. Only register the feature model (DoctorTemplateModel) here — never
  * re-declare the Sequelize provider in this module's providers array.
+ *
+ * StorageModule is imported to provide STORAGE_PORT for GCS URL re-signing in
+ * ListDoctorTemplatesUseCase (logo and signature URLs expire after 7 days).
  */
 @Module({
-  imports: [SequelizeModule.forFeature([DoctorTemplateModel])],
+  imports: [SequelizeModule.forFeature([DoctorTemplateModel]), StorageModule],
   controllers: [DoctorTemplatesController],
   providers: [
     // Repository binding: domain interface → Sequelize implementation

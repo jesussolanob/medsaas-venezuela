@@ -144,15 +144,22 @@ export default function RemindersPage() {
     const date = formatDate(consult.consultation_date);
     const time = formatTime(consult.consultation_date);
     const doc = doctorName || 'tu médico';
-    let msg = `Hola ${consult.patient_name} 👋\n\n`;
+    // Emojis vía escapes Unicode (no literales): inmune a corrupción de bytes
+    // en el pipeline de build/tooling que rompía los iconos en WhatsApp (mojibake).
+    const wave = '\u{1F44B}'; // 👋
+    const cal = '\u{1F4C5}'; // 📅
+    const clock = '\u{1F550}'; // 🕐
+    const clip = '\u{1F4CB}'; // 📋
+    const mark = '\u{1F516}'; // 🔖
+    const hospital = '\u{1F3E5}'; // 🏥
+    let msg = `Hola ${consult.patient_name} ${wave}\n\n`;
     msg += `Tu consulta con ${doc} está *confirmada* para:\n\n`;
-    msg += `📅 *Fecha:* ${date}\n`;
-    msg += `🕐 *Hora:* ${time}\n`;
-    if (consult.plan_name) msg += `📋 *Servicio:* ${consult.plan_name}\n`;
-    msg += `🔖 *Código:* ${consult.consultation_code}\n\n`;
-    msg += `Por favor llega con 10 minutos de anticipación.\n`;
-    msg += `Si necesitas reagendar, contáctanos con anticipación.\n\n`;
-    msg += `¡Te esperamos! 🏥`;
+    msg += `${cal} *Fecha:* ${date}\n`;
+    msg += `${clock} *Hora:* ${time}\n`;
+    if (consult.plan_name) msg += `${clip} *Servicio:* ${consult.plan_name}\n`;
+    msg += `${mark} *Código:* ${consult.consultation_code}\n\n`;
+    msg += `Por favor llega con 10 minutos de anticipación.\n\n`;
+    msg += `¡Te esperamos! ${hospital}`;
     return encodeURIComponent(msg);
   }
 

@@ -22,7 +22,7 @@
  * y se genera un bloque de muestra por cada key, conservando el mismo orden.
  */
 
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import dynamic from 'next/dynamic';
 import { Loader2, Download, FileText } from 'lucide-react';
 import type {
@@ -361,29 +361,39 @@ export function TemplatePdfPreview({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Armar las páginas del documento usando el mismo pipeline que la consulta real
-  const sampleDocuments = buildSampleDocuments(docType, enabledBlocks);
+  // Armar las páginas del documento usando el mismo pipeline que la consulta real.
+  // Memoizado para evitar recomputar (y regenerar el PDF) en cada render.
+  const blocksKey = enabledBlocks.join('|');
+  const sampleDocuments = useMemo(
+    () => buildSampleDocuments(docType, enabledBlocks),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [docType, blocksKey],
+  );
 
-  const commonProps = {
-    templateConfig,
-    doctor,
-    patient: { fullName: 'Juan Pérez (ejemplo)', cedula: 'V-12.345.678' },
-    docDate: new Date().toISOString(),
-    consultationCode: 'CONS-EJEMPLO',
-  };
+  // Fecha de ejemplo estable: `new Date()` en cada render recreaba el documento y
+  // provocaba que el visor regenerara el PDF en bucle ("se refresca constantemente").
+  const docDate = useMemo(() => new Date().toISOString(), []);
 
   // Human-readable filename using the document type label (no PII).
   const fileName = `Plantilla-${docTypeLabel.replace(/\s+/g, '-')}.pdf`;
 
   // El documento de muestra siempre usa el modo multi-página (documents prop)
   // para que coincida con el pipeline real incluso cuando solo hay 1 página.
-  const pdfDocument = (
-    <MedicalDocumentPdf
-      {...commonProps}
-      docType={sampleDocuments[0]?.docType ?? docType}
-      content={sampleDocuments[0]?.content ?? []}
-      documents={sampleDocuments}
-    />
+  // Memoizado: sólo se reconstruye si cambian plantilla/doctor/tipo/bloques.
+  const pdfDocument = useMemo(
+    () => (
+      <MedicalDocumentPdf
+        templateConfig={templateConfig}
+        doctor={doctor}
+        patient={{ fullName: 'Juan Pérez (ejemplo)', cedula: 'V-12.345.678' }}
+        docDate={docDate}
+        consultationCode="CONS-EJEMPLO"
+        docType={sampleDocuments[0]?.docType ?? docType}
+        content={sampleDocuments[0]?.content ?? []}
+        documents={sampleDocuments}
+      />
+    ),
+    [templateConfig, doctor, docType, sampleDocuments, docDate],
   );
 
   return (

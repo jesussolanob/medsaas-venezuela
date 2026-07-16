@@ -1,7 +1,11 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as Minio from 'minio';
-import type { IStoragePort, StorageUploadInput, StorageUploadResult } from '../../application/ports/storage.port';
+import type {
+  IStoragePort,
+  StorageUploadInput,
+  StorageUploadResult,
+} from '../../application/ports/storage.port';
 
 /**
  * MinioStorageAdapter — storage adapter for local development (MinIO).
@@ -71,7 +75,7 @@ export class MinioStorageAdapter implements IStoragePort, OnModuleInit {
       const msg = err instanceof Error ? err.message : String(err);
       this.logger.warn(
         `MinIO not available at startup (${msg}). ` +
-        'Upload requests will fail until MinIO is reachable.',
+          'Upload requests will fail until MinIO is reachable.',
       );
     }
   }
@@ -94,8 +98,11 @@ export class MinioStorageAdapter implements IStoragePort, OnModuleInit {
   /**
    * Returns a pre-signed GET URL valid for 1 hour (3 600 seconds).
    * Used for private objects (receipt, document, signature).
+   *
+   * The optional `ttlMs` parameter is accepted to satisfy the IStoragePort
+   * interface but MinIO always uses a fixed 1-hour TTL in this implementation.
    */
-  async getSignedUrl(path: string): Promise<string> {
+  async getSignedUrl(path: string, _ttlMs?: number): Promise<string> {
     return this.client.presignedGetObject(this.bucket, path, 3600);
   }
 

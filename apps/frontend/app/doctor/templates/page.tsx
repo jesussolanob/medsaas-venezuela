@@ -23,7 +23,6 @@ import {
   Type,
   Image as ImageIcon,
   Receipt,
-  AlertCircle,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { reportError } from '@/lib/report-error';
@@ -568,27 +567,7 @@ export default function TemplatesPage() {
           </div>
         </div>
 
-        {/* Aviso especial para el tipo 'recibo': se guarda en localStorage hasta que
-            el backend agregue 'recibo' como tipo válido de plantilla. */}
-        {activeTab === 'recibo' && (
-          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3">
-            <AlertCircle className="w-4 h-4 text-amber-600 mt-0.5 flex-shrink-0" />
-            <div className="flex-1 text-xs text-amber-800">
-              <p className="font-semibold mb-1">
-                Configuración del recibo guardada localmente (este navegador)
-              </p>
-              <p>
-                El color, encabezado y pie que configures aquí se aplican al recibo de pago del
-                módulo <b>Cobros</b>. La configuración se guarda en este navegador mientras el tipo
-                &quot;recibo&quot; se agrega al servidor.
-              </p>
-              <p className="mt-1 text-amber-700">
-                <b>Fallback:</b> Si no hay configuración guardada, el recibo usa la plantilla{' '}
-                <b>Informe</b> del servidor.
-              </p>
-            </div>
-          </div>
-        )}
+        {/* (Aviso "guardada localmente" del recibo eliminado por pedido del usuario.) */}
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Left: Configuration */}

@@ -265,6 +265,8 @@ export default function RequestDetailModal({ requestId, onClose }: RequestDetail
                           <a
                             href={att.signedUrl}
                             download={att.fileName}
+                            target="_blank"
+                            rel="noopener noreferrer"
                             className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-slate-600 border border-slate-200 hover:bg-slate-100 transition-colors"
                             title="Descargar archivo"
                           >
