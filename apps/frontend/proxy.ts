@@ -144,6 +144,14 @@ async function handleAuth0Mode(request: NextRequest): Promise<NextResponse> {
   const appBaseUrl =
     process.env.AUTH0_BASE_URL ?? process.env.APP_BASE_URL ?? 'http://localhost:3000';
 
+  // IMPORTANT: this is the Auth0Client that actually processes the OIDC callback
+  // (via auth0.middleware() below). It MUST mirror lib/auth0.ts, otherwise the
+  // callback falls back to the SDK default returnTo ('/', the public landing)
+  // whenever the transaction state doesn't carry a decodable returnTo — which is
+  // exactly what happened after passwordless (email-code) login: the user landed
+  // on the landing page instead of their portal. `signInReturnToPath: '/post-login'`
+  // sends them to the role dispatcher instead. `session` mirrors the 8h cap so the
+  // session cookie set at callback matches lib/auth0.ts.
   const auth0 = new Auth0Client({
     domain,
     clientId,
@@ -151,6 +159,12 @@ async function handleAuth0Mode(request: NextRequest): Promise<NextResponse> {
     secret,
     appBaseUrl,
     authorizationParameters: { scope: 'openid profile email' },
+    routes: { callback: '/auth/callback' },
+    signInReturnToPath: '/post-login',
+    session: {
+      rolling: false,
+      absoluteDuration: 60 * 60 * 8,
+    },
   });
 
   // Let the Auth0 middleware handle /auth/* routes (login, logout, callback)
