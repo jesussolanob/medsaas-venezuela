@@ -16,15 +16,19 @@ import { DeletePatientUseCase } from './application/use-cases/patients/delete-pa
 
 import { PatientsController } from './presentation/controllers/patients.controller';
 import { PatientIdentitiesModule } from '../patient-identities/patient-identities.module';
-import { DoctorSettingsModule } from '../doctor-settings/doctor-settings.module';
+// DOCTOR_PROFILE_REPOSITORY is provided LOCALLY (model + repo class) instead of
+// importing DoctorSettingsModule: that module imports FinancesModule which imports
+// PatientsModule, so importing it here creates a boot-breaking DI cycle
+// (Patients → DoctorSettings → Finances → Patients). The repo only needs the
+// DoctorProfileModel, so we register it directly (Sequelize forFeature is additive/safe).
+import { DOCTOR_PROFILE_REPOSITORY } from '../doctor-settings/domain/repositories/doctor-profile.repository';
+import { SequelizeDoctorProfileRepository } from '../doctor-settings/infrastructure/database/repositories/sequelize-doctor-profile.repository';
+import { DoctorProfileModel } from '../doctor-settings/infrastructure/database/models/doctor-profile.model';
 
 @Module({
   imports: [
-    SequelizeModule.forFeature([PatientModel, AccessAuditLogModel]),
+    SequelizeModule.forFeature([PatientModel, AccessAuditLogModel, DoctorProfileModel]),
     PatientIdentitiesModule,
-    // Provides DOCTOR_PROFILE_REPOSITORY for the doctor-email guard in
-    // CreatePatientUseCase and UpdatePatientUseCase.
-    DoctorSettingsModule,
   ],
   controllers: [PatientsController],
   providers: [
@@ -34,6 +38,13 @@ import { DoctorSettingsModule } from '../doctor-settings/doctor-settings.module'
     {
       provide: PATIENT_REPOSITORY,
       useClass: SequelizePatientRepository,
+    },
+
+    // Doctor profile repository for the doctor-email guard in Create/UpdatePatient.
+    // Bound locally (see note above) to avoid the DoctorSettings→Finances→Patients cycle.
+    {
+      provide: DOCTOR_PROFILE_REPOSITORY,
+      useClass: SequelizeDoctorProfileRepository,
     },
 
     // Use cases
