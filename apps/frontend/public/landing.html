@@ -1859,6 +1859,16 @@ button { font-family: var(--dh-font-body); cursor: pointer; border: none; }
       </div>
     </div>
 
+    <!-- Tabla comparativa completa: TODAS las features × los 3 planes (✓/—). El JS la
+         rellena desde /api/public/plans (feature.enabled por plan). -->
+    <div id="pricing-compare-wrap" style="max-width:1100px;margin:56px auto 0;">
+      <h3 style="text-align:center;font-size:22px;font-weight:800;color:var(--dh-ink);margin-bottom:8px">Compara todas las características</h3>
+      <p style="text-align:center;color:var(--dh-gray-600);font-size:15px;margin-bottom:28px">Qué incluye cada plan, en detalle.</p>
+      <div style="overflow-x:auto">
+        <table id="pricing-compare" class="compare-table"></table>
+      </div>
+    </div>
+
     <p style="text-align:center;color:var(--dh-gray-400);font-size:13px;margin-top:32px">
       Pago vía Pago Móvil, Transferencia o Zelle. Pronto Stripe para tarjetas internacionales.
     </p>
@@ -1985,6 +1995,47 @@ button { font-family: var(--dh-font-body); cursor: pointer; border: none; }
   }
   .pricing-card .plan-features li.more::before { display: none; }
   @keyframes dh-spin { to { transform: rotate(360deg); } }
+
+  /* Tabla comparativa de planes */
+  .compare-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: #fff;
+    border: 1px solid var(--dh-gray-100);
+    border-radius: 16px;
+    overflow: hidden;
+    font-size: 14px;
+  }
+  .compare-table th, .compare-table td {
+    padding: 13px 16px;
+    text-align: center;
+    border-bottom: 1px solid var(--dh-gray-100);
+  }
+  .compare-table thead th {
+    background: #FAFBFC;
+    font-weight: 800;
+    color: var(--dh-ink);
+    font-size: 15px;
+  }
+  .compare-table thead th .th-price {
+    display: block;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--dh-gray-400);
+    margin-top: 2px;
+  }
+  .compare-table thead th.plan-featured { background: rgba(6,182,212,0.08); color: var(--dh-turquoise-700); }
+  .compare-table tbody th {
+    text-align: left;
+    font-weight: 500;
+    color: var(--dh-gray-600);
+    background: #fff;
+  }
+  .compare-table tbody tr:last-child th,
+  .compare-table tbody tr:last-child td { border-bottom: none; }
+  .compare-table .yes { color: var(--dh-turquoise); font-weight: 800; font-size: 16px; }
+  .compare-table .no  { color: var(--dh-gray-100); font-weight: 700; }
+  .compare-table td.plan-featured { background: rgba(6,182,212,0.04); }
 </style>
 
 <script>
@@ -2073,9 +2124,8 @@ button { font-family: var(--dh-font-body); cursor: pointer; border: none; }
 
     }).catch(() => { /* fallback: dejar los precios hardcoded */ });
 
-    // Planes vendibles (Free/Base/Plus) traídos de la BD → 3 tarjetas + features.
+    // Planes vendibles (Free/Base/Plus) traídos de la BD → 3 tarjetas + tabla comparativa.
     // La sección arranca con un spinner ("Cargando planes…") que se reemplaza aquí.
-    var MAX_FEATS = 8;
     fetch('/api/public/plans').then(r => r.json()).then(pd => {
       const grid = document.getElementById('pricing-cards');
       const plans = (pd && Array.isArray(pd.plans)) ? pd.plans : [];
@@ -2091,19 +2141,17 @@ button { font-family: var(--dh-font-body); cursor: pointer; border: none; }
       // Orden por precio ascendente (Free, Base, Plus). El del medio = destacado.
       plans.sort((a, b) => monthly(a) - monthly(b));
       const featuredIdx = plans.length >= 2 ? Math.min(1, plans.length - 1) : -1;
+
+      // ── Tarjetas (precio + CTA + teaser de 5 features) ──
       grid.innerHTML = plans.map((p, i) => {
         const price = monthly(p);
         const featured = i === featuredIdx ? 'featured' : '';
         const isFree = price === 0;
-        // SOLO las features HABILITADAS de ESTE plan (enabled=true) → cada plan muestra
-        // lo suyo (Free < Base < Plus). Antes se mostraban TODAS (incluidas las
-        // deshabilitadas) → los 3 planes salían idénticos.
+        // SOLO features HABILITADAS de ESTE plan (teaser corto; el detalle COMPLETO
+        // está en la tabla comparativa de abajo).
         const enabled = (p.features || []).filter(f => f.enabled);
-        const shown = enabled.slice(0, MAX_FEATS);
-        let feats = shown.map(f => '<li>' + (f.feature_label || f.feature_key) + '</li>').join('');
-        if (enabled.length > shown.length) {
-          feats += '<li class="more">y ' + (enabled.length - shown.length) + ' más…</li>';
-        }
+        const feats = enabled.slice(0, 5)
+          .map(f => '<li>' + (f.feature_label || f.feature_key) + '</li>').join('');
         return [
           '<div class="pricing-card ' + featured + '">',
           featured ? '<div class="badge">Recomendado</div>' : '',
@@ -2115,6 +2163,36 @@ button { font-family: var(--dh-font-body); cursor: pointer; border: none; }
           '</div>',
         ].join('');
       }).join('');
+
+      // ── Tabla comparativa COMPLETA: todas las features × los 3 planes (✓/—) ──
+      const table = document.getElementById('pricing-compare');
+      if (table) {
+        // Unión de features por key (label de cualquier plan), en orden de aparición.
+        const byKey = {}; const order = [];
+        plans.forEach(p => (p.features || []).forEach(f => {
+          if (!(f.feature_key in byKey)) { byKey[f.feature_key] = f.feature_label || f.feature_key; order.push(f.feature_key); }
+        }));
+        const enabledOf = plans.map(p => {
+          const m = {}; (p.features || []).forEach(f => { m[f.feature_key] = !!f.enabled; }); return m;
+        });
+        const priceLabel = (p) => { const v = monthly(p); return v === 0 ? 'Gratis' : '$' + v + '/mes'; };
+        let html = '<thead><tr><th style="text-align:left">Característica</th>';
+        plans.forEach((p, i) => {
+          html += '<th class="' + (i === featuredIdx ? 'plan-featured' : '') + '">' + p.name + '<span class="th-price">' + priceLabel(p) + '</span></th>';
+        });
+        html += '</tr></thead><tbody>';
+        order.forEach(key => {
+          html += '<tr><th>' + byKey[key] + '</th>';
+          plans.forEach((p, i) => {
+            const on = enabledOf[i][key];
+            html += '<td class="' + (i === featuredIdx ? 'plan-featured' : '') + '">' +
+              (on ? '<span class="yes">✓</span>' : '<span class="no">—</span>') + '</td>';
+          });
+          html += '</tr>';
+        });
+        html += '</tbody>';
+        table.innerHTML = html;
+      }
     }).catch(() => {
       const grid = document.getElementById('pricing-cards');
       if (grid) grid.innerHTML = '<p style="grid-column:1/-1;text-align:center;color:var(--dh-gray-400);padding:40px 0">No pudimos cargar los planes. Recarga la página.</p>';
