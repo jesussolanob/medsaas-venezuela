@@ -21,22 +21,32 @@ export const DocSelectionSchema = z.object({
 
 export type DocSelectionDto = z.infer<typeof DocSelectionSchema>;
 
-export const ShareConsultationDtoSchema = z.object({
-  sections: z
-    .object({
-      report: z.boolean().optional().default(false),
-      prescriptions: z.boolean().optional().default(false),
-      ehr: z.boolean().optional().default(false),
-    })
-    .refine((s) => s.report || s.prescriptions || s.ehr, {
-      message: 'Debe seleccionar al menos una sección para compartir',
-    }),
-  /**
-   * New unified selection — present when the doctor uses the redesigned modal.
-   * When present it is persisted alongside `sections` (which is kept for compat).
-   */
-  doc_selection: DocSelectionSchema.optional(),
-});
+export const ShareConsultationDtoSchema = z
+  .object({
+    sections: z
+      .object({
+        report: z.boolean().optional().default(false),
+        prescriptions: z.boolean().optional().default(false),
+        ehr: z.boolean().optional().default(false),
+      })
+      .optional()
+      .default({ report: false, prescriptions: false, ehr: false }),
+    /**
+     * New unified selection — present when the doctor uses the redesigned modal.
+     * When present it is persisted alongside `sections` (which is kept for compat).
+     */
+    doc_selection: DocSelectionSchema.optional(),
+  })
+  .refine(
+    (body) => {
+      // Accept the payload if the new doc_selection has at least one type selected.
+      const hasDocSelection = (body.doc_selection?.types?.length ?? 0) > 0;
+      if (hasDocSelection) return true;
+      // Backward-compat: require at least one legacy section to be true.
+      return !!(body.sections?.report || body.sections?.prescriptions || body.sections?.ehr);
+    },
+    { message: 'Debe seleccionar al menos una sección para compartir' },
+  );
 
 export type ShareConsultationDto = z.infer<typeof ShareConsultationDtoSchema>;
 

@@ -90,13 +90,16 @@ export class ShareConsultationUseCase {
       throw new PatientCedulaRequiredForSharingError();
     }
 
-    // 2. Validate at least one section
+    // 2. Validate at least one section.
+    // Accept the payload when doc_selection carries at least one type (new modal),
+    // or when at least one legacy sections flag is true (backward-compat).
     const sections = {
-      report: input.dto.sections.report,
-      prescriptions: input.dto.sections.prescriptions,
-      ehr: input.dto.sections.ehr,
+      report: input.dto.sections?.report ?? false,
+      prescriptions: input.dto.sections?.prescriptions ?? false,
+      ehr: input.dto.sections?.ehr ?? false,
     };
-    if (!sections.report && !sections.prescriptions && !sections.ehr) {
+    const hasDocSelection = (input.dto.doc_selection?.types?.length ?? 0) > 0;
+    if (!hasDocSelection && !sections.report && !sections.prescriptions && !sections.ehr) {
       throw new NoSectionsSelectedError();
     }
 

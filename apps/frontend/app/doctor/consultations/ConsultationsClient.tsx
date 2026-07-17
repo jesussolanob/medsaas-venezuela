@@ -2700,7 +2700,11 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
       const effective = getEffectiveBlocks(selected);
       const block = effective.find((b) => b.key === blockKey);
       let value: unknown = aiResult;
-      if (block?.content_type === 'list') {
+      // 'requested_exams' is rendered as rich_text (see line 3287) even when
+      // content_type metadata says 'list'. Check the runtime display type to
+      // avoid storing an array that the rich_text editor cannot consume.
+      const isRichTextOverride = blockKey === 'requested_exams';
+      if (!isRichTextOverride && block?.content_type === 'list') {
         value = aiResult
           .split('\n')
           .map((l) => l.replace(/^\s*[-*•]\s*/, '').trim())
@@ -2725,12 +2729,27 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
       ) {
         legacyUpdates[blockKey] = value;
       }
-      updateConsultation(selected.id, legacyUpdates).catch(() => {});
+      if (Object.keys(legacyUpdates).length > 0) {
+        updateConsultation(selected.id, legacyUpdates).catch(() => {});
+      }
+      // Persist blocks_data: fire immediately AND schedule a debounced save so that
+      // if the immediate fetch fails silently, the next timer fires with fresh data.
       fetch('/api/doctor/consultations', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: selected.id, blocks_data: next }),
       }).catch(() => {});
+      // Schedule autosave timer (reads from selectedRef after re-render)
+      if (blocksAutoSaveTimer.current) clearTimeout(blocksAutoSaveTimer.current);
+      blocksAutoSaveTimer.current = setTimeout(() => {
+        if (!selectedRef.current) return;
+        const latestBd = (selectedRef.current.blocks_data as Record<string, unknown>) || {};
+        fetch('/api/doctor/consultations', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: selectedRef.current.id, blocks_data: latestBd }),
+        }).catch(() => {});
+      }, 1500);
     } else if (aiAction === 'summarize_report') {
       setReport((p) => ({ ...p, notes: aiResult }));
       // Persist via backend action (non-blocking)
@@ -4148,7 +4167,10 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                         <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
                           {effective.filter(
                             (b) =>
-                              b.key !== 'prescription' && b.key !== 'rest' && b.key !== 'reposo',
+                              b.key !== 'prescription' &&
+                              b.key !== 'rest' &&
+                              b.key !== 'reposo' &&
+                              b.key !== 'paraclinical',
                           ).length === 0 && (
                             <p className="text-xs text-slate-400 italic col-span-full">
                               No hay bloques activos en esta consulta.
@@ -4157,7 +4179,10 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                           {effective
                             .filter(
                               (b) =>
-                                b.key !== 'prescription' && b.key !== 'rest' && b.key !== 'reposo',
+                                b.key !== 'prescription' &&
+                                b.key !== 'rest' &&
+                                b.key !== 'reposo' &&
+                                b.key !== 'paraclinical',
                             )
                             .map((b) => (
                               <button
