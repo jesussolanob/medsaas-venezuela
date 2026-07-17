@@ -70,6 +70,10 @@ type Payment = {
   payment_receipt_url?: string | null;
   /** Texto plano desde el backend (7.10). NUNCA loguear. Puede ser null. */
   patient_phone?: string | null;
+  /** Monto en Bs CONGELADO al momento del cobro (si ya se guardó). */
+  amount_bs?: number | null;
+  /** Fecha de cobro (si ya está pagado). */
+  paid_at?: string | null;
   _source?: 'appointment' | 'consultation';
 };
 
@@ -194,6 +198,8 @@ export default function CobrosPage() {
           '',
         payment_receipt_url: p.appointment?.payment_receipt_url || null,
         patient_phone: p.appointment?.patient_phone ?? null,
+        amount_bs: p.amount_bs ?? null,
+        paid_at: p.paid_at ?? null,
         _source: 'appointment' as const,
       })),
     );
@@ -234,16 +240,29 @@ export default function CobrosPage() {
       setBcvDateWarning(null);
       return;
     }
-    // Pre-poblar con datos existentes del pago
-    const today = new Date().toISOString().split('T')[0];
-    setEditPaidAt(today);
+    // Pre-poblar con datos existentes del pago.
+    // Si el pago YA tiene un monto Bs CONGELADO (se cobró antes), usar esa tasa —
+    // NO la tasa de hoy. Antes el detalle siempre mostraba la tasa actual, así que
+    // un cobro viejo "cambiaba" de tasa al reabrirlo. La tasa congelada se deriva
+    // del monto Bs guardado ÷ monto USD.
+    const frozenBs =
+      typeof selectedPayment.amount_bs === 'number' && selectedPayment.amount_bs > 0
+        ? selectedPayment.amount_bs
+        : null;
+    const frozenRate =
+      frozenBs && selectedPayment.plan_price ? frozenBs / selectedPayment.plan_price : null;
+    const effectiveRate = frozenRate ?? bcvRate;
+
+    setEditPaidAt(selectedPayment.paid_at?.split('T')[0] ?? new Date().toISOString().split('T')[0]);
     setEditMethod(selectedPayment.payment_method ?? '');
     setEditReference('');
-    setEditBcvRate(bcvRate ? bcvRate.toFixed(2) : '');
+    setEditBcvRate(effectiveRate ? effectiveRate.toFixed(2) : '');
     setEditAmountBs(
-      bcvRate && selectedPayment.plan_price
-        ? (selectedPayment.plan_price * bcvRate).toFixed(2)
-        : '',
+      frozenBs != null
+        ? frozenBs.toFixed(2)
+        : bcvRate && selectedPayment.plan_price
+          ? (selectedPayment.plan_price * bcvRate).toFixed(2)
+          : '',
     );
     setBcvDateWarning(null);
     // Solo re-ejecutar cuando cambia el payment seleccionado (id), no con bcvRate

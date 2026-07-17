@@ -35,6 +35,12 @@ const TemplatePdfPreview = dynamic(
   { ssr: false, loading: () => null },
 );
 
+// Preview del recibo: usa el generador REAL (buildReceiptHtml) en iframe, no react-pdf.
+const ReceiptPreview = dynamic(
+  () => import('@/components/pdf/ReceiptPreview').then((m) => ({ default: m.ReceiptPreview })),
+  { ssr: false, loading: () => null },
+);
+
 // ── TIPOS DINÁMICOS ─────────────────────────────────────────────────────
 // Ahora TemplateType es cualquier block_key que el doctor tenga activo.
 // Las tabs de plantilla PDF se generan desde los mismos bloques que el doctor
@@ -819,37 +825,60 @@ export default function TemplatesPage() {
               // Contenedor relativo: el spinner de carga se muestra como overlay
               // DENTRO del mismo rectángulo que el PDFViewer — nunca fuera del recuadro.
               <div className="relative">
-                {/* Overlay de carga — visible mientras previewLoading, sobre el viewer */}
-                {previewLoading && (
+                {/* Overlay de carga — visible mientras previewLoading, sobre el viewer.
+                    El recibo usa iframe (no react-pdf) y no dispara onReady → sin overlay. */}
+                {previewLoading && activeTab !== 'recibo' && (
                   <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 bg-slate-50/90 rounded-xl border border-slate-200">
                     <Loader2 className="w-5 h-5 animate-spin text-teal-500" />
                     <p className="text-sm text-slate-500">Cargando vista previa…</p>
                   </div>
                 )}
-                {/* key={activeTab} forces a full remount when the tab changes,
-                    preventing react-pdf from showing a stale/blank render. */}
-                <TemplatePdfPreview
-                  key={activeTab}
-                  onReady={() => setPreviewLoading(false)}
-                  docType={activeTab}
-                  docTypeLabel={tabInfo.label}
-                  enabledBlocks={enabledBlocks}
-                  templateConfig={{
-                    header_text: config.header_text,
-                    footer_text: config.footer_text,
-                    primary_color: config.primary_color,
-                    font_family: config.font_family,
-                    logo_url: profileLogoUrl,
-                    signature_url: profileSignatureUrl,
-                    show_logo: config.show_logo,
-                    show_signature: config.show_signature,
-                  }}
-                  doctor={{
-                    fullName: doctorName || 'Dr. Nombre Apellido',
-                    specialty: doctorSpecialty || null,
-                    licenseNumber: doctorLicense,
-                  }}
-                />
+                {/* El recibo usa su generador REAL (buildReceiptHtml en iframe) para que
+                    la vista previa coincida con lo que se descarga en Cobros. Los demás
+                    tipos usan el preview react-pdf de MedicalDocumentPdf. */}
+                {activeTab === 'recibo' ? (
+                  <ReceiptPreview
+                    templateConfig={{
+                      header_text: config.header_text,
+                      footer_text: config.footer_text,
+                      primary_color: config.primary_color,
+                      logo_url: profileLogoUrl,
+                      signature_url: profileSignatureUrl,
+                      show_logo: config.show_logo,
+                      show_signature: config.show_signature,
+                    }}
+                    doctor={{
+                      fullName: doctorName || 'Dr. Nombre Apellido',
+                      specialty: doctorSpecialty || null,
+                      licenseNumber: doctorLicense,
+                    }}
+                  />
+                ) : (
+                  /* key={activeTab} forces a full remount when the tab changes,
+                     preventing react-pdf from showing a stale/blank render. */
+                  <TemplatePdfPreview
+                    key={activeTab}
+                    onReady={() => setPreviewLoading(false)}
+                    docType={activeTab}
+                    docTypeLabel={tabInfo.label}
+                    enabledBlocks={enabledBlocks}
+                    templateConfig={{
+                      header_text: config.header_text,
+                      footer_text: config.footer_text,
+                      primary_color: config.primary_color,
+                      font_family: config.font_family,
+                      logo_url: profileLogoUrl,
+                      signature_url: profileSignatureUrl,
+                      show_logo: config.show_logo,
+                      show_signature: config.show_signature,
+                    }}
+                    doctor={{
+                      fullName: doctorName || 'Dr. Nombre Apellido',
+                      specialty: doctorSpecialty || null,
+                      licenseNumber: doctorLicense,
+                    }}
+                  />
+                )}
               </div>
             )}
           </div>
