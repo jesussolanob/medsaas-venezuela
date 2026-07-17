@@ -2142,23 +2142,17 @@ button { font-family: var(--dh-font-body); cursor: pointer; border: none; }
       plans.sort((a, b) => monthly(a) - monthly(b));
       const featuredIdx = plans.length >= 2 ? Math.min(1, plans.length - 1) : -1;
 
-      // ── Tarjetas (precio + CTA + teaser de 5 features) ──
+      // ── Tarjetas (solo precio + CTA — el detalle de features vive en la tabla) ──
       grid.innerHTML = plans.map((p, i) => {
         const price = monthly(p);
         const featured = i === featuredIdx ? 'featured' : '';
         const isFree = price === 0;
-        // SOLO features HABILITADAS de ESTE plan (teaser corto; el detalle COMPLETO
-        // está en la tabla comparativa de abajo).
-        const enabled = (p.features || []).filter(f => f.enabled);
-        const feats = enabled.slice(0, 5)
-          .map(f => '<li>' + (f.feature_label || f.feature_key) + '</li>').join('');
         return [
           '<div class="pricing-card ' + featured + '">',
           featured ? '<div class="badge">Recomendado</div>' : '',
           '<div class="duration">' + p.name + '</div>',
           '<div class="price">' + (isFree ? 'Gratis' : '$' + price + '<small> /mes</small>') + '</div>',
           p.description ? '<div class="per-month">' + p.description + '</div>' : '',
-          feats ? '<ul class="plan-features">' + feats + '</ul>' : '',
           '<a href="/register" target="_top" class="plan-cta">' + (isFree ? 'Comenzar gratis' : 'Elegir ' + p.name) + '</a>',
           '</div>',
         ].join('');
@@ -2175,6 +2169,12 @@ button { font-family: var(--dh-font-body); cursor: pointer; border: none; }
         const enabledOf = plans.map(p => {
           const m = {}; (p.features || []).forEach(f => { m[f.feature_key] = !!f.enabled; }); return m;
         });
+        // Ordenar por Nº de planes que incluyen cada feature (desc) → lo que incluyen los
+        // 3 va arriba (verde en todos), luego lo de 2, luego lo de 1: en cada columna
+        // el verde queda arriba y el gris abajo. Empate = orden original (estable).
+        const inclCount = (key) => enabledOf.reduce((n, m) => n + (m[key] ? 1 : 0), 0);
+        const idx = {}; order.forEach((k, n) => { idx[k] = n; });
+        order.sort((a, b) => (inclCount(b) - inclCount(a)) || (idx[a] - idx[b]));
         const priceLabel = (p) => { const v = monthly(p); return v === 0 ? 'Gratis' : '$' + v + '/mes'; };
         let html = '<thead><tr><th style="text-align:left">Característica</th>';
         plans.forEach((p, i) => {
