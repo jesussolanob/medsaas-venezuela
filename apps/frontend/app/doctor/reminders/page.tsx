@@ -144,22 +144,17 @@ export default function RemindersPage() {
     const date = formatDate(consult.consultation_date);
     const time = formatTime(consult.consultation_date);
     const doc = doctorName || 'tu médico';
-    // Emojis vía escapes Unicode (no literales): inmune a corrupción de bytes
-    // en el pipeline de build/tooling que rompía los iconos en WhatsApp (mojibake).
-    const wave = '\u{1F44B}'; // 👋
-    const cal = '\u{1F4C5}'; // 📅
-    const clock = '\u{1F550}'; // 🕐
-    const clip = '\u{1F4CB}'; // 📋
-    const mark = '\u{1F516}'; // 🔖
-    const hospital = '\u{1F3E5}'; // 🏥
-    let msg = `Hola ${consult.patient_name} ${wave}\n\n`;
+    // Sin emojis: la pantalla intermedia de WhatsApp en escritorio los renderiza como
+    // "�" (mojibake) en su vista previa, aunque la URL sea correcta. Se usan guiones
+    // como viñeta hasta resolver el flujo con WhatsApp. Retomar emojis en Fase 5.
+    let msg = `Hola ${consult.patient_name}\n\n`;
     msg += `Tu consulta con ${doc} está *confirmada* para:\n\n`;
-    msg += `${cal} *Fecha:* ${date}\n`;
-    msg += `${clock} *Hora:* ${time}\n`;
-    if (consult.plan_name) msg += `${clip} *Servicio:* ${consult.plan_name}\n`;
-    msg += `${mark} *Código:* ${consult.consultation_code}\n\n`;
+    msg += `- *Fecha:* ${date}\n`;
+    msg += `- *Hora:* ${time}\n`;
+    if (consult.plan_name) msg += `- *Servicio:* ${consult.plan_name}\n`;
+    msg += `- *Código:* ${consult.consultation_code}\n\n`;
     msg += `Por favor llega con 10 minutos de anticipación.\n\n`;
-    msg += `¡Te esperamos! ${hospital}`;
+    msg += `¡Te esperamos!`;
     return encodeURIComponent(msg);
   }
 
@@ -381,20 +376,20 @@ export default function RemindersPage() {
           </p>
           <div className="bg-emerald-50 border border-emerald-100 rounded-lg p-3 text-sm text-slate-700 leading-relaxed">
             <p>
-              Hola <strong>[Paciente]</strong> 👋
+              Hola <strong>[Paciente]</strong>
             </p>
             <p className="mt-1">
               Tu consulta con <strong>{doctorName || '[Doctor]'}</strong> está{' '}
               <strong>confirmada</strong> para:
             </p>
             <p className="mt-1">
-              📅 <strong>Fecha:</strong> [día, fecha]
+              - <strong>Fecha:</strong> [día, fecha]
             </p>
             <p>
-              🕐 <strong>Hora:</strong> [hora]
+              - <strong>Hora:</strong> [hora]
             </p>
             <p>
-              📋 <strong>Servicio:</strong> [nombre del plan]
+              - <strong>Servicio:</strong> [nombre del plan]
             </p>
             <p className="mt-1 text-xs text-slate-500">
               Por favor llega con 10 minutos de anticipación.
