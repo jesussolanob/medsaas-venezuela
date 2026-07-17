@@ -377,16 +377,18 @@ Frontend: `/admin/reminders` (monitor) cableado. `/doctor/reminders` (envío man
 
 ### Planes parametrizables (módulo `admin` ampliado)
 
-| Endpoint                             | Método | Roles       | Notas                                                                                               |
-| ------------------------------------ | ------ | ----------- | --------------------------------------------------------------------------------------------------- |
-| `/api/admin/plans`                   | GET    | super_admin | Catálogo de planes (incluye `role_key`, `is_permanent`, precios y features).                        |
-| `/api/admin/plans`                   | POST   | super_admin | Crea plan (Zod; transaccional).                                                                     |
-| `/api/admin/plans/:planKey`          | PUT    | super_admin | Actualiza plan (toggle is_active, metadatos).                                                       |
-| `/api/admin/plans/:planKey/config`   | PUT    | super_admin | Actualiza config del plan (role_key/is_permanent/sort_order).                                       |
-| `/api/admin/plans/:planKey/features` | PUT    | super_admin | Set de features del plan (incluye `ai_assistant`/`ai_transcription`/`ai_reports`). Transaccional.   |
-| `/api/admin/plans/:planKey/prices`   | PUT    | super_admin | Set de precios por período (monthly/quarterly/semiannual/annual). Transaccional.                    |
-| `/api/plans?role=doctor`             | GET    | **Pública** | Catálogo público (`/doctor/upgrade`, `/register`). Solo planes/precios activos; sin flags internos. |
-| `/api/doctor/features`               | GET    | doctor      | Features del plan v2: downgrade perezoso a Free al expirar (Free permanente, no pierde datos).      |
+| Endpoint                             | Método | Roles       | Notas                                                                                                                                                                                                                      |
+| ------------------------------------ | ------ | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/api/admin/plans`                   | GET    | super_admin | Catálogo de planes (incluye `role_key`, `is_permanent`, precios y features).                                                                                                                                               |
+| `/api/admin/plans`                   | POST   | super_admin | Crea plan (Zod; transaccional).                                                                                                                                                                                            |
+| `/api/admin/plans/:planKey`          | PUT    | super_admin | Actualiza plan (toggle is_active, metadatos).                                                                                                                                                                              |
+| `/api/admin/plans/:planKey/config`   | PUT    | super_admin | Actualiza config del plan (role_key/is_permanent/sort_order).                                                                                                                                                              |
+| `/api/admin/plans/:planKey/features` | PUT    | super_admin | Set de features del plan (incluye `ai_assistant`/`ai_transcription`/`ai_reports`). Transaccional.                                                                                                                          |
+| `/api/admin/plans/:planKey/prices`   | PUT    | super_admin | Set de precios por período (monthly/quarterly/semiannual/annual). Transaccional.                                                                                                                                           |
+| `/api/plans?role=doctor`             | GET    | **Pública** | Catálogo público (`/doctor/upgrade`, `/register`). Solo planes/precios activos; sin flags internos.                                                                                                                        |
+| `/api/public/plans`                  | GET    | **Pública** | BFF Next (proxya `GET /api/plans`) para la **landing** (el iframe estático no puede pasar auth). Devuelve los 3 planes Free/Base/Plus con precios + features. Añadido 2026-07-17 (#1).                                     |
+| `/api/booking/:doctorId/slots?date=` | GET    | **Pública** | BFF Next → backend `GET /api/booking/:id/slots`; desempaqueta `{data:{slots}}`→`{date,slots:[{time,available}]}`. **Faltaba** → BookingClient recibía HTML 404 y no marcaba ocupados/bloqueados. Añadido 2026-07-17 (#10). |
+| `/api/doctor/features`               | GET    | doctor      | Features del plan v2: downgrade perezoso a Free al expirar (Free permanente, no pierde datos).                                                                                                                             |
 
 > `plan-features`/`plan-features/:planKey/:featureKey` (toggle individual) siguen existiendo (sección Admin arriba).
 > El gating del doctor = capacidades del ROL (role_capabilities) **∩** features del PLAN (plan_features). Módulo

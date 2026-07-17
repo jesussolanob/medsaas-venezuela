@@ -2,6 +2,53 @@
 
 > Registro cronológico. Una entrada por fase/hito completado.
 
+## 2026-07-17 — 2ª tanda de QA (10 obs) — 10/10 ARREGLADAS, DESPLEGADAS y VERIFICADAS EN VIVO ✅
+
+Segunda ronda de observaciones (el usuario reprochó que el QA superficial dejó pasar fallos). Metodología nueva:
+**reproducir el HTTP real / el efecto en BD / el DOM**, no "no dio error". 6 commits en `feature/migracion-backend`
+(`89b4532`, `309e671`, `b836560`, `0d134bf`, `ecf11e7` + fix de ciclo previo), todos desplegados a Cloud Run.
+Guion QA: `07-qa-test-script.md` sección **D-2026-07-17**.
+
+**Bugs SILENCIOSOS que el tester no cazaba** (por eso hay que reproducir el HTTP, no mirar "no dio error"):
+
+- **#10 Link público slots — RAÍZ: faltaba la ruta BFF `app/api/booking/[doctorId]/slots/route.ts`.** El cliente
+  hacía `fetch('/api/booking/:id/slots')` → recibía el HTML de la app (404) → `unavailableTimes` vacío → nunca
+  marcaba ocupados/bloqueados. Además el cliente leía `json.slots` pero el backend envuelve en `{data:{slots}}`.
+  Se creó el route handler que proxya + desempaqueta. VERIFICADO: devuelve JSON con `available:false`.
+- **#6 Paraclínico "Guardar" + #4 récipe no se comparte — RAÍZ: el DTO `create-prescription` rechazaba
+  `presentation:null`** (`"expected string, received null"`, 400). El preprocess solo convertía ''→undefined,
+  dejaba pasar null; el BFF SIEMPRE manda `presentation:null` cuando no se llena → **TODA prescripción/examen sin
+  presentación fallaba con 400** y no se guardaba → y sin récipe en la tabla `prescriptions`, el compartir
+  server-side no tenía qué incluir. Fix: preprocess coerce null→undefined + el toast del paraclínico muestra el
+  error real. VERIFICADO: POST 200 (antes 400); compartir → PDF de **3 páginas** (informe+récipe+indicaciones).
+- **#2 Modal método de pago (consulta + Inicio) — RAÍZ: el `onConfirmed` del modal llamaba
+  `updatePagoStatus('approved')` que solo ABRÍA otro modal (ApprovePayment)** → el pago quedaba PENDIENTE con solo
+  el método guardado. Fix consulta: `onConfirmed` persiste la aprobación directamente (`PATCH approve-payment` con
+  el método) → registrar método → marcar pagado → cerrar, en un solo modal; + `pendingApprovalAfterMethod=true` en
+  la ruta de "Guardar pago". Fix Inicio (dashboard "Registrar pago"): reusa `PaymentMethodModal`; si el pago no
+  tiene `method_snapshot`, abre el modal → `updatePaymentDetails` → aprueba. VERIFICADO: consulta queda
+  `approved`+método, y pago del dashboard `approved`+`zelle` en BD (antes ambos daban error/pending).
+- **#3 Ingreso en consulta** — el path ya era correcto (lo arregló el fix previo de `related_consultation_id`
+  snake_case). VERIFICADO en vivo: registrar ingreso desde la consulta → income BD 2→3 con
+  `related_consultation_id` + patient derivado.
+- **#8 Tasa en cobros** — el detalle usaba la tasa ACTUAL (`setEditBcvRate(bcvRate)`). Ahora si el pago tiene
+  `amount_bs` congelado, deriva y muestra esa tasa (Bs÷USD). `PaymentRow` mapea `amount_bs`/`paid_at`.
+- **#7 Preview de recibo** — usaba `MedicalDocumentPdf` (react-pdf), el recibo real usa `buildReceiptHtml`. Nuevo
+  `components/pdf/ReceiptPreview.tsx` renderiza el generador REAL en iframe (sin loop del `print()`).
+- **#9 WhatsApp emojis** — el fix `\u` del lote previo funcionó. VERIFICADO en la vista previa desplegada de
+  Recordatorios (👋📅🕐📋 correctos + sin línea "reagendar").
+- **#1 Landing 3 planes** — el landing (`landing.html` estático) solo pintaba las duraciones de UN plan. Nuevo
+  endpoint público `app/api/public/plans/route.ts` (proxya el catálogo público `GET /api/plans`) + reescritura de
+  la sección de precios → **3 tarjetas Free/Base/Plus** con features + CTA. VERIFICADO en el DOM.
+- **#5 PDF paraclínico** — el botón "PDF" del bloque usaba `buildPdfHtml+print` (archivo distinto al branded). Se
+  eliminó; el PDF del paraclínico se genera con "Generar Documento" (MedicalDocumentPdf, consistente).
+
+**Método de QA con flip de rol/plan:** `UPDATE profiles SET plan='delta_plus', subscription_status='active',
+role='doctor' WHERE email='lucas@deltasalud.app'` (Redis off en prod → inmediato); revertir a super_admin/NULL.
+Conexión Cloud SQL: cloud-sql-proxy v2.14.1 `--token $(gcloud auth print-access-token) --port 5433`, `node -e`+`pg`.
+LECCIÓN: los 2 bugs de mayor impacto (slots, prescripciones) eran silenciosos (404 que devuelve HTML; 400 tragado
+en un toast) → el QA por "no dio error" no los caza; hay que reproducir el HTTP / verificar el efecto en BD.
+
 ## 2026-07-16 — LOTE grande "Prueba 15-07.txt" (~27 obs) + WhatsApp recordatorio — 1 batch, ⏳ deploy+QA Playwright
 
 Observaciones del usuario en `~/Downloads/Prueba 15-07.txt`. Pedido: **aplicar TODO → 1 deploy → 1 QA

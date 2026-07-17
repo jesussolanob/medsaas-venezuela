@@ -374,3 +374,20 @@ Widget de ayuda con IA, disponible para los 3 perfiles. Patrón: panel global + 
   modo multi-página (`documents=[...]`): hoja 1 "Récipe" (medicamento + dosis), hoja 2 "Indicaciones"
   (+ indicaciones/frecuencia/duración/**presentación**). Bloque "Indicaciones" renombrado a **"Evaluación
   actual"** e integrado al informe (ya no documento suelto). Branding **"Delta Salud"** en toda la UI/emails/PDF.
+
+### Componentes/rutas nuevos (2026-07-17 — 2ª tanda QA)
+
+- **`components/pdf/ReceiptPreview.tsx`** (nuevo): vista previa del recibo en `/doctor/templates` que renderiza el
+  generador REAL (`lib/receipt-pdf.ts` `buildReceiptHtml`) en un iframe con datos de ejemplo. Antes la preview
+  usaba `MedicalDocumentPdf` (otro motor) → no coincidía con el recibo descargado en Cobros (#7).
+- **`PaymentMethodModal` reusado en el dashboard** (`app/doctor/page.tsx`): el atajo "Registrar pago" (botón
+  "Cobros" del inicio) abre el modal de método al aprobar un cobro pendiente sin `method_snapshot` → persiste con
+  `updatePaymentDetails` (finances) y aprueba. El mismo modal en la consulta ahora **marca pagado directamente**
+  (`onConfirmed` → `PATCH approve-payment`), no abre un 2º modal (#2).
+- **Landing dinámica de planes** (`public/landing.html` + `app/api/public/plans/route.ts`): la sección de precios
+  trae los 3 planes vendibles (Free/Base/Plus) con features desde la BD vía el catálogo público, en vez de las
+  duraciones de un solo plan (#1).
+- **BFF slots del booking** (`app/api/booking/[doctorId]/slots/route.ts`, nuevo): faltaba → BookingClient recibía
+  HTML 404 y no marcaba ocupados/bloqueados. Desempaqueta `{data:{slots}}` (#10).
+- **Paraclínico:** el bloque perdió su botón "PDF" viejo (print HTML); el PDF sale por "Generar Documento"
+  branded (#5). El toast de "Guardar" del paraclínico muestra el error real del backend (#6).
