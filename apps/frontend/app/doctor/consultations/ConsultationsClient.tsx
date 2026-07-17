@@ -2557,9 +2557,7 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
     if (reposoSaveTimer.current) clearTimeout(reposoSaveTimer.current);
     reposoSaveTimer.current = setTimeout(async () => {
       if (!selectedRef.current) return;
-      // MIGRATED: reposo blocks_data via BFF PATCH route.
-      // blocks_data not in Etapa-1 backend schema — save via existing PATCH route.
-      // blocks_data.reposo merge with existing data deferred to Fase 5 (no GET blocks_data endpoint).
+      // Reposo se persiste en consultations.blocks_snapshot['reposo'] vía el PATCH BFF.
       const reposoPayload = {
         diagnosis: reposoDiagnosis,
         days: reposoDays,
@@ -2568,15 +2566,24 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
         comments: reposoComments,
         updated_at: new Date().toISOString(),
       };
+      // CRÍTICO: el backend REEMPLAZA todo blocks_snapshot (no hace merge). Si enviamos
+      // solo { reposo }, se BORRAN los demás bloques (antecedentes/examen físico/paraclínico…).
+      // Por eso mandamos el blocks_data COMPLETO (todos los bloques vivos + reposo).
+      // El efecto se dispara al abrir una consulta con diagnóstico (precarga reposoDiagnosis),
+      // así que este merge evita la pérdida silenciosa de datos clínicos.
+      const mergedBlocksData = {
+        ...((selectedRef.current.blocks_data as Record<string, unknown>) || {}),
+        reposo: reposoPayload,
+      };
       fetch('/api/doctor/consultations', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           id: selectedRef.current.id,
-          blocks_data: { reposo: reposoPayload },
+          blocks_data: mergedBlocksData,
         }),
       }).catch((err) => console.warn('[reposo autosave]', err));
-      // Merge con blocks_data existente para no sobrescribir otros bloques
+      // Reflejar el merge en el estado local (fuente de verdad del editor).
       setSelected((prev) =>
         prev
           ? {
@@ -2584,7 +2591,7 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
               blocks_data: {
                 ...((prev.blocks_data as Record<string, unknown>) || {}),
                 reposo: reposoPayload,
-              } as any,
+              } as Consultation['blocks_data'],
             }
           : prev,
       );
