@@ -38,6 +38,7 @@ import {
   STORAGE_PORT,
   type IStoragePort,
 } from '../../../../storage/application/ports/storage.port';
+import { resignGcsImageUrl } from '../../../../storage/application/helpers/resign-gcs-image.helper';
 import { GetConsultationBlocksUseCase } from '../../../../consultation-blocks/application/use-cases/consultation-blocks/get-consultation-blocks.use-case';
 
 export interface GetDocumentRenderDataInput {
@@ -315,15 +316,26 @@ export class GetDocumentRenderDataUseCase {
   }
 
   /**
-   * Resolves a stored GCS object path to a signed URL.
-   * Returns null when the path is absent/empty. On error, logs and returns null
-   * (a missing logo/signature should not fail the whole render).
+   * Resolves a stored logo/signature value to a FRESH signed URL.
+   *
+   * El valor persistido puede ser (a) un object path de GCS o (b) una URL firmada
+   * COMPLETA guardada "hace tiempo". Las URLs firmadas v4 vencen a los 7 días, así
+   * que devolver la guardada tal cual entrega una URL 400/403 → la imagen no carga
+   * en el PDF compartido (bug: firma/logo ausentes). Por eso re-firmamos siempre:
+   *   - URL completa de GCS → `resignGcsImageUrl` extrae el path y firma de nuevo.
+   *   - object path pelado → `storage.getSignedUrl`.
+   *   - URL no-GCS (CDN/data URI) → se devuelve intacta.
+   * Returns null when absent/empty. On error, logs and returns null (una firma/logo
+   * ausente no debe romper todo el render).
    */
   private async resolveSignedUrl(path: string | null, field: string): Promise<string | null> {
     if (!path || path.trim() === '') return null;
-    // If the stored value is already a full URL (legacy absolute path), return as-is.
-    if (path.startsWith('http://') || path.startsWith('https://')) return path;
     try {
+      if (path.startsWith('http://') || path.startsWith('https://')) {
+        // URL completa: si es de GCS, re-firmar con TTL fresco; si no, dejar igual.
+        return await resignGcsImageUrl(path, this.storage);
+      }
+      // Object path pelado → firmar.
       return await this.storage.getSignedUrl(path);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);

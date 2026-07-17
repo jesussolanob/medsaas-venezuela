@@ -707,4 +707,30 @@ describe('GetDocumentRenderDataUseCase', () => {
     // Storage should only be called for the template paths (which are relative), not the profile
     expect(mockStorage.getSignedUrl).not.toHaveBeenCalledWith('https://cdn.example.com/logo.png');
   });
+
+  it('re-signs stored full GCS signed URLs (they expire at 7d) instead of passing them through', async () => {
+    // Valor persistido: URL firmada COMPLETA de GCS (posiblemente vencida).
+    const storedGcsUrl =
+      'https://storage.googleapis.com/my-bucket/signature/doctor-1/sig.png?X-Goog-Signature=stale';
+    mockDoctorProfileRepo.findByDoctorId.mockResolvedValue({
+      id: 'doctor-1',
+      fullName: 'Dr. Juan García',
+      professionalTitle: null,
+      specialty: null,
+      licenseNumber: null,
+      logoUrl: null,
+      signatureUrl: storedGcsUrl,
+    } as Awaited<ReturnType<typeof mockDoctorProfileRepo.findByDoctorId>>);
+
+    const sessionToken = signToken('link-1', 'the-link-token', new Date(Date.now() + 60_000));
+    const result = await useCase.execute({ token: 'the-link-token', sessionToken });
+
+    // Se extrae el object path y se re-firma → NO se devuelve la URL vencida.
+    expect(mockStorage.getSignedUrl).toHaveBeenCalledWith(
+      'signature/doctor-1/sig.png',
+      expect.any(Number),
+    );
+    expect(result.doctor.signatureUrl).toBe('https://storage.example.com/signed?token=abc');
+    expect(result.doctor.signatureUrl).not.toBe(storedGcsUrl);
+  });
 });
