@@ -4675,7 +4675,8 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                             normalizePaymentStatus(report.payment_status) === 'approved';
                           if (isApproving && !pagoMethod.trim()) {
                             // Abrir modal de método de pago en lugar de bloquear con toast.
-                            setPendingApprovalAfterMethod(false);
+                            // El doctor SÍ está aprobando → tras registrar el método, marcar pagado.
+                            setPendingApprovalAfterMethod(true);
                             setShowPaymentMethodModal(true);
                             return;
                           }
@@ -5410,17 +5411,54 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                 ? { success: true as const }
                 : { success: false as const, error: (res as { error?: string }).error };
             }}
-            onConfirmed={(method, reference, receiptPath) => {
+            onConfirmed={async (method, reference, receiptPath) => {
               // Actualizar el estado local del método/referencia/comprobante
               setPagoMethod(method);
               if (reference) setPagoReference(reference);
               if (receiptPath) setPagoReceiptPath(receiptPath);
-              // Si el doctor venía del select "Aprobado", continuar con el flujo de aprobación
-              if (pendingApprovalAfterMethod && selected) {
-                setPendingApprovalAfterMethod(false);
-                updatePagoStatus(selected.id, 'approved', selected.appointment_id);
-              } else {
-                setPendingApprovalAfterMethod(false);
+              const wasApproving = pendingApprovalAfterMethod;
+              setPendingApprovalAfterMethod(false);
+              if (!wasApproving || !selected) return;
+              // El método/referencia/comprobante YA se guardaron en onPersist. Ahora
+              // MARCAR PAGADO directamente (sin abrir otro modal): PATCH approve-payment.
+              // Antes se llamaba updatePagoStatus('approved') que abría ApprovePaymentModal
+              // → el pago quedaba PENDIENTE con solo el método guardado (bug #2).
+              try {
+                const extras = (selected.extra_items || []).map((e) => ({
+                  description: e.description,
+                  amount_usd: e.amount_usd,
+                }));
+                const res = await fetch(
+                  `/api/doctor/consultations/${selected.id}/approve-payment`,
+                  {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ extras, method }),
+                  },
+                );
+                const json = (await res.json()) as { success?: boolean; error?: string };
+                if (!res.ok || !json.success) {
+                  showToast({
+                    type: 'error',
+                    message: json.error ?? 'No se pudo aprobar el cobro',
+                  });
+                  return;
+                }
+                setSelected((prev) =>
+                  prev ? { ...prev, payment_status: 'approved', payment_method: method } : prev,
+                );
+                setReport((prev) => ({ ...prev, payment_status: 'approved' }));
+                setConsultations((prev) =>
+                  prev.map((x) =>
+                    x.id === selected.id
+                      ? { ...x, payment_status: 'approved', payment_method: method }
+                      : x,
+                  ),
+                );
+                showToast({ type: 'success', message: 'Cobro aprobado y guardado' });
+              } catch (err: unknown) {
+                reportError('doctor/consultations', 'onConfirmedApprove', err);
+                showToast({ type: 'error', message: 'Error al aprobar el cobro' });
               }
             }}
           />
