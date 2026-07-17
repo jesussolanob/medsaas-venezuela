@@ -59,6 +59,12 @@ interface Props {
   patientEhrCount: number;
   /** Texto del reposo médico de la consulta; null si no hay reposo. */
   restContent: string | null;
+  /**
+   * Persiste (y espera) los bloques de la consulta en la BD ANTES de generar el enlace.
+   * El PDF compartido se arma server-side desde datos persistidos; sin este guardado
+   * previo, compartir con ediciones sin guardar producía "No hay contenido disponible".
+   */
+  onBeforeShare?: () => Promise<void>;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -181,6 +187,7 @@ export default function ShareDocumentsModal({
   patientConsultationCount,
   patientEhrCount,
   restContent,
+  onBeforeShare,
 }: Props) {
   const [open, setOpen] = useState(false);
   const [selectedTypes, setSelectedTypes] = useState<Set<DocumentTypeKey>>(new Set());
@@ -247,6 +254,17 @@ export default function ShareDocumentsModal({
 
     setLoading(true);
     setError(null);
+
+    // Persistir los bloques de la consulta ANTES de generar el enlace: el PDF se
+    // arma server-side desde la BD, así que sin esto el paciente veía "No hay
+    // contenido" si el doctor compartía con ediciones sin guardar.
+    if (onBeforeShare) {
+      try {
+        await onBeforeShare();
+      } catch {
+        /* best-effort: seguimos con lo que haya en BD */
+      }
+    }
 
     const types = Array.from(selectedTypes);
     const informeBlockKeys = Array.from(informeCheckedKeys);

@@ -2341,6 +2341,52 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
     }
   }, []);
 
+  /**
+   * Guarda AHORA (y ESPERA) los bloques + columnas legacy de la consulta a la BD.
+   * A diferencia de flushBlocksSave (fire-and-forget, solo si hay timer pendiente),
+   * esto persiste SIEMPRE el estado actual y se puede await.
+   *
+   * Se usa antes de COMPARTIR: el PDF compartido se arma server-side desde los datos
+   * PERSISTIDOS (blocks_snapshot), así que si el doctor compartía con ediciones sin
+   * guardar, el paciente recibía "No hay contenido disponible". Con esto el compartir
+   * refleja lo que el doctor ve en el editor.
+   */
+  const saveBlocksNow = useCallback(async (): Promise<void> => {
+    if (blocksAutoSaveTimer.current) {
+      clearTimeout(blocksAutoSaveTimer.current);
+      blocksAutoSaveTimer.current = null;
+    }
+    const cur = selectedRef.current;
+    if (!cur) return;
+    const bd = cur.blocks_data;
+    if (!bd || Object.keys(bd).length === 0) return;
+    setAutoSaving(true);
+    try {
+      await fetch('/api/doctor/consultations', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: cur.id, blocks_data: bd }),
+      });
+      // Sync de columnas legacy (chief_complaint/diagnosis/treatment/notes).
+      const legacyKeys = ['chief_complaint', 'diagnosis', 'treatment', 'notes'] as const;
+      const legacyUpdates: Record<string, string | null> = {};
+      let hasLegacy = false;
+      for (const k of legacyKeys) {
+        if (k in bd && typeof bd[k] === 'string') {
+          legacyUpdates[k] = (bd[k] as string) || null;
+          hasLegacy = true;
+        }
+      }
+      if (hasLegacy) await updateConsultation(cur.id, legacyUpdates);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch {
+      /* best-effort: si falla, el compartir seguirá con lo que haya en BD */
+    } finally {
+      setAutoSaving(false);
+    }
+  }, []);
+
   /** Cambia de tab flusheando el guardado pendiente antes de hacerlo. */
   const handleTabChange = useCallback(
     (newTab: string) => {
@@ -2878,6 +2924,7 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                         patientConsultationCount={sharedPatientConsultationCount}
                         patientEhrCount={patientEhrCount}
                         restContent={sharedReposoContentStr}
+                        onBeforeShare={saveBlocksNow}
                       />
                     </div>
                   );
