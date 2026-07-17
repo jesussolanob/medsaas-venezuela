@@ -223,6 +223,43 @@ function buildTemplateConfig(
   };
 }
 
+/** Timeout para bajar imágenes de branding (logo/firma) antes de rendear. */
+const IMAGE_FETCH_TIMEOUT_MS = 10_000;
+/** Máximo tamaño aceptado para una imagen de branding (evita PDFs gigantes). */
+const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
+
+/**
+ * Baja una imagen (logo/firma) desde su URL firmada de GCS y la devuelve como
+ * data URI base64.
+ *
+ * POR QUÉ: el PDF compartido se rendea server-side con `renderToBuffer`. En ese
+ * contexto `@react-pdf` NO embebe imágenes remotas de forma fiable (las omite en
+ * silencio → PDFs sin logo ni firma, aunque la URL sea 200 desde el server). Un
+ * data URI se embebe siempre, tanto client como server-side.
+ *
+ * Falla suave: cualquier error (timeout, no-2xx, no-imagen, muy grande) → null,
+ * y el template cae al comportamiento previo (sin imagen) sin romper el render.
+ */
+async function imageUrlToDataUri(url: string | null | undefined): Promise<string | null> {
+  if (!url || !/^https?:\/\//.test(url)) return null;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), IMAGE_FETCH_TIMEOUT_MS);
+  try {
+    const res = await fetch(url, { signal: controller.signal });
+    if (!res.ok) return null;
+    const contentType = res.headers.get('content-type') ?? '';
+    if (!contentType.startsWith('image/')) return null;
+    const arrayBuffer = await res.arrayBuffer();
+    if (arrayBuffer.byteLength === 0 || arrayBuffer.byteLength > MAX_IMAGE_BYTES) return null;
+    const base64 = Buffer.from(arrayBuffer).toString('base64');
+    return `data:${contentType};base64,${base64}`;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /**
  * Deriva selectedTypes e informeBlockKeys desde sections (para documentos
  * compartidos con el flujo viejo que no tenía docSelection).
@@ -339,6 +376,19 @@ export async function GET(
   // 5. Map template config
   const tmpl = buildTemplateConfig(renderData.templateConfig, renderData.doctor);
 
+  // 5b. Prebajar logo/firma a data URI. `@react-pdf` server-side no embebe URLs
+  //     remotas de forma fiable → sin esto el PDF compartido sale sin firma ni
+  //     logo. Falla suave: si no se puede bajar, se deja la URL original.
+  const [logoDataUri, signatureDataUri] = await Promise.all([
+    tmpl.show_logo ? imageUrlToDataUri(tmpl.logo_url) : Promise.resolve(null),
+    tmpl.show_signature ? imageUrlToDataUri(tmpl.signature_url) : Promise.resolve(null),
+  ]);
+  const tmplWithImages: TemplateConfigPdf = {
+    ...tmpl,
+    logo_url: logoDataUri ?? tmpl.logo_url,
+    signature_url: signatureDataUri ?? tmpl.signature_url,
+  };
+
   // 6. Render PDF server-side
   try {
     const { renderToBuffer } = await import('@react-pdf/renderer');
@@ -347,7 +397,7 @@ export async function GET(
     const element = React.createElement(MedicalDocumentPdf, {
       docType: pages[0].docType,
       documents: pages,
-      templateConfig: tmpl,
+      templateConfig: tmplWithImages,
       doctor: {
         fullName: renderData.doctor.fullName,
         specialty: renderData.doctor.specialty,
