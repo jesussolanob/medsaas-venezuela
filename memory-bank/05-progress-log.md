@@ -2,6 +2,43 @@
 
 > Registro cronológico. Una entrada por fase/hito completado.
 
+## 2026-07-17 (tarde) — 3ª tanda QA (5 obs) + firma en PDF compartido — VERIFICADAS EN VIVO ✅
+
+Lote de 5 observaciones del usuario. Commits `ba5b931` (#4) + `07eb042` (firma) sobre los previos de la mañana
+(`ecf11e7` traía #1/#2/#3/#5). Todo en `feature/migracion-backend`, desplegado a Cloud Run y **verificado en vivo
+con Playwright** (doctor `lucas@deltasalud.app` puesto temporalmente en rol doctor/delta_plus; revertir al terminar).
+
+- **#1 Dashboard: "Por ingresar" no se actualizaba al aprobar cobro desde el modal.** Fix: `approvePaymentRow`
+  actualiza `financialData` (resta al `pending_amount`, suma a `total_revenue`). ✅ VERIFICADO: aprobar cobro de
+  $40 con método → cuadro amarillo bajó **$360 → $320** sin recargar.
+- **#2 Agenda sin indicador de carga.** Fix: bloque "Cargando agenda…" (`Loader2` spin) mientras `loading`.
+  ✅ VERIFICADO: aparece al entrar y desaparece al cargar eventos.
+- **#3 Editar correo del paciente en línea crasheó → "Error inesperado" → landing → sesión cerrada.** Raíz =
+  Server Action inestable tras deploy (ADR-022) escalaba al `global-error` raíz. Fix doble: (a) `try/catch` en
+  `PatientFichaModal.handleSave` → toast en vez de throw; (b) **error boundaries de segmento** `app/{doctor,admin,
+patient}/error.tsx` que capturan CUALQUIER error sin reemplazar el shell → NO expulsa a la landing ni cierra
+  sesión, con "Reintentar" + "Ir al inicio" + captura a Sentry. ✅ VERIFICADO camino feliz: editar correo → toast
+  guardado, sin crash, sigo en la consulta, sesión intacta.
+- **#4 Documentos compartidos llegaban vacíos ("no había documentos").** Raíz: el doctor compartía ANTES de que
+  autosave persistiera los bloques. Fix: `saveBlocksNow` (awaitable) + prop `onBeforeShare` en `ShareDocumentsModal`
+  → fuerza PATCH de `blocks_data` antes del POST de compartir. ✅ VERIFICADO end-to-end: escribí en "Motivo de
+  consulta" SIN guardar → compartí → verifiqué cédula+código → **PDF descargado contiene el texto** ("MOTIVO DE
+  CONSULTA: QA VERIFICACION…"). Nota: el código de acceso es de **un solo uso** (una verificación API lo consume).
+- **#5 "Generar PDF de informe" producía archivos sin extensión con nombre UUID** (regresión). Raíz: el ancla de
+  descarga no estaba en el DOM al hacer click tras `await`. Fix: `appendChild(anchor)` + `download="<label>-<code>.pdf"`.
+  ✅ VERIFICADO: descargó `Informe-DLT-202608-0001.pdf` (doctor) y `documentos-consulta.pdf` (paciente).
+
+**🐛 NUEVO hallazgo durante el QA — firma/logo ausentes en el PDF COMPARTIDO (server-side).** La firma escaneada
+y el logo SÍ están configurados (visibles en Configuración, cargan desde GCS) y aparecen en el PDF generado del
+**lado doctor** (render en el navegador con `pdf().toBlob()`, CORS del bucket OK → `pdfimages` muestra logo 1024×926
+
+- firma 8567×4143). Pero el **PDF compartido** se rendea **server-side** en `app/api/documents/[token]/pdf/route.ts`
+  con `renderToBuffer`, y **`@react-pdf` no embebe URLs remotas de forma fiable en ese contexto** → omitía ambas
+  imágenes en silencio (aunque la URL firmada respondía 200 desde el server, confirmado con curl). Fix (`07eb042`):
+  helper `imageUrlToDataUri` prebaja logo/firma en el route handler y las pasa como **data URI base64** (falla suave:
+  timeout 10s / no-2xx / no-imagen / >8MB → null → comportamiento previo). ⏳ deploy en curso al momento de escribir;
+  verificar firma visible en el PDF compartido tras desplegar.
+
 ## 2026-07-17 — 2ª tanda de QA (10 obs) — 10/10 ARREGLADAS, DESPLEGADAS y VERIFICADAS EN VIVO ✅
 
 Segunda ronda de observaciones (el usuario reprochó que el QA superficial dejó pasar fallos). Metodología nueva:
