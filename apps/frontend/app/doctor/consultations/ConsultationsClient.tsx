@@ -3736,52 +3736,9 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                             </>
                           )}
                         </button>
-                        <button
-                          onClick={() => {
-                            if (!selected) return;
-                            const exams = prescripciones.filter((p) => p.exam_name.trim());
-                            if (exams.length === 0) return;
-                            const printWindow = window.open('', '_blank');
-                            if (!printWindow) return;
-                            const bodyContent =
-                              '<div class="section"><div class="section-title">Exámenes Solicitados</div><div class="section-content">' +
-                              exams
-                                .map(
-                                  (e, i) =>
-                                    '<div style="margin-bottom:12px;padding:10px 14px;border:1px solid #e2e8f0;border-radius:8px"><div style="font-size:14px;font-weight:600;color:#1e293b">' +
-                                    (i + 1) +
-                                    '. ' +
-                                    e.exam_name +
-                                    '</div>' +
-                                    (e.notes
-                                      ? '<div style="font-size:12px;color:#64748b;margin-top:4px">' +
-                                        e.notes +
-                                        '</div>'
-                                      : '') +
-                                    '</div>',
-                                )
-                                .join('') +
-                              '</div></div>';
-                            const dateStr = new Date(selected.consultation_date).toLocaleDateString(
-                              'es-VE',
-                              { year: 'numeric', month: 'long', day: 'numeric' },
-                            );
-                            printWindow.document.write(
-                              buildPdfHtml(
-                                'prescripciones',
-                                'Prescripción de Exámenes',
-                                bodyContent,
-                                selected.patient_name,
-                                selected.consultation_code,
-                                dateStr,
-                              ),
-                            );
-                            printWindow.document.close();
-                          }}
-                          className="flex items-center justify-center gap-2 border border-slate-300 px-4 py-2.5 rounded-xl text-sm font-bold text-slate-700 hover:bg-slate-50"
-                        >
-                          <Printer className="w-4 h-4" /> PDF
-                        </button>
+                        {/* Botón "PDF" viejo (print HTML) ELIMINADO: descargaba un archivo
+                            distinto al branded. Para el PDF del paraclínico usar "Generar
+                            Documento" (MedicalDocumentPdf branded, mismo formato que compartir). */}
                       </div>
                     )}
                   </div>

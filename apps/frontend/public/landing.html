@@ -1841,12 +1841,13 @@ button { font-family: var(--dh-font-body); cursor: pointer; border: none; }
   <div class="container">
     <div class="pricing-header reveal" style="text-align:center;max-width:680px;margin:0 auto 56px;">
       <div class="eyebrow">Precios</div>
-      <h2>Un precio simple, sin sorpresas</h2>
+      <h2>Planes para cada etapa de tu consulta</h2>
       <p style="color:var(--dh-gray-600);font-size:17px;line-height:1.6;margin-top:14px">
-        Acceso completo por <strong id="pricing-base">$30</strong> al mes. Ahorra contratando varios meses por adelantado.
+        Empieza <strong>gratis</strong> y crece cuando lo necesites. Sin permanencia, cancela cuando quieras.
       </p>
       <p style="color:var(--dh-turquoise-700);font-size:14px;font-weight:600;margin-top:14px">
-        Período de prueba: <span id="pricing-beta-days">365</span> días gratis al registrarte como especialista.
+        <span id="pricing-base" style="display:none"></span><span id="pricing-beta-days" style="display:none"></span>
+        Delta Free es permanente: úsalo el tiempo que quieras sin costo.
       </p>
     </div>
 
@@ -1932,6 +1933,47 @@ button { font-family: var(--dh-font-body); cursor: pointer; border: none; }
     font-size: 13px;
     font-weight: 600;
     display: inline-block;
+  }
+  .pricing-card .plan-features {
+    list-style: none;
+    margin: 18px 0 0;
+    padding: 0;
+    text-align: left;
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+  }
+  .pricing-card .plan-features li {
+    position: relative;
+    padding-left: 26px;
+    font-size: 14px;
+    color: var(--dh-gray-600);
+    line-height: 1.4;
+  }
+  .pricing-card .plan-features li::before {
+    content: "";
+    position: absolute;
+    left: 0; top: 3px;
+    width: 16px; height: 16px;
+    border-radius: 50%;
+    background: rgba(6,182,212,0.12) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='11' viewBox='0 0 24 24' fill='none' stroke='%230891b2' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='20 6 9 17 4 12'/%3E%3C/svg%3E") center/11px no-repeat;
+  }
+  .pricing-card .plan-cta {
+    display: block;
+    margin-top: 22px;
+    padding: 12px 18px;
+    border-radius: 12px;
+    background: var(--dh-gray-100);
+    color: var(--dh-ink);
+    font-weight: 600;
+    font-size: 14px;
+    text-decoration: none;
+    transition: all .2s;
+  }
+  .pricing-card:hover .plan-cta { background: var(--dh-gray-100); }
+  .pricing-card.featured .plan-cta {
+    background: linear-gradient(135deg,#06b6d4,#0891b2);
+    color: #fff;
   }
 </style>
 
@@ -2019,27 +2061,38 @@ button { font-family: var(--dh-font-body); cursor: pointer; border: none; }
         });
       }
 
+    }).catch(() => { /* fallback: dejar los precios hardcoded */ });
+
+    // Planes vendibles (Free/Base/Plus) traídos de la BD → 3 tarjetas + features.
+    fetch('/api/public/plans').then(r => r.json()).then(pd => {
       const grid = document.getElementById('pricing-cards');
-      if (!grid || !Array.isArray(data.duration_options)) return;
-      const featuredIdx = data.duration_options.findIndex(o => (o.discount_pct || 0) >= 10);
-      grid.innerHTML = data.duration_options.map((opt, i) => {
+      const plans = (pd && Array.isArray(pd.plans)) ? pd.plans : [];
+      if (!grid || plans.length === 0) return;
+      const monthly = (p) => {
+        const m = (p.prices || []).find(x => x.period === 'monthly') || (p.prices || [])[0];
+        return m ? m.price_usd : 0;
+      };
+      // Orden por precio ascendente (Free, Base, Plus). El del medio = destacado.
+      plans.sort((a, b) => monthly(a) - monthly(b));
+      const featuredIdx = plans.length >= 2 ? Math.min(1, plans.length - 1) : -1;
+      grid.innerHTML = plans.map((p, i) => {
+        const price = monthly(p);
         const featured = i === featuredIdx ? 'featured' : '';
-        const months = opt.duration_months;
-        const label = opt.label || (months === 1 ? 'Mensual' : months + ' meses');
-        const perMonth = (opt.final_price_usd / months).toFixed(2);
-        const hasDiscount = opt.discount_pct > 0;
+        const isFree = price === 0;
+        const feats = (p.features || []).slice(0, 6)
+          .map(f => '<li>' + (f.feature_label || f.feature_key) + '</li>').join('');
         return [
           '<div class="pricing-card ' + featured + '">',
-          featured ? '<div class="badge">Más popular</div>' : '',
-          '<div class="duration">' + label + '</div>',
-          '<div class="price">$' + opt.final_price_usd + '<small> USD</small></div>',
-          hasDiscount ? '<div class="original">$' + opt.base_price_usd + '</div>' : '',
-          '<div class="per-month">$' + perMonth + ' / mes · ' + months + ' mes' + (months > 1 ? 'es' : '') + '</div>',
-          hasDiscount ? '<div class="savings">Ahorras ' + opt.discount_pct + '%</div>' : '',
+          featured ? '<div class="badge">Recomendado</div>' : '',
+          '<div class="duration">' + p.name + '</div>',
+          '<div class="price">' + (isFree ? 'Gratis' : '$' + price + '<small> /mes</small>') + '</div>',
+          p.description ? '<div class="per-month">' + p.description + '</div>' : '',
+          feats ? '<ul class="plan-features">' + feats + '</ul>' : '',
+          '<a href="/register" target="_top" class="plan-cta">' + (isFree ? 'Comenzar gratis' : 'Elegir ' + p.name) + '</a>',
           '</div>',
         ].join('');
       }).join('');
-    }).catch(() => { /* fallback: dejar los precios hardcoded */ });
+    }).catch(() => { /* fallback silencioso */ });
   })();
 </script>
 
