@@ -1,14 +1,15 @@
 /**
- * /api/doctor/finances/transactions/[id] — editar una transacción financiera.
+ * /api/doctor/finances/transactions/[id] — editar o borrar una transacción financiera.
  *
  * ETAPA 1 — thin-proxy al módulo NestJS `finances`.
  *
  * Backend:
- *   PUT /api/finances/transactions/:id
- *       body { description?, amount?, currency?, transactionDate?, conceptId? }
+ *   PUT    /api/finances/transactions/:id
+ *          body { description?, amount?, currency?, transactionDate?, conceptId? }
+ *   DELETE /api/finances/transactions/:id → 204
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { backendPut } from '@/lib/api-client.server';
+import { backendPut, backendDelete } from '@/lib/api-client.server';
 
 interface TransactionItem {
   id: string;
@@ -50,4 +51,20 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   }
 
   return NextResponse.json({ success: true, data: result.value });
+}
+
+// DELETE — remove a financial transaction by id
+export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+
+  const result = await backendDelete<void>(`/api/finances/transactions/${id}`);
+
+  if (!result.ok) {
+    return NextResponse.json(
+      { error: result.error.message },
+      { status: result.error.status || 500 },
+    );
+  }
+
+  return NextResponse.json({ success: true });
 }

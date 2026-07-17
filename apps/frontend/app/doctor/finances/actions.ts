@@ -541,6 +541,18 @@ export type EditTransactionInput = {
 export type EditTransactionResult = { success: true } | { success: false; error: string };
 
 /**
+ * Delete an existing financial transaction (expense or manual income).
+ */
+export async function deleteTransaction(id: string): Promise<SimpleResult> {
+  const result = await backendDelete<void>(`/api/finances/transactions/${id}`);
+  if (!result.ok) {
+    return { success: false, error: appErrorToString(result.error) };
+  }
+  revalidatePath('/doctor/finances');
+  return { success: true };
+}
+
+/**
  * Edit an existing financial transaction (expense or manual income).
  */
 export async function editTransaction(input: EditTransactionInput): Promise<EditTransactionResult> {

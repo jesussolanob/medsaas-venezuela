@@ -22,6 +22,7 @@ import {
   updateIncomeConcept,
   deleteIncomeConcept,
   editTransaction,
+  deleteTransaction,
   getIncomePaged,
   getExpensesPaged,
   getFinanceSummary,
@@ -900,13 +901,38 @@ export default function FinancesPage() {
     setSavingExpense(false);
   };
 
-  // ETAPA 1 NOTE: Delete expense is pending — no backend DELETE endpoint for
-  // financial_transactions exists yet. The row is removed from local state only
-  // for immediate UX feedback; it will reappear on next reload until the backend
-  // exposes DELETE /api/finances/transactions/:id.
-  const handleDeleteExpense = (id: string) => {
-    setExpenses((prev) => prev.filter((e) => e.id !== id));
-    setRefreshKey((k) => k + 1);
+  // #8 — Borrar gasto: llama al backend y solo quita del estado si tiene éxito.
+  const handleDeleteExpense = async (id: string) => {
+    if (!window.confirm('¿Eliminar este gasto? Esta acción no se puede deshacer.')) return;
+    try {
+      const result = await deleteTransaction(id);
+      if (!result.success) {
+        reportError('doctor/finances', 'handleDeleteExpense', result.error);
+        return;
+      }
+      setExpenses((prev) => prev.filter((e) => e.id !== id));
+      loadData(true);
+      setRefreshKey((k) => k + 1);
+    } catch (err) {
+      reportError('doctor/finances', 'handleDeleteExpense', err);
+    }
+  };
+
+  // #7 — Borrar ingreso manual: llama al backend y refresca la lista.
+  const handleDeleteIncome = async (id: string) => {
+    if (!window.confirm('¿Eliminar este ingreso? Esta acción no se puede deshacer.')) return;
+    try {
+      const result = await deleteTransaction(id);
+      if (!result.success) {
+        reportError('doctor/finances', 'handleDeleteIncome', result.error);
+        return;
+      }
+      setManualIncomes((prev) => prev.filter((m) => m.id !== id));
+      loadData(true);
+      setRefreshKey((k) => k + 1);
+    } catch (err) {
+      reportError('doctor/finances', 'handleDeleteIncome', err);
+    }
   };
 
   // #6 — Guardar ingreso extraordinario
@@ -2070,11 +2096,12 @@ export default function FinancesPage() {
                           <th className="text-right px-5 py-3 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
                             Monto Bs
                           </th>
+                          <th className="px-2 py-3" aria-label="Acciones" />
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
                         {displayItems.map((item) => (
-                          <tr key={item.id} className="hover:bg-slate-50 transition-colors">
+                          <tr key={item.id} className="group hover:bg-slate-50 transition-colors">
                             <td className="px-5 py-3 text-xs text-slate-600">
                               {new Intl.DateTimeFormat('es-VE', {
                                 day: 'numeric',
@@ -2118,6 +2145,38 @@ export default function FinancesPage() {
                             <td className="px-5 py-3 text-xs text-slate-400 text-right">
                               {bcvRate ? toBs(item.amount_usd) : '—'}
                             </td>
+                            <td className="px-2 py-3">
+                              {item.source === 'manual' && (
+                                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                                  {/* Editar ingreso manual */}
+                                  <button
+                                    onClick={() => {
+                                      setEditError('');
+                                      setEditingTx({
+                                        id: item.id,
+                                        type: 'manual_income',
+                                        description: item.concept ?? '',
+                                        amount: String(item.amount_usd),
+                                        date: item.date.slice(0, 10),
+                                        conceptId: '',
+                                      });
+                                    }}
+                                    className="p-1 rounded-lg text-slate-300 hover:text-teal-600 hover:bg-teal-50"
+                                    title="Editar ingreso"
+                                  >
+                                    <Pencil className="w-3.5 h-3.5" />
+                                  </button>
+                                  {/* Borrar ingreso manual */}
+                                  <button
+                                    onClick={() => handleDeleteIncome(item.id)}
+                                    className="p-1 rounded-lg text-slate-300 hover:text-red-500 hover:bg-red-50"
+                                    title="Eliminar ingreso"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              )}
+                            </td>
                           </tr>
                         ))}
                       </tbody>
@@ -2132,6 +2191,7 @@ export default function FinancesPage() {
                           <td className="px-5 py-3 text-xs font-bold text-slate-500 text-right">
                             {bcvRate ? toBs(pageTotal) : '—'}
                           </td>
+                          <td />
                         </tr>
                       </tfoot>
                     </table>
