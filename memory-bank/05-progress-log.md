@@ -39,7 +39,11 @@ Guion QA: `07-qa-test-script.md` sección **D-2026-07-17**.
   Recordatorios (👋📅🕐📋 correctos + sin línea "reagendar").
 - **#1 Landing 3 planes** — el landing (`landing.html` estático) solo pintaba las duraciones de UN plan. Nuevo
   endpoint público `app/api/public/plans/route.ts` (proxya el catálogo público `GET /api/plans`) + reescritura de
-  la sección de precios → **3 tarjetas Free/Base/Plus** con features + CTA. VERIFICADO en el DOM.
+  la sección de precios → **3 tarjetas Free/Base/Plus** con features + CTA. VERIFICADO en el DOM. **Corrección
+  (mismo día):** (a) las features salían IGUALES en los 3 planes porque el render mostraba TODAS (habilitadas +
+  deshabilitadas); ahora **filtra por `enabled=true`** → Free=4 (sin IA ni Booking), Base=15 (sin IA), Plus=18
+  (con IA), cap 8 + "y N más". La BD ya estaba bien; el bug era 100% del render. (b) **Spinner "Cargando planes…"**
+  (`#pricing-loading` + keyframe `dh-spin`) mientras hace el fetch. VERIFICADO en vivo.
 - **#5 PDF paraclínico** — el botón "PDF" del bloque usaba `buildPdfHtml+print` (archivo distinto al branded). Se
   eliminó; el PDF del paraclínico se genera con "Generar Documento" (MedicalDocumentPdf, consistente).
 
