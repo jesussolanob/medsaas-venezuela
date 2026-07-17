@@ -1051,8 +1051,8 @@ export default function DoctorDashboard() {
                 No hay citas programadas para hoy
               </p>
             ) : (
-              <div className="space-y-3">
-                {todayAppointments.slice(0, 3).map((apt) => {
+              <div className="space-y-2 overflow-y-auto pr-0.5" style={{ maxHeight: '320px' }}>
+                {todayAppointments.map((apt) => {
                   const appointmentTime = new Date(apt.scheduled_at);
                   const now = new Date();
                   const isPast = appointmentTime < now;
@@ -1078,15 +1078,6 @@ export default function DoctorDashboard() {
                     </button>
                   );
                 })}
-                {todayAppointments.length > 3 && (
-                  <Link
-                    href="/doctor/agenda"
-                    className="text-xs text-teal-600 hover:text-teal-700 font-medium flex items-center gap-1 pt-2"
-                  >
-                    Ver todas ({todayAppointments.length})
-                    <ArrowRight className="w-3 h-3" />
-                  </Link>
-                )}
               </div>
             )}
           </Card>
@@ -1609,6 +1600,48 @@ export default function DoctorDashboard() {
               }
             }
             return res;
+          }}
+          onCreatePatient={async (data) => {
+            const doctorId = await getDoctorId();
+            if (!doctorId) return null;
+            const res = await addPatient(doctorId, {
+              full_name: data.full_name,
+              cedula: data.cedula ?? undefined,
+              phone: data.phone ?? undefined,
+              email: data.email ?? undefined,
+              birth_date: data.birth_date ?? undefined,
+              age: data.age ?? undefined,
+              sex: data.sex ?? undefined,
+              blood_type: data.blood_type ?? undefined,
+              address: data.address ?? undefined,
+              city: data.city ?? undefined,
+              allergies: data.allergies ?? undefined,
+              chronic_conditions: data.chronic_conditions ?? undefined,
+              emergency_contact_name: data.emergency_contact_name ?? undefined,
+              emergency_contact_phone: data.emergency_contact_phone ?? undefined,
+              emergency_contact_relationship: data.emergency_contact_relationship ?? undefined,
+              notes: data.notes ?? undefined,
+              source: 'manual',
+            });
+            if (!res.success) return null;
+            // Agregar el nuevo paciente a la lista local para que aparezca en el select
+            setIncomePatients((prev) => [
+              {
+                id: res.patient_id,
+                doctor_id: doctorId,
+                full_name: data.full_name,
+                age: data.age ?? null,
+                phone: data.phone ?? null,
+                cedula: data.cedula ?? null,
+                email: data.email ?? null,
+                sex: data.sex ?? null,
+                notes: data.notes ?? null,
+                source: 'manual',
+                created_at: new Date().toISOString(),
+              },
+              ...prev,
+            ]);
+            return { id: res.patient_id, full_name: data.full_name };
           }}
         />
       )}

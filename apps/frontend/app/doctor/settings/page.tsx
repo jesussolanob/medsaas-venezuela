@@ -47,6 +47,7 @@ import {
   disconnectGoogle,
   type GoogleStatusView,
 } from './actions';
+import SignaturePad from './SignaturePad';
 import ExchangeRateSection from '@/components/doctor/ExchangeRateSection';
 import { VENEZUELA_INSURANCES } from './insurances';
 import AvatarUploader from './avatar-uploader';
@@ -283,6 +284,8 @@ function SettingsPageInner() {
   const [uploadingSignature, setUploadingSignature] = useState(false);
   const [signatureError, setSignatureError] = useState('');
   const signatureInputRef = useRef<HTMLInputElement>(null);
+  // Firma: modo activo — 'upload' (subir imagen) o 'draw' (dibujar en canvas)
+  const [signatureMode, setSignatureMode] = useState<'upload' | 'draw'>('upload');
 
   // Plans
   const [plans, setPlans] = useState<PricingPlan[]>([]);
@@ -882,27 +885,77 @@ function SettingsPageInner() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+              <div className="space-y-5">
                 {/* Firma */}
                 <div>
                   <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
-                    Firma escaneada
+                    Firma
                   </label>
-                  <div className="flex items-end gap-3">
-                    <div className="w-32 h-20 bg-slate-50 rounded-xl border-2 border-dashed border-slate-200 flex items-center justify-center overflow-hidden">
-                      {signatureUrl ? (
+
+                  {/* Preview de la firma actual */}
+                  {signatureUrl && (
+                    <div className="flex items-end gap-3 mb-3">
+                      <div className="w-32 h-20 bg-slate-50 rounded-xl border-2 border-dashed border-slate-200 flex items-center justify-center overflow-hidden shrink-0">
                         <img
                           src={signatureUrl}
-                          alt="Firma"
+                          alt="Firma actual"
                           className="w-full h-full object-contain"
                         />
-                      ) : (
-                        <span className="text-[10px] text-slate-400 text-center px-2">
-                          Sin firma
-                        </span>
-                      )}
+                      </div>
+                      <div className="space-y-1.5">
+                        <p className="text-xs font-semibold text-slate-700">Firma actual</p>
+                        <button
+                          onClick={removeSignature}
+                          className="text-[10px] text-red-500 hover:text-red-700 font-semibold"
+                        >
+                          Borrar firma
+                        </button>
+                      </div>
                     </div>
-                    <div className="space-y-2 flex-1">
+                  )}
+
+                  {/* Selector de modo */}
+                  <div className="flex gap-1 bg-slate-100 rounded-lg p-1 mb-3 w-fit">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSignatureMode('upload');
+                        setSignatureError('');
+                      }}
+                      className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
+                        signatureMode === 'upload'
+                          ? 'bg-white text-teal-600 shadow-sm'
+                          : 'text-slate-500 hover:text-slate-700'
+                      }`}
+                    >
+                      Subir imagen
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSignatureMode('draw');
+                        setSignatureError('');
+                      }}
+                      className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
+                        signatureMode === 'draw'
+                          ? 'bg-white text-teal-600 shadow-sm'
+                          : 'text-slate-500 hover:text-slate-700'
+                      }`}
+                    >
+                      Dibujar
+                    </button>
+                  </div>
+
+                  {/* Modo: Subir imagen */}
+                  {signatureMode === 'upload' && (
+                    <div className="space-y-2">
+                      {!signatureUrl && (
+                        <div className="w-32 h-20 bg-slate-50 rounded-xl border-2 border-dashed border-slate-200 flex items-center justify-center overflow-hidden">
+                          <span className="text-[10px] text-slate-400 text-center px-2">
+                            Sin firma
+                          </span>
+                        </div>
+                      )}
                       <input
                         ref={signatureInputRef}
                         type="file"
@@ -913,28 +966,33 @@ function SettingsPageInner() {
                       <button
                         onClick={() => signatureInputRef.current?.click()}
                         disabled={uploadingSignature}
-                        className="w-full flex items-center justify-center gap-2 px-3 py-2 border border-slate-200 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-50 transition-colors disabled:opacity-50"
+                        className="flex items-center gap-2 px-3 py-2 border border-slate-200 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-50 transition-colors disabled:opacity-50"
                       >
                         <ImageIcon className="w-3.5 h-3.5" />
                         {uploadingSignature
                           ? 'Subiendo…'
                           : signatureUrl
-                            ? 'Cambiar'
+                            ? 'Cambiar imagen'
                             : 'Subir firma'}
                       </button>
-                      {signatureUrl && (
-                        <button
-                          onClick={removeSignature}
-                          className="w-full text-[10px] text-red-500 hover:text-red-700"
-                        >
-                          Borrar firma
-                        </button>
-                      )}
+                      <p className="text-[10px] text-slate-400">
+                        PNG con fondo transparente · ideal: 400×120px
+                      </p>
                     </div>
-                  </div>
-                  <p className="text-[10px] text-slate-400 mt-1.5">
-                    PNG con fondo transparente · ideal: 400×120px
-                  </p>
+                  )}
+
+                  {/* Modo: Dibujar en canvas */}
+                  {signatureMode === 'draw' && (
+                    <SignaturePad
+                      onSaved={(url) => {
+                        setSignatureUrl(url);
+                        setSignatureError('');
+                        setSignatureMode('upload');
+                      }}
+                      onError={(msg) => setSignatureError(msg)}
+                    />
+                  )}
+
                   {signatureError && <p className="mt-2 text-xs text-red-600">{signatureError}</p>}
                 </div>
 
