@@ -21,20 +21,43 @@
  * No valida que el operador (412/414/416/424/426) sea real, solo la longitud.
  */
 export function normalizePhoneVE(input: string | null | undefined): string {
-  if (!input) return ''
-  const digits = String(input).replace(/\D/g, '')
-  if (!digits) return ''
+  if (!input) return '';
+  const digits = String(input).replace(/\D/g, '');
+  if (!digits) return '';
 
   // Caso 1: ya viene con prefijo 58 y 12 digitos exactos
-  if (digits.startsWith('58') && digits.length === 12) return digits
+  if (digits.startsWith('58') && digits.length === 12) return digits;
 
   // Caso 2: formato local '0XXXXXXXXXX' (11 digitos arrancando con 0)
-  if (digits.startsWith('0') && digits.length === 11) return '58' + digits.slice(1)
+  if (digits.startsWith('0') && digits.length === 11) return '58' + digits.slice(1);
 
   // Caso 3: 10 digitos arrancando con 4 (sin 0 inicial, sin prefijo pais)
-  if (digits.length === 10 && digits.startsWith('4')) return '58' + digits
+  if (digits.length === 10 && digits.startsWith('4')) return '58' + digits;
 
-  return ''
+  return '';
+}
+
+/**
+ * Devuelve el número canónico para WhatsApp/wa.me (E.164 sin '+').
+ *
+ * Primero intenta el formato venezolano (normalizePhoneVE). Si no es VE, acepta un
+ * número INTERNACIONAL ya canónico (código de país + local, como emite <PhoneInput>
+ * para otros países, p.ej. Chile '5696710686'). Rechaza solo lo que no parece un
+ * teléfono (fuera del rango E.164 de 8–15 dígitos).
+ *
+ * Motivación: normalizePhoneVE solo valida números venezolanos, así que un paciente
+ * con teléfono internacional (que <PhoneInput> sí permite guardar) era rechazado como
+ * "número inválido" al enviar recordatorios / compartir por WhatsApp.
+ */
+export function normalizePhoneIntl(input: string | null | undefined): string {
+  const ve = normalizePhoneVE(input);
+  if (ve) return ve;
+  if (!input) return '';
+  const digits = String(input).replace(/\D/g, '');
+  // E.164: entre 8 y 15 dígitos, incluyendo el código de país. <PhoneInput> emite el
+  // código de país sin '+', así que se usa tal cual.
+  if (digits.length >= 8 && digits.length <= 15) return digits;
+  return '';
 }
 
 /**
@@ -45,10 +68,10 @@ export function normalizePhoneVE(input: string | null | undefined): string {
  * directo (sin '+', sin espacios, sin guiones).
  */
 export function formatPhoneVE(canonical: string | null | undefined): string {
-  if (!canonical) return ''
-  const s = String(canonical)
-  if (s.length !== 12 || !s.startsWith('58')) return s
-  return `+${s.slice(0, 2)} ${s.slice(2, 5)}-${s.slice(5)}`
+  if (!canonical) return '';
+  const s = String(canonical);
+  if (s.length !== 12 || !s.startsWith('58')) return s;
+  return `+${s.slice(0, 2)} ${s.slice(2, 5)}-${s.slice(5)}`;
 }
 
 /**
@@ -60,9 +83,9 @@ export function formatPhoneVE(canonical: string | null | undefined): string {
  *   waLink('xxx', 'Hola')          → null
  */
 export function waLink(phone: string | null | undefined, message?: string): string | null {
-  const canonical = normalizePhoneVE(phone)
-  if (!canonical) return null
-  const base = `https://wa.me/${canonical}`
-  if (!message) return base
-  return `${base}?text=${encodeURIComponent(message)}`
+  const canonical = normalizePhoneIntl(phone);
+  if (!canonical) return null;
+  const base = `https://wa.me/${canonical}`;
+  if (!message) return base;
+  return `${base}?text=${encodeURIComponent(message)}`;
 }

@@ -22,7 +22,7 @@ import { getUpcomingConsultations, getUpcomingAppointments } from './actions';
 // L2 (2026-04-29): timezone helpers para que "Hoy" matchee el dia local Caracas.
 import { toLocalYMD } from '@/lib/timezone';
 // L6 (2026-04-29): normaliza telefonos venezolanos (legacy free-text + canonico).
-import { normalizePhoneVE } from '@/lib/phone-utils';
+import { normalizePhoneIntl } from '@/lib/phone-utils';
 import { showToast } from '@/components/ui/Toaster';
 
 type Consultation = {
@@ -176,8 +176,8 @@ export default function RemindersPage() {
   function sendWhatsApp(consult: Consultation) {
     if (!consult.patient_phone) return;
     setSending(consult.id + '-wa');
-    // L6 (2026-04-29): normaliza para que wa.me reciba 58XXXXXXXXXX siempre.
-    const phone = normalizePhoneVE(consult.patient_phone);
+    // Normaliza a canónico E.164 sin '+' — acepta VE ('0414…'/'+58…') e internacional.
+    const phone = normalizePhoneIntl(consult.patient_phone);
     if (!phone) {
       showToast({ type: 'error', message: 'Teléfono inválido' });
       setSending(null);
@@ -240,8 +240,8 @@ export default function RemindersPage() {
     const targets = filtered.filter((c) => selected.has(c.id));
     for (const consult of targets) {
       if (bulkChannel === 'whatsapp' && consult.patient_phone) {
-        // L6 (2026-04-29): normaliza canonico (acepta legacy '0414...' y '+58...')
-        const phone = normalizePhoneVE(consult.patient_phone);
+        // Normaliza a canónico E.164 sin '+' — acepta VE e internacional.
+        const phone = normalizePhoneIntl(consult.patient_phone);
         if (phone) {
           window.open(`https://wa.me/${phone}?text=${buildWAMessage(consult)}`, '_blank');
           markSent(consult.id, 'whatsapp');
