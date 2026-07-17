@@ -2138,9 +2138,9 @@ button { font-family: var(--dh-font-body); cursor: pointer; border: none; }
         const m = (p.prices || []).find(x => x.period === 'monthly') || (p.prices || [])[0];
         return m ? m.price_usd : 0;
       };
-      // Orden por precio ascendente (Free, Base, Plus). El del medio = destacado.
+      // Orden por precio ascendente (Free, Base, Plus). El de mayor precio (Plus) = recomendado.
       plans.sort((a, b) => monthly(a) - monthly(b));
-      const featuredIdx = plans.length >= 2 ? Math.min(1, plans.length - 1) : -1;
+      const featuredIdx = plans.length >= 2 ? plans.length - 1 : -1;
 
       // ── Tarjetas (solo precio + CTA — el detalle de features vive en la tabla) ──
       grid.innerHTML = plans.map((p, i) => {
