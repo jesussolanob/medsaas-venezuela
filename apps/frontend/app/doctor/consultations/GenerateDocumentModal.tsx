@@ -381,9 +381,18 @@ export default function GenerateDocumentModal({
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement('a');
       anchor.href = url;
-      anchor.download = `${labelPart}-${consultationCode}.pdf`;
+      const safeCode = (consultationCode || 'consulta').replace(/[^\w-]/g, '');
+      anchor.download = `${labelPart}-${safeCode}.pdf`;
+      // El anchor DEBE estar en el DOM para que el navegador respete el atributo
+      // `download`; si no, tras el `await pdf().toBlob()` (fuera del gesto directo)
+      // Chrome ignoraba el nombre y descargaba el blob con un UUID sin extensión.
+      anchor.style.display = 'none';
+      document.body.appendChild(anchor);
       anchor.click();
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setTimeout(() => {
+        URL.revokeObjectURL(url);
+        anchor.remove();
+      }, 1000);
 
       setOpen(false);
       setError(null);

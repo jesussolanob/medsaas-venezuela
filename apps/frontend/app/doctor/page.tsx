@@ -470,7 +470,7 @@ export default function DoctorDashboard() {
   }
 
   // Aprueba el pago de verdad (status → approved) y lo quita de la lista.
-  async function approvePaymentRow(paymentId: string) {
+  async function approvePaymentRow(paymentId: string, amountUsd = 0) {
     setApprovingPaymentId(paymentId);
     try {
       const result = await updatePaymentStatusAction(paymentId, 'approved');
@@ -478,6 +478,16 @@ export default function DoctorDashboard() {
       showToast({ type: 'success', message: 'Pago aprobado correctamente' });
       // Quita el pago aprobado de la lista local sin recargar todo.
       setPendingPayments((prev) => prev.filter((p) => p.id !== paymentId));
+      // Refleja el cobro en las tarjetas del inicio SIN recargar: baja "Por ingresar"
+      // (pending_amount) y sube "Ingresos del mes" (total_revenue). Antes el cuadro
+      // amarillo "Por ingresar" no se actualizaba al aprobar desde el modal.
+      if (amountUsd > 0) {
+        setFinancialData((prev) => ({
+          ...prev,
+          pending_amount: Math.max(0, (prev.pending_amount ?? 0) - amountUsd),
+          total_revenue: (prev.total_revenue ?? 0) + amountUsd,
+        }));
+      }
     } catch (err: unknown) {
       showToast({
         type: 'error',
@@ -496,7 +506,7 @@ export default function DoctorDashboard() {
       setMethodModalPayment(payment);
       return;
     }
-    void approvePaymentRow(payment.id);
+    void approvePaymentRow(payment.id, payment.amount_usd ?? 0);
   }
 
   // L2 (2026-04-29): si la cita ya tiene consulta linkeada → abrir esa consulta;
@@ -1620,7 +1630,7 @@ export default function DoctorDashboard() {
           onConfirmed={() => {
             const p = methodModalPayment;
             setMethodModalPayment(null);
-            if (p) void approvePaymentRow(p.id);
+            if (p) void approvePaymentRow(p.id, p.amount_usd ?? 0);
           }}
         />
       )}

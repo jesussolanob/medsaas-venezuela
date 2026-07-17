@@ -1324,6 +1324,15 @@ export default function AgendaPage() {
           </div>
         </div>
 
+        {/* Indicador de carga — la agenda trae las citas de forma asíncrona; sin esto
+            el calendario se veía vacío mientras cargaba (parecía "sin citas"). */}
+        {loading && (
+          <div className="flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-500">
+            <Loader2 className="w-4 h-4 animate-spin text-teal-500" />
+            Cargando agenda…
+          </div>
+        )}
+
         {/* Agenda KPIs */}
         <div className="grid grid-cols-3 gap-3">
           <div className="bg-white rounded-xl border border-slate-200 p-3.5">

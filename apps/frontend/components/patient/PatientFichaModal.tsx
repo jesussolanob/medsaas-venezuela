@@ -231,7 +231,22 @@ export default function PatientFichaModal({ patientId, patientName, onClose }: P
 
     startTransition(async () => {
       // _doctorId es ignorado por el backend (anti-IDOR), pasamos string vacío.
-      const result = await updatePatient(patientId, '', input);
+      // try/catch OBLIGATORIO: `updatePatient` es un Server Action y puede LANZAR
+      // (no solo devolver {success:false}) — p.ej. "Server Action not found" cuando el
+      // cliente quedó viejo tras un deploy (los IDs de action se rehashean, ADR-022), o
+      // un error de red/serialización. Sin este catch, el throw escalaba al error boundary
+      // raíz ("Error inesperado") y sacaba al usuario a la landing.
+      let result: Awaited<ReturnType<typeof updatePatient>>;
+      try {
+        result = await updatePatient(patientId, '', input);
+      } catch {
+        showToast({
+          type: 'error',
+          message:
+            'No se pudo guardar. Si actualizamos la app hace poco, recarga la página e intenta de nuevo.',
+        });
+        return;
+      }
       if (!result.success) {
         showToast({ type: 'error', message: result.error ?? 'Error al guardar la ficha' });
         return;

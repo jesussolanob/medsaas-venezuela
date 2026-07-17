@@ -3521,9 +3521,16 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                               const url = URL.createObjectURL(blob);
                               const a = document.createElement('a');
                               a.href = url;
-                              a.download = `Récipe-${selected.consultation_code}.pdf`;
+                              a.download = `Recipe-${(selected.consultation_code || 'consulta').replace(/[^\w-]/g, '')}.pdf`;
+                              // Anchor en el DOM → el navegador respeta el nombre (si no,
+                              // descargaba un UUID sin extensión tras el await).
+                              a.style.display = 'none';
+                              document.body.appendChild(a);
                               a.click();
-                              URL.revokeObjectURL(url);
+                              setTimeout(() => {
+                                URL.revokeObjectURL(url);
+                                a.remove();
+                              }, 1000);
                             } catch (err) {
                               showToast({ type: 'error', message: 'Error al generar el PDF' });
                               console.error('[RecipePdf]', err);
@@ -3905,9 +3912,15 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                           const url = URL.createObjectURL(blob);
                           const anchor = document.createElement('a');
                           anchor.href = url;
-                          anchor.download = `Reposo-${selected.consultation_code}.pdf`;
+                          anchor.download = `Reposo-${(selected.consultation_code || 'consulta').replace(/[^\w-]/g, '')}.pdf`;
+                          // Anchor en el DOM → el navegador respeta el nombre.
+                          anchor.style.display = 'none';
+                          document.body.appendChild(anchor);
                           anchor.click();
-                          setTimeout(() => URL.revokeObjectURL(url), 1000);
+                          setTimeout(() => {
+                            URL.revokeObjectURL(url);
+                            anchor.remove();
+                          }, 1000);
                         } catch (err) {
                           showToast({
                             type: 'error',
