@@ -49,6 +49,11 @@ export const auth0 = new Auth0Client({
   appBaseUrl,
   authorizationParameters: {
     scope: 'openid profile email',
+    // `prompt=login` fuerza a Auth0 a re-autenticar en CADA login (pedir el correo),
+    // aunque exista una sesión SSO activa (Auth0 o Google). Sin esto, tras cerrar
+    // sesión y volver a "Iniciar sesión", el SSO metía al usuario directo al portal
+    // sin pedir credenciales. Requisito: si se cerró la sesión, se ingresa todo de nuevo.
+    prompt: 'login',
   },
   // Cap the session at 8h (absolute). rolling=false → it does not extend on activity.
   session: {

@@ -158,7 +158,9 @@ async function handleAuth0Mode(request: NextRequest): Promise<NextResponse> {
     clientSecret,
     secret,
     appBaseUrl,
-    authorizationParameters: { scope: 'openid profile email' },
+    // `prompt=login` fuerza re-autenticación en cada login (pedir correo) aunque haya
+    // sesión SSO activa → tras logout NO entra directo al portal. Debe reflejar lib/auth0.ts.
+    authorizationParameters: { scope: 'openid profile email', prompt: 'login' },
     routes: { callback: '/auth/callback' },
     signInReturnToPath: '/post-login',
     session: {
