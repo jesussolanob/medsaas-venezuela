@@ -52,6 +52,8 @@ import {
   getPayments,
   updatePaymentStatus as updatePaymentStatusAction,
 } from '@/app/doctor/finances/payments-actions';
+import { updatePaymentDetails } from '@/app/doctor/cobros/actions';
+import PaymentMethodModal from '@/app/doctor/consultations/PaymentMethodModal';
 import { getDoctorId } from '@/app/doctor/actions';
 import { showToast } from '@/components/ui/Toaster';
 import { getDoctorPlanFeatures } from '@/app/doctor/plan-features-actions';
@@ -166,6 +168,8 @@ export default function DoctorDashboard() {
   const [pendingPayments, setPendingPayments] = useState<PaymentRow[]>([]);
   const [loadingPendingPayments, setLoadingPendingPayments] = useState(false);
   const [approvingPaymentId, setApprovingPaymentId] = useState<string | null>(null);
+  // Pago pendiente que requiere capturar método antes de aprobar (abre PaymentMethodModal).
+  const [methodModalPayment, setMethodModalPayment] = useState<PaymentRow | null>(null);
 
   // "Por confirmar" widget — citas con status=scheduled pendientes de confirmación.
   const [scheduledAppointments, setScheduledAppointments] = useState<ScheduledAppointment[]>([]);
@@ -465,7 +469,8 @@ export default function DoctorDashboard() {
     void loadPendingPayments();
   }
 
-  async function handleApprovePayment(paymentId: string) {
+  // Aprueba el pago de verdad (status → approved) y lo quita de la lista.
+  async function approvePaymentRow(paymentId: string) {
     setApprovingPaymentId(paymentId);
     try {
       const result = await updatePaymentStatusAction(paymentId, 'approved');
@@ -481,6 +486,17 @@ export default function DoctorDashboard() {
     } finally {
       setApprovingPaymentId(null);
     }
+  }
+
+  // Al aprobar un cobro pendiente: si NO tiene método de pago registrado, abrir el
+  // modal para capturarlo (obligatorio) + referencia/comprobante (opcionales) antes
+  // de aprobar. Con método → aprueba directo. (Mismo comportamiento que la consulta.)
+  function handleApprovePayment(payment: PaymentRow) {
+    if (!payment.method_snapshot || !payment.method_snapshot.trim()) {
+      setMethodModalPayment(payment);
+      return;
+    }
+    void approvePaymentRow(payment.id);
   }
 
   // L2 (2026-04-29): si la cita ya tiene consulta linkeada → abrir esa consulta;
@@ -1503,7 +1519,7 @@ export default function DoctorDashboard() {
 
                         {/* Botón aprobar */}
                         <button
-                          onClick={() => void handleApprovePayment(payment.id)}
+                          onClick={() => handleApprovePayment(payment)}
                           disabled={isApproving || approvingPaymentId !== null}
                           className="shrink-0 flex items-center gap-1.5 py-2 px-3 rounded-lg text-xs font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
                           style={{ background: 'var(--dh-turquoise)' }}
@@ -1583,6 +1599,28 @@ export default function DoctorDashboard() {
               }
             }
             return res;
+          }}
+        />
+      )}
+
+      {/* Modal de método de pago — al aprobar un cobro pendiente SIN método.
+          Captura método (obligatorio) + referencia, persiste, y luego aprueba. */}
+      {methodModalPayment && (
+        <PaymentMethodModal
+          open={!!methodModalPayment}
+          consultationId={methodModalPayment.id}
+          availablePaymentMethods={[]}
+          onClose={() => setMethodModalPayment(null)}
+          onPersist={async (id, method, reference) => {
+            const res = await updatePaymentDetails(id, { method, reference });
+            return res.ok
+              ? { success: true as const }
+              : { success: false as const, error: res.error };
+          }}
+          onConfirmed={() => {
+            const p = methodModalPayment;
+            setMethodModalPayment(null);
+            if (p) void approvePaymentRow(p.id);
           }}
         />
       )}
