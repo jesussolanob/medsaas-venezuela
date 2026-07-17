@@ -28,16 +28,25 @@ patient}/error.tsx` que capturan CUALQUIER error sin reemplazar el shell → NO 
   descarga no estaba en el DOM al hacer click tras `await`. Fix: `appendChild(anchor)` + `download="<label>-<code>.pdf"`.
   ✅ VERIFICADO: descargó `Informe-DLT-202608-0001.pdf` (doctor) y `documentos-consulta.pdf` (paciente).
 
-**🐛 NUEVO hallazgo durante el QA — firma/logo ausentes en el PDF COMPARTIDO (server-side).** La firma escaneada
-y el logo SÍ están configurados (visibles en Configuración, cargan desde GCS) y aparecen en el PDF generado del
-**lado doctor** (render en el navegador con `pdf().toBlob()`, CORS del bucket OK → `pdfimages` muestra logo 1024×926
+**🐛 NUEVO hallazgo durante el QA — firma/logo ausentes en el PDF COMPARTIDO — 2 CAUSAS, ambas arregladas y
+VERIFICADAS EN VIVO ✅.** La firma escaneada y el logo SÍ están configurados y aparecen en el PDF del **lado doctor**
+(render en el navegador con `pdf().toBlob()`, CORS del bucket OK → `pdfimages` muestra logo 1024×926 + firma
+8567×4143). Pero el **PDF compartido** salía sin ellos. Dos causas encadenadas:
 
-- firma 8567×4143). Pero el **PDF compartido** se rendea **server-side** en `app/api/documents/[token]/pdf/route.ts`
-  con `renderToBuffer`, y **`@react-pdf` no embebe URLs remotas de forma fiable en ese contexto** → omitía ambas
-  imágenes en silencio (aunque la URL firmada respondía 200 desde el server, confirmado con curl). Fix (`07eb042`):
-  helper `imageUrlToDataUri` prebaja logo/firma en el route handler y las pasa como **data URI base64** (falla suave:
-  timeout 10s / no-2xx / no-imagen / >8MB → null → comportamiento previo). ⏳ deploy en curso al momento de escribir;
-  verificar firma visible en el PDF compartido tras desplegar.
+1. **Render server-side no embebe URLs remotas** (`07eb042`, frontend). El PDF compartido se rendea server-side en
+   `app/api/documents/[token]/pdf/route.ts` con `renderToBuffer`, y **`@react-pdf` no embebe URLs remotas de forma
+   fiable** ahí → omitía ambas imágenes en silencio. Fix: helper `imageUrlToDataUri` prebaja logo/firma en el route
+   handler y las pasa como **data URI base64** (falla suave: timeout 10s / no-2xx / no-imagen / >8MB → null).
+2. **URL firmada de GCS VENCIDA (causa de fondo)** (`16e17f9`, backend). `profiles.signature_url`/`logo_url` guardan
+   **URLs firmadas COMPLETAS de GCS** que vencen a los 7 días. `GetDocumentRenderDataUseCase.resolveSignedUrl` las
+   devolvía tal cual (`startsWith('http') → return path`); la del doctor de prueba se firmó el **08-jul**, venció el
+   **15-jul** → 400. El lado doctor no se afecta porque re-firma al leer (`resignGcsImageUrl`). Fix: `resolveSignedUrl`
+   ahora usa `resignGcsImageUrl` para URLs GCS completas (extrae object path + firma con TTL fresco) y `getSignedUrl`
+   para paths pelados. +test (28 pass). Los dos fixes se **complementan**: backend entrega URL fresca → frontend la
+   prebaja → data URI embebido.
+
+✅ VERIFICADO end-to-end tras ambos deploys: compartí un doc nuevo, verifiqué cédula+código, descargué → `pdfimages`
+del PDF compartido muestra **logo 1024×926 + firma 8567×4143** (idéntico al del doctor). Antes: 0 imágenes.
 
 ## 2026-07-17 — 2ª tanda de QA (10 obs) — 10/10 ARREGLADAS, DESPLEGADAS y VERIFICADAS EN VIVO ✅
 
