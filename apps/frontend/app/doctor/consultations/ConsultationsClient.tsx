@@ -3665,6 +3665,7 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                               // MIGRATED: save exams via backend → POST /api/prescriptions
                               const exams = prescripciones.filter((p) => p.exam_name.trim());
                               const failed: string[] = [];
+                              let lastError = '';
                               for (const exam of exams) {
                                 const result = await createPrescription({
                                   patient_id: selected.patient_id,
@@ -3681,6 +3682,7 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                                     new Error(String(result.error)),
                                   );
                                   failed.push(exam.exam_name);
+                                  lastError = result.error;
                                 }
                               }
                               // Reload prescriptions from backend
@@ -3705,7 +3707,7 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                               if (failed.length > 0) {
                                 showToast({
                                   type: 'error',
-                                  message: `Algunas prescripciones fallaron: ${failed.join(', ')}`,
+                                  message: `No se pudo guardar: ${failed.join(', ')}${lastError ? ` — ${lastError}` : ''}`,
                                 });
                               } else {
                                 showToast({

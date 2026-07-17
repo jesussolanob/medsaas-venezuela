@@ -17,10 +17,14 @@ export const CreatePrescriptionDtoSchema = z.object({
   duration: z.string().nullable().optional(),
   notes: z.string().nullable().optional(),
   // Pharmaceutical form (e.g. 'tabletas', 'gotas', 'spray', 'cápsulas').
-  // Empty strings are normalised to undefined so the DB stores NULL.
+  // Empty strings AND null are normalised to undefined so the DB stores NULL.
+  // (The BFF sends `presentation: null` when the doctor leaves it blank — e.g.
+  // every paraclínico exam and any récipe row without a presentation. Without
+  // coercing null→undefined here, Zod rejected the whole request with
+  // "expected string, received null" → prescriptions never saved.)
   presentation: z
     .preprocess(
-      (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
+      (v) => (v == null || (typeof v === 'string' && v.trim() === '') ? undefined : v),
       z.string().trim().max(80).optional(),
     )
     .optional(),
