@@ -2,6 +2,82 @@
 
 > Registro cronológico. Una entrada por fase/hito completado.
 
+## 2026-07-18 — Fix CRÍTICO pérdida de bloques (paraclínico + autosave reposo) — VERIFICADO EN VIVO ✅
+
+Dos bugs de PÉRDIDA DE DATOS clínicos, ambos por el mismo patrón de raíz: **el backend REEMPLAZA todo
+`blocks_snapshot` en cada PATCH (no hace merge de keys internas)**. Cualquier guardado que envíe un `blocks_data`
+parcial borra los demás bloques.
+
+- **Autosave del REPOSO borraba todos los bloques** (`06003f0`). El efecto de autosave del reposo enviaba
+  `blocks_data: { reposo }` (solo reposo) → borraba antecedentes/examen físico/paraclínico. Se disparaba con SOLO
+  abrir una consulta con diagnóstico (precarga `reposoDiagnosis`). Fix: envía el `blocks_data` COMPLETO (merge).
+  Reproducido y verificado en vivo (guardar 5 bloques → abrir → antes quedaban vacíos; ahora sobreviven).
+
+- **El PARACLÍNICO no se guardaba ni se compartía** (`c2ee807`). Los exámenes vivían solo en estado local y se
+  guardaban en la tabla `prescriptions` (prefijo "Examen:"); al reabrir se hacía `setPrescripciones([])` → NUNCA
+  se rehidrataban (se perdía lo escrito), y el PDF compartido salía vacío (lee `blocks_snapshot['paraclinical']`,
+  que jamás se llenaba). **Rediseño:** el paraclínico ahora es un bloque estructurado que vive en
+  `blocks_snapshot['paraclinical']` (array `"examen — notas"`) como el resto:
+  - `parseParaclinical`/`serializeParaclinical` (helpers module-level) convierten ↔ estado `prescripciones`.
+  - Hidrata desde `blocks_snapshot` al abrir (guard `paraclinicalHydratedForId` atado al id: no guarda por hidratar).
+  - Autosave (debounce 1.5s) + botón Guardar (`saveParaclinicalNow`) persisten con `blocks_data` COMPLETO.
+  - `saveBlocksNow` (onBeforeShare al compartir) incluye SIEMPRE el paraclínico vivo (via `prescripcionesRef`) →
+    el PDF compartido lo trae. `getEffectiveBlocks` prioriza el valor vivo de `prescription`/`paraclinical`.
+  - Filtra exámenes legacy ("Examen:") del récipe para no mostrarlos como medicamentos.
+  - Auditados TODOS los PATCH de `blocks_data` del editor: todos mergean el snapshot completo (texto/reposo/
+    paraclínico/applyAI). Ninguno envía parcial.
+
+  **VERIFICADO EN VIVO (escenario combinado):** llené paraclínico + escribí antecedentes + AGREGUÉ un bloque
+  nuevo ("Ejercicios") → recargué → los 3 sobrevivieron en BD y UI (paraclinical + history + exercises en el mismo
+  snapshot, `blocks_structure` con exercises) → compartí solo Paraclínicos → el PDF trae "EXÁMENES PARACLÍNICOS /
+  HEMATOLOGIA COMPLETA QA — EN AYUNAS QA". Confirma que renombrar/agregar bloques (columna `blocks_structure`)
+  y guardar valores (columna `blocks_snapshot`) son independientes (backend hace update PARCIAL de columnas:
+  `!== undefined → skip`), y que los valores se indexan por KEY (no por label) → renombrar no pierde nada.
+
+**Nota de arquitectura (clave para futuros bugs de guardado):** el backend `sequelize-consultation.repository.ts`
+(update ~líneas 257-263) hace update parcial de columnas: `blocksSnapshot`/`blocksStructure` solo se tocan si
+vienen (`undefined → skip`). PERO dentro de `blocks_snapshot` REEMPLAZA el objeto entero. Regla: **todo PATCH de
+`blocks_data` desde el frontend DEBE mergear el snapshot COMPLETO del ref** (nunca enviar un bloque suelto).
+
+## 2026-07-18 — Lote de 9 mejoras (finanzas/consultas/inicio/config/landing) — VERIFICADO EN VIVO ✅
+
+Aplicado con equipo de 3 frontend-agents en áreas disjuntas (finanzas / consultas / inicio+firma) + lead inline.
+Commits `b65e5d0` (landing), `f97fe54` (consultas+backend share), `2869a10` (finanzas), `be86dcf` (inicio+config).
+Todos verificados en vivo con Playwright:
+
+1. **Landing recomienda Plus** (no Base): badge "Recomendado" al plan de mayor precio (tarjetas + tabla).
+2. **Inicio: "Citas del día" completas** (scroll interno, no solo 3). VERIF: muestra las 4.
+3. **Inicio: "Crear paciente" en modal Registrar ingreso** (reusa patrón de finanzas).
+4. **Consultas: "Mejorar redacción" (IA) solo en texto libre** — oculta el botón en bloques estructurados
+   (paraclinical/prescription/rest). VERIF: el picker ya no ofrece Paraclínico.
+5. **Consultas: compartir Paraclínicos** — el backend rechazaba compartir solo paraclínicos con
+   `NoSectionsSelectedError`; DTO+use-case ahora aceptan si `doc_selection.types.length>0` (compat con `sections`
+   legacy). Tests share 11/11. VERIF: POST solo-paraclínicos → 200.
+6. **Consultas: bloque Referencia guarda la mejora IA** — `requested_exams` es rich_text; `applyAIResult`
+   convertía la mejora en array (por content_type=list) y no persistía → fix fuerza string + autosave. VERIF:
+   aplicar IA → recargar → persiste.
+7. **Finanzas: editar/borrar ingresos** — faltaban botones en ingresos manuales + handler BFF DELETE +
+   server action `deleteTransaction`. VERIF: borrar ingreso persiste tras recargar.
+8. **Finanzas: borrar gastos** — `handleDeleteExpense` solo quitaba del estado local (nunca llamaba al backend,
+   por eso reaparecía). Fix: confirma + `deleteTransaction` + refresca. VERIF: borrar gasto persiste.
+9. **Config: crear firma dibujándola** — nuevo `SignaturePad.tsx` (canvas mouse/touch → PNG transparente →
+   mismo upload `/api/storage/upload` kind=signature → `saveSignatureUrl`) además de subir imagen. VERIF: canvas
+   dibuja + botón Guardar habilitado.
+
+## 2026-07-17 (noche) — Firma PDF (2 causas) + teléfono intl + WhatsApp sin emojis ✅
+
+- **Firma/logo ausentes en PDF COMPARTIDO — 2 causas** (`07eb042` FE, `16e17f9` BE): (a) `@react-pdf` server-side
+  (`renderToBuffer`) no embebe URLs remotas → `imageUrlToDataUri` prebaja e incrusta como data URI; (b) causa de
+  fondo: `profiles.signature_url`/`logo_url` guardan URLs firmadas GCS que VENCEN a 7d y `resolveSignedUrl` las
+  devolvía tal cual → ahora usa `resignGcsImageUrl` (+test, 28). VERIF `pdfimages`: firma 8567×4143 + logo 1024×926.
+- **Teléfono internacional rechazado en WhatsApp** (`4a81d94`): `normalizePhoneVE` solo aceptaba VE → un +56
+  chileno daba "Teléfono inválido". Nuevo `normalizePhoneIntl` (VE primero, luego E.164 8-15 díg). VERIF con +56.
+- **Recordatorio WhatsApp sin emojis** (`c4f4020`): la pantalla intermedia de WhatsApp en escritorio renderiza los
+  emojis como "�" (probado: pasa hasta con un enlace de un solo emoji hecho a mano; NO es nuestro código, la URL
+  sale byte-correcta `%F0%9F%91%8B`). Se quitaron los emojis y se usan guiones como viñeta. VERIF: mensaje limpio.
+  ⚠️ Aprendizaje QA: el usuario venía viendo bugs ya corregidos por **bundle viejo en la pestaña** (SPA no recarga
+  el JS al navegar). Regla: `Cmd+Shift+R` o pestaña nueva antes de reportar. Mismo origen del "PDF nombre UUID".
+
 ## 2026-07-17 (tarde) — 3ª tanda QA (5 obs) + firma en PDF compartido — VERIFICADAS EN VIVO ✅
 
 Lote de 5 observaciones del usuario. Commits `ba5b931` (#4) + `07eb042` (firma) sobre los previos de la mañana
