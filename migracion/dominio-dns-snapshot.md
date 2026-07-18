@@ -116,8 +116,35 @@ sirve la app → **recién ahí** pasar A/AAAA a Proxied 🟠 + SSL Full(strict)
   Google OAuth (client `763714620325-823prmk160n99cpve9ustirmbq257c19`): agregados JS origin `https://deltasalud.app`
   - redirect `https://deltasalud.app/api/integrations/google/callback` (preservando los demás). Verificado tras reload.
 - **Fase 6** — verificar login real + documentos + email + Calendar en el dominio.
-- **Fase 7** — pasar records a Proxied 🟠 + SSL Full(strict); Cloudflare Analytics + WAF; SPF/DMARC; endurecimiento
-  de red del backend (ingress=internal + Direct VPC egress) + header secreto del front.
+- **Fase 7** — pasar records a Proxied 🟠 + SSL Full(strict); Cloudflare Analytics + WAF; ~~SPF/DMARC~~ ✅ (hecho,
+  ver abajo); redirect www→apex; endurecimiento de red del backend (ingress=internal + Direct VPC egress) + header
+  secreto del front.
+
+### SPF + DMARC ✅ (2026-07-18) — agregados en Cloudflare (zone `04f2f752c15615f1883a89e4f38a424d`)
+
+Se agregaron por API v4 del dashboard (header **`x-cross-site-security: dash`** es obligatorio para mutaciones;
+sin él, POST/PATCH/DELETE devuelven un challenge HTML). Verificados por `dig` autoritativo + resolver 1.1.1.1:
+
+| Registro | Host     | Valor                                                     | Propósito                                                          |
+| -------- | -------- | --------------------------------------------------------- | ------------------------------------------------------------------ |
+| TXT      | `@`      | `v=spf1 include:_spf.google.com ~all`                     | SPF apex → autoriza **Google Workspace** (correo humano `lucas@…`) |
+| TXT      | `send`   | `v=spf1 include:amazonses.com ~all`                       | SPF del return-path de **Resend** (subdominio `send`, usa SES)     |
+| TXT      | `_dmarc` | `v=DMARC1; p=none; rua=mailto:lucas@deltasalud.app; fo=1` | **DMARC monitor-only** (p=none, sin rechazo; reportes a lucas@)    |
+
+- **Alineación DMARC:** el correo transaccional sale como `From: noreply@deltasalud.app` (apex) y **alinea por DKIM**
+  (`resend._domainkey` firma `d=deltasalud.app`). El envelope/return-path usa `send.deltasalud.app` (SPF amazonses).
+  El correo humano (Google Workspace) alinea por el SPF apex. Ambos flujos pasan DMARC.
+- **Siguiente paso DMARC (futuro):** tras 1–2 semanas observando reportes `rua`, endurecer a `p=quarantine` y luego
+  `p=reject`. Ahora `p=none` para no arriesgar entregabilidad durante la migración.
+
+### Estado del cert de Cloud Run (2026-07-18 ~20:12)
+
+`CertificateProvisioned: pending` → mensaje evolucionó a _"The challenge data was not visible through the public
+internet… DNS not fully propagated. The system will retry."_ Es decir: Google **ya intenta el challenge ACME**, solo
+falta que la propagación global de DNS termine (algunos resolvers todavía devuelven la IP vieja de Vercel
+`76.76.21.21`, así la CA pega en Vercel en vez de Google). Reintenta cada ~15 min. **Sin acción de nuestra parte** —
+cuando propague, emite. `DomainRoutable: True`, `mappedRouteName: delta-frontend`.
+
 - **Fase 3 ⏳** — cambiar NS en Namecheap → activa Cloudflare.
 - **Fases 4-7 ⏳** — env/deploy, Auth0, Google OAuth, verificación, SPF/DMARC + WAF.
 
@@ -170,3 +197,18 @@ El usuario pidió (2026-07-18), **una vez terminadas todas las configuraciones**
 - Estimar **cuánto costaría 100/1000/10000 usuarios** con Cloudflare + Cloud Armor + BD, etc.
 - Para hacerla: investigar precios actuales reales de cada servicio (Cloud Run, Cloud SQL tier, LB, Cloud Armor,
   Auth0 MAU, Resend, Gemini) y modelar el consumo por usuario.
+
+**Ampliación del alcance pedida (2026-07-18, 2º mensaje del usuario):**
+
+- **Dominio propio para el BACKEND** (p. ej. `api.deltasalud.app`) para enrutar todo por ahí y **también por
+  Cloudflare** — hoy el back se invoca por su `.run.app` (IAM). Con dominio propio + Cloudflare delante, el back
+  queda detrás del mismo edge (WAF/analytics) y se deja de exponer la URL de Google. Explicar en la presentación
+  cómo encaja con el endurecimiento de red (ingress/VPC) y el Load Balancer.
+- **Cuándo se pasa a pagar** en cada proveedor (umbral de salida del free tier): **Cloudflare** (Free → Pro $20/mes
+  cuando se quiera WAF gestionado/reglas avanzadas/analytics extendido), **Auth0** (Free hasta ~25k MAU → plan pago
+  al crecer usuarios o features B2B), **Resend** (Free ~3k emails/mes, 100/día → plan pago al subir volumen). Marcar
+  el gatillo (usuarios/uso) que dispara cada salto de costo.
+- **Servidor de STAGING** (entorno de pruebas) — necesidad de un ambiente separado para no arriesgar producción:
+  segundo set de servicios (Cloud Run staging + BD staging + subdominio `staging.deltasalud.app`), su costo
+  incremental, y por qué reduce el riesgo de romper funcionalidades en vivo. Incluirlo como recomendación de
+  arquitectura + su renglón de costo.
