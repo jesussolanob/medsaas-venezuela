@@ -1,9 +1,10 @@
-name: Deploy (Cloud Run · test)
+name: Deploy (Cloud Run · producción)
 
-# Despliega a Cloud Run desde la rama de migración (todavía NO master).
+# Despliega a Cloud Run desde `main` (rama de producción tras la migración).
+# Flujo: develop → staging → main (producción). El deploy dispara solo en main.
 on:
   push:
-    branches: [feature/migracion-backend]
+    branches: [main]
   workflow_dispatch:
 
 # Necesario para Workload Identity Federation (auth sin claves).
