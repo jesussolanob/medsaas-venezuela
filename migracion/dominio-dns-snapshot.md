@@ -145,6 +145,21 @@ falta que la propagación global de DNS termine (algunos resolvers todavía devu
 `76.76.21.21`, así la CA pega en Vercel en vez de Google). Reintenta cada ~15 min. **Sin acción de nuestra parte** —
 cuando propague, emite. `DomainRoutable: True`, `mappedRouteName: delta-frontend`.
 
+## ✅ CIERRE (2026-07-18 ~21:00) — dominio vivo + reestructuración de ramas
+
+- **Cert EMITIDO** (`Ready: True`, `CertificateProvisioned: True` @ 20:27). `https://deltasalud.app` **ya sirve la app
+  de Cloud Run con cert válido** (verificado forzando IP de Google: `http:200 ssl_verify:0`, título = app migrada).
+  El resolver local del Mac seguía cacheado en Vercel (`76.76.21.21`) — es caché local, no el estado global.
+- **Modelo de ramas nuevo (Git Flow):**
+  - `main` = **producción**, dispara el deploy (deploy.yml `branches: [main]`). Contiene la migración.
+  - `staging` = pre-producción · `develop` = integración (rama de trabajo de ahora en adelante).
+  - `legacy` = el `main` viejo (app Vercel, `ca47282`) preservado íntegro en origin.
+  - `feature/migracion-backend` **cerrada** (borrada local + remoto; todo su contenido está en `main`).
+  - El push a `main` disparó el **deploy de producción** (GitHub Actions, con `PUBLIC_URL=https://deltasalud.app`).
+- **Pendiente Fase 7** (endurecimiento, cuando se decida): pasar A/AAAA a **Proxied 🟠 + SSL Full(strict)** (ya es
+  seguro: el cert emitió) → activa WAF/analítica de Cloudflare; **redirect www→apex**; dominio propio del backend
+  (`api.deltasalud.app`); ingress=internal + Direct VPC egress; y **Load Balancer + Cloud Armor** (con costo).
+
 - **Fase 3 ⏳** — cambiar NS en Namecheap → activa Cloudflare.
 - **Fases 4-7 ⏳** — env/deploy, Auth0, Google OAuth, verificación, SPF/DMARC + WAF.
 
