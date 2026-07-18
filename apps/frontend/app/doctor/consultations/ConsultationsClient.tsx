@@ -291,6 +291,45 @@ type Prescripcion = {
   notes: string;
 };
 
+/**
+ * Serializa la lista de exámenes paraclínicos al formato que vive en
+ * `blocks_snapshot['paraclinical']`: un array de strings "examen — indicaciones".
+ * Este es el MISMO formato que consume el PDF/compartido (buildInformeContent),
+ * de modo que persistir el paraclínico como bloque hace que el compartido lo
+ * incluya sin lógica extra. Descarta filas sin nombre de examen.
+ */
+function serializeParaclinical(items: Prescripcion[]): string[] {
+  return items
+    .filter((p) => p.exam_name.trim())
+    .map((p) =>
+      p.notes.trim() ? `${p.exam_name.trim()} — ${p.notes.trim()}` : p.exam_name.trim(),
+    );
+}
+
+/**
+ * Reconstruye la lista de exámenes desde el valor de `blocks_snapshot['paraclinical']`.
+ * Acepta array de strings (formato canónico) o un string con saltos de línea (legacy).
+ * El separador " — " divide nombre e indicaciones; se corta en la PRIMERA aparición
+ * para tolerar guiones en las indicaciones.
+ */
+function parseParaclinical(raw: unknown): Prescripcion[] {
+  const lines: string[] = Array.isArray(raw)
+    ? (raw as unknown[]).map((x) => String(x))
+    : typeof raw === 'string'
+      ? raw.split('\n')
+      : [];
+  return lines
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const idx = line.indexOf(' — ');
+      if (idx >= 0) {
+        return { exam_name: line.slice(0, idx).trim(), notes: line.slice(idx + 3).trim() };
+      }
+      return { exam_name: line, notes: '' };
+    });
+}
+
 type QuickItem = {
   id: string;
   item_type: 'exam' | 'medication';
@@ -437,9 +476,20 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
       );
     }
 
+    // Bloques estructurados cuyo valor VIVO (estado del editor) tiene prioridad sobre
+    // blocks_data: sus datos se editan en UI dedicada (récipe/paraclínico) y el snapshot
+    // puede ir 1.5s atrás por el debounce del autosave. Usar el vivo evita imprimir/
+    // compartir una versión vieja del paraclínico o del récipe.
+    const STRUCTURED_LIVE_KEYS = new Set(['prescription', 'paraclinical']);
+
     const result = blocks
       .filter((b) => b.printable !== false)
       .map((b) => {
+        // 0. Bloques estructurados: el valor vivo del editor manda si existe.
+        if (STRUCTURED_LIVE_KEYS.has(b.key) && b.key in structuredValues) {
+          return { key: b.key, label: b.label, value: structuredValues[b.key] };
+        }
+
         // 1. Valor desde blocks_data (fuente de verdad para bloques de texto)
         const raw = bd[b.key];
         let value: string | string[] | null = null;
@@ -626,6 +676,12 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
   // Prescripciones (exámenes que el médico ordena)
   const [prescripciones, setPrescripciones] = useState<Prescripcion[]>([]);
   const [isSavingPrescripciones, setIsSavingPrescripciones] = useState(false);
+  // Espejo del estado en un ref para que saveBlocksNow (useCallback estable) siempre
+  // lea los exámenes MÁS recientes al persistir/compartir, sin recrear el callback.
+  const prescripcionesRef = useRef<Prescripcion[]>([]);
+  useEffect(() => {
+    prescripcionesRef.current = prescripciones;
+  }, [prescripciones]);
 
   // Delete confirmation
   const [confirmDeleteConsulta, setConfirmDeleteConsulta] = useState<Consultation | null>(null);
@@ -1319,6 +1375,11 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
     // cierra el editor automáticamente.
     router.replace(`${pathname}?open=${c.id}`, { scroll: false });
 
+    // Exámenes paraclínicos rehidratados desde blocks_snapshot['paraclinical'] (bloque
+    // estructurado). Se asigna al armar `fresh`/fallback y se usa al setear el estado
+    // `prescripciones` más abajo, para que los exámenes guardados NO se pierdan al reabrir.
+    let paraclinicalHydration: Prescripcion[] = [];
+
     // Fetch fresh data from backend → GET /api/consultations/:id
     try {
       const fresh_raw = await getConsultation(c.id);
@@ -1370,6 +1431,8 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
         // Reconciliar report con blocks_data: si blocks_data tiene valor para un campo
         // legacy, usarlo como fuente de verdad (es más reciente que la columna top-level).
         const bd = (fresh.blocks_data || {}) as Record<string, unknown>;
+        // Rehidratar exámenes paraclínicos desde el bloque persistido.
+        paraclinicalHydration = parseParaclinical(bd['paraclinical']);
         const freshDiagnosis =
           typeof bd.diagnosis === 'string' ? bd.diagnosis : (fresh.diagnosis ?? '');
         setReport({
@@ -1396,6 +1459,9 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
         // Fallback to cached data
         setSelected(c);
         const cachedDiagnosis = c.diagnosis ?? '';
+        paraclinicalHydration = parseParaclinical(
+          (c.blocks_data as Record<string, unknown> | null)?.['paraclinical'],
+        );
         setReport({
           chief_complaint: c.chief_complaint ?? '',
           notes: c.notes ?? '',
@@ -1413,6 +1479,9 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
       // Fallback to cached data on error
       setSelected(c);
       const cachedDiagnosisFallback = c.diagnosis ?? '';
+      paraclinicalHydration = parseParaclinical(
+        (c.blocks_data as Record<string, unknown> | null)?.['paraclinical'],
+      );
       setReport({
         chief_complaint: c.chief_complaint ?? '',
         notes: c.notes ?? '',
@@ -1479,12 +1548,19 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
     setReposoTo('');
     setReposoComments('');
 
+    // El paraclínico (exámenes) es un bloque estructurado que vive en
+    // blocks_snapshot['paraclinical']; se rehidrata desde ahí (no desde prescriptions).
+    setPrescripciones(paraclinicalHydration);
+
     // MIGRATED: Load prescriptions via backend → GET /api/prescriptions/patient/:id
     try {
       const rxList = await getPatientPrescriptions(c.patient_id);
-      if (rxList.length > 0) {
+      // Excluir exámenes paraclínicos legacy (se guardaban como prescriptions con
+      // notes "Examen:…"): NO deben aparecer como medicamentos del récipe.
+      const meds = rxList.filter((rx) => !(rx.notes ?? '').startsWith('Examen:'));
+      if (meds.length > 0) {
         // Map backend prescriptions (flat schema) to legacy SavedPrescription shape
-        const saved: SavedPrescription[] = rxList.map((rx) => ({
+        const saved: SavedPrescription[] = meds.map((rx) => ({
           id: rx.id,
           medications: [
             {
@@ -1503,16 +1579,13 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
         setSavedPrescriptions(saved);
         const latest = saved[0];
         setRecipe({ medications: latest.medications, notes: latest.notes || '' });
-        setPrescripciones([]);
       } else {
         setSavedPrescriptions([]);
         setRecipe({ medications: [], notes: '' });
-        setPrescripciones([]);
       }
     } catch {
       setSavedPrescriptions([]);
       setRecipe({ medications: [], notes: '' });
-      setPrescripciones([]);
     }
 
     // Cargar cantidad de registros EHR del paciente → habilita "Historia clínica".
@@ -2358,8 +2431,19 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
     }
     const cur = selectedRef.current;
     if (!cur) return;
-    const bd = cur.blocks_data;
-    if (!bd || Object.keys(bd).length === 0) return;
+    // Incluir SIEMPRE el paraclínico vivo (exámenes) en el snapshot que se persiste.
+    // El backend REEMPLAZA todo blocks_snapshot, así que un guardado que omita el
+    // paraclínico lo borraría; y al compartir sin este merge, el PDF salía vacío.
+    const serializedParaclinical = serializeParaclinical(prescripcionesRef.current);
+    const baseBd = (cur.blocks_data as Record<string, unknown> | null) || {};
+    // Reflejar el estado vivo del paraclínico (incluso [] si el doctor lo vació) cuando
+    // hay exámenes o el snapshot ya tenía la clave; si la consulta nunca tuvo paraclínico
+    // no se agrega la clave. Así ni se pierde lo escrito ni queda contenido fantasma.
+    const bd: Record<string, unknown> =
+      serializedParaclinical.length > 0 || 'paraclinical' in baseBd
+        ? { ...baseBd, paraclinical: serializedParaclinical }
+        : baseBd;
+    if (Object.keys(bd).length === 0) return;
     setAutoSaving(true);
     try {
       await fetch('/api/doctor/consultations', {
@@ -2386,6 +2470,47 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
       setAutoSaving(false);
     }
   }, []);
+
+  /**
+   * Persiste AHORA (y espera) los exámenes paraclínicos en blocks_snapshot['paraclinical'].
+   * Lo usa el botón "Guardar" del bloque. Merge del blocks_data COMPLETO (el backend
+   * reemplaza todo el snapshot), y refleja el merge en el estado local.
+   */
+  const saveParaclinicalNow = useCallback(async (): Promise<boolean> => {
+    const cur = selectedRef.current;
+    if (!cur) return false;
+    if (paraclinicalSaveTimer.current) {
+      clearTimeout(paraclinicalSaveTimer.current);
+      paraclinicalSaveTimer.current = null;
+    }
+    const serialized = serializeParaclinical(prescripciones);
+    const mergedBlocksData = {
+      ...((cur.blocks_data as Record<string, unknown>) || {}),
+      paraclinical: serialized,
+    };
+    try {
+      const res = await fetch('/api/doctor/consultations', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: cur.id, blocks_data: mergedBlocksData }),
+      });
+      if (!res.ok) return false;
+      setSelected((prev) =>
+        prev
+          ? {
+              ...prev,
+              blocks_data: {
+                ...((prev.blocks_data as Record<string, unknown>) || {}),
+                paraclinical: serialized,
+              } as Consultation['blocks_data'],
+            }
+          : prev,
+      );
+      return true;
+    } catch {
+      return false;
+    }
+  }, [prescripciones]);
 
   /** Cambia de tab flusheando el guardado pendiente antes de hacerlo. */
   const handleTabChange = useCallback(
@@ -2601,6 +2726,56 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reposoDiagnosis, reposoDays, reposoFrom, reposoTo, reposoComments, selected?.id]);
+
+  // Auto-save BLOQUE PARACLÍNICO (exámenes) en blocks_data['paraclinical'] — debounce 1.5s.
+  // Los exámenes son un bloque estructurado que vive en blocks_snapshot (como el resto),
+  // NO en la tabla prescriptions. Persistirlo aquí hace que (1) NO se pierda al reabrir y
+  // (2) el PDF compartido lo incluya (buildInformeContent lee blocks_snapshot['paraclinical']).
+  const paraclinicalSaveTimer = useRef<NodeJS.Timeout | null>(null);
+  // Id de la consulta cuyo paraclínico ya fue hidratado. Evita disparar un guardado
+  // por el mero acto de cargar/rehidratar los exámenes al abrir; el primer cambio REAL
+  // del usuario (mismo id) sí persiste. Atado al id → inmune al orden de los effects.
+  const paraclinicalHydratedForId = useRef<string | null>(null);
+  useEffect(() => {
+    if (!selected) return;
+    // Primer render de los exámenes para esta consulta = hidratación → no guardar.
+    if (paraclinicalHydratedForId.current !== selected.id) {
+      paraclinicalHydratedForId.current = selected.id;
+      return;
+    }
+    if (paraclinicalSaveTimer.current) clearTimeout(paraclinicalSaveTimer.current);
+    paraclinicalSaveTimer.current = setTimeout(() => {
+      const cur = selectedRef.current;
+      if (!cur) return;
+      const serialized = serializeParaclinical(prescripciones);
+      // CRÍTICO: merge del blocks_data COMPLETO (el backend REEMPLAZA todo el snapshot).
+      // Enviar sólo { paraclinical } borraría los demás bloques.
+      const mergedBlocksData = {
+        ...((cur.blocks_data as Record<string, unknown>) || {}),
+        paraclinical: serialized,
+      };
+      fetch('/api/doctor/consultations', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: cur.id, blocks_data: mergedBlocksData }),
+      }).catch((err) => console.warn('[paraclinical autosave]', err));
+      setSelected((prev) =>
+        prev
+          ? {
+              ...prev,
+              blocks_data: {
+                ...((prev.blocks_data as Record<string, unknown>) || {}),
+                paraclinical: serialized,
+              } as Consultation['blocks_data'],
+            }
+          : prev,
+      );
+    }, 1500);
+    return () => {
+      if (paraclinicalSaveTimer.current) clearTimeout(paraclinicalSaveTimer.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prescripciones, selected?.id]);
 
   // L1 (2026-04-29): callAI unificado — un solo punto de entrada para los 3 modos.
   // - patient_history: solo necesita patientId; el endpoint extrae historial completo.
@@ -3728,78 +3903,23 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                               });
                               return;
                             }
-                            // RONDA 22: validar patient_id + capturar error de Supabase por insert
-                            if (!selected.patient_id) {
-                              showToast({
-                                type: 'error',
-                                message: 'Error: la consulta no tiene un paciente asociado',
-                              });
-                              return;
-                            }
-                            log.debug('[savePrescripciones] insertando', {
-                              patient_id: selected.patient_id,
-                              consultation_id: selected.id,
-                            });
                             setIsSavingPrescripciones(true);
                             try {
-                              // MIGRATED: save exams via backend → POST /api/prescriptions
-                              const exams = prescripciones.filter((p) => p.exam_name.trim());
-                              const failed: string[] = [];
-                              let lastError = '';
-                              for (const exam of exams) {
-                                const result = await createPrescription({
-                                  patient_id: selected.patient_id,
-                                  consultation_id: selected.id,
-                                  medication: exam.exam_name,
-                                  notes: exam.notes
-                                    ? `Examen: ${exam.exam_name} - ${exam.notes}`
-                                    : `Examen: ${exam.exam_name}`,
-                                });
-                                if (!result.success) {
-                                  reportError(
-                                    'doctor/consultations',
-                                    'savePrescripciones:exam',
-                                    new Error(String(result.error)),
-                                  );
-                                  failed.push(exam.exam_name);
-                                  lastError = result.error;
-                                }
-                              }
-                              // Reload prescriptions from backend
-                              const rxList = await getPatientPrescriptions(selected.patient_id);
-                              const saved: SavedPrescription[] = rxList.map((rx) => ({
-                                id: rx.id,
-                                medications: [
-                                  {
-                                    name: rx.medication,
-                                    dose: rx.dosage || '',
-                                    route: '',
-                                    frequency: rx.frequency || '',
-                                    duration: rx.duration || '',
-                                    presentation: rx.presentation || '',
-                                    indications: rx.notes || '',
-                                  },
-                                ],
-                                notes: rx.notes,
-                                created_at: rx.created_at,
-                              }));
-                              setSavedPrescriptions(saved);
-                              if (failed.length > 0) {
-                                showToast({
-                                  type: 'error',
-                                  message: `No se pudo guardar: ${failed.join(', ')}${lastError ? ` — ${lastError}` : ''}`,
-                                });
-                              } else {
-                                showToast({
-                                  type: 'success',
-                                  message: `Prescripciones guardadas (${exams.length})`,
-                                });
-                              }
+                              // El paraclínico se persiste en blocks_snapshot['paraclinical']
+                              // (bloque estructurado), NO en la tabla prescriptions. Así se
+                              // rehidrata al reabrir y el PDF compartido lo incluye.
+                              const ok = await saveParaclinicalNow();
+                              const count = prescripciones.filter((p) => p.exam_name.trim()).length;
+                              showToast(
+                                ok
+                                  ? { type: 'success', message: `Exámenes guardados (${count})` }
+                                  : { type: 'error', message: 'No se pudo guardar los exámenes' },
+                              );
                             } catch (err: unknown) {
                               reportError('doctor/consultations', 'savePrescripciones', err);
                               showToast({
                                 type: 'error',
-                                message: `Error al guardar prescripciones: ${err instanceof Error ? err.message : 'desconocido'}`,
+                                message: `Error al guardar exámenes: ${err instanceof Error ? err.message : 'desconocido'}`,
                               });
                             } finally {
                               setIsSavingPrescripciones(false);
