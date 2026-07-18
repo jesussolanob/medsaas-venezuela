@@ -178,6 +178,27 @@ Hecho vía API v4 del dashboard (header `x-cross-site-security: dash`) y verific
 - **Pendiente (fase con costo / red, cuando se decida):** dominio propio del backend (`api.deltasalud.app`) por
   Cloudflare; backend `ingress=internal` + Direct VPC egress del front; y **Load Balancer + Cloud Armor**.
 
+## ✅ Auth0 Custom Domain + branding Google (2026-07-18 ~21:50)
+
+- **Auth0 Custom Domain `auth.deltasalud.app`** (Free, requirió verificación de tarjeta anti-fraude, sin cobro).
+  Cert Auth0-managed. Estado **`ready`**. La Universal Login se sirve desde `https://auth.deltasalud.app/u/login`
+  (verificado: `/authorize` → 302 a `/u/login/identifier`).
+  - **CNAME** `auth.deltasalud.app` → `dev-krp2zhdp48ul2k4y-cd-puo6e3fk2cj6tpbu.edge.tenants.us.auth0.com` en
+    Cloudflare **DNS only ⚪** (Auth0 gestiona su propio cert; proxearlo lo rompería). domain id `cd_puO6E3fK2CJ6TpBu`.
+  - ⚠️ Al verificar recién creado dio "record not found" por **caché negativo de DNS** (SOA min 1800s). Se resolvió
+    solo tras ~5 min. El registro estaba correcto desde el inicio.
+  - **App apuntada al custom domain:** repo var `AUTH0_DOMAIN=auth.deltasalud.app`; Cloud Run front
+    (`AUTH0_DOMAIN` + `AUTH0_ISSUER_BASE_URL=https://auth.deltasalud.app/`, rev 00388) y back (`AUTH0_DOMAIN`, rev
+    00403). Los dos `Auth0Client` (lib/auth0.ts y proxy.ts) leen esas env. ⚠️ cutover de issuer → sesiones viejas
+    deben re-loguear.
+  - **Google social login:** agregado `https://auth.deltasalud.app/login/callback` a los redirect URIs del cliente
+    OAuth de Google (por si Auth0 usa el custom domain como callback hacia Google).
+- **Pantalla de consentimiento OAuth de Google (Branding)** → URLs al dominio de prod (antes apuntaban al `run.app`
+  viejo): Página principal `https://deltasalud.app/`, Privacidad `https://deltasalud.app/privacy`, Condiciones
+  `https://deltasalud.app/terms` (páginas `/privacy` y `/terms` existen, 200). Dominio autorizado `deltasalud.app` ya
+  estaba. Esto cubre el aviso de **branding** de la verificación de Google; el aviso de **scopes sensibles** de
+  Calendar es un proceso aparte (envío a verificación con video/justificación), pendiente.
+
 - **Fase 3 ⏳** — cambiar NS en Namecheap → activa Cloudflare.
 - **Fases 4-7 ⏳** — env/deploy, Auth0, Google OAuth, verificación, SPF/DMARC + WAF.
 
