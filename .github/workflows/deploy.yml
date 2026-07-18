@@ -103,7 +103,13 @@ jobs:
             --set-secrets=AUTH0_SECRET=AUTH0_SECRET:latest,AUTH0_CLIENT_SECRET=AUTH0_CLIENT_SECRET:latest,GOOGLE_CLIENT_SECRET=GOOGLE_CLIENT_SECRET:latest,AUTH_RESOLVE_SECRET=AUTH_RESOLVE_SECRET:latest \
             --set-env-vars=NODE_ENV=production,AUTH_MODE=auth0,AUTH0_DOMAIN=${{ vars.AUTH0_DOMAIN }},AUTH0_ISSUER_BASE_URL=https://${{ vars.AUTH0_DOMAIN }}/,AUTH0_CLIENT_ID=${{ vars.AUTH0_CLIENT_ID }},AUTH0_ROLE_NAMESPACE=${{ vars.AUTH0_ROLE_NAMESPACE }},GOOGLE_CLIENT_ID=${{ vars.GOOGLE_CLIENT_ID }},BACKEND_INTERNAL_URL=$BURL,BACKEND_IAM_AUDIENCE=$BURL \
             --memory=512Mi --cpu=1 --min-instances=0 --max-instances=3 --port=8080
-          FURL=$(gcloud run services describe delta-frontend --region="$REGION" --format='value(status.url)')
+          # Public base URL. Prefer the custom domain (repo var PUBLIC_URL, p.ej.
+          # https://deltasalud.app tras la migración a Cloudflare); si no está seteada,
+          # cae a la URL .run.app del servicio (para el 1er deploy / entornos sin dominio).
+          FURL="${{ vars.PUBLIC_URL }}"
+          if [ -z "$FURL" ]; then
+            FURL=$(gcloud run services describe delta-frontend --region="$REGION" --format='value(status.url)')
+          fi
           # Self-referencing runtime vars (known only after the URL exists).
           gcloud run services update delta-frontend --region="$REGION" \
             --update-env-vars=AUTH0_BASE_URL=$FURL,APP_BASE_URL=$FURL,GOOGLE_REDIRECT_URI=$FURL/api/integrations/google/callback
