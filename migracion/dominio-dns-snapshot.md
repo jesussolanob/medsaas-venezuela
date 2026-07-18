@@ -156,9 +156,27 @@ cuando propague, emite. `DomainRoutable: True`, `mappedRouteName: delta-frontend
   - `legacy` = el `main` viejo (app Vercel, `ca47282`) preservado íntegro en origin.
   - `feature/migracion-backend` **cerrada** (borrada local + remoto; todo su contenido está en `main`).
   - El push a `main` disparó el **deploy de producción** (GitHub Actions, con `PUBLIC_URL=https://deltasalud.app`).
-- **Pendiente Fase 7** (endurecimiento, cuando se decida): pasar A/AAAA a **Proxied 🟠 + SSL Full(strict)** (ya es
-  seguro: el cert emitió) → activa WAF/analítica de Cloudflare; **redirect www→apex**; dominio propio del backend
-  (`api.deltasalud.app`); ingress=internal + Direct VPC egress; y **Load Balancer + Cloud Armor** (con costo).
+
+## ✅ Fase 7 — endurecimiento de edge en Cloudflare (2026-07-18 ~21:25)
+
+Hecho vía API v4 del dashboard (header `x-cross-site-security: dash`) y verificado por `curl`/`dig`:
+
+- **SSL/TLS mode → Full (strict)** (`ssl=strict`). El origen (Cloud Run/Google) tiene cert público válido → strict OK.
+- **Always Use HTTPS → on** (http→https 301 en el edge). Automatic HTTPS Rewrites ya estaba on.
+- **Records web a Proxied 🟠** (4×A + 4×AAAA apex + CNAME www). El **origen de Google queda oculto**: `deltasalud.app`
+  ahora resuelve a IPs de Cloudflare (`104.21.2.119` / `172.67.129.37`) y responde `server: cloudflare` + `cf-ray`.
+  Records de correo (MX Google, MX/SPF `send`, DKIM, DMARC, SPF apex, TXT verif) siguen **DNS only ⚪**.
+- **Redirect www→apex** (ruleset dynamic_redirect `f18d1590…`): `www.deltasalud.app/*` → `https://deltasalud.app/$1`
+  (301, preserva path+query). Necesario porque el domain mapping es apex-only.
+- **WAF/edge:** al proxear se activan DDoS L3-7 always-on + Free Managed Ruleset + analítica. **Security level = medium**.
+- ⏸️ **Bot Fight Mode: dejado OFF a propósito** — en una app médica en producción con rutas `/api/*` y callbacks de
+  Auth0/Google, tiene riesgo de falsos positivos; el control granular (Super Bot Fight Mode / WAF managed rules) vive
+  en **Cloudflare Pro** ($20/mes, en el roadmap). Recomendado activarlo con monitoreo o al pasar a Pro.
+- **Verificado:** `https://deltasalud.app/login` → 200 vía Cloudflare; `GET /api/public/plans` → JSON real (sin
+  challenge); `www` → 301 apex; `http` → 301 https.
+
+- **Pendiente (fase con costo / red, cuando se decida):** dominio propio del backend (`api.deltasalud.app`) por
+  Cloudflare; backend `ingress=internal` + Direct VPC egress del front; y **Load Balancer + Cloud Armor**.
 
 - **Fase 3 ⏳** — cambiar NS en Namecheap → activa Cloudflare.
 - **Fases 4-7 ⏳** — env/deploy, Auth0, Google OAuth, verificación, SPF/DMARC + WAF.
