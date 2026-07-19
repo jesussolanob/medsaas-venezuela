@@ -237,19 +237,13 @@ nunca exponer las URLs de Google._
 > por IAM), y hacer el endurecimiento de red como fase separada y verificada, para no mezclar cambios de red
 > front↔back con el cambio de dominio.
 
-## ✅ Entorno de STAGING (2026-07-19) — aislado de prod
+## Entorno de STAGING — PLANIFICADO (NO construido)
 
-Espejo de prod, **BD propia** (no toca prod). Recursos en el mismo proyecto con sufijo `-staging`:
-
-- **`delta-db-staging`** — Cloud SQL db-g1-small, **clon** de `delta-db` (datos reales para probar, aislado). Secreto
-  `DATABASE_URL_STAGING`. Reusa `ENCRYPTION_KEY`/`HMAC` de prod (necesario para leer la PII cifrada del clon).
-- **`delta-backend-staging`** (IAM-only, invoker = delta-frontend-sa) y **`delta-frontend-staging`** (público run.app),
-  imagen `b1346de` reusada (sin rebuild), escala a cero, max 2, **Sentry off**. URLs:
-  `delta-frontend-staging-knliodnwza-ue.a.run.app` / `delta-backend-staging-knliodnwza-ue.a.run.app`.
-- **Auth0** — callbacks/logout/web_origins de staging agregados (login redirige a `auth.deltasalud.app`, verificado 307).
-- **CI/CD** — `.github/workflows/deploy-staging.yml`: la rama `staging` construye y despliega el entorno staging.
-- Verificado: front 200, API pública (front→back-staging→BD clon) OK, login 307 a Auth0. **Pendiente opcional:** dominio
-  `staging.deltasalud.app` (hoy corre por run.app). Costo: +~$28/mes BD + ~$2 Run (en crédito).
+Idea a futuro (aún NO ejecutada): entorno espejo de prod con **BD propia** (clon aislado, nunca apuntar a prod),
+servicios `delta-*-staging` que reusan la imagen de prod y escalan a cero. Costo estimado: **~$28/mes BD + ~$2 Run**.
+⚠️ Se levantó una vez por malentendido (2026-07-19) y se **eliminó por completo** el mismo día: Cloud Run
+(`delta-frontend/backend-staging`) + Cloud SQL `delta-db-staging` + secreto `DATABASE_URL_STAGING` + callbacks de
+Auth0. Cuando se decida hacerlo de verdad, la opción segura es **BD propia** (clon), NO la BD de prod.
 
 ## 💸 Costos REALES de GCP (julio MTD, corrige la estimación de la presentación)
 

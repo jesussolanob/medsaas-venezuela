@@ -825,8 +825,8 @@
     </p>
     <div class="hero__meta">
       <div class="hero__meta-item">
-        <span class="hero__meta-value">~$7</span>
-        <span class="hero__meta-label">costo/mes con 0 usuarios</span>
+        <span class="hero__meta-value">~$30</span>
+        <span class="hero__meta-label">costo/mes a 0 usuarios (hoy $0 con crédito GCP)</span>
       </div>
       <div class="hero__meta-sep"></div>
       <div class="hero__meta-item">
@@ -1058,7 +1058,7 @@
       <h3>Supuestos base (por usuario activo/mes)</h3>
       <ul>
         <li><strong>Peticiones HTTP al backend:</strong> ~500 peticiones/mes/usuario (consultas, citas, pagos, historial). En Cloud Run: petición promedio ≈ 200 ms, 0,25 vCPU.</li>
-        <li><strong>Base de datos (Cloud SQL):</strong> El tamaño de instancia determina el costo fijo. Se escala de tier cuando la latencia o el almacenamiento lo requiere. Supuesto inicial: db-f1-micro (~$7-10/mes, 0,6 GB RAM) para hasta ~200 usuarios; db-g1-small (~$26/mes, 1,7 GB RAM) para hasta ~1.000 usuarios; db-n1-standard-1 (~$45-50/mes, 3,75 GB RAM) para hasta ~10.000.</li>
+        <li><strong>Base de datos (Cloud SQL):</strong> El tamaño de instancia determina el costo fijo. Se escala de tier cuando la latencia o el almacenamiento lo requiere. <strong>La instancia real en producción hoy es <code>db-g1-small</code> (~$28/mes, 1,7 GB RAM)</strong>, suficiente para hasta ~1.000 usuarios. Tier siguiente: <code>db-custom-1</code> (1 vCPU / 3,75 GB RAM) ~$54/mes, hasta algunos miles de usuarios. Para 10.000+: <code>db-custom-2</code> (~$105/mes) o con alta disponibilidad <code>db-custom-2 + HA</code> (~$205/mes, duplica el cómputo). <strong>Redis (Memorystore Basic 1 GB) ≈ $36/mes</strong> (HA ≈ $70); hoy está desactivado (<code>REDIS_DISABLED=true</code>) y se activa al escalar. <strong>Cloud Build</strong> (compilación de imágenes en cada deploy) ≈ $2–14/mes según frecuencia de despliegues; es un costo de desarrollo, <em>no</em> por usuario.</li>
         <li><strong>Almacenamiento (GCS):</strong> ~10 MB/usuario/mes (PDFs, firma, logo, archivos adjuntos). A 10.000 usuarios = 100 GB ≈ $2/mes.</li>
         <li><strong>Correo (Resend):</strong> ~5 emails/usuario/mes (confirmaciones, recordatorios, documentos compartidos). 1.000 usuarios = 5.000 emails/mes → plan Pro activo.</li>
         <li><strong>IA (Gemini):</strong> ~10% de los usuarios usa transcripción de voz; promedio 5 min/consulta, 20 consultas/mes. A 1.000 usuarios activos ≈ 1.000 min IA/mes. Flash model: costo marginal bajo en free tier o primeros dólares en paid.</li>
@@ -1108,18 +1108,18 @@
             <tr class="tr--free">
               <td>Cloud Run (frontend + backend)</td>
               <td class="td--right">$0</td>
-              <td class="td--right">~$1</td>
-              <td class="td--right">~$5 – $10</td>
-              <td class="td--right">~$40 – $80</td>
-              <td class="td--right">~$350 – $700</td>
+              <td class="td--right">~$2 – $8</td>
+              <td class="td--right">~$30 – $40</td>
+              <td class="td--right">~$160 – $200</td>
+              <td class="td--right">~$650 – $750</td>
             </tr>
             <tr>
               <td>Cloud SQL PostgreSQL ⁽²⁾</td>
-              <td class="td--right">$7 – $10</td>
-              <td class="td--right">$7 – $10</td>
-              <td class="td--right">$26 – $30</td>
-              <td class="td--right">$45 – $55</td>
-              <td class="td--right">$150 – $300+</td>
+              <td class="td--right">$28</td>
+              <td class="td--right">$28</td>
+              <td class="td--right">$54</td>
+              <td class="td--right">$205</td>
+              <td class="td--right">$400+</td>
             </tr>
             <tr>
               <td>Cloud Storage (GCS)</td>
@@ -1128,6 +1128,22 @@
               <td class="td--right">~$0.20</td>
               <td class="td--right">~$2</td>
               <td class="td--right">~$20</td>
+            </tr>
+            <tr>
+              <td>Cloud Build (despliegues) ⁽²ᵇ⁾</td>
+              <td class="td--right">$2 – $14</td>
+              <td class="td--right">~$5</td>
+              <td class="td--right">~$5</td>
+              <td class="td--right">~$10</td>
+              <td class="td--right">~$15</td>
+            </tr>
+            <tr>
+              <td>Redis — Memorystore Basic 1 GB ⁽²ᶜ⁾ <span class="badge badge--slate" style="margin-left:.4rem;font-size:.65rem;">hoy off</span></td>
+              <td class="td--right">—</td>
+              <td class="td--right">$36</td>
+              <td class="td--right">$36</td>
+              <td class="td--right">$70</td>
+              <td class="td--right">$140</td>
             </tr>
             <tr>
               <td>Secret Manager</td>
@@ -1179,18 +1195,20 @@
             </tr>
             <tr class="tr--total">
               <td>TOTAL MENSUAL ESTIMADO</td>
-              <td class="td--right">~$7 – $11</td>
-              <td class="td--right">~$8 – $12</td>
-              <td class="td--right">~$51 – $66</td>
-              <td class="td--right">~$97 – $184</td>
-              <td class="td--right">~$771 – $1.822</td>
+              <td class="td--right">~$32 – $43</td>
+              <td class="td--right">~$75 – $95</td>
+              <td class="td--right">~$150 – $200</td>
+              <td class="td--right">~$490 – $600</td>
+              <td class="td--right">~$1.300 – $1.600</td>
             </tr>
           </tbody>
         </table>
       </div>
       <p class="footnote mt-1">
         ⁽¹⁾ 100.000 usuarios es proyección a largo plazo; implica rediseño de BD y posiblemente más réplicas.<br/>
-        ⁽²⁾ Cloud SQL sube de tier: db-f1-micro → db-g1-small ≈ 1.000 usuarios; db-g1-small → db-n1-standard-1 ≈ 5.000–10.000 usuarios.<br/>
+        ⁽²⁾ Cloud SQL: instancia real en producción = <strong>db-g1-small</strong> ($28/mes). Tiers: db-custom-1 (~$54/mes) a partir de ~1.000 usuarios; db-custom-2 (~$105/mes) o db-custom-2 + Alta Disponibilidad (~$205/mes) a partir de ~5.000–10.000 usuarios. La HA duplica el cómputo.<br/>
+        ⁽²ᵇ⁾ Cloud Build: costo por construcción de imagen en cada despliegue. No depende de usuarios sino de la frecuencia de deploys. En desarrollo activo puede alcanzar $14+/mes; en producción estable con deploys esporádicos baja a $2–5/mes.<br/>
+        ⁽²ᶜ⁾ Redis (Memorystore Basic): hoy desactivado (<code>REDIS_DISABLED=true</code>). Se activa al escalar para caché de sesiones y rate-limiting. Basic 1 GB ≈ $36/mes; HA 1 GB ≈ $70/mes.<br/>
         ⁽³⁾ Cloudflare Pro ($20/mes) recomendable cuando se requiera WAF gestionado con reglas avanzadas.<br/>
         ⁽⁴⁾ Auth0 free hasta 25.000 MAU. Primer plan pago Essentials B2C: $35/mes (500 MAU base) + ~$0.07/MAU adicional. A 100 k usuarios el costo puede ser significativo: verificar con Auth0.<br/>
         ⁽⁵⁾ Resend free ≤3.000 emails/mes; 1.000 usuarios × 5 emails = 5.000/mes → activa plan Pro $20/mes (50.000 emails incluidos).<br/>
@@ -1227,11 +1245,11 @@
           <tbody>
             <tr>
               <td>Base (Escenario A)</td>
-              <td class="td--right">$7 – $11</td>
-              <td class="td--right">$8 – $12</td>
-              <td class="td--right">$51 – $66</td>
-              <td class="td--right">$97 – $184</td>
-              <td class="td--right">$771 – $1.822</td>
+              <td class="td--right">$32 – $43</td>
+              <td class="td--right">$75 – $95</td>
+              <td class="td--right">$150 – $200</td>
+              <td class="td--right">$490 – $600</td>
+              <td class="td--right">$1.300 – $1.600</td>
             </tr>
             <tr>
               <td>+ HTTPS Load Balancer ⁽⁷⁾</td>
@@ -1259,11 +1277,11 @@
             </tr>
             <tr class="tr--total">
               <td>TOTAL MENSUAL — Escenario B</td>
-              <td class="td--right">~$50 – $59</td>
-              <td class="td--right">~$51 – $60</td>
-              <td class="td--right">~$95 – $116</td>
-              <td class="td--right">~$147 – $249</td>
-              <td class="td--right">~$846 – $2.002</td>
+              <td class="td--right">~$59 – $75</td>
+              <td class="td--right">~$108 – $133</td>
+              <td class="td--right">~$194 – $250</td>
+              <td class="td--right">~$538 – $645</td>
+              <td class="td--right">~$1.375 – $1.695</td>
             </tr>
           </tbody>
         </table>
@@ -1275,12 +1293,18 @@
       </p>
     </div>
 
-    <div class="highlight-box mt-4">
+    <div class="highlight-box mt-4" style="border-left:4px solid var(--teal-500);background:var(--teal-50);">
+      <p>
+        <strong style="color:var(--teal-700);">Hoy pagamos $0 de bolsillo.</strong>
+        El gasto real acumulado en julio 2026 es ~$33/mes (Cloud SQL $28, Cloud Build $14 en fase de desarrollo intenso, Cloud Run $2, Storage ~$1), cubierto íntegramente por el <strong>crédito de prueba de Google de $300</strong> — quedan aproximadamente $248 disponibles. El costo base a 0 usuarios ronda los <strong>~$30/mes</strong>, dominado por la base de datos que no puede apagarse. Cloud Run escala a $0 cuando no hay tráfico. Cloud Build es un costo de desarrollo por cada despliegue, no por usuario; en producción estable baja a $2–5/mes. El costo crece de forma predecible al sumar usuarios.
+      </p>
+    </div>
+
+    <div class="highlight-box mt-3">
       <p>
         <strong>¿Por qué el salto de costo ocurre entre 100 y 1.000 usuarios?</strong>
-        El plan Free de Resend se agota (5.000 emails/mes). Y entre 5.000 y 10.000 usuarios
-        la base de datos necesita subir de tier (más RAM para manejar más conexiones simultáneas).
-        Los demás servicios (Cloud Run, Cloudflare, Auth0) se mantienen gratuitos hasta los 25.000 usuarios.
+        El plan Free de Resend se agota (5.000 emails/mes) y se activa Redis (Memorystore) para manejar la carga. Entre 1.000 y 10.000 usuarios la base de datos sube de tier (más RAM y vCPUs para conexiones simultáneas) y se recomienda activar Alta Disponibilidad.
+        Los demás servicios (Cloudflare, Auth0) se mantienen gratuitos hasta los 25.000 usuarios.
       </p>
     </div>
   </div>
@@ -1376,13 +1400,13 @@
         <div class="threshold-item__icon" style="background:#fafafa;font-size:1.1rem;">🗄</div>
         <div class="threshold-item__body">
           <div class="threshold-item__name">Cloud SQL (base de datos)</div>
-          <div class="threshold-item__desc">No tiene free tier: es el <strong>único costo fijo desde el día 1</strong>. La instancia más pequeña (db-f1-micro) cuesta ~$7-10/mes.</div>
+          <div class="threshold-item__desc">No tiene free tier: es el <strong>único costo fijo desde el día 1</strong>. La instancia real en producción hoy es <strong>db-g1-small</strong>, que cuesta ~$28/mes (1,7 GB RAM).</div>
           <div class="threshold-item__trigger">
-            <strong>Cuándo subir de tier:</strong> db-f1-micro → db-g1-small (~$26/mes) alrededor de 500–1.000 usuarios activos simultáneos. db-g1-small → db-n1-standard-1 (~$45-55/mes) alrededor de 5.000–10.000 usuarios. Señal de subida: latencia de consultas aumenta o el disco se acerca al límite.
+            <strong>Cuándo subir de tier:</strong> db-g1-small → db-custom-1 (~$54/mes) alrededor de 1.000 usuarios activos. db-custom-1 → db-custom-2 (~$105/mes) o db-custom-2 + Alta Disponibilidad (~$205/mes) alrededor de 5.000–10.000 usuarios. HA duplica el cómputo y garantiza continuidad ante fallas del servidor. Señal de subida: latencia de consultas aumenta o el disco se acerca al límite.
           </div>
         </div>
         <div>
-          <span class="badge badge--amber">Desde $7/mes siempre</span>
+          <span class="badge badge--amber">Desde $28/mes siempre</span>
           <br/><span class="badge badge--red" style="margin-top:.35rem;">No escala a $0</span>
         </div>
       </div>
@@ -1505,23 +1529,24 @@
               <div style="font-size:var(--text-sm);color:var(--slate-500);">Cloud Run staging (escala a cero cuando no se usa)</div>
             </div>
             <div>
-              <div style="font-weight:600;color:var(--slate-800);font-size:1.1rem;">$7 – $10</div>
-              <div style="font-size:var(--text-sm);color:var(--slate-500);">Cloud SQL staging — instancia db-f1-micro pequeña (compartida o separada)</div>
+              <div style="font-weight:600;color:var(--slate-800);font-size:1.1rem;">~$28/mes</div>
+              <div style="font-size:var(--text-sm);color:var(--slate-500);">Cloud SQL staging — instancia db-g1-small propia (misma que producción, se puede compartir para ahorrar)</div>
             </div>
             <div>
               <div style="font-weight:600;color:var(--teal-700);font-size:1.1rem;">$0</div>
               <div style="font-size:var(--text-sm);color:var(--slate-500);">Cloudflare DNS, Auth0 (mismo tenant), Resend (pocas pruebas)</div>
             </div>
             <div>
-              <div style="font-weight:600;color:var(--slate-800);font-size:1.1rem;">~$7 – $10/mes</div>
-              <div style="font-size:var(--text-sm);color:var(--slate-500);">Costo incremental total del ambiente de staging</div>
+              <div style="font-weight:600;color:var(--slate-800);font-size:1.1rem;">~$28/mes</div>
+              <div style="font-size:var(--text-sm);color:var(--slate-500);">Costo incremental total del ambiente de staging (dominado por la BD)</div>
             </div>
           </div>
           <div class="highlight-box mt-3">
             <p>
-              <strong>Recomendación:</strong> Activar staging desde el primer día.
+              <strong>Recomendación:</strong> Incorporar un entorno de staging con su propia base de datos aislada (un clon de producción).
               Protege la reputación del producto con los médicos y reduce el costo de corregir errores
-              en producción. La inversión de $7-10/mes adicionales es marginal frente al riesgo evitado.
+              en producción. La inversión de ~$28/mes adicionales (costo de la BD de staging) es marginal frente al riesgo evitado.
+              El dominio <code>api.deltasalud.app</code> está en la hoja de ruta como próximo paso para dar control total sobre el enrutamiento del backend.
             </p>
           </div>
         </div>
@@ -1654,9 +1679,10 @@
         <div class="exec-point">
           <div class="exec-point__num">01</div>
           <div class="exec-point__text">
-            La infraestructura cuesta <strong style="color:var(--teal-200)">~$7-11/mes con cero usuarios</strong>
-            (solo la base de datos siempre encendida). Cloud Run escala a $0 en reposo.
-            Los primeros 1.000 usuarios cuestan ~$51-66/mes total.
+            La infraestructura cuesta <strong style="color:var(--teal-200)">~$30-43/mes con cero usuarios</strong>
+            (dominado por la base de datos siempre encendida, db-g1-small ~$28/mes). Cloud Run escala a $0 en reposo.
+            <strong style="color:var(--teal-200)">Hoy pagamos $0</strong> — cubierto por el crédito de prueba GCP de $300 (quedan ~$248).
+            Los primeros 1.000 usuarios cuestan ~$150-200/mes total.
             El gasto crece de forma predecible y controlada.
           </div>
         </div>
