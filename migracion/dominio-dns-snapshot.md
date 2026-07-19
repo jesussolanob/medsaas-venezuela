@@ -237,6 +237,32 @@ nunca exponer las URLs de Google._
 > por IAM), y hacer el endurecimiento de red como fase separada y verificada, para no mezclar cambios de red
 > front↔back con el cambio de dominio.
 
+## ✅ Entorno de STAGING (2026-07-19) — aislado de prod
+
+Espejo de prod, **BD propia** (no toca prod). Recursos en el mismo proyecto con sufijo `-staging`:
+
+- **`delta-db-staging`** — Cloud SQL db-g1-small, **clon** de `delta-db` (datos reales para probar, aislado). Secreto
+  `DATABASE_URL_STAGING`. Reusa `ENCRYPTION_KEY`/`HMAC` de prod (necesario para leer la PII cifrada del clon).
+- **`delta-backend-staging`** (IAM-only, invoker = delta-frontend-sa) y **`delta-frontend-staging`** (público run.app),
+  imagen `b1346de` reusada (sin rebuild), escala a cero, max 2, **Sentry off**. URLs:
+  `delta-frontend-staging-knliodnwza-ue.a.run.app` / `delta-backend-staging-knliodnwza-ue.a.run.app`.
+- **Auth0** — callbacks/logout/web_origins de staging agregados (login redirige a `auth.deltasalud.app`, verificado 307).
+- **CI/CD** — `.github/workflows/deploy-staging.yml`: la rama `staging` construye y despliega el entorno staging.
+- Verificado: front 200, API pública (front→back-staging→BD clon) OK, login 307 a Auth0. **Pendiente opcional:** dominio
+  `staging.deltasalud.app` (hoy corre por run.app). Costo: +~$28/mes BD + ~$2 Run (en crédito).
+
+## 💸 Costos REALES de GCP (julio MTD, corrige la estimación de la presentación)
+
+Del reporte de facturación (total $33.29, cubierto por crédito de prueba $300 → **$248 restantes, $0 de bolsillo**):
+
+- **Cloud SQL** `db-g1-small` = **$16.39** (~$28-30/mes completo) — la presentación asumió `db-f1-micro` ~$8 ❌
+- **Cloud Build** (los deploys) = **$14.35** — no estaba modelado; es por DEPLOY, no por usuario ❌
+- Cloud Run $2.06 · Artifact Registry $0.38 (432 imágenes acumuladas, limpiables) · Storage $0.12
+- **Baseline real 0 usuarios ≈ $30/mes estable** (domina Cloud SQL), ~$45-55 en meses de desarrollo intenso.
+- Rates verificados: Cloud SQL $0.0413/vCPU-h + $0.0070/GB-RAM-h, HA duplica cómputo. Memorystore Redis Basic 1GB ≈ $36/mes.
+- Cuadro por escala (real): 0→~$32 · 100→~$85 · 1.000→~$175 · 10.000→~$545 (+LB/Armor $27-40). Redis (hoy off) suma
+  $36 al prenderlo. **PENDIENTE: rehacer la presentación con estos números reales.**
+
 ## PENDIENTE (post-configuración): presentación HTML para inversionistas
 
 El usuario pidió (2026-07-18), **una vez terminadas todas las configuraciones**, una **presentación en HTML** en
