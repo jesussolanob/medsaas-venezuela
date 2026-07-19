@@ -1113,5 +1113,25 @@ guardado de `blocks_data` DEBE mergear el snapshot COMPLETO** del ref (nunca un 
 
 ---
 
+## D-2026-07-18/19) QA en vivo sobre el DOMINIO DE PRODUCCIÓN `deltasalud.app`
+
+> Primera corrida completa ya sobre el dominio propio (Cloudflare → Cloud Run) tras el go-live. Todo PASÓ.
+> ⚠️ Ahora el QA se hace en `https://deltasalud.app` (NO en la `.run.app` ni en la vieja app de Vercel). Si el
+> resolver local está cacheado en Vercel: `sudo dscacheutil -flushcache` o probar desde otra red.
+
+| Caso   | Módulo / acción                                       | Esperado                                                                  | Verificación técnica                                                                |
+| ------ | ----------------------------------------------------- | ------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| P-19.1 | **Login por Auth0 custom domain**                     | El login se sirve desde `auth.deltasalud.app` (no `dev-xxx.us.auth0.com`) | `GET /auth/login` → 307 a `auth.deltasalud.app/authorize`; Google login → `/doctor` |
+| P-19.2 | Dashboard / Pacientes / Consultas / Agenda / Finanzas | Cargan con datos reales vía BFF                                           | HTTP 200; `/api/public/plans` y listados devuelven JSON                             |
+| P-19.3 | **Autosave de bloques persiste**                      | Escribir en un bloque → recargar → sobrevive                              | `blocks_snapshot[key]` intacto tras PATCH + reload                                  |
+| P-19.4 | **Compartir documento → email**                       | Genera enlace con dominio de prod y envía correo                          | Enlace `https://deltasalud.app/documents/…`; Resend log = **Delivered** a lucas@    |
+| P-19.5 | Acceso público al documento                           | cédula + código de 6 díg → "Acceso verificado", descarga habilitada       | Página `/documents/<token>`; valida cédula+código                                   |
+| P-19.6 | Edge Cloudflare                                       | `deltasalud.app` responde por Cloudflare, http→https, www→apex            | `server: cloudflare`; 301 http→https; 301 www→apex                                  |
+
+**Guía "cómo probar":** dominio de QA = `https://deltasalud.app`. Login real (código llega a `lucas@deltasalud.app`,
+o "Continuar con Google"). Verificar efectos en la pantalla siguiente / en Resend (emails) / en BD si aplica.
+
+---
+
 > Mantener este guion vivo: cuando aparezca un bug de prod, agregar una fila a la
 > **Sección D** y un caso al módulo correspondiente para que el qa-agent lo cubra siempre.

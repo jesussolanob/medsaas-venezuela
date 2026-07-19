@@ -2,6 +2,26 @@
 
 > Registro cronológico. Una entrada por fase/hito completado.
 
+## 2026-07-18/19 — GO-LIVE dominio `deltasalud.app` + Auth0 custom domain + ramas + QA en vivo ✅
+
+Migración de infraestructura completa (detalle en ADR-023 y `migracion/dominio-dns-snapshot.md`):
+
+- **Dominio en producción:** `https://deltasalud.app` ya sirve la app de Cloud Run (dejó Vercel). Cloudflare
+  **proxied** delante, **SSL Full (strict)**, Always Use HTTPS, redirect www→apex, WAF/DDoS del edge. Cert de Cloud
+  Run emitido. Origen de Google oculto.
+- **Email auth:** SPF (apex Google + `send` Resend) + DMARC `p=none` agregados en Cloudflare. Correo intacto.
+- **Auth0 Custom Domain `auth.deltasalud.app`** verificado y activo (login con dominio propio). Google OAuth con
+  redirect del dominio. Branding OAuth (privacidad/términos) apuntado a prod.
+- **Modelo de ramas nuevo:** `main`=prod (dispara deploy), `develop`=trabajo, `staging`, `legacy`=main viejo.
+  `feature/migracion-backend` cerrada. `deploy.yml` dispara en `main`.
+- **QA en vivo (prod):** login (custom domain + Google), dashboard, pacientes, consultas, **autosave de bloques
+  PERSISTE**, compartir documento → **email Delivered** (Resend) → acceso público con cédula+código, agenda,
+  finanzas. Todo OK.
+- **Costos reales revisados:** ~$33/mes bruto cubierto por crédito; baseline 0 usr ~$30 (domina Cloud SQL). Presentación
+  de costos simplificada en `migracion/presentacion-inversionistas.html`.
+- ⚠️ Se levantó un entorno de **staging por malentendido** y se **eliminó por completo** el mismo día (era solo para
+  estimar su costo). Queda como plan futuro (BD propia).
+
 ## 2026-07-18 — Fix CRÍTICO pérdida de bloques (paraclínico + autosave reposo) — VERIFICADO EN VIVO ✅
 
 Dos bugs de PÉRDIDA DE DATOS clínicos, ambos por el mismo patrón de raíz: **el backend REEMPLAZA todo

@@ -109,10 +109,14 @@ NX monorepo · pnpm · GitHub Actions CI/CD.
 
 ## Entornos
 
-| Entorno             | Frontend               | Backend                        | BD                                                       |
-| ------------------- | ---------------------- | ------------------------------ | -------------------------------------------------------- |
-| Local               | localhost:3000         | localhost:3001                 | Docker Postgres :5432 (+ Redis :6379, MinIO :9000/:9001) |
-| Producción (futuro) | Cloud Run + Cloudflare | Cloud Run `--ingress=internal` | Cloud SQL                                                |
+| Entorno               | Frontend                                                 | Backend                                               | BD                                                       |
+| --------------------- | -------------------------------------------------------- | ----------------------------------------------------- | -------------------------------------------------------- |
+| Local                 | localhost:3000                                           | localhost:3001                                        | Docker Postgres :5432 (+ Redis :6379, MinIO :9000/:9001) |
+| **Producción (VIVA)** | **`https://deltasalud.app`** (Cloudflare 🟠 → Cloud Run) | Cloud Run (IAM-only; login por `auth.deltasalud.app`) | Cloud SQL `db-g1-small`                                  |
+
+> Prod EN VIVO desde 2026-07-18 (ADR-023): dominio `deltasalud.app` por Cloudflare (proxied, SSL strict, WAF edge),
+> Auth0 custom domain `auth.deltasalud.app`. La rama **`main`** dispara el deploy. Pendiente: `api.deltasalud.app`,
+> `ingress=internal` + VPC, Load Balancer + Cloud Armor.
 
 BD local: `postgres://delta:delta_dev_password@localhost:5432/deltamedical`
 

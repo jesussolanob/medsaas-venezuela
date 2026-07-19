@@ -223,6 +223,26 @@ consultations}` (+ Consultorios/Plantillas sin moduleKey); deshabilitados agenda
   (`ConsultationInformePdfButton`) y `ShareDocumentsModal` (compartir por enlace+código, ADR-013) se mueve a la carpeta
   padre y se monta en la lista, reemplazando el "Compartir" viejo (posteaba a `/api/doctor/share-pdf`, **stub 501**).
 
+- **ADR-023 (2026-07-18/19):** \*\*Go-live del dominio `deltasalud.app` (Cloudflare → Cloud Run) + Auth0 Custom Domain
+  - modelo de ramas + edge.\*\* La app dejó Vercel/Supabase y ahora vive en producción en `https://deltasalud.app`.
+  * **DNS/edge:** dominio en **Namecheap**, NS delegados a **Cloudflare** (Free). Cloudflare **proxied 🟠** delante de
+    Cloud Run (`delta-frontend`, domain mapping apex-only), **SSL Full (strict)**, Always Use HTTPS, redirect
+    www→apex. WAF/DDoS/analítica del edge activos. El origen de Google queda oculto. Correo (MX Google Workspace +
+    MX/DKIM/SPF Resend) queda **DNS only ⚪**. Se agregó **SPF** (apex→Google, `send`→amazonses) + **DMARC** `p=none`.
+    Zona CF `04f2f752…`; mutaciones de la API interna del dashboard requieren header `x-cross-site-security: dash`.
+  * **Auth0 Custom Domain `auth.deltasalud.app`** (Free, cert Auth0-managed): la Universal Login se sirve desde el
+    dominio propio. La app apunta ahí vía `AUTH0_DOMAIN`/`AUTH0_ISSUER_BASE_URL` (repo var + Cloud Run env). CNAME en
+    CF **DNS only** (proxearlo rompe el cert de Auth0).
+  * **Modelo de ramas (Git Flow):** `main` = **producción** (única que dispara el deploy, `deploy.yml` → `branches:
+[main]`) · `develop` = trabajo · `staging` = pre-prod · `legacy` = el `main` viejo (app Vercel) preservado.
+    `feature/migracion-backend` cerrada. Flujo develop → staging → main.
+  * **Costos reales GCP:** ~$33/mes bruto hoy, cubierto por crédito de prueba ($300); baseline 0 usuarios ~$30/mes
+    (domina Cloud SQL `db-g1-small`). Cloud Build (deploys) fue un costo relevante. Presentación de costos en
+    `migracion/presentacion-inversionistas.html`.
+  * **Pendiente (con costo/red):** dominio del backend `api.deltasalud.app`; `ingress=internal` + Direct VPC egress;
+    Load Balancer + Cloud Armor; entorno de staging real (BD propia — se levantó por error una vez y se eliminó).
+  * Detalle operativo completo: `migracion/dominio-dns-snapshot.md`.
+
 ## Inventario de tablas (auditoría Fase 0 — fuente de verdad: archivos `*.sql`)
 
 Core: `profiles`, `appointments`, `consultations`, `patients`, `patient_packages`,
