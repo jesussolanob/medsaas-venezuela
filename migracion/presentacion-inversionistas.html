@@ -1,1747 +1,233 @@
 <!DOCTYPE html>
 <html lang="es-VE">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Delta Salud CRM — Presentación para Inversionistas</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
-
-  <style>
-    /* ============================================================
-       TOKENS
-    ============================================================ */
-    :root {
-      --teal-50:  #f0fdfa;
-      --teal-100: #ccfbf1;
-      --teal-200: #99f6e4;
-      --teal-400: #2dd4bf;
-      --teal-500: #14b8a6;
-      --teal-600: #0d9488;
-      --teal-700: #0f766e;
-      --teal-900: #134e4a;
-
-      --slate-50:  #f8fafc;
-      --slate-100: #f1f5f9;
-      --slate-200: #e2e8f0;
-      --slate-300: #cbd5e1;
-      --slate-400: #94a3b8;
-      --slate-500: #64748b;
-      --slate-600: #475569;
-      --slate-700: #334155;
-      --slate-800: #1e293b;
-      --slate-900: #0f172a;
-
-      --white: #ffffff;
-      --surface: #f8fafc;
-      --card-bg: #ffffff;
-
-      --text-hero:  clamp(2.4rem, 5vw, 4rem);
-      --text-h2:    clamp(1.6rem, 3vw, 2.2rem);
-      --text-h3:    clamp(1.15rem, 2vw, 1.4rem);
-      --text-base:  clamp(0.9rem, 1.2vw, 1rem);
-      --text-sm:    0.875rem;
-      --text-xs:    0.78rem;
-
-      --space-section: clamp(4rem, 8vw, 8rem);
-      --space-card:    clamp(1.25rem, 2.5vw, 2rem);
-
-      --radius-sm:  6px;
-      --radius-md:  12px;
-      --radius-lg:  20px;
-      --radius-xl:  28px;
-
-      --shadow-sm:  0 1px 3px rgba(15,23,42,.06), 0 1px 2px rgba(15,23,42,.04);
-      --shadow-md:  0 4px 16px rgba(15,23,42,.08), 0 1px 4px rgba(15,23,42,.04);
-      --shadow-lg:  0 8px 32px rgba(15,23,42,.10), 0 2px 8px rgba(15,23,42,.06);
-      --shadow-teal: 0 4px 20px rgba(13,148,136,.18);
-
-      --border: 1px solid var(--slate-200);
-      --border-teal: 1px solid var(--teal-200);
-
-      --font: 'Inter', system-ui, -apple-system, sans-serif;
-    }
-
-    /* ============================================================
-       RESET & BASE
-    ============================================================ */
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-    html { scroll-behavior: smooth; font-size: 16px; }
-
-    body {
-      font-family: var(--font);
-      background: var(--surface);
-      color: var(--slate-800);
-      line-height: 1.65;
-      -webkit-font-smoothing: antialiased;
-    }
-
-    /* ============================================================
-       LAYOUT HELPERS
-    ============================================================ */
-    .container {
-      max-width: 1080px;
-      margin: 0 auto;
-      padding: 0 clamp(1rem, 4vw, 2.5rem);
-    }
-
-    .section {
-      padding: var(--space-section) 0;
-    }
-
-    .section + .section {
-      border-top: var(--border);
-    }
-
-    .section--alt {
-      background: var(--white);
-    }
-
-    /* ============================================================
-       TYPOGRAPHY
-    ============================================================ */
-    .eyebrow {
-      display: inline-block;
-      font-size: var(--text-xs);
-      font-weight: 600;
-      letter-spacing: .1em;
-      text-transform: uppercase;
-      color: var(--teal-600);
-      margin-bottom: .75rem;
-    }
-
-    h1, h2, h3, h4 { line-height: 1.2; letter-spacing: -.015em; }
-
-    h1 {
-      font-size: var(--text-hero);
-      font-weight: 800;
-      color: var(--white);
-    }
-
-    h2 {
-      font-size: var(--text-h2);
-      font-weight: 700;
-      color: var(--slate-900);
-      margin-bottom: 1rem;
-    }
-
-    h3 {
-      font-size: var(--text-h3);
-      font-weight: 600;
-      color: var(--slate-800);
-      margin-bottom: .5rem;
-    }
-
-    p { margin-bottom: .9rem; color: var(--slate-600); }
-    p:last-child { margin-bottom: 0; }
-
-    .lead {
-      font-size: clamp(1.05rem, 1.8vw, 1.2rem);
-      color: var(--slate-600);
-      line-height: 1.7;
-    }
-
-    /* ============================================================
-       HEADER / HERO
-    ============================================================ */
-    .hero {
-      background: linear-gradient(135deg, var(--teal-900) 0%, var(--slate-900) 60%, var(--slate-800) 100%);
-      padding: clamp(3rem, 7vw, 7rem) 0 clamp(2.5rem, 5vw, 5rem);
-      position: relative;
-      overflow: hidden;
-    }
-
-    .hero::before {
-      content: '';
-      position: absolute;
-      inset: 0;
-      background:
-        radial-gradient(ellipse 60% 50% at 80% 20%, rgba(20,184,166,.18) 0%, transparent 60%),
-        radial-gradient(ellipse 40% 40% at 10% 80%, rgba(13,148,136,.12) 0%, transparent 50%);
-      pointer-events: none;
-    }
-
-    .hero__tag {
-      display: inline-flex;
-      align-items: center;
-      gap: .4rem;
-      font-size: var(--text-xs);
-      font-weight: 600;
-      letter-spacing: .08em;
-      text-transform: uppercase;
-      color: var(--teal-400);
-      border: 1px solid rgba(45,212,191,.25);
-      border-radius: 100px;
-      padding: .3rem .85rem;
-      margin-bottom: 1.5rem;
-    }
-
-    .hero__tag-dot {
-      width: 6px; height: 6px;
-      border-radius: 50%;
-      background: var(--teal-400);
-      animation: pulse-dot 2s ease-in-out infinite;
-    }
-
-    @keyframes pulse-dot {
-      0%, 100% { opacity: 1; transform: scale(1); }
-      50%       { opacity: .5; transform: scale(.75); }
-    }
-
-    .hero h1 {
-      max-width: 22ch;
-      margin-bottom: 1.25rem;
-    }
-
-    .hero h1 span { color: var(--teal-400); }
-
-    .hero .lead { color: rgba(255,255,255,.72); max-width: 60ch; margin-bottom: 2.5rem; }
-
-    .hero__meta {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 1rem 2rem;
-    }
-
-    .hero__meta-item {
-      display: flex;
-      flex-direction: column;
-    }
-
-    .hero__meta-value {
-      font-size: clamp(1.5rem, 3vw, 2rem);
-      font-weight: 800;
-      color: var(--white);
-      line-height: 1;
-    }
-
-    .hero__meta-label {
-      font-size: var(--text-xs);
-      color: rgba(255,255,255,.5);
-      text-transform: uppercase;
-      letter-spacing: .06em;
-      margin-top: .2rem;
-    }
-
-    .hero__meta-sep {
-      width: 1px;
-      background: rgba(255,255,255,.12);
-      align-self: stretch;
-    }
-
-    /* ============================================================
-       CARDS / BENTO
-    ============================================================ */
-    .card {
-      background: var(--card-bg);
-      border: var(--border);
-      border-radius: var(--radius-lg);
-      padding: var(--space-card);
-      box-shadow: var(--shadow-sm);
-    }
-
-    .card--teal {
-      background: linear-gradient(135deg, var(--teal-600) 0%, var(--teal-700) 100%);
-      border-color: transparent;
-      color: var(--white);
-      box-shadow: var(--shadow-teal);
-    }
-
-    .card--teal h3, .card--teal p, .card--teal .eyebrow {
-      color: rgba(255,255,255,.85);
-    }
-    .card--teal h3 { color: var(--white); }
-
-    .card--dark {
-      background: var(--slate-900);
-      border-color: var(--slate-700);
-      color: var(--white);
-    }
-    .card--dark h3 { color: var(--white); }
-    .card--dark p  { color: var(--slate-400); }
-
-    .card-grid {
-      display: grid;
-      gap: 1.25rem;
-    }
-
-    .card-grid--2 { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
-    .card-grid--3 { grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
-    .card-grid--4 { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
-
-    .bento {
-      display: grid;
-      grid-template-columns: repeat(12, 1fr);
-      gap: 1.25rem;
-    }
-
-    .bento__item--6  { grid-column: span 6; }
-    .bento__item--4  { grid-column: span 4; }
-    .bento__item--8  { grid-column: span 8; }
-    .bento__item--12 { grid-column: span 12; }
-
-    @media (max-width: 700px) {
-      .bento__item--6,
-      .bento__item--4,
-      .bento__item--8,
-      .bento__item--12 { grid-column: span 12; }
-    }
-
-    /* ============================================================
-       SECTION HEADER
-    ============================================================ */
-    .section-header {
-      margin-bottom: clamp(2rem, 4vw, 3.5rem);
-    }
-
-    .section-header .lead {
-      max-width: 65ch;
-    }
-
-    /* ============================================================
-       BADGE
-    ============================================================ */
-    .badge {
-      display: inline-flex;
-      align-items: center;
-      gap: .3rem;
-      font-size: var(--text-xs);
-      font-weight: 600;
-      padding: .2rem .65rem;
-      border-radius: 100px;
-    }
-
-    .badge--green  { background: #dcfce7; color: #166534; }
-    .badge--teal   { background: var(--teal-100); color: var(--teal-700); }
-    .badge--amber  { background: #fef3c7; color: #92400e; }
-    .badge--red    { background: #fee2e2; color: #991b1b; }
-    .badge--slate  { background: var(--slate-100); color: var(--slate-600); }
-
-    /* ============================================================
-       TABLES
-    ============================================================ */
-    .table-wrap {
-      overflow-x: auto;
-      border-radius: var(--radius-md);
-      border: var(--border);
-      box-shadow: var(--shadow-sm);
-    }
-
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: var(--text-sm);
-    }
-
-    thead th {
-      background: var(--slate-900);
-      color: var(--white);
-      font-weight: 600;
-      padding: .85rem 1rem;
-      text-align: left;
-      white-space: nowrap;
-    }
-
-    thead th:first-child { border-radius: var(--radius-md) 0 0 0; }
-    thead th:last-child  { border-radius: 0 var(--radius-md) 0 0; }
-
-    tbody tr { border-bottom: 1px solid var(--slate-100); }
-    tbody tr:last-child { border-bottom: none; }
-
-    tbody tr:hover { background: var(--teal-50); }
-
-    td {
-      padding: .75rem 1rem;
-      color: var(--slate-700);
-      vertical-align: top;
-    }
-
-    td:first-child { font-weight: 500; color: var(--slate-800); }
-
-    .td--right { text-align: right; font-variant-numeric: tabular-nums; }
-
-    .tr--total td {
-      background: var(--slate-900);
-      color: var(--white);
-      font-weight: 700;
-      font-size: 1rem;
-    }
-
-    .tr--subtotal td {
-      background: var(--teal-50);
-      color: var(--teal-900);
-      font-weight: 600;
-    }
-
-    .tr--free td.td--right { color: var(--teal-600); font-weight: 600; }
-
-    /* ============================================================
-       ARCHITECTURE DIAGRAM
-    ============================================================ */
-    .arch-diagram {
-      background: var(--slate-900);
-      border-radius: var(--radius-xl);
-      padding: clamp(1.5rem, 4vw, 3rem);
-      box-shadow: var(--shadow-lg);
-      overflow-x: auto;
-    }
-
-    .arch-flow {
-      display: flex;
-      align-items: center;
-      gap: 0;
-      flex-wrap: nowrap;
-      min-width: 560px;
-      justify-content: center;
-    }
-
-    .arch-node {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: .35rem;
-      text-align: center;
-    }
-
-    .arch-node__box {
-      border-radius: var(--radius-md);
-      padding: .6rem 1rem;
-      font-size: var(--text-xs);
-      font-weight: 600;
-      white-space: nowrap;
-      border: 1px solid transparent;
-      min-width: 90px;
-    }
-
-    .arch-node__label {
-      font-size: .68rem;
-      color: var(--slate-500);
-      letter-spacing: .04em;
-    }
-
-    .arch-node--user .arch-node__box    { background: rgba(255,255,255,.07); border-color: rgba(255,255,255,.12); color: var(--slate-300); }
-    .arch-node--cf   .arch-node__box    { background: rgba(249,115,22,.15); border-color: rgba(249,115,22,.3); color: #fdba74; }
-    .arch-node--fe   .arch-node__box    { background: rgba(20,184,166,.18); border-color: rgba(20,184,166,.35); color: var(--teal-200); }
-    .arch-node--be   .arch-node__box    { background: rgba(99,102,241,.18); border-color: rgba(99,102,241,.3); color: #c7d2fe; }
-    .arch-node--db   .arch-node__box    { background: rgba(248,113,113,.18); border-color: rgba(248,113,113,.3); color: #fca5a5; }
-    .arch-node--gcs  .arch-node__box    { background: rgba(251,191,36,.14); border-color: rgba(251,191,36,.28); color: #fde68a; }
-    .arch-node--sm   .arch-node__box    { background: rgba(167,139,250,.14); border-color: rgba(167,139,250,.28); color: #ddd6fe; }
-
-    .arch-arrow {
-      width: 32px;
-      flex-shrink: 0;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      color: var(--slate-500);
-      font-size: 1.2rem;
-      line-height: 1;
-    }
-
-    .arch-arrow--iam {
-      position: relative;
-    }
-    .arch-arrow--iam::after {
-      content: 'IAM';
-      position: absolute;
-      top: -1rem;
-      font-size: .6rem;
-      font-weight: 700;
-      color: var(--teal-400);
-      letter-spacing: .04em;
-      white-space: nowrap;
-    }
-
-    .arch-side-row {
-      display: flex;
-      justify-content: center;
-      gap: clamp(1rem, 3vw, 2rem);
-      margin-top: 2rem;
-      flex-wrap: wrap;
-    }
-
-    .arch-side-node .arch-node__box {
-      background: rgba(255,255,255,.06);
-      border-color: rgba(255,255,255,.1);
-      color: var(--slate-300);
-      font-size: .7rem;
-      padding: .4rem .75rem;
-    }
-
-    .arch-connector {
-      text-align: center;
-      color: var(--slate-600);
-      font-size: .7rem;
-      margin-bottom: .3rem;
-    }
-
-    .arch-data-stores {
-      display: flex;
-      justify-content: center;
-      gap: 1rem;
-      margin-top: 1.25rem;
-      flex-wrap: wrap;
-    }
-
-    /* ============================================================
-       THRESHOLD TABLE
-    ============================================================ */
-    .threshold-list {
-      display: flex;
-      flex-direction: column;
-      gap: .85rem;
-    }
-
-    .threshold-item {
-      display: grid;
-      grid-template-columns: auto 1fr auto;
-      gap: .75rem 1.25rem;
-      align-items: start;
-      padding: 1rem 1.25rem;
-      background: var(--white);
-      border: var(--border);
-      border-radius: var(--radius-md);
-      box-shadow: var(--shadow-sm);
-    }
-
-    .threshold-item__icon {
-      width: 36px; height: 36px;
-      border-radius: 8px;
-      display: flex; align-items: center; justify-content: center;
-      font-size: 1rem;
-      flex-shrink: 0;
-    }
-
-    .threshold-item__body { min-width: 0; }
-    .threshold-item__name { font-weight: 600; color: var(--slate-800); font-size: var(--text-sm); }
-    .threshold-item__desc { font-size: var(--text-xs); color: var(--slate-500); margin-top: .1rem; }
-    .threshold-item__trigger { font-size: var(--text-xs); color: var(--slate-600); margin-top: .3rem; }
-
-    /* ============================================================
-       ROADMAP
-    ============================================================ */
-    .roadmap-steps {
-      display: flex;
-      flex-direction: column;
-      gap: 0;
-      position: relative;
-    }
-
-    .roadmap-steps::before {
-      content: '';
-      position: absolute;
-      left: 17px;
-      top: 24px;
-      bottom: 24px;
-      width: 2px;
-      background: linear-gradient(to bottom, var(--teal-400), var(--slate-300));
-    }
-
-    .roadmap-step {
-      display: grid;
-      grid-template-columns: 36px 1fr;
-      gap: 1.25rem;
-      padding-bottom: 2rem;
-      position: relative;
-    }
-
-    .roadmap-step:last-child { padding-bottom: 0; }
-
-    .roadmap-step__dot {
-      width: 36px; height: 36px;
-      border-radius: 50%;
-      display: flex; align-items: center; justify-content: center;
-      font-size: .85rem;
-      font-weight: 700;
-      flex-shrink: 0;
-      position: relative;
-      z-index: 1;
-    }
-
-    .roadmap-step__dot--active {
-      background: var(--teal-600);
-      color: var(--white);
-      box-shadow: 0 0 0 4px rgba(13,148,136,.2);
-    }
-
-    .roadmap-step__dot--future {
-      background: var(--slate-100);
-      color: var(--slate-400);
-      border: 2px solid var(--slate-200);
-    }
-
-    .roadmap-step__body { padding-top: .4rem; }
-    .roadmap-step__title { font-weight: 600; color: var(--slate-800); margin-bottom: .25rem; }
-    .roadmap-step__desc  { font-size: var(--text-sm); color: var(--slate-500); }
-    .roadmap-step__cost  {
-      display: inline-block;
-      font-size: var(--text-xs);
-      font-weight: 600;
-      padding: .15rem .55rem;
-      border-radius: 100px;
-      margin-top: .4rem;
-    }
-    .roadmap-step__cost--free { background: #dcfce7; color: #166534; }
-    .roadmap-step__cost--paid { background: var(--teal-100); color: var(--teal-700); }
-
-    /* ============================================================
-       EXEC SUMMARY
-    ============================================================ */
-    .exec-summary {
-      background: linear-gradient(135deg, var(--teal-900) 0%, var(--slate-900) 100%);
-      border-radius: var(--radius-xl);
-      padding: clamp(2rem, 5vw, 4rem);
-      box-shadow: var(--shadow-lg);
-    }
-
-    .exec-summary h2 { color: var(--white); }
-    .exec-summary .eyebrow { color: var(--teal-400); }
-
-    .exec-points {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-      gap: 1.25rem;
-      margin-top: 2rem;
-    }
-
-    .exec-point {
-      background: rgba(255,255,255,.06);
-      border: 1px solid rgba(255,255,255,.1);
-      border-radius: var(--radius-md);
-      padding: 1.25rem 1.5rem;
-    }
-
-    .exec-point__num {
-      font-size: 2rem;
-      font-weight: 800;
-      color: var(--teal-400);
-      line-height: 1;
-      margin-bottom: .5rem;
-    }
-
-    .exec-point__text {
-      font-size: var(--text-sm);
-      color: rgba(255,255,255,.65);
-      line-height: 1.5;
-    }
-
-    /* ============================================================
-       ASSUMPTIONS BOX
-    ============================================================ */
-    .assumptions-box {
-      background: var(--slate-50);
-      border: 1px solid var(--slate-200);
-      border-left: 4px solid var(--teal-400);
-      border-radius: var(--radius-md);
-      padding: 1.5rem 2rem;
-    }
-
-    .assumptions-box h3 {
-      font-size: 1rem;
-      color: var(--slate-700);
-      margin-bottom: 1rem;
-    }
-
-    .assumptions-box ul {
-      list-style: none;
-      display: flex;
-      flex-direction: column;
-      gap: .4rem;
-    }
-
-    .assumptions-box li {
-      font-size: var(--text-sm);
-      color: var(--slate-600);
-      display: flex;
-      gap: .6rem;
-    }
-
-    .assumptions-box li::before {
-      content: '→';
-      color: var(--teal-500);
-      flex-shrink: 0;
-      font-weight: 700;
-    }
-
-    /* ============================================================
-       FOOTNOTE
-    ============================================================ */
-    .footnote {
-      font-size: var(--text-xs);
-      color: var(--slate-400);
-      margin-top: .5rem;
-    }
-
-    /* ============================================================
-       NAV (PRINT HIDDEN)
-    ============================================================ */
-    .sticky-nav {
-      position: sticky;
-      top: 0;
-      z-index: 50;
-      background: rgba(255,255,255,.92);
-      backdrop-filter: blur(12px);
-      border-bottom: var(--border);
-      padding: .65rem 0;
-    }
-
-    .sticky-nav .container {
-      display: flex;
-      align-items: center;
-      gap: 1rem;
-      overflow-x: auto;
-      scrollbar-width: none;
-    }
-
-    .sticky-nav .container::-webkit-scrollbar { display: none; }
-
-    .sticky-nav__logo {
-      font-weight: 800;
-      font-size: .95rem;
-      color: var(--teal-700);
-      white-space: nowrap;
-      flex-shrink: 0;
-      text-decoration: none;
-    }
-
-    .sticky-nav__logo span { color: var(--slate-400); font-weight: 400; }
-
-    .nav-links {
-      display: flex;
-      gap: .15rem;
-      list-style: none;
-      flex-shrink: 0;
-    }
-
-    .nav-links a {
-      font-size: var(--text-xs);
-      font-weight: 500;
-      color: var(--slate-500);
-      text-decoration: none;
-      padding: .3rem .7rem;
-      border-radius: var(--radius-sm);
-      white-space: nowrap;
-      transition: color .15s, background .15s;
-    }
-
-    .nav-links a:hover { color: var(--teal-700); background: var(--teal-50); }
-
-    /* ============================================================
-       PRINT
-    ============================================================ */
-    @media print {
-      .sticky-nav { display: none; }
-      body { background: white; font-size: 11pt; }
-      .section { padding: 2rem 0; }
-      .hero { padding: 2.5rem 0; }
-      .card { box-shadow: none; border: 1px solid #ddd; }
-      .table-wrap { box-shadow: none; }
-      h1 { font-size: 2.2rem; }
-      h2 { font-size: 1.5rem; }
-      .arch-diagram { background: #1e293b; }
-      .exec-summary { background: #134e4a; }
-      a { text-decoration: none; color: inherit; }
-      thead th { background: #1e293b !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-      .tr--total td { background: #1e293b !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-    }
-
-    /* ============================================================
-       RESPONSIVE TWEAKS
-    ============================================================ */
-    @media (max-width: 600px) {
-      .hero__meta-sep { display: none; }
-      .threshold-item { grid-template-columns: auto 1fr; }
-      .threshold-item__icon + .threshold-item__body { grid-column: 2; }
-    }
-
-    /* ============================================================
-       UTILITY
-    ============================================================ */
-    .mt-1 { margin-top: .5rem; }
-    .mt-2 { margin-top: 1rem; }
-    .mt-3 { margin-top: 1.5rem; }
-    .mt-4 { margin-top: 2rem; }
-    .mb-2 { margin-bottom: 1rem; }
-    .mb-4 { margin-bottom: 2rem; }
-    .text-center { text-align: center; }
-    .font-mono { font-family: ui-monospace, 'Cascadia Code', monospace; }
-    .text-teal { color: var(--teal-600); }
-    .text-muted { color: var(--slate-400); }
-    .divider { height: 1px; background: var(--slate-100); margin: 2rem 0; }
-    strong { color: var(--slate-800); }
-
-    .highlight-box {
-      background: var(--teal-50);
-      border: var(--border-teal);
-      border-radius: var(--radius-md);
-      padding: 1rem 1.25rem;
-      margin-top: 1rem;
-    }
-
-    .highlight-box p {
-      color: var(--teal-700);
-      font-size: var(--text-sm);
-      margin: 0;
-    }
-  </style>
-</head>
-<body>
-
-<!-- ============================================================
-     NAV
-============================================================ -->
-<nav class="sticky-nav" aria-label="Navegación de la presentación">
-  <div class="container">
-    <a href="#hero" class="sticky-nav__logo">Delta Salud <span>/ Inversionistas 2026</span></a>
-    <ul class="nav-links">
-      <li><a href="#producto">Producto</a></li>
-      <li><a href="#arquitectura">Arquitectura</a></li>
-      <li><a href="#costos">Costos</a></li>
-      <li><a href="#umbrales">Free Tier</a></li>
-      <li><a href="#seguridad">Seguridad</a></li>
-      <li><a href="#staging">Staging</a></li>
-      <li><a href="#roadmap">Roadmap</a></li>
-      <li><a href="#resumen">Resumen</a></li>
-    </ul>
-  </div>
-</nav>
-
-<!-- ============================================================
-     HERO
-============================================================ -->
-<header class="hero" id="hero">
-  <div class="container">
-    <div class="hero__tag">
-      <span class="hero__tag-dot"></span>
-      Presentación para Inversionistas · Julio 2026
-    </div>
-    <h1>Delta Salud CRM<br /><span>Infraestructura que escala<br />con el negocio</span></h1>
-    <p class="lead">
-      Un sistema de gestión médica (CRM) construido sobre la nube de Google, diseñado para crecer
-      de cero a decenas de miles de médicos en Venezuela —pagando casi nada cuando no hay usuarios,
-      y escalando de forma predecible cuando los hay.
-    </p>
-    <div class="hero__meta">
-      <div class="hero__meta-item">
-        <span class="hero__meta-value">~$30</span>
-        <span class="hero__meta-label">costo/mes a 0 usuarios (hoy $0 con crédito GCP)</span>
-      </div>
-      <div class="hero__meta-sep"></div>
-      <div class="hero__meta-item">
-        <span class="hero__meta-value">$0</span>
-        <span class="hero__meta-label">Cloud Run en reposo</span>
-      </div>
-      <div class="hero__meta-sep"></div>
-      <div class="hero__meta-item">
-        <span class="hero__meta-value">25 k</span>
-        <span class="hero__meta-label">usuarios gratis en Auth0</span>
-      </div>
-      <div class="hero__meta-sep"></div>
-      <div class="hero__meta-item">
-        <span class="hero__meta-value">AES-256</span>
-        <span class="hero__meta-label">cifrado de datos médicos</span>
-      </div>
-    </div>
-  </div>
-</header>
-
-<!-- ============================================================
-     PRODUCTO
-============================================================ -->
-<section class="section" id="producto">
-  <div class="container">
-    <div class="section-header">
-      <span class="eyebrow">El Producto</span>
-      <h2>¿Qué hace Delta Salud CRM?</h2>
-      <p class="lead">
-        Una plataforma de software (<em>SaaS</em> — se usa por internet, sin instalar nada) que
-        ayuda a los médicos venezolanos a digitalizar su consulta: historia clínica, agenda, cobros,
-        informes, récipes y seguimiento de pacientes, todo en un solo lugar.
-      </p>
-    </div>
-
-    <div class="bento">
-      <div class="bento__item--6">
-        <div class="card">
-          <span class="eyebrow">Módulos principales</span>
-          <h3>Consulta médica digital</h3>
-          <p>Historia clínica estructurada con bloques (antecedentes, diagnóstico, tratamiento, paraclínicos), firma digital del médico, generación de récipes e informes en PDF.</p>
-        </div>
-      </div>
-      <div class="bento__item--6">
-        <div class="card">
-          <span class="eyebrow">Agenda y reservas</span>
-          <h3>Gestión de citas</h3>
-          <p>Sistema de reservas en línea para los pacientes. Los médicos configuran su horario por consultorio y el sistema bloquea horas ocupadas automáticamente.</p>
-        </div>
-      </div>
-      <div class="bento__item--4">
-        <div class="card card--teal">
-          <span class="eyebrow">Finanzas</span>
-          <h3>Control de ingresos</h3>
-          <p>Registro de cobros, métodos de pago (bolívares / dólares), tasa BCV integrada, comprobantes y gestión de deudas pendientes.</p>
-        </div>
-      </div>
-      <div class="bento__item--4">
-        <div class="card">
-          <span class="eyebrow">Inteligencia Artificial</span>
-          <h3>Asistente IA (Gemini)</h3>
-          <p>El médico dicta sus notas por voz; la IA transcribe y sugiere el récipe. Función protegida por plan (Delta Plus).</p>
-          <p class="footnote">*IA = software que imita razonamiento humano para analizar texto y voz.</p>
-        </div>
-      </div>
-      <div class="bento__item--4">
-        <div class="card">
-          <span class="eyebrow">Seguridad médica</span>
-          <h3>Privacidad de pacientes</h3>
-          <p>Datos sensibles cifrados (codificados de forma irreversible sin la clave correcta). El backend nunca expone información sin verificar que sea el médico correcto.</p>
-        </div>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- ============================================================
-     ARQUITECTURA
-============================================================ -->
-<section class="section section--alt" id="arquitectura">
-  <div class="container">
-    <div class="section-header">
-      <span class="eyebrow">Infraestructura</span>
-      <h2>Cómo está construido</h2>
-      <p class="lead">
-        Todo corre en Google Cloud (GCP), con Cloudflare como capa de seguridad y velocidad
-        frente a los usuarios. El diseño es <strong>modular</strong>: cada pieza escala
-        de forma independiente.
-      </p>
-    </div>
-
-    <!-- DIAGRAM -->
-    <div class="arch-diagram">
-      <p style="text-align:center;color:#94a3b8;font-size:.75rem;margin-bottom:1.5rem;letter-spacing:.06em;text-transform:uppercase;">Flujo de tráfico — de izquierda a derecha</p>
-
-      <div class="arch-flow">
-        <!-- Usuario -->
-        <div class="arch-node arch-node--user">
-          <div class="arch-node__box">👤 Médico / Paciente</div>
-          <span class="arch-node__label">Navegador web</span>
-        </div>
-        <div class="arch-arrow">→</div>
-        <!-- Cloudflare -->
-        <div class="arch-node arch-node--cf">
-          <div class="arch-node__box">☁ Cloudflare</div>
-          <span class="arch-node__label">CDN · WAF · HTTPS</span>
-        </div>
-        <div class="arch-arrow">→</div>
-        <!-- Frontend -->
-        <div class="arch-node arch-node--fe">
-          <div class="arch-node__box">Frontend<br /><span style="font-weight:400;opacity:.8">Next.js</span></div>
-          <span class="arch-node__label">Cloud Run · escala a 0</span>
-        </div>
-        <div class="arch-arrow arch-arrow--iam">→</div>
-        <!-- Backend -->
-        <div class="arch-node arch-node--be">
-          <div class="arch-node__box">Backend<br /><span style="font-weight:400;opacity:.8">NestJS DDD</span></div>
-          <span class="arch-node__label">Cloud Run · solo IAM</span>
-        </div>
-        <div class="arch-arrow">→</div>
-        <!-- Datos -->
-        <div class="arch-node">
-          <div class="arch-node arch-node--db" style="margin-bottom:.5rem">
-            <div class="arch-node__box">Cloud SQL<br /><span style="font-weight:400;opacity:.8">PostgreSQL</span></div>
-            <span class="arch-node__label">Base de datos</span>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Delta Salud — Costos de infraestructura</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --teal: #0f766e;
+        --teal-soft: #ccfbf1;
+        --teal-line: #99f6e4;
+        --ink: #0f172a;
+        --slate: #475569;
+        --slate-soft: #64748b;
+        --line: #e2e8f0;
+        --bg: #f8fafc;
+        --white: #ffffff;
+        --amber: #b45309;
+        --amber-soft: #fef3c7;
+        --green: #15803d;
+      }
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      body {
+        font-family: "Inter", -apple-system, system-ui, sans-serif;
+        color: var(--ink);
+        background: var(--bg);
+        line-height: 1.5;
+        -webkit-font-smoothing: antialiased;
+      }
+      .wrap { max-width: 960px; margin: 0 auto; padding: 3rem 1.5rem 4rem; }
+
+      header.top { border-bottom: 3px solid var(--teal); padding-bottom: 1.25rem; margin-bottom: 2rem; }
+      .brand { color: var(--teal); font-weight: 800; font-size: 1.05rem; letter-spacing: -0.01em; }
+      h1 { font-size: clamp(1.7rem, 1.1rem + 2.4vw, 2.6rem); font-weight: 800; letter-spacing: -0.02em; margin-top: 0.4rem; }
+      .sub { color: var(--slate); font-size: 1.05rem; margin-top: 0.5rem; }
+
+      section { margin-top: 2.75rem; }
+      h2 {
+        font-size: 1.35rem; font-weight: 700; letter-spacing: -0.01em;
+        display: flex; align-items: baseline; gap: 0.6rem;
+      }
+      h2 .num {
+        font-size: 0.8rem; font-weight: 700; color: var(--teal);
+        background: var(--teal-soft); border-radius: 999px; padding: 0.15rem 0.6rem;
+      }
+      .lead { color: var(--slate); margin-top: 0.5rem; max-width: 60ch; }
+
+      /* Situación actual card */
+      .now {
+        margin-top: 1.25rem; display: grid; grid-template-columns: 1.1fr 1fr; gap: 1rem;
+      }
+      .card {
+        background: var(--white); border: 1px solid var(--line); border-radius: 14px; padding: 1.4rem 1.5rem;
+      }
+      .card--hero { background: linear-gradient(135deg, #0f766e, #115e59); color: #ecfeff; border: none; }
+      .card--hero .big { font-size: 2.4rem; font-weight: 800; letter-spacing: -0.02em; line-height: 1; }
+      .card--hero .cap { opacity: 0.85; font-size: 0.95rem; margin-top: 0.4rem; }
+      .card--hero .note { font-size: 0.85rem; opacity: 0.8; margin-top: 0.9rem; border-top: 1px solid rgba(255,255,255,.2); padding-top: 0.8rem; }
+      .mini { display: flex; justify-content: space-between; padding: 0.42rem 0; border-bottom: 1px dashed var(--line); font-size: 0.95rem; }
+      .mini:last-child { border-bottom: none; }
+      .mini b { font-variant-numeric: tabular-nums; }
+      .mini .muted { color: var(--slate-soft); font-size: 0.82rem; font-weight: 400; }
+
+      table { width: 100%; border-collapse: collapse; margin-top: 1.1rem; background: var(--white); border-radius: 14px; overflow: hidden; border: 1px solid var(--line); }
+      thead th { background: var(--ink); color: #fff; font-weight: 600; font-size: 0.82rem; text-align: right; padding: 0.85rem 1rem; white-space: nowrap; }
+      thead th:first-child { text-align: left; }
+      tbody td { padding: 0.72rem 1rem; text-align: right; font-size: 0.95rem; font-variant-numeric: tabular-nums; border-top: 1px solid var(--line); }
+      tbody td:first-child { text-align: left; font-weight: 500; }
+      tbody tr:nth-child(even) { background: #fbfdfe; }
+      tr.total td { border-top: 2px solid var(--teal); font-weight: 800; font-size: 1.05rem; background: var(--teal-soft); }
+      tr.total td:first-child { color: var(--teal); }
+      .free { color: var(--green); font-weight: 600; }
+      .dash { color: var(--slate-soft); }
+      .zero { color: var(--green); font-weight: 700; }
+
+      /* table B */
+      table.mej td { text-align: left; }
+      table.mej td.price { text-align: right; font-weight: 700; color: var(--teal); white-space: nowrap; }
+      table.mej td .why { color: var(--slate); font-size: 0.85rem; }
+
+      .callout {
+        margin-top: 1.2rem; background: var(--teal-soft); border: 1px solid var(--teal-line);
+        border-radius: 12px; padding: 1.1rem 1.3rem; font-size: 0.95rem; color: #134e4a;
+      }
+      .callout b { color: var(--teal); }
+      .warn { background: var(--amber-soft); border-color: #fcd34d; color: #78350f; }
+      .warn b { color: var(--amber); }
+
+      ul.reco { list-style: none; margin-top: 1.1rem; display: grid; gap: 0.7rem; }
+      ul.reco li { background: var(--white); border: 1px solid var(--line); border-left: 3px solid var(--teal); border-radius: 8px; padding: 0.8rem 1rem; font-size: 0.97rem; }
+      ul.reco li b { color: var(--ink); }
+
+      .fine { color: var(--slate-soft); font-size: 0.82rem; margin-top: 0.7rem; }
+      footer { margin-top: 3rem; border-top: 1px solid var(--line); padding-top: 1rem; color: var(--slate-soft); font-size: 0.82rem; }
+
+      @media (max-width: 680px) {
+        .now { grid-template-columns: 1fr; }
+        thead th, tbody td { padding: 0.6rem 0.55rem; font-size: 0.8rem; }
+      }
+      @media print {
+        body { background: #fff; }
+        .wrap { padding: 0.5rem; }
+        section { break-inside: avoid; }
+        .card--hero { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        thead th, tr.total td, .callout, .card--hero { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <header class="top">
+        <div class="brand">Delta Salud CRM</div>
+        <h1>Costos de infraestructura</h1>
+        <p class="sub">Qué pagamos hoy, cuánto costaría al crecer, y las mejoras opcionales. Cifras reales de facturación (USD, 2026).</p>
+      </header>
+
+      <!-- 1. Situación actual -->
+      <section>
+        <h2><span class="num">1</span> Dónde estamos hoy</h2>
+        <p class="lead">Con la plataforma desplegada y <b>sin usuarios todavía</b>, el gasto real es de ~$33/mes — pero hoy lo cubre el crédito de prueba de Google.</p>
+        <div class="now">
+          <div class="card card--hero">
+            <div class="big">$0<span style="font-size:1.1rem;font-weight:600;opacity:.85;"> /mes de bolsillo</span></div>
+            <div class="cap">Estamos sobre el crédito de prueba de Google Cloud ($300; quedan ~$248).</div>
+            <div class="note">Costo real "bruto" hoy: <b>~$33/mes</b>. El costo base a 0 usuarios ronda <b>~$30/mes</b> y lo domina la base de datos (no se puede apagar).</div>
           </div>
-          <div class="arch-node arch-node--gcs">
-            <div class="arch-node__box">Cloud Storage<br /><span style="font-weight:400;opacity:.8">GCS</span></div>
-            <span class="arch-node__label">Archivos / PDFs</span>
-          </div>
-          <div class="arch-node arch-node--sm">
-            <div class="arch-node__box">Secret Manager</div>
-            <span class="arch-node__label">Claves cifrado</span>
+          <div class="card">
+            <div class="mini"><span>Base de datos <span class="muted">(Cloud SQL)</span></span><b>$28</b></div>
+            <div class="mini"><span>Despliegues <span class="muted">(Cloud Build)</span></span><b>$14</b></div>
+            <div class="mini"><span>Servidores <span class="muted">(Cloud Run)</span></span><b>$2</b></div>
+            <div class="mini"><span>Almacenamiento + varios</span><b>~$1</b></div>
+            <div class="mini"><span><b>Total bruto / mes</b></span><b>~$33</b></div>
           </div>
         </div>
-      </div>
+        <p class="fine">Los "despliegues" (Cloud Build) son costo de <b>desarrollo</b>: se pagan al publicar versiones, no por usuarios. En producción estable bajan a $2–5/mes.</p>
+      </section>
 
-      <!-- Servicios externos -->
-      <div style="margin-top:2rem;text-align:center;">
-        <p style="color:#64748b;font-size:.7rem;text-transform:uppercase;letter-spacing:.07em;margin-bottom:.75rem;">Servicios externos (integrados al backend)</p>
-        <div class="arch-side-row">
-          <div class="arch-node arch-side-node">
-            <div class="arch-node__box">Auth0</div>
-            <span class="arch-node__label" style="font-size:.65rem;color:#64748b">Login / Sesiones</span>
-          </div>
-          <div class="arch-node arch-side-node">
-            <div class="arch-node__box">Resend</div>
-            <span class="arch-node__label" style="font-size:.65rem;color:#64748b">Correos</span>
-          </div>
-          <div class="arch-node arch-side-node">
-            <div class="arch-node__box">Gemini AI</div>
-            <span class="arch-node__label" style="font-size:.65rem;color:#64748b">Transcripción · IA</span>
-          </div>
-          <div class="arch-node arch-side-node">
-            <div class="arch-node__box">Sentry</div>
-            <span class="arch-node__label" style="font-size:.65rem;color:#64748b">Monitoreo errores</span>
-          </div>
-        </div>
-      </div>
-
-      <div class="highlight-box" style="margin-top:2rem;background:rgba(13,148,136,.12);border-color:rgba(45,212,191,.3);">
-        <p style="color:#99f6e4;font-size:.75rem;">
-          <strong style="color:#2dd4bf;">Clave:</strong>
-          El backend <strong style="color:#2dd4bf;">no es accesible desde internet</strong>.
-          Solo el frontend (que sí es público) puede llamarlo, gracias a permisos de IAM
-          (sistema de control de acceso de Google). Esto reduce drásticamente la superficie de ataque.
-        </p>
-      </div>
-    </div>
-
-    <!-- PROVIDER CARDS -->
-    <div class="card-grid card-grid--3 mt-4">
-      <div class="card">
-        <span class="eyebrow">Cómputo</span>
-        <h3>Cloud Run</h3>
-        <p>Contenedores que <strong>se apagan solos</strong> cuando no hay visitas y arrancan en segundos cuando llegan. Si nadie usa la app a las 3 AM, no se paga nada.</p>
-        <p class="footnote">*Contenedor = una caja de software aislada, como una app en un teléfono.</p>
-        <span class="badge badge--green mt-1">Escala a $0</span>
-      </div>
-      <div class="card">
-        <span class="eyebrow">Base de datos</span>
-        <h3>Cloud SQL (PostgreSQL)</h3>
-        <p>La base de datos <strong>siempre está encendida</strong> para responder rápido a cualquier hora. Es el principal costo fijo del sistema. No escala a cero.</p>
-        <span class="badge badge--amber mt-1">Costo fijo mensual</span>
-      </div>
-      <div class="card">
-        <span class="eyebrow">Seguridad perimetral</span>
-        <h3>Cloudflare</h3>
-        <p>Se ubica <strong>entre los usuarios e internet</strong> y filtra tráfico malicioso, acelera la carga de la app y gestiona el dominio <code>deltasalud.app</code>.</p>
-        <span class="badge badge--teal mt-1">Plan Free hoy</span>
-      </div>
-      <div class="card">
-        <span class="eyebrow">Autenticación</span>
-        <h3>Auth0</h3>
-        <p>Gestiona el <strong>inicio de sesión</strong> de médicos y pacientes. Gratis hasta 25.000 usuarios activos al mes (MAU = usuarios que entran al menos una vez al mes).</p>
-        <span class="badge badge--green mt-1">Gratis hasta 25 k MAU</span>
-      </div>
-      <div class="card">
-        <span class="eyebrow">Correo transaccional</span>
-        <h3>Resend</h3>
-        <p>Envía correos automáticos: confirmación de citas, recordatorios, compartir documentos médicos. Gratis hasta <strong>3.000 emails al mes</strong>.</p>
-        <span class="badge badge--green mt-1">Gratis hasta 3 k/mes</span>
-      </div>
-      <div class="card">
-        <span class="eyebrow">Inteligencia Artificial</span>
-        <h3>Google Gemini</h3>
-        <p>Transcribe notas de voz del médico y asiste en la redacción del récipe. Gratis hoy con límites de uso; la transcripción de audio es el motor de costo a futuro.</p>
-        <span class="badge badge--green mt-1">Free tier activo</span>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- ============================================================
-     SUPUESTOS
-============================================================ -->
-<section class="section" id="supuestos">
-  <div class="container">
-    <div class="section-header">
-      <span class="eyebrow">Metodología</span>
-      <h2>Supuestos de consumo por usuario</h2>
-      <p class="lead">
-        Las tablas de costo se construyen sobre estimaciones razonables para un médico en
-        consulta activa. Los precios se verificaron en julio de 2026.
-      </p>
-    </div>
-
-    <div class="assumptions-box">
-      <h3>Supuestos base (por usuario activo/mes)</h3>
-      <ul>
-        <li><strong>Peticiones HTTP al backend:</strong> ~500 peticiones/mes/usuario (consultas, citas, pagos, historial). En Cloud Run: petición promedio ≈ 200 ms, 0,25 vCPU.</li>
-        <li><strong>Base de datos (Cloud SQL):</strong> El tamaño de instancia determina el costo fijo. Se escala de tier cuando la latencia o el almacenamiento lo requiere. <strong>La instancia real en producción hoy es <code>db-g1-small</code> (~$28/mes, 1,7 GB RAM)</strong>, suficiente para hasta ~1.000 usuarios. Tier siguiente: <code>db-custom-1</code> (1 vCPU / 3,75 GB RAM) ~$54/mes, hasta algunos miles de usuarios. Para 10.000+: <code>db-custom-2</code> (~$105/mes) o con alta disponibilidad <code>db-custom-2 + HA</code> (~$205/mes, duplica el cómputo). <strong>Redis (Memorystore Basic 1 GB) ≈ $36/mes</strong> (HA ≈ $70); hoy está desactivado (<code>REDIS_DISABLED=true</code>) y se activa al escalar. <strong>Cloud Build</strong> (compilación de imágenes en cada deploy) ≈ $2–14/mes según frecuencia de despliegues; es un costo de desarrollo, <em>no</em> por usuario.</li>
-        <li><strong>Almacenamiento (GCS):</strong> ~10 MB/usuario/mes (PDFs, firma, logo, archivos adjuntos). A 10.000 usuarios = 100 GB ≈ $2/mes.</li>
-        <li><strong>Correo (Resend):</strong> ~5 emails/usuario/mes (confirmaciones, recordatorios, documentos compartidos). 1.000 usuarios = 5.000 emails/mes → plan Pro activo.</li>
-        <li><strong>IA (Gemini):</strong> ~10% de los usuarios usa transcripción de voz; promedio 5 min/consulta, 20 consultas/mes. A 1.000 usuarios activos ≈ 1.000 min IA/mes. Flash model: costo marginal bajo en free tier o primeros dólares en paid.</li>
-        <li><strong>Auth0 MAU:</strong> Usuario activo = 1 login/mes al menos. Se cuenta solo quien entra, no cuentas inactivas.</li>
-        <li><strong>Sentry:</strong> Plan free tier (5.000 errores/mes). Sin costo hasta volumen alto.</li>
-        <li><strong>Precios en USD, julio 2026.</strong> Cloud SQL us-east1 ≈ 5-10% más que us-central1 (Iowa). Se usan rangos min-max donde hay incertidumbre regional.</li>
-        <li><strong>Cloud Run us-east1 = Tier 1 (mismo precio que Iowa).</strong> $0.000024/vCPU-seg, $0.0000025/GiB-seg. Free tier: 180.000 vCPU-seg/mes.</li>
-      </ul>
-    </div>
-  </div>
-</section>
-
-<!-- ============================================================
-     TABLA DE COSTOS
-============================================================ -->
-<section class="section section--alt" id="costos">
-  <div class="container">
-    <div class="section-header">
-      <span class="eyebrow">Proyección financiera</span>
-      <h2>¿Cuánto cuesta la infraestructura por escala de usuarios?</h2>
-      <p class="lead">
-        Dos escenarios: la <strong>configuración actual</strong> (segura y suficiente para lanzar)
-        y la configuración <strong>con seguridades adicionales</strong> (Load Balancer + Cloud Armor
-        de Google), pensada para cuando el volumen o la regulación lo exijan.
-      </p>
-    </div>
-
-    <!-- ESCENARIO 1 -->
-    <div class="mb-4">
-      <div style="display:flex;align-items:center;gap:.75rem;margin-bottom:1rem;">
-        <span class="badge badge--teal" style="font-size:.8rem;padding:.3rem .8rem;">Escenario A</span>
-        <h3 style="margin:0;font-size:1.1rem;">Configuración actual — Cloud Run + Cloud SQL + free tiers</h3>
-      </div>
-      <div class="table-wrap">
+      <!-- 2. Mantener lo actual, por escala -->
+      <section>
+        <h2><span class="num">2</span> Costo de mantener la configuración actual</h2>
+        <p class="lead">Estimado mensual a medida que entran usuarios activos. La app escala sola: pagas casi nada con pocos usuarios y el costo crece de forma predecible.</p>
         <table>
           <thead>
             <tr>
-              <th>Servicio</th>
-              <th style="text-align:right">0 usuarios</th>
-              <th style="text-align:right">100 usuarios</th>
-              <th style="text-align:right">1.000 usuarios</th>
-              <th style="text-align:right">10.000 usuarios</th>
-              <th style="text-align:right">100.000 usuarios ⁽¹⁾</th>
+              <th>Componente</th>
+              <th>Hoy · 0 usr</th>
+              <th>100</th>
+              <th>1.000</th>
+              <th>10.000</th>
             </tr>
           </thead>
           <tbody>
-            <tr class="tr--free">
-              <td>Cloud Run (frontend + backend)</td>
-              <td class="td--right">$0</td>
-              <td class="td--right">~$2 – $8</td>
-              <td class="td--right">~$30 – $40</td>
-              <td class="td--right">~$160 – $200</td>
-              <td class="td--right">~$650 – $750</td>
-            </tr>
-            <tr>
-              <td>Cloud SQL PostgreSQL ⁽²⁾</td>
-              <td class="td--right">$28</td>
-              <td class="td--right">$28</td>
-              <td class="td--right">$54</td>
-              <td class="td--right">$205</td>
-              <td class="td--right">$400+</td>
-            </tr>
-            <tr>
-              <td>Cloud Storage (GCS)</td>
-              <td class="td--right">&lt;$1</td>
-              <td class="td--right">~$0.02</td>
-              <td class="td--right">~$0.20</td>
-              <td class="td--right">~$2</td>
-              <td class="td--right">~$20</td>
-            </tr>
-            <tr>
-              <td>Cloud Build (despliegues) ⁽²ᵇ⁾</td>
-              <td class="td--right">$2 – $14</td>
-              <td class="td--right">~$5</td>
-              <td class="td--right">~$5</td>
-              <td class="td--right">~$10</td>
-              <td class="td--right">~$15</td>
-            </tr>
-            <tr>
-              <td>Redis — Memorystore Basic 1 GB ⁽²ᶜ⁾ <span class="badge badge--slate" style="margin-left:.4rem;font-size:.65rem;">hoy off</span></td>
-              <td class="td--right">—</td>
-              <td class="td--right">$36</td>
-              <td class="td--right">$36</td>
-              <td class="td--right">$70</td>
-              <td class="td--right">$140</td>
-            </tr>
-            <tr>
-              <td>Secret Manager</td>
-              <td class="td--right">&lt;$1</td>
-              <td class="td--right">&lt;$1</td>
-              <td class="td--right">&lt;$1</td>
-              <td class="td--right">&lt;$1</td>
-              <td class="td--right">~$1 – $2</td>
-            </tr>
-            <tr class="tr--free">
-              <td>Cloudflare <span class="badge badge--green" style="margin-left:.4rem;font-size:.65rem;">Free</span></td>
-              <td class="td--right">$0</td>
-              <td class="td--right">$0</td>
-              <td class="td--right">$0</td>
-              <td class="td--right">$0</td>
-              <td class="td--right">$0 → $20 ⁽³⁾</td>
-            </tr>
-            <tr class="tr--free">
-              <td>Auth0 <span class="badge badge--green" style="margin-left:.4rem;font-size:.65rem;">Free ≤25k MAU</span></td>
-              <td class="td--right">$0</td>
-              <td class="td--right">$0</td>
-              <td class="td--right">$0</td>
-              <td class="td--right">$0</td>
-              <td class="td--right">$35+ ⁽⁴⁾</td>
-            </tr>
-            <tr class="tr--free">
-              <td>Resend email <span class="badge badge--green" style="margin-left:.4rem;font-size:.65rem;">Free ≤3k/mes</span></td>
-              <td class="td--right">$0</td>
-              <td class="td--right">$0</td>
-              <td class="td--right">$20 ⁽⁵⁾</td>
-              <td class="td--right">$35 – $70</td>
-              <td class="td--right">$90 – $200</td>
-            </tr>
-            <tr class="tr--free">
-              <td>Google Gemini IA <span class="badge badge--green" style="margin-left:.4rem;font-size:.65rem;">Free tier</span></td>
-              <td class="td--right">$0</td>
-              <td class="td--right">$0</td>
-              <td class="td--right">$0 – $5 ⁽⁶⁾</td>
-              <td class="td--right">$10 – $50</td>
-              <td class="td--right">$100 – $500</td>
-            </tr>
-            <tr class="tr--free">
-              <td>Sentry monitoreo <span class="badge badge--green" style="margin-left:.4rem;font-size:.65rem;">Free tier</span></td>
-              <td class="td--right">$0</td>
-              <td class="td--right">$0</td>
-              <td class="td--right">$0</td>
-              <td class="td--right">$0 – $26</td>
-              <td class="td--right">$26 – $80</td>
-            </tr>
-            <tr class="tr--total">
-              <td>TOTAL MENSUAL ESTIMADO</td>
-              <td class="td--right">~$32 – $43</td>
-              <td class="td--right">~$75 – $95</td>
-              <td class="td--right">~$150 – $200</td>
-              <td class="td--right">~$490 – $600</td>
-              <td class="td--right">~$1.300 – $1.600</td>
-            </tr>
+            <tr><td>Base de datos (Cloud SQL) ⁽¹⁾</td><td>$28</td><td>$28</td><td>$105 – $205</td><td>~$394</td></tr>
+            <tr><td>Servidores app (Cloud Run)</td><td>$2</td><td>~$8</td><td>~$35</td><td>~$180</td></tr>
+            <tr><td>Caché en memoria (Redis) ⁽²⁾</td><td class="dash">—</td><td class="dash">—</td><td>$36 – $70</td><td>~$70</td></tr>
+            <tr><td>Almacenamiento de archivos + varios</td><td>~$2</td><td>~$3</td><td>~$10</td><td>~$40</td></tr>
+            <tr><td>Correo transaccional (Resend)</td><td class="free">Gratis</td><td class="free">Gratis</td><td>$20</td><td>$20</td></tr>
+            <tr><td>Inicio de sesión (Auth0) ⁽³⁾</td><td class="free">Gratis</td><td class="free">Gratis</td><td class="free">Gratis</td><td class="free">Gratis</td></tr>
+            <tr><td>Despliegues (Cloud Build)</td><td>$2 – $14</td><td>~$5</td><td>~$5</td><td>~$10</td></tr>
+            <tr class="total"><td>Total estimado / mes</td><td>~$33</td><td>~$50</td><td>~$210 – $350</td><td>~$720</td></tr>
           </tbody>
         </table>
-      </div>
-      <p class="footnote mt-1">
-        ⁽¹⁾ 100.000 usuarios es proyección a largo plazo; implica rediseño de BD y posiblemente más réplicas.<br/>
-        ⁽²⁾ Cloud SQL: instancia real en producción = <strong>db-g1-small</strong> ($28/mes). Tiers: db-custom-1 (~$54/mes) a partir de ~1.000 usuarios; db-custom-2 (~$105/mes) o db-custom-2 + Alta Disponibilidad (~$205/mes) a partir de ~5.000–10.000 usuarios. La HA duplica el cómputo.<br/>
-        ⁽²ᵇ⁾ Cloud Build: costo por construcción de imagen en cada despliegue. No depende de usuarios sino de la frecuencia de deploys. En desarrollo activo puede alcanzar $14+/mes; en producción estable con deploys esporádicos baja a $2–5/mes.<br/>
-        ⁽²ᶜ⁾ Redis (Memorystore Basic): hoy desactivado (<code>REDIS_DISABLED=true</code>). Se activa al escalar para caché de sesiones y rate-limiting. Basic 1 GB ≈ $36/mes; HA 1 GB ≈ $70/mes.<br/>
-        ⁽³⁾ Cloudflare Pro ($20/mes) recomendable cuando se requiera WAF gestionado con reglas avanzadas.<br/>
-        ⁽⁴⁾ Auth0 free hasta 25.000 MAU. Primer plan pago Essentials B2C: $35/mes (500 MAU base) + ~$0.07/MAU adicional. A 100 k usuarios el costo puede ser significativo: verificar con Auth0.<br/>
-        ⁽⁵⁾ Resend free ≤3.000 emails/mes; 1.000 usuarios × 5 emails = 5.000/mes → activa plan Pro $20/mes (50.000 emails incluidos).<br/>
-        ⁽⁶⁾ Gemini Flash con audio: ~32 tokens/seg de audio. A bajo volumen puede mantenerse en free tier; a escala se vuelve el driver de costo de IA.
-      </p>
-    </div>
-
-    <div class="divider"></div>
-
-    <!-- ESCENARIO 2 -->
-    <div>
-      <div style="display:flex;align-items:center;gap:.75rem;margin-bottom:1rem;">
-        <span class="badge badge--amber" style="font-size:.8rem;padding:.3rem .8rem;">Escenario B</span>
-        <h3 style="margin:0;font-size:1.1rem;">Con seguridades adicionales — Load Balancer + Cloud Armor + Cloudflare Pro</h3>
-      </div>
-      <p style="color:var(--slate-500);font-size:var(--text-sm);margin-bottom:1.25rem;">
-        Este escenario agrega el <strong>HTTPS Load Balancer</strong> (distribuidor de tráfico de Google, ~$18/mes base)
-        y <strong>Cloud Armor</strong> (firewall de aplicaciones gestionado de Google, $5/política + $0.75/millón de peticiones)
-        junto con <strong>Cloudflare Pro</strong> ($20/mes con WAF y analítica avanzada). Opciones pensadas para cuando el negocio
-        crezca o lo requiera regulación.
-      </p>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Servicio adicional</th>
-              <th style="text-align:right">0 usuarios</th>
-              <th style="text-align:right">100 usuarios</th>
-              <th style="text-align:right">1.000 usuarios</th>
-              <th style="text-align:right">10.000 usuarios</th>
-              <th style="text-align:right">100.000 usuarios</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td>Base (Escenario A)</td>
-              <td class="td--right">$32 – $43</td>
-              <td class="td--right">$75 – $95</td>
-              <td class="td--right">$150 – $200</td>
-              <td class="td--right">$490 – $600</td>
-              <td class="td--right">$1.300 – $1.600</td>
-            </tr>
-            <tr>
-              <td>+ HTTPS Load Balancer ⁽⁷⁾</td>
-              <td class="td--right">+$18</td>
-              <td class="td--right">+$18</td>
-              <td class="td--right">+$18</td>
-              <td class="td--right">+$18 – $25</td>
-              <td class="td--right">+$25 – $60</td>
-            </tr>
-            <tr>
-              <td>+ Cloud Armor (WAF Google) ⁽⁸⁾</td>
-              <td class="td--right">+$5 – $10</td>
-              <td class="td--right">+$5 – $10</td>
-              <td class="td--right">+$6 – $12</td>
-              <td class="td--right">+$12 – $20</td>
-              <td class="td--right">+$30 – $100</td>
-            </tr>
-            <tr>
-              <td>+ Cloudflare Pro ⁽⁹⁾</td>
-              <td class="td--right">+$20</td>
-              <td class="td--right">+$20</td>
-              <td class="td--right">+$20</td>
-              <td class="td--right">+$20</td>
-              <td class="td--right">+$20</td>
-            </tr>
-            <tr class="tr--total">
-              <td>TOTAL MENSUAL — Escenario B</td>
-              <td class="td--right">~$59 – $75</td>
-              <td class="td--right">~$108 – $133</td>
-              <td class="td--right">~$194 – $250</td>
-              <td class="td--right">~$538 – $645</td>
-              <td class="td--right">~$1.375 – $1.695</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-      <p class="footnote mt-1">
-        ⁽⁷⁾ HTTPS Load Balancer: ~$18.25/mes (1 regla de reenvío, 730 h × $0.025/h) + tráfico procesado ($0.008/GB primeros 10 TB).<br/>
-        ⁽⁸⁾ Cloud Armor Standard: $5/política/mes + $1/regla/mes (≈5 reglas = $10 base) + $0.75/millón de peticiones. A 10.000 usuarios ≈ 5 M peticiones/mes = +$3.75.<br/>
-        ⁽⁹⁾ Cloudflare Pro: $20/mes (anual) o $25/mes (mensual). Precio anual usado aquí.
-      </p>
-    </div>
-
-    <div class="highlight-box mt-4" style="border-left:4px solid var(--teal-500);background:var(--teal-50);">
-      <p>
-        <strong style="color:var(--teal-700);">Hoy pagamos $0 de bolsillo.</strong>
-        El gasto real acumulado en julio 2026 es ~$33/mes (Cloud SQL $28, Cloud Build $14 en fase de desarrollo intenso, Cloud Run $2, Storage ~$1), cubierto íntegramente por el <strong>crédito de prueba de Google de $300</strong> — quedan aproximadamente $248 disponibles. El costo base a 0 usuarios ronda los <strong>~$30/mes</strong>, dominado por la base de datos que no puede apagarse. Cloud Run escala a $0 cuando no hay tráfico. Cloud Build es un costo de desarrollo por cada despliegue, no por usuario; en producción estable baja a $2–5/mes. El costo crece de forma predecible al sumar usuarios.
-      </p>
-    </div>
-
-    <div class="highlight-box mt-3">
-      <p>
-        <strong>¿Por qué el salto de costo ocurre entre 100 y 1.000 usuarios?</strong>
-        El plan Free de Resend se agota (5.000 emails/mes) y se activa Redis (Memorystore) para manejar la carga. Entre 1.000 y 10.000 usuarios la base de datos sube de tier (más RAM y vCPUs para conexiones simultáneas) y se recomienda activar Alta Disponibilidad.
-        Los demás servicios (Cloudflare, Auth0) se mantienen gratuitos hasta los 25.000 usuarios.
-      </p>
-    </div>
-  </div>
-</section>
-
-<!-- ============================================================
-     UMBRALES FREE TIER
-============================================================ -->
-<section class="section" id="umbrales">
-  <div class="container">
-    <div class="section-header">
-      <span class="eyebrow">Gestión de costos</span>
-      <h2>¿Cuándo empezamos a pagar en cada servicio?</h2>
-      <p class="lead">
-        La estrategia es arrancar con los niveles gratuitos (<em>free tier</em>) de cada proveedor
-        y activar el pago solo cuando el negocio justifica el gasto. Aquí están los umbrales exactos.
-      </p>
-    </div>
-
-    <div class="threshold-list">
-
-      <div class="threshold-item">
-        <div class="threshold-item__icon" style="background:#fff7ed;font-size:1.1rem;">☁</div>
-        <div class="threshold-item__body">
-          <div class="threshold-item__name">Cloudflare</div>
-          <div class="threshold-item__desc">Hoy: Plan Free ($0). Incluye proxy, caché básico, HTTPS automático y analítica básica.</div>
-          <div class="threshold-item__trigger">
-            <strong>Gatillo de pago:</strong> Se recomienda pasar a <strong>Pro ($20/mes anual)</strong> cuando se quiera:
-            WAF con reglas personalizadas para bloquear ataques específicos, analítica avanzada de visitantes,
-            o soporte prioritario de Cloudflare. No es obligatorio para operar.
-          </div>
-        </div>
-        <div>
-          <span class="badge badge--green">Free indefinido</span>
-          <br/><span class="badge badge--amber" style="margin-top:.35rem;">Pro = $20/mes</span>
-        </div>
-      </div>
-
-      <div class="threshold-item">
-        <div class="threshold-item__icon" style="background:#f0fdf4;font-size:1.1rem;">🔐</div>
-        <div class="threshold-item__body">
-          <div class="threshold-item__name">Auth0 (autenticación de usuarios)</div>
-          <div class="threshold-item__desc">Hoy: Plan Free. Incluye hasta <strong>25.000 usuarios activos al mes (MAU)</strong> sin costo. MAU = un usuario que inició sesión al menos una vez en el mes.</div>
-          <div class="threshold-item__trigger">
-            <strong>Gatillo de pago:</strong> Al superar 25.000 MAU (doctores + pacientes activos simultáneos).
-            Primer plan pago Essentials B2C: <strong>$35/mes</strong> para 500 MAU base + ~$0.07 por cada MAU adicional.
-            <em>Ejemplo: a 30.000 MAU ≈ $35 + (4.500 × $0.07) = $350/mes.</em>
-            Verificar precio actualizado en auth0.com/pricing.
-          </div>
-        </div>
-        <div>
-          <span class="badge badge--green">Gratis ≤25k MAU</span>
-          <br/><span class="badge badge--amber" style="margin-top:.35rem;">Essentials desde $35/mes</span>
-        </div>
-      </div>
-
-      <div class="threshold-item">
-        <div class="threshold-item__icon" style="background:#eff6ff;font-size:1.1rem;">✉</div>
-        <div class="threshold-item__body">
-          <div class="threshold-item__name">Resend (correo transaccional)</div>
-          <div class="threshold-item__desc">Hoy: Plan Free. Incluye <strong>3.000 emails/mes</strong> con un límite de 100 por día.</div>
-          <div class="threshold-item__trigger">
-            <strong>Gatillo de pago:</strong> ~600 usuarios activos con 5 emails/mes cada uno (3.000 emails/mes).
-            Plan Pro: <strong>$20/mes</strong> para hasta 50.000 emails/mes (excedente: $0.90/1.000 emails).
-            El límite de 100 emails/día del Free puede ser el primero en ajustarse cuando hay muchas citas en un solo día.
-          </div>
-        </div>
-        <div>
-          <span class="badge badge--green">Gratis ≤3k/mes</span>
-          <br/><span class="badge badge--amber" style="margin-top:.35rem;">Pro = $20/mes</span>
-        </div>
-      </div>
-
-      <div class="threshold-item">
-        <div class="threshold-item__icon" style="background:#f0fdfa;font-size:1.1rem;">🤖</div>
-        <div class="threshold-item__body">
-          <div class="threshold-item__name">Google Gemini (Inteligencia Artificial)</div>
-          <div class="threshold-item__desc">Hoy: Free tier (modelos Flash). Límite: 15 peticiones/minuto, 1.500/día. Solo modelos Flash; los modelos Pro ya no están en free tier desde abril 2026.</div>
-          <div class="threshold-item__trigger">
-            <strong>Gatillo de pago:</strong> Cuando el volumen de transcripciones de voz supere el límite diario
-            de peticiones o se requiera mayor velocidad. La transcripción de audio es el driver de costo:
-            ~32 tokens/seg de audio × tarifas del modelo. A bajo volumen (≤200 médicos usando IA),
-            el free tier suele ser suficiente.
-          </div>
-        </div>
-        <div>
-          <span class="badge badge--green">Free tier activo</span>
-          <br/><span class="badge badge--slate" style="margin-top:.35rem;">Pay-per-use al escalar</span>
-        </div>
-      </div>
-
-      <div class="threshold-item">
-        <div class="threshold-item__icon" style="background:#fafafa;font-size:1.1rem;">🗄</div>
-        <div class="threshold-item__body">
-          <div class="threshold-item__name">Cloud SQL (base de datos)</div>
-          <div class="threshold-item__desc">No tiene free tier: es el <strong>único costo fijo desde el día 1</strong>. La instancia real en producción hoy es <strong>db-g1-small</strong>, que cuesta ~$28/mes (1,7 GB RAM).</div>
-          <div class="threshold-item__trigger">
-            <strong>Cuándo subir de tier:</strong> db-g1-small → db-custom-1 (~$54/mes) alrededor de 1.000 usuarios activos. db-custom-1 → db-custom-2 (~$105/mes) o db-custom-2 + Alta Disponibilidad (~$205/mes) alrededor de 5.000–10.000 usuarios. HA duplica el cómputo y garantiza continuidad ante fallas del servidor. Señal de subida: latencia de consultas aumenta o el disco se acerca al límite.
-          </div>
-        </div>
-        <div>
-          <span class="badge badge--amber">Desde $28/mes siempre</span>
-          <br/><span class="badge badge--red" style="margin-top:.35rem;">No escala a $0</span>
-        </div>
-      </div>
-
-    </div>
-  </div>
-</section>
-
-<!-- ============================================================
-     DOMINIO API
-============================================================ -->
-<section class="section section--alt" id="seguridad">
-  <div class="container">
-    <div class="section-header">
-      <span class="eyebrow">Seguridad y control</span>
-      <h2>Dominio propio para el backend: <code style="font-size:1.2rem;">api.deltasalud.app</code></h2>
-      <p class="lead">
-        Hoy el backend se accede por una URL interna larga de Google (<code>delta-backend-xxxx.run.app</code>).
-        Con un dominio propio enrutado por Cloudflare, todo el tráfico —tanto el de la app como el del backend—
-        pasa por el mismo punto de control.
-      </p>
-    </div>
-
-    <div class="bento">
-      <div class="bento__item--6">
-        <div class="card">
-          <h3>¿Cuál es el problema hoy?</h3>
-          <p>
-            Cualquier persona que descubra la URL interna de Google podría intentar atacar el backend
-            directamente, aunque esté protegido por IAM. Además, queda visible que usamos Google Cloud,
-            lo que da información a posibles atacantes.
-          </p>
-          <p>
-            Usando una URL de Google también limitamos el control: si cambiamos de proveedor o de región,
-            la URL cambia y hay que actualizar referencias en todos lados.
-          </p>
-        </div>
-      </div>
-      <div class="bento__item--6">
-        <div class="card card--teal">
-          <h3>¿Qué resuelve <code style="color:var(--teal-200)">api.deltasalud.app</code>?</h3>
-          <p>
-            Todo el tráfico pasa por Cloudflare antes de llegar al backend.
-            Cloudflare puede bloquear IPs maliciosas, limitar peticiones abusivas y
-            ocultar que el backend vive en Google Cloud.
-          </p>
-          <p>
-            Si algún día cambiamos el servidor, solo actualizamos el DNS en Cloudflare;
-            la URL que usan los clientes nunca cambia.
-          </p>
-        </div>
-      </div>
-      <div class="bento__item--12">
-        <div class="card">
-          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1.25rem;">
-            <div>
-              <span class="badge badge--teal mb-2">Beneficio 1</span>
-              <h3>Ocultamiento del proveedor</h3>
-              <p>Los atacantes no saben si el backend está en Google, AWS o en un servidor propio. Reduce el riesgo de ataques dirigidos a vulnerabilidades específicas de GCP.</p>
-            </div>
-            <div>
-              <span class="badge badge--teal mb-2">Beneficio 2</span>
-              <h3>WAF unificado</h3>
-              <p>Con Cloudflare Pro, todas las reglas de firewall aplican igual para el frontend y el backend. Un solo panel para ver y gestionar ataques a toda la plataforma.</p>
-            </div>
-            <div>
-              <span class="badge badge--teal mb-2">Beneficio 3</span>
-              <h3>Independencia tecnológica</h3>
-              <p>La URL <code>api.deltasalud.app</code> es nuestra para siempre. Podemos migrar el backend sin afectar a integraciones externas o aplicaciones móviles futuras.</p>
-            </div>
-            <div>
-              <span class="badge badge--green mb-2">Costo</span>
-              <h3>Prácticamente gratuito</h3>
-              <p>Con Cloudflare Free el DNS ya está incluido. El Cloud Run Domain Mapping (mapeo de dominio en Google) es $0 adicional con la configuración actual.</p>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- ============================================================
-     STAGING
-============================================================ -->
-<section class="section" id="staging">
-  <div class="container">
-    <div class="section-header">
-      <span class="eyebrow">Buenas prácticas</span>
-      <h2>Servidor de pruebas (staging): por qué es necesario</h2>
-      <p class="lead">
-        Un entorno de staging es una copia idéntica de la app de producción, pero
-        que <strong>los usuarios reales nunca ven</strong>. Es donde se prueban los cambios antes de
-        publicarlos. Sin él, cada actualización es un riesgo directo para los médicos en uso.
-      </p>
-    </div>
-
-    <div class="bento">
-      <div class="bento__item--6">
-        <div class="card card--dark">
-          <span class="eyebrow" style="color:var(--teal-400)">Sin staging — riesgo real</span>
-          <h3>El problema</h3>
-          <p>Si un cambio en el código tiene un error, los médicos lo descubren en plena consulta. Un error en la generación de récipes, en el cobro o en la agenda puede generar desconfianza inmediata y pérdida de clientes.</p>
-        </div>
-      </div>
-      <div class="bento__item--6">
-        <div class="card">
-          <span class="eyebrow">Con staging — tranquilidad</span>
-          <h3>La solución</h3>
-          <p>El equipo prueba la nueva versión en <code>staging.deltasalud.app</code> durante uno o dos días. Solo cuando todo funciona correctamente, se publica en la app real. Los usuarios nunca ven errores no verificados.</p>
-        </div>
-      </div>
-      <div class="bento__item--12">
-        <div class="card">
-          <span class="eyebrow">Costo incremental del staging</span>
-          <h3>Casi todo escala a cero</h3>
-          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:1rem;margin-top:.75rem;">
-            <div>
-              <div style="font-weight:600;color:var(--teal-700);font-size:1.1rem;">$0</div>
-              <div style="font-size:var(--text-sm);color:var(--slate-500);">Cloud Run staging (escala a cero cuando no se usa)</div>
-            </div>
-            <div>
-              <div style="font-weight:600;color:var(--slate-800);font-size:1.1rem;">~$28/mes</div>
-              <div style="font-size:var(--text-sm);color:var(--slate-500);">Cloud SQL staging — instancia db-g1-small propia (misma que producción, se puede compartir para ahorrar)</div>
-            </div>
-            <div>
-              <div style="font-weight:600;color:var(--teal-700);font-size:1.1rem;">$0</div>
-              <div style="font-size:var(--text-sm);color:var(--slate-500);">Cloudflare DNS, Auth0 (mismo tenant), Resend (pocas pruebas)</div>
-            </div>
-            <div>
-              <div style="font-weight:600;color:var(--slate-800);font-size:1.1rem;">~$28/mes</div>
-              <div style="font-size:var(--text-sm);color:var(--slate-500);">Costo incremental total del ambiente de staging (dominado por la BD)</div>
-            </div>
-          </div>
-          <div class="highlight-box mt-3">
-            <p>
-              <strong>Recomendación:</strong> Incorporar un entorno de staging con su propia base de datos aislada (un clon de producción).
-              Protege la reputación del producto con los médicos y reduce el costo de corregir errores
-              en producción. La inversión de ~$28/mes adicionales (costo de la BD de staging) es marginal frente al riesgo evitado.
-              El dominio <code>api.deltasalud.app</code> está en la hoja de ruta como próximo paso para dar control total sobre el enrutamiento del backend.
-            </p>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- ============================================================
-     ROADMAP SEGURIDAD
-============================================================ -->
-<section class="section section--alt" id="roadmap">
-  <div class="container">
-    <div class="section-header">
-      <span class="eyebrow">Estrategia</span>
-      <h2>Roadmap de seguridad y costos: empezar barato, endurecer cuando escale</h2>
-      <p class="lead">
-        No hay que gastar en seguridad de empresa grande desde el día 1. La estrategia es
-        <strong>arrancar con lo mínimo seguro</strong>, verificar que hay producto en el mercado,
-        y agregar capas de protección de forma progresiva cuando el volumen o la regulación lo justifiquen.
-      </p>
-    </div>
-
-    <div class="card-grid card-grid--2">
-      <div>
-        <div class="roadmap-steps">
-
-          <div class="roadmap-step">
-            <div class="roadmap-step__dot roadmap-step__dot--active">✓</div>
-            <div class="roadmap-step__body">
-              <div class="roadmap-step__title">Etapa actual — MVP seguro</div>
-              <div class="roadmap-step__desc">
-                Cloud Run protegido por IAM (solo el frontend puede llamar al backend).
-                HTTPS en todo el tráfico vía Cloudflare. Cifrado AES-256-GCM para datos sensibles
-                de pacientes. Cloud Run Domain Mapping para URLs propias.
-                Auth0 para autenticación de usuarios.
-              </div>
-              <span class="roadmap-step__cost roadmap-step__cost--free">$0 extra de seguridad</span>
-            </div>
-          </div>
-
-          <div class="roadmap-step">
-            <div class="roadmap-step__dot roadmap-step__dot--active">→</div>
-            <div class="roadmap-step__body">
-              <div class="roadmap-step__title">Próxima mejora — Cloudflare Pro + dominio API</div>
-              <div class="roadmap-step__desc">
-                Activar Cloudflare Pro ($20/mes) para WAF con reglas avanzadas y analítica detallada
-                de visitantes. Configurar <code>api.deltasalud.app</code> como dominio propio del backend.
-                Justificado cuando hay 500+ usuarios activos o cuando hay transacciones financieras de volumen.
-              </div>
-              <span class="roadmap-step__cost roadmap-step__cost--paid">+$20/mes</span>
-            </div>
-          </div>
-
-          <div class="roadmap-step">
-            <div class="roadmap-step__dot roadmap-step__dot--future">3</div>
-            <div class="roadmap-step__body">
-              <div class="roadmap-step__title">Madurez — Load Balancer + Cloud Armor</div>
-              <div class="roadmap-step__desc">
-                HTTPS Load Balancer de Google (~$18/mes) como punto único de entrada al backend.
-                Cloud Armor Standard (WAF de Google, $5/política + reglas) para protección avanzada
-                contra ataques tipo SQL Injection, XSS, y DDoS a nivel de aplicación.
-                Justificado a 5.000+ usuarios o para cumplimiento regulatorio.
-              </div>
-              <span class="roadmap-step__cost roadmap-step__cost--paid">+$30-50/mes</span>
-            </div>
-          </div>
-
-          <div class="roadmap-step">
-            <div class="roadmap-step__dot roadmap-step__dot--future">4</div>
-            <div class="roadmap-step__body">
-              <div class="roadmap-step__title">Escala — Autenticación empresarial + HA</div>
-              <div class="roadmap-step__desc">
-                Auth0 plan Essentials ($35+/mes) cuando se superen los 25.000 MAU.
-                Cloud SQL con réplica de lectura y alta disponibilidad ($2× el costo de instancia).
-                Potencialmente migración de Gemini free tier a Vertex AI (sin PII entrenando modelos de Google).
-              </div>
-              <span class="roadmap-step__cost roadmap-step__cost--paid">Variable según escala</span>
-            </div>
-          </div>
-
-        </div>
-      </div>
-
-      <div>
-        <div class="card" style="height:100%;">
-          <span class="eyebrow">Decisión consciente</span>
-          <h3>Por qué no usamos Load Balancer hoy</h3>
-          <p>
-            El Load Balancer cuesta ~$18/mes <em>desde el primer día</em>, independientemente
-            de si hay 0 o 1.000 usuarios. En la etapa de validación del mercado, ese gasto fijo
-            no está justificado.
-          </p>
-          <p>
-            Cloud Run con IAM ya ofrece una protección excelente: el backend no es accesible
-            desde internet de ninguna forma. No es una decisión de ahorro irresponsable;
-            es una decisión calculada de prioridades.
-          </p>
-          <div class="divider"></div>
-          <span class="eyebrow">Cifrado de datos médicos</span>
-          <h3>AES-256-GCM — desde el día 1</h3>
-          <p>
-            Los datos sensibles de los pacientes (diagnósticos, medicamentos, notas clínicas)
-            se cifran en el servidor antes de guardarse en la base de datos.
-            AES-256-GCM es el mismo estándar que usan los bancos y agencias de gobierno.
-          </p>
-          <p>
-            Si alguien accediera sin autorización a la base de datos, solo vería datos
-            incomprensibles sin la clave de cifrado, que vive en Secret Manager
-            (el cofre de claves de Google Cloud).
-          </p>
-          <span class="badge badge--green mt-1">Activo hoy, sin costo adicional</span>
-        </div>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- ============================================================
-     RESUMEN EJECUTIVO
-============================================================ -->
-<section class="section" id="resumen">
-  <div class="container">
-    <div class="exec-summary">
-      <span class="eyebrow">Resumen ejecutivo</span>
-      <h2>Lo que necesita saber el inversionista</h2>
-
-      <div class="exec-points">
-
-        <div class="exec-point">
-          <div class="exec-point__num">01</div>
-          <div class="exec-point__text">
-            La infraestructura cuesta <strong style="color:var(--teal-200)">~$30-43/mes con cero usuarios</strong>
-            (dominado por la base de datos siempre encendida, db-g1-small ~$28/mes). Cloud Run escala a $0 en reposo.
-            <strong style="color:var(--teal-200)">Hoy pagamos $0</strong> — cubierto por el crédito de prueba GCP de $300 (quedan ~$248).
-            Los primeros 1.000 usuarios cuestan ~$150-200/mes total.
-            El gasto crece de forma predecible y controlada.
-          </div>
-        </div>
-
-        <div class="exec-point">
-          <div class="exec-point__num">02</div>
-          <div class="exec-point__text">
-            <strong style="color:var(--teal-200)">Los free tiers cubren el lanzamiento completo:</strong>
-            Auth0 gratuito hasta 25.000 usuarios, Resend gratuito hasta ~600 usuarios activos,
-            Gemini gratuito en volumen inicial, Cloudflare y Sentry gratuitos indefinidamente
-            en los niveles actuales.
-          </div>
-        </div>
-
-        <div class="exec-point">
-          <div class="exec-point__num">03</div>
-          <div class="exec-point__text">
-            La <strong style="color:var(--teal-200)">seguridad de datos médicos</strong> ya está integrada:
-            cifrado AES-256-GCM activo, backend no expuesto a internet, HTTPS en todo el tráfico,
-            y un camino claro para endurecer (Load Balancer + Cloud Armor) cuando el volumen lo justifique.
-          </div>
-        </div>
-
-        <div class="exec-point">
-          <div class="exec-point__num">04</div>
-          <div class="exec-point__text">
-            Existe un <strong style="color:var(--teal-200)">roadmap claro de crecimiento de costos</strong>:
-            cada capa de seguridad o capacidad adicional se activa en el momento correcto,
-            sin sobreinversión temprana. La arquitectura está diseñada para escalar a 100.000+
-            usuarios sobre los mismos cimientos.
-          </div>
-        </div>
-
-      </div>
-
-      <div style="margin-top:2.5rem;padding:1.5rem 2rem;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:var(--radius-md);">
-        <p style="color:rgba(255,255,255,.6);font-size:var(--text-sm);margin:0;">
-          <strong style="color:var(--teal-300);">Fuentes verificadas en julio 2026:</strong>
-          cloud.google.com/sql/pricing · cloud.google.com/run/pricing · cloud.google.com/armor/pricing ·
-          cloud.google.com/load-balancing/pricing · auth0.com/pricing · resend.com/pricing ·
-          cloudflare.com/plans/pro · ai.google.dev/gemini-api/docs/pricing.
-          Precios en USD. Los precios de Cloud SQL para us-east1 pueden variar ±5-10% vs. us-central1
-          (fuente de referencia usada para los rangos). Verificar con Google Cloud Pricing Calculator
-          antes de compromisos financieros.
+        <p class="fine">
+          ⁽¹⁾ <b>Base de datos con holgura para salud:</b> hoy 1,7&nbsp;GB RAM (db-g1-small). A 1.000 usuarios sube a 2&nbsp;vCPU / 7,5&nbsp;GB, y en producción médica conviene <b>Alta Disponibilidad</b> (réplica automática, cero caídas) → $105 sin HA, ~$205 con HA. A 10.000: 4&nbsp;vCPU / 15&nbsp;GB con HA (~$394). &nbsp;·&nbsp;
+          ⁽²⁾ Redis (acelera y descarga la BD) se activa al escalar; hoy está apagado. &nbsp;·&nbsp;
+          ⁽³⁾ Auth0 gratis hasta 25.000 usuarios activos/mes.
         </p>
-      </div>
+        <div class="callout warn">
+          <b>Nota sobre la base de datos:</b> es el componente que más pesa al crecer y el más sensible en una plataforma médica. El presupuesto de arriba ya asume subir de tier y activar Alta Disponibilidad — no está "apretado". Si esperamos picos de uso o muchos consultorios concurrentes, conviene ir directo a la opción con HA ($205 a 1.000 usuarios).
+        </div>
+      </section>
+
+      <!-- 3. Mejoras opcionales -->
+      <section>
+        <h2><span class="num">3</span> Mejoras opcionales (se suman a lo anterior)</h2>
+        <p class="lead">No son obligatorias hoy; se activan cuando el volumen, la seguridad o el proceso lo justifiquen.</p>
+        <table class="mej">
+          <thead>
+            <tr><th style="text-align:left">Mejora</th><th style="text-align:right">Costo / mes</th><th style="text-align:left">Para qué sirve</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Servidor de <b>staging</b> (pruebas)</td>
+              <td class="price">+ ~$30</td>
+              <td class="why">Un entorno idéntico con su <b>propia base de datos aislada</b> para probar cambios antes de exponerlos a los médicos. Evita romper producción.</td>
+            </tr>
+            <tr>
+              <td>Dominio propio del backend<br /><span class="why">api.deltasalud.app</span></td>
+              <td class="price zero">$0</td>
+              <td class="why">Enruta también el backend por Cloudflare y deja de exponer las URLs internas de Google. Más control y marca propia.</td>
+            </tr>
+            <tr>
+              <td><b>Cloudflare Pro</b></td>
+              <td class="price">+ $20</td>
+              <td class="why">Firewall de aplicaciones (WAF) gestionado y analítica avanzada de tráfico y ataques.</td>
+            </tr>
+            <tr>
+              <td>Load Balancer + <b>Cloud Armor</b></td>
+              <td class="price">+ $25 – $40</td>
+              <td class="why">Blindaje total del origen + firewall de aplicaciones de Google. Para volumen alto o exigencias de cumplimiento.</td>
+            </tr>
+            <tr>
+              <td><b>Alta Disponibilidad</b> de la BD</td>
+              <td class="price">+100% de la BD</td>
+              <td class="why">Réplica automática en otra zona: cero downtime si falla el servidor. Muy recomendable en salud desde que haya usuarios reales.</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <!-- 4. En resumen -->
+      <section>
+        <h2><span class="num">4</span> En resumen</h2>
+        <ul class="reco">
+          <li><b>Hoy pagamos $0.</b> El crédito de Google ($300, ~$248 restantes) cubre el arranque; foco total en producto.</li>
+          <li><b>El costo lo manda la base de datos.</b> Al crecer, presupuestar holgado y con Alta Disponibilidad — es lo crítico en una plataforma médica.</li>
+          <li><b>Staging por apenas ~$30/mes</b> es barato frente al riesgo de romper producción con pacientes reales. Recomendado en cuanto haya usuarios.</li>
+          <li><b>El dominio del backend es gratis</b> y suma control y marca. Cloudflare Pro y Cloud Armor entran después, con volumen o compliance.</li>
+        </ul>
+      </section>
+
+      <footer>
+        Delta Salud CRM · Estimaciones en USD basadas en facturación real de Google Cloud (2026). Los rangos reflejan incertidumbre de tier/región. Verificar con la calculadora oficial antes de compromisos formales.
+      </footer>
     </div>
-  </div>
-</section>
-
-<!-- FOOTER -->
-<footer style="background:var(--slate-900);padding:2rem 0;text-align:center;">
-  <div class="container">
-    <p style="color:var(--slate-500);font-size:var(--text-xs);margin:0;">
-      Delta Salud CRM · Presentación confidencial para inversionistas · Julio 2026 ·
-      <span style="color:var(--teal-500);">deltasalud.app</span>
-    </p>
-  </div>
-</footer>
-
-</body>
+  </body>
 </html>
