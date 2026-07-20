@@ -917,28 +917,6 @@ export default function BookingClient({
           <p className="text-xs text-slate-400 mb-5">
             El médico confirmará tu cita y se pondrá en contacto contigo.
           </p>
-          {authUser ? (
-            <a
-              href="/patient/dashboard"
-              className="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl text-white text-sm font-bold hover:opacity-90 transition-opacity"
-              style={{ background: BRAND.turquoise }}
-            >
-              Ir a mi dashboard
-            </a>
-          ) : (
-            <div className="space-y-3">
-              <p className="text-xs text-slate-500">
-                ¿Quieres crear una cuenta para ver tu historial?
-              </p>
-              <a
-                href="/login"
-                className="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl text-white text-sm font-bold hover:opacity-90 transition-opacity"
-                style={{ background: BRAND.turquoise }}
-              >
-                Crear cuenta
-              </a>
-            </div>
-          )}
           <div className="flex items-center justify-center gap-2 mt-6 opacity-40">
             <DeltaIsotipo size={20} />
             <span className="text-[10px] font-semibold text-slate-400">Delta Salud</span>
@@ -1058,7 +1036,10 @@ export default function BookingClient({
 
         {/* ── Steps ──────────────────────────────────────────────────────── */}
         <div className="max-w-lg mx-auto px-4 py-5 space-y-3">
-          {error && (
+          {/* Global error banner — hidden on the confirm step (7), where the
+              error is shown inline right above the "Confirmar cita" button so
+              the user does not have to scroll up to notice it. */}
+          {error && activeStep !== 7 && (
             <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-xl px-4 py-3 flex items-start gap-2">
               <span className="shrink-0 mt-0.5">⚠️</span>
               <span>{error}</span>
@@ -2312,17 +2293,34 @@ export default function BookingClient({
                     )}
                 </div>
 
-                {/* Continue button */}
-                {selectedPaymentMethod && (
-                  <button
-                    type="button"
-                    onClick={() => setActiveStep(7)}
-                    className="w-full text-white py-3 rounded-xl text-sm font-bold transition-all hover:opacity-90"
-                    style={{ background: BRAND.turquoise }}
-                  >
-                    Continuar
-                  </button>
-                )}
+                {/* Continue button — receipt is mandatory unless "Pagar después" */}
+                {selectedPaymentMethod &&
+                  (() => {
+                    const receiptMissing =
+                      requiresReceipt(selectedPaymentMethod as PaymentMethod) &&
+                      !paymentFile &&
+                      !payLater;
+                    return (
+                      <>
+                        {receiptMissing && (
+                          <p className="text-xs text-red-500">
+                            Sube el comprobante o elige &ldquo;Pagar después&rdquo; para continuar.
+                          </p>
+                        )}
+                        <button
+                          type="button"
+                          disabled={receiptMissing}
+                          onClick={() => setActiveStep(7)}
+                          className={`w-full text-white py-3 rounded-xl text-sm font-bold transition-all ${
+                            receiptMissing ? 'cursor-not-allowed opacity-40' : 'hover:opacity-90'
+                          }`}
+                          style={{ background: BRAND.turquoise }}
+                        >
+                          Continuar
+                        </button>
+                      </>
+                    );
+                  })()}
               </div>
             </AccordionSection>
           )}
@@ -2465,6 +2463,13 @@ export default function BookingClient({
                 )}
               </div>
 
+              {/* Inline error at the click point (see global banner note above) */}
+              {error && (
+                <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-xl px-4 py-3 mb-3 flex items-start gap-2">
+                  <span className="shrink-0 mt-0.5">⚠️</span>
+                  <span>{error}</span>
+                </div>
+              )}
               <button
                 type="button"
                 onClick={handleSubmit}
