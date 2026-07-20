@@ -2,7 +2,10 @@ import { GetAdminRemindersQueueUseCase } from './get-admin-reminders-queue.use-c
 import { ReminderQueueItem } from '../../../domain/entities/reminder-queue-item.entity';
 import type { IRemindersQueueRepository } from '../../../domain/repositories/reminders-queue.repository';
 
-const buildItemWithDoctorName = (id: string, doctorName: string): ReminderQueueItem & { doctorName: string } => {
+const buildItemWithDoctorName = (
+  id: string,
+  doctorName: string,
+): ReminderQueueItem & { doctorName: string } => {
   const item = ReminderQueueItem.create({
     id,
     appointmentId: 'appt-1',
@@ -30,6 +33,10 @@ describe('GetAdminRemindersQueueUseCase', () => {
     mockRepo = {
       listByDoctorId: jest.fn(),
       listAll: jest.fn(),
+      findDueForReminder: jest.fn(),
+      insertPending: jest.fn(),
+      markSent: jest.fn(),
+      markFailed: jest.fn(),
     };
     useCase = new GetAdminRemindersQueueUseCase(mockRepo);
   });

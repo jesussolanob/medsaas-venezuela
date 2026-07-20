@@ -28,6 +28,10 @@ describe('GetDoctorRemindersQueueUseCase', () => {
     mockRepo = {
       listByDoctorId: jest.fn(),
       listAll: jest.fn(),
+      findDueForReminder: jest.fn(),
+      insertPending: jest.fn(),
+      markSent: jest.fn(),
+      markFailed: jest.fn(),
     };
     useCase = new GetDoctorRemindersQueueUseCase(mockRepo);
   });

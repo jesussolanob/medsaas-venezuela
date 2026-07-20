@@ -55,11 +55,13 @@ export class RemindersSettingsModel extends Model {
   @Column({ type: DataType.BOOLEAN, allowNull: false, field: 'reminder_3h_enabled' })
   declare reminder3hEnabled: boolean;
 
-  @Default(false)
+  @Default(true)
   @Column({ type: DataType.BOOLEAN, allowNull: false, field: 'reminder_1h_enabled' })
   declare reminder1hEnabled: boolean;
 
-  @Default('Hola {patient_name}, te recordamos tu cita con el Dr. {doctor_name} el {date} a las {time}.')
+  @Default(
+    'Hola {patient_name}, te recordamos tu cita con el Dr. {doctor_name} el {date} a las {time}.',
+  )
   @Column({ type: DataType.TEXT, allowNull: false, field: 'template_7d_whatsapp' })
   declare template7dWhatsapp: string;
 

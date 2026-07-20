@@ -12,7 +12,7 @@ export const REMINDERS_SETTINGS_DEFAULTS = {
   reminder7dEnabled: true,
   reminder24hEnabled: true,
   reminder3hEnabled: true,
-  reminder1hEnabled: false,
+  reminder1hEnabled: true,
   template7dWhatsapp:
     'Hola {patient_name}, te recordamos tu cita con el Dr. {doctor_name} el {date} a las {time}.',
   template24hWhatsapp:

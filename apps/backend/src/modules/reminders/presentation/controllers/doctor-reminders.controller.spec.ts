@@ -219,7 +219,7 @@ describe('DoctorRemindersController', () => {
     it('defaults has expected shape', () => {
       expect(REMINDERS_SETTINGS_DEFAULTS.enabled).toBe(true);
       expect(REMINDERS_SETTINGS_DEFAULTS.channel).toBe('both');
-      expect(REMINDERS_SETTINGS_DEFAULTS.reminder1hEnabled).toBe(false);
+      expect(REMINDERS_SETTINGS_DEFAULTS.reminder1hEnabled).toBe(true);
     });
   });
 });

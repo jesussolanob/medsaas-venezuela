@@ -13,9 +13,11 @@ import { UpsertRemindersSettingsUseCase } from './application/use-cases/reminder
 import { GetDoctorRemindersQueueUseCase } from './application/use-cases/reminders/get-doctor-reminders-queue.use-case';
 import { GetAdminRemindersQueueUseCase } from './application/use-cases/reminders/get-admin-reminders-queue.use-case';
 import { SendAppointmentReminderEmailUseCase } from './application/use-cases/reminders/send-appointment-reminder-email.use-case';
+import { DispatchDueRemindersUseCase } from './application/use-cases/reminders/dispatch-due-reminders.use-case';
 
 import { DoctorRemindersController } from './presentation/controllers/doctor-reminders.controller';
 import { AdminRemindersController } from './presentation/controllers/admin-reminders.controller';
+import { CronRemindersController } from './presentation/controllers/cron-reminders.controller';
 
 // Cross-module dependencies for SendAppointmentReminderEmailUseCase
 import { AppointmentsModule } from '../appointments/appointments.module';
@@ -25,11 +27,18 @@ import { DoctorSettingsModule } from '../doctor-settings/doctor-settings.module'
 import { EmailModule } from '../email/email.module';
 
 /**
- * RemindersModule — Doctor reminder configuration + queue monitoring.
+ * RemindersModule — Doctor reminder configuration + queue monitoring + cron dispatch.
  *
  * IMPORTANT: Sequelize is provided globally via SequelizeModule.forRootAsync in
  * AppModule. Only register the feature models here — never re-declare the Sequelize
  * provider in this module's providers array (that causes a dist boot crash).
+ *
+ * DispatchDueRemindersUseCase requires:
+ *   - REMINDERS_QUEUE_REPOSITORY → registered locally
+ *   - DOCTOR_PROFILE_REPOSITORY  → DoctorSettingsModule (exported)
+ *   - MailerService              → EmailModule (exported)
+ *   - AppointmentConfirmTokenService → AppointmentsModule (exported)
+ *   - ConfigService              → global (registered in AppModule)
  *
  * SendAppointmentReminderEmailUseCase requires:
  *   - APPOINTMENT_REPOSITORY  → AppointmentsModule (exported)
@@ -47,7 +56,7 @@ import { EmailModule } from '../email/email.module';
     DoctorSettingsModule,
     EmailModule,
   ],
-  controllers: [DoctorRemindersController, AdminRemindersController],
+  controllers: [DoctorRemindersController, AdminRemindersController, CronRemindersController],
   providers: [
     // Repository bindings: domain interface → Sequelize implementation
     {
@@ -65,6 +74,7 @@ import { EmailModule } from '../email/email.module';
     GetDoctorRemindersQueueUseCase,
     GetAdminRemindersQueueUseCase,
     SendAppointmentReminderEmailUseCase,
+    DispatchDueRemindersUseCase,
   ],
 })
 export class RemindersModule {}

@@ -12,8 +12,13 @@ import { GetDoctorAgendaUseCase } from './application/use-cases/appointments/get
 import { GetAppointmentByIdUseCase } from './application/use-cases/appointments/get-appointment-by-id.use-case';
 import { RescheduleAppointmentUseCase } from './application/use-cases/appointments/reschedule-appointment.use-case';
 import { DeleteAppointmentUseCase } from './application/use-cases/appointments/delete-appointment.use-case';
+import { ConfirmAppointmentByTokenUseCase } from './application/use-cases/appointments/confirm-appointment-by-token.use-case';
+import { GetAppointmentConfirmInfoUseCase } from './application/use-cases/appointments/get-appointment-confirm-info.use-case';
 
 import { AppointmentsController } from './presentation/controllers/appointments.controller';
+import { PublicAppointmentsController } from './presentation/controllers/public-appointments.controller';
+
+import { AppointmentConfirmTokenService } from './infrastructure/services/appointment-confirm-token.service';
 
 // Required by CreateAppointmentUseCase for office ownership + modality validation.
 import { OfficesModule } from '../offices/offices.module';
@@ -24,6 +29,9 @@ import { IntegrationsModule } from '../integrations/integrations.module';
 // auto-create a consultation when an appointment is confirmed.
 // No circular dependency: ConsultationsModule does NOT import AppointmentsModule.
 import { ConsultationsModule } from '../consultations/consultations.module';
+// Required by ConfirmAppointmentByTokenUseCase and GetAppointmentConfirmInfoUseCase
+// to resolve the doctor display name for the public confirmation page.
+import { DoctorSettingsModule } from '../doctor-settings/doctor-settings.module';
 
 @Module({
   imports: [
@@ -36,14 +44,18 @@ import { ConsultationsModule } from '../consultations/consultations.module';
     // Exports CONSULTATION_REPOSITORY and CreateConsultationUseCase for
     // auto-creating consultations on appointment confirmation.
     ConsultationsModule,
+    // Exports DOCTOR_PROFILE_REPOSITORY for resolving doctor name on public confirm page.
+    DoctorSettingsModule,
   ],
-  controllers: [AppointmentsController],
+  controllers: [AppointmentsController, PublicAppointmentsController],
   providers: [
     // Repository binding: domain interface → Sequelize implementation
     {
       provide: APPOINTMENT_REPOSITORY,
       useClass: SequelizeAppointmentRepository,
     },
+    // Infrastructure service: stateless HMAC token for appointment confirmation.
+    AppointmentConfirmTokenService,
     // Use cases
     CreateAppointmentUseCase,
     UpdateAppointmentStatusUseCase,
@@ -51,7 +63,9 @@ import { ConsultationsModule } from '../consultations/consultations.module';
     GetAppointmentByIdUseCase,
     RescheduleAppointmentUseCase,
     DeleteAppointmentUseCase,
+    ConfirmAppointmentByTokenUseCase,
+    GetAppointmentConfirmInfoUseCase,
   ],
-  exports: [APPOINTMENT_REPOSITORY],
+  exports: [APPOINTMENT_REPOSITORY, AppointmentConfirmTokenService],
 })
 export class AppointmentsModule {}
