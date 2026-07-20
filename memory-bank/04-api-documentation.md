@@ -558,3 +558,16 @@ POST /api/ai/text
   columna → bloqueaba todos los deploys; corregida en `4b4fbf1`.
 - Plantilla de email `welcome` enriquecida (paso a paso de onboarding, mig `20260712000002`) — se envía al
   especialista en su PRIMER registro.
+
+### Recordatorios automáticos + confirmación de cita por token (2026-07-20)
+
+- `POST /api/cron/appointment-reminders` — **solo cron** (Cloud Scheduler `*/15`). Sin auth de usuario;
+  `CronSecretGuard` exige header `x-cron-secret` === `CRON_SECRET` (fail-closed → 403 si falta/no coincide).
+  Backend `--no-allow-unauthenticated` → el Scheduler usa OIDC (`delta-backend-sa`). Respuesta
+  `{success:true,data:{sent24h,failed24h,sent1h,failed1h}}`. Idempotente por `UNIQUE(appointment_id,offset_type)`.
+- `GET /api/public/appointments/confirm-info?token=…` — **público** (sin auth). Devuelve
+  `{status,doctorName,date,time,modality}` (sin PII) para la página de confirmación. Token inválido → **404**.
+- `POST /api/public/appointments/confirm` `{token}` — **público**. Transiciona `scheduled→confirmed`
+  (idempotente; terminal/confirmed devuelven estado actual sin error). Token inválido → 404.
+- BFF: `/api/public/appointments/confirm-info` y `/confirm` (thin-proxy, sin headers de auth); página
+  `/cita/confirmar/[token]`. Token = HMAC-SHA256 namespaced (`appt-confirm:v1:` + AUTH_RESOLVE_SECRET).

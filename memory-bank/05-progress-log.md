@@ -2,6 +2,36 @@
 
 > Registro cronológico. Una entrada por fase/hito completado.
 
+## 2026-07-20 — Recordatorios automáticos + confirmación de cita por token ✅ (VERIFICADO EN VIVO)
+
+Feature desplegada a prod (`main` @ `6620c80`) y **verificada end-to-end en Cloud Run** tras un reinicio de la
+máquina que cortó la sesión previa. Commits: `3527b0e` feat(reminders), `38a5355` feat(auth trial),
+`2833e07` fix(booking), `6620c80` chore(landing).
+
+- **Cron auto-dispatch:** `POST /api/cron/appointment-reminders` protegido por `CronSecretGuard` (header
+  `x-cron-secret`, fail-closed). `DispatchDueRemindersUseCase` envía recordatorios 24h (con enlace de
+  confirmación) y 1h; ventanas `now+23h45m…+24h15m` y `now+45m…+75m`; idempotente por
+  `UNIQUE(appointment_id, offset_type)` + `ON CONFLICT DO NOTHING RETURNING`; cap 200/corrida; sin N+1
+  (pre-resuelve nombres de doctor); sin PII en logs. **Cloud Scheduler `appointment-reminders` `*/15` en
+  `America/Caracas` (us-east1), OIDC con `delta-backend-sa` + header — ahora ENABLED.** Secreto `CRON_SECRET`
+  (v1) en Secret Manager, expuesto en `deploy.yml`.
+- **Confirmación pública por token:** HMAC-SHA256 namespaced (`appt-confirm:v1:`), timing-safe, sin expiración,
+  fail-fast si falta `AUTH_RESOLVE_SECRET`. Endpoints `GET /api/public/appointments/confirm-info` y
+  `POST /confirm` (sin auth), página `/cita/confirmar/[token]`, BFF thin-proxy. Token inválido → **404**
+  (anti-enumeración). Respuestas sin PII (status, doctorName, date, time, modality).
+- **Migración `20260720000001`:** UNIQUE en `reminders_queue`, default de `reminder_1h_enabled`→TRUE + backfill,
+  seed idempotente de plantillas `reminder_confirm_24h` y `reminder_1h`. Columnas verificadas contra el esquema
+  real antes de desplegar.
+- **Trial configurable:** `SequelizeIdentityRepository` lee `plan_configs.trial_days` (`plan_key='free_trial'`)
+  en vez del fijo de 30d; fail-safe a 30 si la fila falta/valor inválido. Columna ya existía → sin migración.
+
+**Verificación en vivo (proxy Cloud SQL con `--token` del CLI; ADC pedía reauth `invalid_rapt`):** migración
+registrada + constraint + templates ✓; cita de prueba a +24h (`patient_email=lucas.a.rivas.d@gmail.com`,
+doctor Lucas Rivas) → `scheduler jobs run` → `reminders_queue` fila `24h/sent/email` (Resend envió el email) ✓;
+`confirm-info`→scheduled, `confirm`→confirmed (idempotente), `appointments.status=confirmed` en BD ✓.
+⚠️ **1er deploy falló por 503 transitorio de `sqladmin` en el proxy del CI (NO la migración); re-run OK.**
+⚠️ Cita de prueba `f2ff7c1d-…` (source `qa-cron-test`) quedó `confirmed` en la agenda de Lucas Rivas — borrable.
+
 ## 2026-07-18/19 — GO-LIVE dominio `deltasalud.app` + Auth0 custom domain + ramas + QA en vivo ✅
 
 Migración de infraestructura completa (detalle en ADR-023 y `migracion/dominio-dns-snapshot.md`):
