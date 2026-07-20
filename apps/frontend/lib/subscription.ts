@@ -243,7 +243,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   payment_methods_config: {},
   stripe_enabled: false,
   expiration_warning_days: [7, 3, 1],
-  sales_whatsapp_number: '',
+  sales_whatsapp_number: '584221033582',
   sales_whatsapp_message:
     'Hola, vengo de la web de Delta Salud y me interesa conocer más sobre el plan.',
 };
