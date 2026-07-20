@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/sequelize';
-import { Op, UniqueConstraintError } from 'sequelize';
+import { Op, QueryTypes, UniqueConstraintError } from 'sequelize';
 import { Sequelize } from 'sequelize-typescript';
 import { Identity } from '../../../domain/entities/identity.entity';
 import type {
@@ -14,8 +14,9 @@ import type { SubscriptionPlan, SubscriptionStatus } from '@delta/shared-types';
 /**
  * Plan and status assigned to every new doctor at registration.
  *
- * free_trial is the 30-day onboarding trial assigned on first registration.
- * After 30 days, the lazy-downgrade on login (ProcessLoginTouchUseCase) flips
+ * free_trial is the onboarding trial assigned on first registration. Its
+ * duration is configurable via plan_configs.trial_days (plan_key = 'free_trial').
+ * After the trial, the lazy-downgrade on login (ProcessLoginTouchUseCase) flips
  * subscriptions.status to 'past_due', which causes the features and panel
  * resolvers to fall back to delta_free (the permanent free plan).
  *
@@ -24,8 +25,12 @@ import type { SubscriptionPlan, SubscriptionStatus } from '@delta/shared-types';
 const DOCTOR_INITIAL_PLAN: SubscriptionPlan = 'free_trial';
 const DOCTOR_INITIAL_STATUS: SubscriptionStatus = 'trialing';
 
-/** Trial duration in days for new doctor registrations. */
-const TRIAL_DURATION_DAYS = 30;
+/**
+ * Fallback trial duration (days) used when plan_configs.trial_days cannot be
+ * read (missing row, null value, invalid value, or query error).
+ * The authoritative value lives in plan_configs WHERE plan_key = 'free_trial'.
+ */
+const DEFAULT_TRIAL_DURATION_DAYS = 30;
 
 /**
  * Returns a Date `days` after `from`.
@@ -83,6 +88,43 @@ export class SequelizeIdentityRepository implements IIdentityRepository {
   // ---------------------------------------------------------------------------
 
   /**
+   * Reads the configured trial duration (in days) from plan_configs.
+   *
+   * Queries plan_configs WHERE plan_key = 'free_trial' AND is_active = true and
+   * returns trial_days when it is a valid integer > 0.  Falls back to
+   * DEFAULT_TRIAL_DURATION_DAYS in every error or invalid-value scenario so
+   * that doctor registration never fails because of a missing config row.
+   *
+   * Executed BEFORE opening the transaction to keep the write transaction short.
+   */
+  private async resolveTrialDurationDays(): Promise<number> {
+    try {
+      const rows = await this.sequelize.query<{ trial_days: number | string | null }>(
+        `SELECT trial_days
+           FROM plan_configs
+          WHERE plan_key = :planKey
+            AND is_active = true
+          LIMIT 1`,
+        {
+          replacements: { planKey: 'free_trial' },
+          type: QueryTypes.SELECT,
+        },
+      );
+
+      const raw = rows[0]?.trial_days;
+      const parsed = Number(raw);
+
+      if (Number.isInteger(parsed) && parsed > 0) {
+        return parsed;
+      }
+
+      return DEFAULT_TRIAL_DURATION_DAYS;
+    } catch {
+      return DEFAULT_TRIAL_DURATION_DAYS;
+    }
+  }
+
+  /**
    * Creates a non-doctor profile only (no subscription needed for patients, etc.).
    * Preserves the original concurrent first-login race handling.
    */
@@ -122,6 +164,11 @@ export class SequelizeIdentityRepository implements IIdentityRepository {
    *   exists (findOrCreate outside the transaction).
    */
   private async createDoctorWithSubscription(data: IdentityCreateData): Promise<Identity> {
+    // Resolve trial duration before opening the transaction to keep the
+    // write transaction as short as possible.  Safe: falls back to
+    // DEFAULT_TRIAL_DURATION_DAYS if plan_configs cannot be read.
+    const trialDays = await this.resolveTrialDurationDays();
+
     const t = await this.sequelize.transaction();
 
     try {
@@ -140,7 +187,7 @@ export class SequelizeIdentityRepository implements IIdentityRepository {
       );
 
       const now = new Date();
-      const periodEnd = trialPeriodEnd(now, TRIAL_DURATION_DAYS);
+      const periodEnd = trialPeriodEnd(now, trialDays);
       await this.subscriptionModel.findOrCreate({
         where: { doctorId: row.id },
         defaults: {
@@ -174,7 +221,7 @@ export class SequelizeIdentityRepository implements IIdentityRepository {
           // guard here in case it crashed after the profile INSERT and before the
           // subscription findOrCreate. doctor_id UNIQUE prevents duplicates.
           const now = new Date();
-          const periodEnd = trialPeriodEnd(now, TRIAL_DURATION_DAYS);
+          const periodEnd = trialPeriodEnd(now, trialDays);
           await this.subscriptionModel.findOrCreate({
             where: { doctorId: existing.id },
             defaults: {

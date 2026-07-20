@@ -1,4 +1,4 @@
-import { UniqueConstraintError } from 'sequelize';
+import { QueryTypes, UniqueConstraintError } from 'sequelize';
 import { SequelizeIdentityRepository } from './sequelize-identity.repository';
 import { Identity } from '../../../domain/entities/identity.entity';
 import type { IdentityCreateData } from '../../../domain/repositories/identity.repository';
@@ -61,11 +61,16 @@ function makeSubscriptionModelMock() {
   };
 }
 
+/**
+ * By default, sequelizeMock.query returns a row with trial_days = 30,
+ * simulating the common production state.  Individual tests override this.
+ */
 function makeSequelizeMock(txMock?: ReturnType<typeof makeTransactionMock>) {
   const tx = txMock ?? makeTransactionMock();
   return {
     _tx: tx,
     transaction: jest.fn().mockResolvedValue(tx),
+    query: jest.fn().mockResolvedValue([{ trial_days: 30 }]),
   };
 }
 
@@ -200,6 +205,105 @@ describe('SequelizeIdentityRepository', () => {
 
       expect(result).toBeInstanceOf(Identity);
       expect(result.id).toBe(data.id);
+    });
+
+    it('uses trial_days from plan_configs when it is a valid integer > 0', async () => {
+      // Arrange: plan_configs returns 45 days
+      sequelizeMock.query.mockResolvedValue([{ trial_days: 45 }]);
+      const data = makeCreateData({ role: 'doctor' });
+      const row = makeRow({ id: data.id, email: data.email, role: 'doctor' });
+      modelMock.create.mockResolvedValue(row);
+
+      // Act
+      await repo.create(data);
+
+      // Assert: resolveTrialDurationDays was called with the parametrized query
+      expect(sequelizeMock.query).toHaveBeenCalledWith(
+        expect.stringContaining('plan_configs'),
+        expect.objectContaining({
+          replacements: { planKey: 'free_trial' },
+          type: QueryTypes.SELECT,
+        }),
+      );
+
+      // currentPeriodEnd must be ~45 days from now
+      const findOrCreateCall = subscriptionModelMock.findOrCreate.mock.calls[0]![0] as {
+        defaults: { currentPeriodEnd: Date };
+      };
+      const fortyFiveDaysMs = 45 * 24 * 60 * 60 * 1000;
+      const nowMs = Date.now();
+      expect(findOrCreateCall.defaults.currentPeriodEnd.getTime()).toBeGreaterThan(
+        nowMs + fortyFiveDaysMs - 5000,
+      );
+      expect(findOrCreateCall.defaults.currentPeriodEnd.getTime()).toBeLessThan(
+        nowMs + fortyFiveDaysMs + 5000,
+      );
+    });
+
+    it('falls back to 30 days when plan_configs row does not exist', async () => {
+      // Arrange: empty result set — no matching row
+      sequelizeMock.query.mockResolvedValue([]);
+      const data = makeCreateData({ role: 'doctor' });
+      const row = makeRow({ id: data.id, email: data.email, role: 'doctor' });
+      modelMock.create.mockResolvedValue(row);
+
+      await repo.create(data);
+
+      const findOrCreateCall = subscriptionModelMock.findOrCreate.mock.calls[0]![0] as {
+        defaults: { currentPeriodEnd: Date };
+      };
+      const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
+      const nowMs = Date.now();
+      expect(findOrCreateCall.defaults.currentPeriodEnd.getTime()).toBeGreaterThan(
+        nowMs + thirtyDaysMs - 5000,
+      );
+      expect(findOrCreateCall.defaults.currentPeriodEnd.getTime()).toBeLessThan(
+        nowMs + thirtyDaysMs + 5000,
+      );
+    });
+
+    it('falls back to 30 days when plan_configs returns a null trial_days', async () => {
+      sequelizeMock.query.mockResolvedValue([{ trial_days: null }]);
+      const data = makeCreateData({ role: 'doctor' });
+      const row = makeRow({ id: data.id, email: data.email, role: 'doctor' });
+      modelMock.create.mockResolvedValue(row);
+
+      await repo.create(data);
+
+      const findOrCreateCall = subscriptionModelMock.findOrCreate.mock.calls[0]![0] as {
+        defaults: { currentPeriodEnd: Date };
+      };
+      const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
+      const nowMs = Date.now();
+      expect(findOrCreateCall.defaults.currentPeriodEnd.getTime()).toBeGreaterThan(
+        nowMs + thirtyDaysMs - 5000,
+      );
+      expect(findOrCreateCall.defaults.currentPeriodEnd.getTime()).toBeLessThan(
+        nowMs + thirtyDaysMs + 5000,
+      );
+    });
+
+    it('falls back to 30 days when plan_configs query throws an error', async () => {
+      sequelizeMock.query.mockRejectedValue(new Error('relation "plan_configs" does not exist'));
+      const data = makeCreateData({ role: 'doctor' });
+      const row = makeRow({ id: data.id, email: data.email, role: 'doctor' });
+      modelMock.create.mockResolvedValue(row);
+
+      // Registration must succeed despite the query error
+      const result = await repo.create(data);
+      expect(result).toBeInstanceOf(Identity);
+
+      const findOrCreateCall = subscriptionModelMock.findOrCreate.mock.calls[0]![0] as {
+        defaults: { currentPeriodEnd: Date };
+      };
+      const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
+      const nowMs = Date.now();
+      expect(findOrCreateCall.defaults.currentPeriodEnd.getTime()).toBeGreaterThan(
+        nowMs + thirtyDaysMs - 5000,
+      );
+      expect(findOrCreateCall.defaults.currentPeriodEnd.getTime()).toBeLessThan(
+        nowMs + thirtyDaysMs + 5000,
+      );
     });
 
     it('rolls back and re-throws on non-UniqueConstraintError', async () => {
