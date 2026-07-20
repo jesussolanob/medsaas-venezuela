@@ -30,7 +30,15 @@ registrada + constraint + templates ✓; cita de prueba a +24h (`patient_email=l
 doctor Lucas Rivas) → `scheduler jobs run` → `reminders_queue` fila `24h/sent/email` (Resend envió el email) ✓;
 `confirm-info`→scheduled, `confirm`→confirmed (idempotente), `appointments.status=confirmed` en BD ✓.
 ⚠️ **1er deploy falló por 503 transitorio de `sqladmin` en el proxy del CI (NO la migración); re-run OK.**
-⚠️ Cita de prueba `f2ff7c1d-…` (source `qa-cron-test`) quedó `confirmed` en la agenda de Lucas Rivas — borrable.
+
+**QA visual (Playwright) + fix de marca (2026-07-20, verificado en vivo):** los 3 estados de
+`/cita/confirmar/[token]` renderizan branded (scheduled con botón / confirmada con check verde / token
+inválido "Enlace no válido"); clic real → `appointments.status=confirmed`. **Hallazgo:** 4 de 15 plantillas de
+email desviaban del header estándar `#0d9488` — `appointment_confirmed` (#0891b2), `reminder_1h`,
+`reminder_confirm_24h` (gradiente) y `reminder_manual` (gradiente + emoji 📅 en el `<h1>`). **Fix:** migración
+`20260720000002` (aplicada en prod + `40b6f0d`) normaliza el `.header` a sólido `#0d9488` en JS sobre el html
+vigente (idempotente; las 11 correctas no cambian) y quita el emoji. Deploy verde. Todas las citas de prueba
+`qa-cron-test` (6) borradas → agenda limpia.
 
 ## 2026-07-18/19 — GO-LIVE dominio `deltasalud.app` + Auth0 custom domain + ramas + QA en vivo ✅
 
