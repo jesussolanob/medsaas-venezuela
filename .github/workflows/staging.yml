@@ -87,8 +87,9 @@ jobs:
 
       - name: Run migrations (staging DB)
         run: |
-          VER=$(curl -s https://api.github.com/repos/GoogleCloudPlatform/cloud-sql-proxy/releases/latest | grep -o '"tag_name": *"[^"]*"' | head -1 | cut -d'"' -f4)
-          curl -Lo cloud-sql-proxy "https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/${VER}/cloud-sql-proxy.linux.amd64"
+          VER=$(curl -sS -H "Authorization: Bearer ${{ github.token }}" https://api.github.com/repos/GoogleCloudPlatform/cloud-sql-proxy/releases/latest | grep -o '"tag_name": *"[^"]*"' | head -1 | cut -d'"' -f4)
+          VER=${VER:-v2.23.0}  # fallback si la API de GitHub falla / rate-limita (evita URL con //)
+          curl -fLo cloud-sql-proxy "https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/${VER}/cloud-sql-proxy.linux.amd64"
           chmod +x cloud-sql-proxy
           ./cloud-sql-proxy --port 5432 "$SQL_CONN" &
           for i in $(seq 1 30); do nc -z 127.0.0.1 5432 && break; sleep 1; done
