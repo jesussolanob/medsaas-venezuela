@@ -7,6 +7,9 @@
 
 /** Maps plan_key → human-readable plan name in Spanish. */
 export const PLAN_LABELS: Record<string, string> = {
+  // Onboarding trial: temporary full access (Plus-level features) before the
+  // plan resolves to Delta Free. Doctors on it see the same modules as Plus.
+  free_trial: 'Prueba gratuita (acceso completo temporal)',
   delta_free: 'Delta Free',
   delta_base: 'Delta Base',
   delta_plus: 'Delta Plus',
