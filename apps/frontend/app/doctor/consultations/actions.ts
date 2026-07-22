@@ -65,6 +65,15 @@ export type Consultation = {
   amount: number | null;
   /** Dynamic clinical "report builder" values (JSONB). Persisted by the backend. */
   blocks_snapshot: Record<string, unknown> | null;
+  /** Block structure metadata (key/label/content_type/sort_order). Returned by the backend. */
+  blocks_structure?: Array<{
+    key: string;
+    label: string;
+    content_type: string;
+    sort_order: number;
+    printable?: boolean;
+    send_to_patient?: boolean;
+  }> | null;
   started_at: string | null;
   ended_at: string | null;
   duration_minutes: number | null;

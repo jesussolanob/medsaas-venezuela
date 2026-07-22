@@ -96,6 +96,7 @@ import ConsultationRecorder from '@/components/consultation/ConsultationRecorder
 import MarkdownText from '@/components/shared/MarkdownText';
 import NewAppointmentFlow from '@/components/appointment-flow/NewAppointmentFlow';
 import PatientFichaModal from '@/components/patient/PatientFichaModal';
+import PatientHistoryModal from './PatientHistoryModal';
 import { log } from '@/lib/logger';
 import { reportError } from '@/lib/report-error';
 import { useDoctorFeatures } from '@/hooks/useDoctorFeatures';
@@ -735,6 +736,8 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
   const [showRightSidebar, setShowRightSidebar] = useState(true);
   // Ficha del paciente en modal (no saca de la consulta en curso).
   const [fichaPatientId, setFichaPatientId] = useState<string | null>(null);
+  // Historial de consultas previas del paciente (solo lectura, drawer derecho).
+  const [showHistory, setShowHistory] = useState(false);
 
   // Doctor profile for share template
   const [doctorName, setDoctorName] = useState('');
@@ -2539,6 +2542,13 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openId]);
+
+  // Cerrar el drawer de historial cuando se sale del editor de consulta.
+  useEffect(() => {
+    if (view !== 'consultation') {
+      setShowHistory(false);
+    }
+  }, [view]);
 
   // ---------------------------------------------------------------------------
   // Maps UI sort keys to backend sort param values.
@@ -4499,13 +4509,22 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                       {selected.consultation_code}
                     </p>
                     {selected.patient_id && (
-                      <button
-                        type="button"
-                        onClick={() => setFichaPatientId(selected.patient_id)}
-                        className="inline-flex items-center gap-0.5 mt-1 text-xs font-semibold text-teal-600 hover:text-teal-700 transition-colors"
-                      >
-                        Ver ficha del paciente <ChevronRight className="w-3 h-3" />
-                      </button>
+                      <div className="flex flex-col gap-0.5 mt-1">
+                        <button
+                          type="button"
+                          onClick={() => setFichaPatientId(selected.patient_id)}
+                          className="inline-flex items-center gap-0.5 text-xs font-semibold text-teal-600 hover:text-teal-700 transition-colors"
+                        >
+                          Ver ficha del paciente <ChevronRight className="w-3 h-3" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setShowHistory(true)}
+                          className="inline-flex items-center gap-0.5 text-xs font-semibold text-slate-500 hover:text-teal-600 transition-colors"
+                        >
+                          <History className="w-3 h-3" /> Revisar historial
+                        </button>
+                      </div>
                     )}
                   </div>
                   <button
@@ -5545,6 +5564,17 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
             patientId={fichaPatientId}
             patientName={selected?.patient_name}
             onClose={() => setFichaPatientId(null)}
+          />
+        )}
+
+        {/* Historial de consultas previas — drawer solo lectura, no saca de la consulta */}
+        {selected && (
+          <PatientHistoryModal
+            open={showHistory}
+            patientId={selected.patient_id}
+            currentConsultationId={selected.id}
+            patientName={selected.patient_name}
+            onClose={() => setShowHistory(false)}
           />
         )}
 

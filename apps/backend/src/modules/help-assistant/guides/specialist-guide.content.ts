@@ -90,6 +90,8 @@ En la parte inferior del menu lateral siempre ves tu plan activo (por ejemplo 'P
 
 Los precios exactos y los periodos se cargan dinamicamente desde el catalogo de planes; pueden variar. Si el precio no esta disponible, la tarjeta muestra 'Precio no disponible'.
 
+**Periodo de prueba al registrarte:** cuando creas tu cuenta, empiezas con una **prueba gratuita** que te da acceso completo (los mismos modulos que Delta Plus, incluida la IA) por un tiempo limitado, para que pruebes todo. Al terminar la prueba, tu cuenta pasa a **Delta Free** (downgrade perezoso, al iniciar sesion) sin perder ningun dato; para conservar los modulos avanzados, mejoras tu plan a Base o Plus. Guia siempre segun los modulos que el usuario tenga disponibles AHORA (ver el bloque CONTEXTO DEL USUARIO): durante la prueba veras habilitadas funciones que en Delta Free apareceran con candado.
+
 ### Como mejorar tu plan (pago manual)
 
 En la pantalla **Mejora tu plan Delta** (/doctor/upgrade) veras tarjetas con los planes y un selector de **Ciclo de pago** (por ejemplo mensual, trimestral, semestral o anual; los periodos largos pueden tener descuento). Tu plan actual aparece destacado con un boton deshabilitado. Para los otros planes el boton dice **Mejorar a [plan]**.
@@ -187,6 +189,7 @@ Gestion de tus pacientes. Solo ves TUS pacientes.
   - **Ver consultas** del paciente — historial; cada fila tiene 'Dx:' (diagnostico) y 'Tx:' (tratamiento) y un boton para abrir.
   - **Nueva consulta** — crea una consulta nueva para ese paciente.
   - **Subir archivo al paciente** / **Pedirle algo al paciente** — adjuntos y solicitudes.
+  - **Seguimiento del paciente** — una pestana **Seguimiento** dentro de la ficha del paciente donde llevas un hilo de **tareas, comentarios y archivos** entre el medico y el paciente (por ejemplo, enviarle una indicacion, adjuntarle un resultado, pedirle que suba un examen). Cada mensaje/archivo se marca como leido y el paciente puede ver y responder ese seguimiento desde su portal (seccion Seguimiento), siempre que tenga cuenta.
   - **Eliminar** — el paciente se oculta pero no se borra (borrado suave).
 
 **Reglas importantes:** la cedula del paciente es obligatoria; sin ella no podras compartirle documentos. Los datos sensibles (nombre, cedula, telefono, email) se guardan cifrados. En listados pueden mostrarse enmascarados; revelar datos completos queda registrado en una auditoria de acceso.
@@ -210,6 +213,8 @@ Es el editor completo de una consulta. Contiene:
 - **Botones de IA en cada bloque** (solo plan Delta Plus): **Mejorar con IA** (mejora la redaccion del bloque), **Resumen del informe** (genera un resumen) y **Resumir historial del paciente** / **Historial del paciente** (trae contexto de consultas anteriores). Tras usar la IA puedes **Copiar texto** o aplicar el resultado. Si no tienes plan Plus, estos botones no estan disponibles.
 - **Grabadora de voz / transcripcion** (solo plan Plus): boton **Grabar la consulta** (o 'Grabar consulta'). Mientras procesa veras 'Transcribiendo audio...' y 'Procesando con IA — no cierres esta pagina...'. La IA transcribe el audio y sugiere que bloques llenar. Puedes **Grabar otra vez**.
 - **Informacion del pago:** monto en USD y bolivares, metodo de pago y estado. Boton **Marcar pago como aprobado** (al aplicarlo se muestra como 'Pago aprobado ✓'). El estado actual se indica como Pendiente o Aprobado.
+- **Paraclinico:** hay un bloque **Paraclinico** para registrar de forma estructurada los examenes/estudios solicitados o sus resultados; se puede incluir tanto en el documento generado como al compartir.
+- **Generar Documento:** boton **Generar Documento** que abre un modal para producir un PDF branded (con tu logo/firma) de uno de **5 tipos**: **Receta**, **Paraclinicos**, **Historia clinica**, **Reposo** o **Informe**. El sistema **detecta automaticamente** cuales tienes disponibles segun el contenido de la consulta (por ejemplo, 'Historia clinica' se habilita si el paciente tiene historia; el 'Reposo' solo si tiene dias > 0). Es el mismo PDF que recibe el paciente al compartir.
 - **Compartir documentos:** boton **Compartir** (abre el modal 'Compartir documentos'; ver flujo en la seccion 7).
 - **Recetas (recipes):** con **Nueva receta** puedes agregar recetas. Por cada medicamento cargas: **medicamento**, **dosis**, **frecuencia**, **duracion**, **indicaciones** y la **Presentacion** del medicamento. La Presentacion es un selector con estas opciones: Tabletas, Capsulas, Gotas, Jarabe, Spray, Crema, Unguento, Ampolla/Inyeccion, Supositorio, Ovulo, Inhalador, Polvo, Solucion, Parche u 'Otro'.
   - **PDF de 2 hojas del recipe:** al generar un recipe se produce un PDF de **dos hojas**. La **hoja 1 ('Recipe')** lista el medicamento y la dosis; la **hoja 2 ('Indicaciones')** lista el medicamento, la dosis, las indicaciones, la frecuencia, la duracion y la presentacion. Este formato de 2 hojas aplica al **generar, descargar y compartir por enlace** el recipe.
@@ -260,7 +265,7 @@ Gestiona tus sedes y horarios de atencion.
 
 ### 6.10 Plantillas — /doctor/templates
 
-Plantillas para tus documentos PDF (informe, receta, reposo, etc.): logo, firma, sello, pie de pagina, matricula, tipografia y color. La generacion de PDF esta en desarrollo (diferida a una fase posterior).
+Aqui configuras la identidad de tus documentos PDF (informe, receta, reposo, etc.): **logo** del consultorio, **firma**, **matricula/licencia**, tipografia y color. La firma la puedes **subir como imagen** (PNG con fondo transparente) o **dibujarla** en pantalla con el boton **Dibujar**. Una vez configurados, el **logo, la firma y la matricula aparecen automaticamente en todos los PDF** que genera la plataforma (informes, recetas, reposo, prescripciones). La generacion de PDF ya esta operativa. Consejo: en el Inicio veras una tarjeta que te invita a configurar tus plantillas mientras no hayas subido logo y firma.
 
 ### 6.11 Recordatorios — /doctor/reminders
 
@@ -268,7 +273,7 @@ Configuracion de recordatorios automaticos a pacientes. (Requiere plan Base o Pl
 
 - Activar/desactivar recordatorios, elegir canal (Email, WhatsApp o ambos), elegir los tiempos de aviso (7 dias antes, 24 horas antes, 3 horas antes), definir horas de silencio (no enviar en ese rango) y una plantilla de mensaje.
 - Un monitor muestra los ultimos recordatorios y su estado (Enviado / Fallo).
-- Hoy puedes enviar recordatorios manualmente desde la cita; el envio automatico por cron esta diferido a una fase posterior. Si conectas Google Calendar, este envia su propio recordatorio 30 minutos antes.
+- **Los recordatorios automaticos ya estan activos:** el sistema envia por email de forma automatica el recordatorio de **24 horas antes** y el de **1 hora antes** de cada cita, sin que tengas que hacer nada. El recordatorio de 24 horas incluye un **enlace para que el paciente confirme la cita** por si mismo (confirmacion por token); al confirmar, la cita pasa a Confirmada. Ademas puedes enviar un recordatorio manual desde la cita. Si conectas Google Calendar, este envia su propio recordatorio 30 minutos antes.
 
 ### 6.12 Configuracion / Perfil — /doctor/settings
 
@@ -335,11 +340,13 @@ Si ves estos botones desactivados o ausentes, es porque tu plan no es Plus: mejo
 ### 7.4 Compartir un documento con el paciente (enlace + codigo de 6 digitos + cedula, 48 horas)
 
 1. En el detalle de la consulta pulsa el boton **Compartir**, que abre el modal 'Compartir documentos'.
-2. En el modal, marca que **secciones** compartir (puedes elegir varias):
+2. En el modal, marca que **secciones/documentos** compartir (puedes elegir varios, de los mismos 5 tipos que en Generar Documento):
    - **Informe de la consulta** (diagnostico, motivo y notas clinicas).
-   - **Recetas** (medicamentos, dosis e indicaciones).
+   - **Receta** (medicamentos, dosis e indicaciones).
+   - **Paraclinicos** (examenes/estudios).
+   - **Reposo** (solo si tiene dias > 0).
    - **Historia clinica / EHR** (historial clinico electronico del paciente).
-   - Debes seleccionar al menos una seccion.
+   - Debes seleccionar al menos una seccion. El PDF que descarga el paciente es el MISMO documento branded (con tu logo y firma) que generas tu.
 3. Pulsa **Generar enlace y enviar**. Mientras procesa muestra 'Generando enlace...'.
 4. El sistema:
    - Genera un **enlace de descarga** y un **codigo de acceso de 6 digitos**, ambos copiables (boton **Copiar**).
