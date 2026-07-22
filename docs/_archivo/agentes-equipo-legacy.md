@@ -13,14 +13,14 @@ El proyecto tiene 10 módulos con implementación paralela posible (backend + fr
 
 ## Equipo (6 agentes)
 
-| Agente | Archivo | Modelo | Cuándo usarlo |
-|--------|---------|--------|---------------|
-| **Orchestrator** | `.claude/agents/orchestrator.md` | Opus 4.7 | Siempre primero — descompone, asigna, consolida |
-| **Backend Agent** | `.claude/agents/backend-agent.md` | Sonnet 4.6 | NestJS, DDD, Sequelize, use cases, migraciones |
-| **Frontend Agent** | `.claude/agents/frontend-agent.md` | Sonnet 4.6 | Next.js, Server Components, Server Actions, UI |
-| **Code Reviewer** | `.claude/agents/code-reviewer.md` | Sonnet 4.6 | Después de cada implementación — siempre |
-| **QA Agent** | `.claude/agents/qa-agent.md` | Sonnet 4.6 | Tests Jest + Playwright, cobertura, reportes |
-| **Security Agent** | `.claude/agents/security-agent.md` | Sonnet 4.6 | Módulos con PHI, auth, encriptación, IDOR |
+| Agente             | Archivo                            | Modelo     | Cuándo usarlo                                   |
+| ------------------ | ---------------------------------- | ---------- | ----------------------------------------------- |
+| **Orchestrator**   | `.claude/agents/orchestrator.md`   | Opus 4.7   | Siempre primero — descompone, asigna, consolida |
+| **Backend Agent**  | `.claude/agents/backend-agent.md`  | Sonnet 4.6 | NestJS, DDD, Sequelize, use cases, migraciones  |
+| **Frontend Agent** | `.claude/agents/frontend-agent.md` | Sonnet 4.6 | Next.js, Server Components, Server Actions, UI  |
+| **Code Reviewer**  | `.claude/agents/code-reviewer.md`  | Sonnet 4.6 | Después de cada implementación — siempre        |
+| **QA Agent**       | `.claude/agents/qa-agent.md`       | Sonnet 4.6 | Tests Jest + Playwright, cobertura, reportes    |
+| **Security Agent** | `.claude/agents/security-agent.md` | Sonnet 4.6 | Módulos con PHI, auth, encriptación, IDOR       |
 
 ---
 
@@ -37,6 +37,7 @@ Los agentes del proyecto son orquestadores con contexto de Delta Medical. Para t
 ### Instalación para el nuevo proyecto NX
 
 **Paso 1** — Instalar el plugin globalmente en Claude Code:
+
 ```bash
 # En cualquier sesión de Claude Code
 /plugin marketplace add https://github.com/affaan-m/everything-claude-code
@@ -44,6 +45,7 @@ Los agentes del proyecto son orquestadores con contexto de Delta Medical. Para t
 ```
 
 **Paso 2** — Copiar las reglas al proyecto:
+
 ```bash
 cd /Users/lucasrivas/Documents/repositorios/everything-claude-code
 
@@ -58,6 +60,7 @@ cp -r rules/web ~/.claude/rules/ecc/web
 ```
 
 **Paso 3** — Verificar que los agentes ECC están disponibles:
+
 ```bash
 ls ~/.claude/agents/ | grep -E "(code-reviewer|security-reviewer|tdd-guide)"
 ```
@@ -73,14 +76,14 @@ cd /Users/lucasrivas/Documents/repositorios/everything-claude-code
 
 ### Cuándo usar ECC directamente vs agentes del proyecto
 
-| Tarea | Usar |
-|-------|------|
+| Tarea                               | Usar                         |
+| ----------------------------------- | ---------------------------- |
 | Implementar un módulo Delta Medical | `backend-agent` del proyecto |
-| Review de calidad de un módulo | `code-reviewer` del proyecto |
-| Auditoría OWASP completa | `security-reviewer` de ECC |
-| Type safety exhaustivo | `typescript-reviewer` de ECC |
-| E2E con configuración avanzada | `e2e-runner` de ECC |
-| Planificación de arquitectura | `architect` de ECC |
+| Review de calidad de un módulo      | `code-reviewer` del proyecto |
+| Auditoría OWASP completa            | `security-reviewer` de ECC   |
+| Type safety exhaustivo              | `typescript-reviewer` de ECC |
+| E2E con configuración avanzada      | `e2e-runner` de ECC          |
+| Planificación de arquitectura       | `architect` de ECC           |
 
 ---
 
@@ -156,6 +159,7 @@ Acción solicitada: Reasignar a backend-agent para corregir CreatePatientUseCase
 ### Escalada al Security Agent
 
 El Code Reviewer o el Orchestrator escalan al Security Agent cuando detectan:
+
 - Datos de pacientes en respuestas sin `toMasked()`
 - Endpoints sin guard
 - Acceso a recursos sin verificar ownership (IDOR potencial)
@@ -197,15 +201,16 @@ Backend y Frontend pueden arrancar en paralelo.
 
 Estrategia para no agotar los créditos:
 
-| Práctica | Ahorro estimado |
-|----------|----------------|
-| Un módulo por sesión (no abrir todo a la vez) | Alto |
-| Leer solo el .md del módulo actual, no todos | Alto |
-| backend-agent + frontend-agent en paralelo (no secuencial) | Medio |
-| Usar Haiku para tasks simples (reviews de formato, naming) | Medio |
-| Terminar la sesión al finalizar un módulo (no dejar contexto acumulado) | Alto |
+| Práctica                                                                | Ahorro estimado |
+| ----------------------------------------------------------------------- | --------------- |
+| Un módulo por sesión (no abrir todo a la vez)                           | Alto            |
+| Leer solo el .md del módulo actual, no todos                            | Alto            |
+| backend-agent + frontend-agent en paralelo (no secuencial)              | Medio           |
+| Usar Haiku para tasks simples (reviews de formato, naming)              | Medio           |
+| Terminar la sesión al finalizar un módulo (no dejar contexto acumulado) | Alto            |
 
 **Modelo recomendado por tarea**:
+
 - Orchestrator + revisiones complejas: **Opus 4.7**
 - Implementación de módulos: **Sonnet 4.6**
 - Reviews simples, formateo, naming: **Haiku 4.5**

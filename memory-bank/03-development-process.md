@@ -5,6 +5,7 @@
 ## Entorno local
 
 ### Requisitos
+
 - Node 22 · pnpm (user-local en `~/.local/share/pnpm/bin` — añadido a `.zshenv`)
 - Docker Desktop (**pendiente de instalar** — necesario en Fase 3 para Postgres/Redis)
 
@@ -13,6 +14,7 @@
 > `export PATH="$HOME/.local/share/pnpm/bin:$PATH"`.
 
 ### Arrancar
+
 ```bash
 pnpm install
 # Etapa 3+:
@@ -31,7 +33,7 @@ pnpm nx affected --target=test --base=origin/develop
 pnpm nx build shared-types
 ```
 
-## Estructura de un módulo (ver `migracion/modulos/00-estructura-modulo.md`)
+## Estructura de un módulo (ver `docs/guides/estructura-modulo.md`)
 
 domain/ (entities+spec, value-objects, errors) → application/use-cases/<modulo>/
 (1 archivo por acción + spec) → infrastructure/database/(models, repositories) →
@@ -56,10 +58,12 @@ a main/develop — siempre PR. Commits: `<tipo>(<scope>): <desc>` —
 feat|fix|chore|docs|refactor|test|perf|ci. commitlint + Husky.
 
 ### Estado de ramas (2026-06-01)
+
 Solo existe `main` + rama de trabajo `feature/fase-1-nx-monorepo`. `develop` se
 crea al cerrar Fase 1.
 
 ## Pre-commit hook (Husky)
+
 - `develop`/`main`: lint-staged + `nx affected --target=test`
 - `feature/*`,`hotfix/*`,`release/*`: solo lint-staged (más rápido)
 

@@ -238,10 +238,10 @@ consultations}` (+ Consultorios/Plantillas sin moduleKey); deshabilitados agenda
     `feature/migracion-backend` cerrada. Flujo develop → staging → main.
   * **Costos reales GCP:** ~$33/mes bruto hoy, cubierto por crédito de prueba ($300); baseline 0 usuarios ~$30/mes
     (domina Cloud SQL `db-g1-small`). Cloud Build (deploys) fue un costo relevante. Presentación de costos en
-    `migracion/presentacion-inversionistas.html`.
+    `docs/presentacion-inversionistas.html`.
   * **Pendiente (con costo/red):** dominio del backend `api.deltasalud.app`; `ingress=internal` + Direct VPC egress;
     Load Balancer + Cloud Armor; entorno de staging real (BD propia — se levantó por error una vez y se eliminó).
-  * Detalle operativo completo: `migracion/dominio-dns-snapshot.md`.
+  * Detalle operativo completo: `docs/dominio-dns-snapshot.md`.
 
 ## Inventario de tablas (auditoría Fase 0 — fuente de verdad: archivos `*.sql`)
 

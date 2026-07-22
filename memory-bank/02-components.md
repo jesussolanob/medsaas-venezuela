@@ -89,7 +89,7 @@ share-pdf, send-email), `api/book`, `api/cron/subscription-expiry`,
 
 ## Módulos backend NestJS (`apps/backend/src/modules/`)
 
-Estado (orden `migracion/modulos/`):
+Estado (orden histórico de módulos):
 
 - 01 auth → Etapa 1 cubierto por `DevAuthGuard` (módulo Auth0 real = Fase 4).
 - 02 patients → ✅ DDD completo. PII cifrada (full_name/cedula/phone/email) + search hashes;

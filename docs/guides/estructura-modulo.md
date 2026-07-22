@@ -33,12 +33,12 @@ presentation/
 
 ## Cobertura de tests requerida
 
-| Capa | Cobertura mínima | Tipo de test |
-|------|-----------------|--------------|
-| `domain/` | **100%** | Unitario puro — sin dependencias externas |
-| `application/use-cases/` | **90%** | Unitario con repositorios mockeados |
-| `infrastructure/repositories/` | **70%** | Integración con BD de test (Docker) |
-| `presentation/controllers/` | **80%** | Unitario con NestJS testing module |
+| Capa                           | Cobertura mínima | Tipo de test                              |
+| ------------------------------ | ---------------- | ----------------------------------------- |
+| `domain/`                      | **100%**         | Unitario puro — sin dependencias externas |
+| `application/use-cases/`       | **90%**          | Unitario con repositorios mockeados       |
+| `infrastructure/repositories/` | **70%**          | Integración con BD de test (Docker)       |
+| `presentation/controllers/`    | **80%**          | Unitario con NestJS testing module        |
 
 ---
 
