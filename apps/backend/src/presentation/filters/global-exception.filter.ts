@@ -37,13 +37,12 @@ export class GlobalExceptionFilter implements ExceptionFilter {
 
     let status = HttpStatus.INTERNAL_SERVER_ERROR;
     let code = 'INTERNAL_ERROR';
-    let message = 'An unexpected error occurred';
+    let message = 'Ocurrió un error inesperado';
 
     if (exception instanceof HttpException) {
       status = exception.getStatus();
       const res = exception.getResponse();
-      message =
-        typeof res === 'string' ? res : ((res as { message?: string }).message ?? message);
+      message = typeof res === 'string' ? res : ((res as { message?: string }).message ?? message);
       code = 'HTTP_ERROR';
     } else if (exception instanceof DomainError) {
       status = exception.httpStatus ?? HttpStatus.UNPROCESSABLE_ENTITY;
