@@ -42,7 +42,7 @@ vigente (idempotente; las 11 correctas no cambian) y quita el emoji. Deploy verd
 
 ## 2026-07-18/19 — GO-LIVE dominio `deltasalud.app` + Auth0 custom domain + ramas + QA en vivo ✅
 
-Migración de infraestructura completa (detalle en ADR-023 y `migracion/dominio-dns-snapshot.md`):
+Migración de infraestructura completa (detalle en ADR-023 y `docs/dominio-dns-snapshot.md`):
 
 - **Dominio en producción:** `https://deltasalud.app` ya sirve la app de Cloud Run (dejó Vercel). Cloudflare
   **proxied** delante, **SSL Full (strict)**, Always Use HTTPS, redirect www→apex, WAF/DDoS del edge. Cert de Cloud
@@ -56,7 +56,7 @@ Migración de infraestructura completa (detalle en ADR-023 y `migracion/dominio-
   PERSISTE**, compartir documento → **email Delivered** (Resend) → acceso público con cédula+código, agenda,
   finanzas. Todo OK.
 - **Costos reales revisados:** ~$33/mes bruto cubierto por crédito; baseline 0 usr ~$30 (domina Cloud SQL). Presentación
-  de costos simplificada en `migracion/presentacion-inversionistas.html`.
+  de costos simplificada en `docs/presentacion-inversionistas.html`.
 - ⚠️ Se levantó un entorno de **staging por malentendido** y se **eliminó por completo** el mismo día (era solo para
   estimar su costo). Queda como plan futuro (BD propia).
 
@@ -1806,7 +1806,7 @@ usuario en :3000/:3001 son procesos del usuario y NO se reinician) + curl + Post
 **⚠️ Para ver los fixes en el navegador, el usuario debe REINICIAR su backend :3001** (corre el dist VIEJO desde
 `node dist/apps/backend/main.js`; ya está rebuildeado con los cambios). El front (Next dev) recarga solo.
 **Dato dev dejado en BD:** `profiles.phone` del dev doctor = '04141234567' (de la verificación). Specs nuevos en
-`migracion/specs/{desenmascarar-pii-doctor,fix-phone-perfil-doctor}.md`. Próxima migración usar timestamp > 20260609000000.
+las specs de PII-doctor/phone (eliminadas en la limpieza de `migracion/`; ver historial git). Próxima migración usar timestamp > 20260609000000.
 
 ## ✅ AUTH0 VERIFICADO + FIX FUGA CROSS-TENANT Fase 4 (2026-06-09 cont., commit `a1e2a93`)
 

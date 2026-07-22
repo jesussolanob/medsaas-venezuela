@@ -61,8 +61,8 @@ libs/shared-crypto  AES-256-GCM + HMAC (datos de pacientes)
 
 - **Etapa 1 (actual):** todo local. `DevAuthGuard` (headers `x-dev-user-*`),
   Postgres/Redis/MinIO en Docker, clave de cifrado fija en `.env`. Sin Auth0/GCP.
-- **Etapa 2 (después):** producción en GCP (Cloud Run + Cloud SQL + GCS) con
-  Auth0 BFF y Cloudflare. Planes en `migracion/`.
+- **Etapa 2 (ya desplegada):** producción en GCP (Cloud Run + Cloud SQL + GCS) con
+  Auth0 BFF y Cloudflare. Detalle en `README_DEPLOY.md` y `docs/dominio-dns-snapshot.md`.
 
 ## Arranque local
 

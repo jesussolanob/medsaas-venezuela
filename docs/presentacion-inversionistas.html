@@ -123,19 +123,19 @@
       <!-- 1. Situación actual -->
       <section>
         <h2><span class="num">1</span> Dónde estamos hoy</h2>
-        <p class="lead">Con la plataforma desplegada y <b>sin usuarios todavía</b>, el gasto real es de ~$33/mes — pero hoy lo cubre el crédito de prueba de Google.</p>
+        <p class="lead">Con la plataforma desplegada y <b>sin usuarios todavía</b>, el gasto real ronda ~$50/mes — pero hoy lo cubre el crédito de prueba de Google. (En lo que va de julio van ~$36 de mes parcial, proyectando ~$50 al cierre.)</p>
         <div class="now">
           <div class="card card--hero">
             <div class="big">$0<span style="font-size:1.1rem;font-weight:600;opacity:.85;"> /mes de bolsillo</span></div>
             <div class="cap">Estamos sobre el crédito de prueba de Google Cloud ($300; quedan ~$248).</div>
-            <div class="note">Costo real "bruto" hoy: <b>~$33/mes</b>. El costo base a 0 usuarios ronda <b>~$30/mes</b> y lo domina la base de datos (no se puede apagar).</div>
+            <div class="note">Costo real "bruto" hoy: <b>~$50/mes</b> (julio: ~$36 de mes parcial). El piso a 0 usuarios ronda <b>~$30/mes</b> y lo domina la base de datos (no se puede apagar); el resto son despliegues de desarrollo, que suben en meses de mucha actividad.</div>
           </div>
           <div class="card">
             <div class="mini"><span>Base de datos <span class="muted">(Cloud SQL)</span></span><b>$28</b></div>
-            <div class="mini"><span>Despliegues <span class="muted">(Cloud Build)</span></span><b>$14</b></div>
-            <div class="mini"><span>Servidores <span class="muted">(Cloud Run)</span></span><b>$2</b></div>
-            <div class="mini"><span>Almacenamiento + varios</span><b>~$1</b></div>
-            <div class="mini"><span><b>Total bruto / mes</b></span><b>~$33</b></div>
+            <div class="mini"><span>Despliegues <span class="muted">(Cloud Build)</span></span><b>~$16</b></div>
+            <div class="mini"><span>Servidores <span class="muted">(Cloud Run)</span></span><b>~$3</b></div>
+            <div class="mini"><span>Almacenamiento + varios</span><b>~$2</b></div>
+            <div class="mini"><span><b>Total bruto / mes</b></span><b>~$50</b></div>
           </div>
         </div>
         <p class="fine">Los "despliegues" (Cloud Build) son costo de <b>desarrollo</b>: se pagan al publicar versiones, no por usuarios. En producción estable bajan a $2–5/mes.</p>
@@ -144,7 +144,7 @@
       <!-- 2. Mantener lo actual, por escala -->
       <section>
         <h2><span class="num">2</span> Costo de mantener la configuración actual</h2>
-        <p class="lead">Estimado mensual a medida que entran usuarios activos. La app escala sola: pagas casi nada con pocos usuarios y el costo crece de forma predecible.</p>
+        <p class="lead">Estimado mensual a medida que entran usuarios activos. La app escala sola y la <b>base de datos se dimensiona con holgura desde el primer lote de médicos</b> — con núcleos dedicados y conexiones de sobra para que la experiencia sea rápida, no "al mínimo". El costo crece de forma predecible.</p>
         <table>
           <thead>
             <tr>
@@ -156,23 +156,29 @@
             </tr>
           </thead>
           <tbody>
-            <tr><td>Base de datos (Cloud SQL) ⁽¹⁾</td><td>$28</td><td>$28</td><td>$105 – $205</td><td>~$394</td></tr>
-            <tr><td>Servidores app (Cloud Run)</td><td>$2</td><td>~$8</td><td>~$35</td><td>~$180</td></tr>
+            <tr><td>Base de datos (Cloud SQL) ⁽¹⁾</td><td>$28</td><td>$100 – $200</td><td>$205 – $390</td><td>~$620</td></tr>
+            <tr><td>Servidores app (Cloud Run)</td><td>~$3</td><td>~$8</td><td>~$35</td><td>~$180</td></tr>
             <tr><td>Caché en memoria (Redis) ⁽²⁾</td><td class="dash">—</td><td class="dash">—</td><td>$36 – $70</td><td>~$70</td></tr>
             <tr><td>Almacenamiento de archivos + varios</td><td>~$2</td><td>~$3</td><td>~$10</td><td>~$40</td></tr>
+            <tr><td>CDN + WAF de borde (Cloudflare) ⁽⁴⁾</td><td class="free">Gratis</td><td class="free">Gratis</td><td class="free">Gratis</td><td class="free">Gratis</td></tr>
+            <tr><td>Balanceador + Cloud Armor (blindaje) ⁽⁵⁾</td><td class="dash">—</td><td>~$30</td><td>~$35</td><td>~$45</td></tr>
             <tr><td>Correo transaccional (Resend)</td><td class="free">Gratis</td><td class="free">Gratis</td><td>$20</td><td>$20</td></tr>
-            <tr><td>Inicio de sesión (Auth0) ⁽³⁾</td><td class="free">Gratis</td><td class="free">Gratis</td><td class="free">Gratis</td><td class="free">Gratis</td></tr>
-            <tr><td>Despliegues (Cloud Build)</td><td>$2 – $14</td><td>~$5</td><td>~$5</td><td>~$10</td></tr>
-            <tr class="total"><td>Total estimado / mes</td><td>~$33</td><td>~$50</td><td>~$210 – $350</td><td>~$720</td></tr>
+            <tr><td>Inicio de sesión (Auth0) ⁽³⁾</td><td class="free">Gratis</td><td class="free">Gratis</td><td>~$35</td><td>~$150</td></tr>
+            <tr><td>IA — Vertex AI (Gemini gestionado) ⁽⁶⁾</td><td class="dash">—</td><td>~$15</td><td>~$60</td><td>~$250</td></tr>
+            <tr><td>Despliegues (Cloud Build)</td><td>$2 – $16</td><td>~$5</td><td>~$5</td><td>~$10</td></tr>
+            <tr class="total"><td>Total estimado / mes</td><td>~$50</td><td>~$160 – $260</td><td>~$445 – $660</td><td>~$1.385</td></tr>
           </tbody>
         </table>
         <p class="fine">
-          ⁽¹⁾ <b>Base de datos con holgura para salud:</b> hoy 1,7&nbsp;GB RAM (db-g1-small). A 1.000 usuarios sube a 2&nbsp;vCPU / 7,5&nbsp;GB, y en producción médica conviene <b>Alta Disponibilidad</b> (réplica automática, cero caídas) → $105 sin HA, ~$205 con HA. A 10.000: 4&nbsp;vCPU / 15&nbsp;GB con HA (~$394). &nbsp;·&nbsp;
+          ⁽¹⁾ <b>Base de datos dimensionada con holgura (nunca al mínimo):</b> hoy, con 0 usuarios, corre en el tier compartido de 1,7&nbsp;GB (db-g1-small). <b>Antes de sumar médicos pasamos a un servidor dedicado:</b> a 100 usuarios, 2&nbsp;vCPU / 8&nbsp;GB con ~400 conexiones simultáneas — suficiente para que decenas de médicos trabajen a la vez sin esperas ($100 sin HA / ~$200 con <b>Alta Disponibilidad</b>). A 1.000: 4&nbsp;vCPU / 16&nbsp;GB con HA y ~800 conexiones ($205 sin HA / ~$390 con HA). A 10.000: 6–8&nbsp;vCPU / 24–32&nbsp;GB con HA y réplica de lectura (miles de conexiones efectivas con pooling). &nbsp;·&nbsp;
           ⁽²⁾ Redis (acelera y descarga la BD) se activa al escalar; hoy está apagado. &nbsp;·&nbsp;
-          ⁽³⁾ Auth0 gratis hasta 25.000 usuarios activos/mes.
+          ⁽³⁾ Auth0: gratis en volúmenes bajos; a partir de ~1.000 usuarios pasamos a un <b>plan pago</b> (MFA, más conexiones, seguridad avanzada y soporte con SLA). &nbsp;·&nbsp;
+          ⁽⁴⁾ Cloudflare en plan <b>Free</b> (proxied): CDN, mitigación de DDoS y WAF básico en el borde, sin costo. El plan Pro (WAF gestionado + analítica avanzada) es opcional (sección 3). &nbsp;·&nbsp;
+          ⁽⁵⁾ Balanceador de Google + <b>Cloud Armor</b>: firewall de aplicaciones de Google y blindaje del origen (oculta las URLs internas de Cloud Run). En una plataforma médica lo activamos <b>desde los primeros usuarios reales</b>, no "después"; su costo crece con el volumen de peticiones. &nbsp;·&nbsp;
+          ⁽⁶⁾ <b>IA con Vertex AI:</b> hoy la IA usa el free tier de Gemini, pero migraremos a <b>Vertex AI</b> (Gemini gestionado por Google, <b>sin entrenar con datos de pacientes</b>) — es el estándar apropiado en salud. Solo la usan los médicos del <b>plan Plus</b> (transcripción de consultas + asistente de texto); es costo <b>por uso</b> y lo domina la transcripción de audio, por eso escala con la adopción.
         </p>
         <div class="callout warn">
-          <b>Nota sobre la base de datos:</b> es el componente que más pesa al crecer y el más sensible en una plataforma médica. El presupuesto de arriba ya asume subir de tier y activar Alta Disponibilidad — no está "apretado". Si esperamos picos de uso o muchos consultorios concurrentes, conviene ir directo a la opción con HA ($205 a 1.000 usuarios).
+          <b>Nota sobre la base de datos:</b> es el componente que más pesa al crecer y el más sensible en una plataforma médica. Por eso el presupuesto <b>no la deja al mínimo</b>: en cuanto entran médicos pasamos a un servidor <b>dedicado</b>, con núcleos y memoria propios y <b>cientos de conexiones libres</b>, para que la app responda rápido aunque muchos consultorios trabajen a la vez. La opción con <b>Alta Disponibilidad</b> (réplica automática, cero caídas) está contemplada y es la recomendada desde que haya usuarios reales.
         </div>
       </section>
 
@@ -187,7 +193,7 @@
           <tbody>
             <tr>
               <td>Servidor de <b>staging</b> (pruebas)</td>
-              <td class="price">+ ~$30</td>
+              <td class="price">+ ~$50</td>
               <td class="why">Un entorno idéntico con su <b>propia base de datos aislada</b> para probar cambios antes de exponerlos a los médicos. Evita romper producción.</td>
             </tr>
             <tr>
@@ -198,12 +204,7 @@
             <tr>
               <td><b>Cloudflare Pro</b></td>
               <td class="price">+ $20</td>
-              <td class="why">Firewall de aplicaciones (WAF) gestionado y analítica avanzada de tráfico y ataques.</td>
-            </tr>
-            <tr>
-              <td>Load Balancer + <b>Cloud Armor</b></td>
-              <td class="price">+ $25 – $40</td>
-              <td class="why">Blindaje total del origen + firewall de aplicaciones de Google. Para volumen alto o exigencias de cumplimiento.</td>
+              <td class="why">Mejora el Cloudflare Free que ya usamos: WAF gestionado con reglas administradas y analítica avanzada de tráfico y ataques. El Balanceador + <b>Cloud Armor</b> ya va incluido en el presupuesto base desde 100 usuarios (tabla anterior).</td>
             </tr>
             <tr>
               <td><b>Alta Disponibilidad</b> de la BD</td>
@@ -219,9 +220,10 @@
         <h2><span class="num">4</span> En resumen</h2>
         <ul class="reco">
           <li><b>Hoy pagamos $0.</b> El crédito de Google ($300, ~$248 restantes) cubre el arranque; foco total en producto.</li>
-          <li><b>El costo lo manda la base de datos.</b> Al crecer, presupuestar holgado y con Alta Disponibilidad — es lo crítico en una plataforma médica.</li>
-          <li><b>Staging por apenas ~$30/mes</b> es barato frente al riesgo de romper producción con pacientes reales. Recomendado en cuanto haya usuarios.</li>
-          <li><b>El dominio del backend es gratis</b> y suma control y marca. Cloudflare Pro y Cloud Armor entran después, con volumen o compliance.</li>
+          <li><b>El costo lo manda la base de datos, y la dimensionamos con holgura.</b> Desde el primer lote de médicos corre en un servidor dedicado con cientos de conexiones libres, para que la app sea rápida — nunca "al mínimo". Alta Disponibilidad recomendada en cuanto haya usuarios reales.</li>
+          <li><b>Staging por apenas ~$50/mes</b> es barato frente al riesgo de romper producción con pacientes reales. Recomendado en cuanto haya usuarios.</li>
+          <li><b>La seguridad de borde entra temprano.</b> Cloudflare (Free) protege desde hoy y el <b>Balanceador + Cloud Armor</b> queda incluido en el presupuesto base desde 100 usuarios — no es un extra "para después" en una plataforma médica. El dominio del backend es gratis; Cloudflare Pro es la única mejora de seguridad opcional.</li>
+          <li><b>La IA migra a Vertex AI</b> (Gemini gestionado, sin entrenar con datos de pacientes) — el estándar apropiado en salud. Es costo por uso, solo del plan Plus, y escala con la adopción (lo domina la transcripción de consultas).</li>
         </ul>
       </section>
 

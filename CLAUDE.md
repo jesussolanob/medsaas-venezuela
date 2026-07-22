@@ -1,7 +1,8 @@
 # Delta Medical CRM — Instrucciones para Claude Code (monorepo NX)
 
 > Este es el `CLAUDE.md` raíz del **monorepo**. El doc de la app Next.js legacy
-> vive en `apps/frontend/CLAUDE.md`. Los planes de migración están en `migracion/`.
+> vive en `apps/frontend/CLAUDE.md`. La migración ya está completa (prod vivo); los
+> planes históricos se conservan en el historial de git.
 
 ## PASO 0 — OBLIGATORIO antes de cualquier cambio
 
@@ -12,9 +13,8 @@ Lee SIEMPRE antes de sugerir o aplicar modificaciones:
 3. `memory-bank/02-components.md`
 4. `memory-bank/06-mvp-planning.md` ← prioridades de negocio
 
-Para implementar un módulo: leer también `migracion/modulos/00-estructura-modulo.md`
-
-- el `.md` del módulo activo (NO cargar todos los módulos — ahorro de tokens).
+Para implementar un módulo backend nuevo: leer también la plantilla de estructura
+DDD en `docs/guides/estructura-modulo.md`.
 
 ## PASO FINAL — OBLIGATORIO al terminar
 
@@ -33,7 +33,7 @@ apps/frontend   Next.js 16 (App Router) — UI existente
 apps/backend    NestJS DDD (4 capas) — se crea en Fase 3
 libs/shared-types | shared-utils | shared-crypto
 memory-bank/    contexto persistente (leer arriba)
-migracion/      planes de migración (README → master-plan → modulos/)
+docs/           referencia (guías, arquitectura, presentación de costos, DNS snapshot)
 ```
 
 - Gestor: **pnpm** (user-local). Si un shell no encuentra `pnpm`, prefijar
@@ -52,9 +52,10 @@ migracion/      planes de migración (README → master-plan → modulos/)
 
 ## Etapa 1 (local) vs Etapa 2 (producción)
 
-Actual = Etapa 1: `DevAuthGuard` (headers `x-dev-user-id`/`x-dev-user-role`),
-Postgres/Redis Docker, clave de cifrado fija en `.env`. SIN Auth0/GCP/Cloudflare.
-Etapa 2 (después): `migracion/03-seguridad.md` + `migracion/04-gcp-infra.md`.
+Local (Etapa 1): `DevAuthGuard` (headers `x-dev-user-id`/`x-dev-user-role`),
+Postgres/Redis Docker, clave de cifrado fija en `.env`. Producción (Etapa 2, ya
+desplegada): Auth0 + GCP (Cloud Run/SQL/GCS) + Cloudflare. Detalle de deploy en
+`README_DEPLOY.md` y `docs/dominio-dns-snapshot.md`.
 
 ## SOLID — no negociable
 
@@ -79,7 +80,7 @@ I: interfaces pequeñas · D: depender de abstracciones.
 
 Este proyecto se desarrolla con un **equipo de agentes**, cada uno con su rol. La sesión
 principal actúa como **LEAD/orchestrator** y **NO implementa los módulos ella misma**: delega.
-Definiciones en `.claude/agents/`; manual en `migracion/06-agentes-equipo.md`.
+Definiciones en `.claude/agents/`; manual del team-lead en `.claude/agents/orchestrator.md`.
 
 **Roles y flujo (cada módulo/feature):**
 

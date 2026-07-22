@@ -353,6 +353,6 @@ export class DoctorController {
   }
 
   // TODO: GET /doctor/templates — deferred until doctor_templates table is created
-  //       and PDF generation logic is implemented (see migracion/modulos/09-doctor-settings.md).
+  //       and PDF generation logic is implemented.
   // TODO: PUT /doctor/templates — same reason.
 }

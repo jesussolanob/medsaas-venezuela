@@ -12,8 +12,7 @@ import {
 /**
  * Sequelize model for the `financial_transactions` table.
  *
- * Maps to: migracion/03b-schema-real.md (finances section) +
- * migration 20260602000004-finances.cjs
+ * Maps to: migration 20260602000004-finances.cjs
  * Extended by: 20260617000002-income-concepts.cjs (concept_id)
  *              20260617000003-financial-transactions-updated-at.cjs (updated_at)
  *              20260623000000-financial-transactions-patient-id.cjs (patient_id)

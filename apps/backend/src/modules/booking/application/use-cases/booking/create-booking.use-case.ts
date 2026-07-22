@@ -442,7 +442,7 @@ export class CreateBookingUseCase {
    * Sin Turnstile real + rate limiting, este endpoint permite:
    *   - booking spam (saturar agenda del doctor)
    *   - creación masiva de registros de pacientes (cada email nuevo = nuevo Patient)
-   * Activar ambas medidas antes de go-live — ver migracion/03-seguridad.md:
+   * Activar ambas medidas antes de go-live:
    *   - Turnstile real: POST https://challenges.cloudflare.com/turnstile/v0/siteverify
    *   - Rate limiting por IP: ThrottlerModule o Cloudflare WAF (≤10 req/min)
    *
