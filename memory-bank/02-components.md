@@ -391,3 +391,24 @@ Widget de ayuda con IA, disponible para los 3 perfiles. Patrón: panel global + 
   HTML 404 y no marcaba ocupados/bloqueados. Desempaqueta `{data:{slots}}` (#10).
 - **Paraclínico:** el bloque perdió su botón "PDF" viejo (print HTML); el PDF sale por "Generar Documento"
   branded (#5). El toast de "Guardar" del paraclínico muestra el error real del backend (#6).
+
+### Componentes/rutas/fixes nuevos (2026-07-22)
+
+- **`PatientHistoryModal.tsx`** (`app/doctor/consultations/`, nuevo): drawer de **solo lectura** que abre el botón
+  **"Revisar historial"** en el editor de consulta (junto a "Ver ficha del paciente"). Muestra las consultas
+  anteriores del mismo paciente (excluye la actual, orden DESC, **pagina de 5**) con cada bloque (label de
+  `blocks_structure` + valor de `blocks_snapshot`, `paraclinical` como lista) + diagnóstico. 100% frontend: reusa la
+  action existente `getPatientConsultations` → `GET /api/consultations/patient/:id` (owner-scoped, ya devolvía la
+  consulta completa con `blocks_snapshot`+`blocks_structure`). Sin cambios de backend.
+- **credential-verification — fix MPPS/SACS (3 bugs):** `SacsXajaxAdapter` ahora parsea las profesiones desde
+  `xajax_tableProfesion` (no `xajax_userTable`) y **decodifica entidades HTML** (`M&Eacute;DICO`→`MÉDICO`);
+  `name-matcher` gana `normalizeMpps` (quita prefijo `MPPS`+ceros); `verify-mpps.use-case` compara con normalizeMpps.
+  Tests contra el XML real de SACS. Con esto la verificación MPPS automática por fin funciona (antes: todo doctor
+  "no coincide").
+- **help-assistant — manual del doctor actualizado:** `specialist-guide.content.ts` (recordatorios auto, PDF/firma
+  dibujada, Seguimiento, Paraclínico, Generar Documento 5 tipos, período de prueba) + `feature-labels.ts` agrega label
+  del plan `free_trial`. El módulo ya inyecta contexto plan-aware (módulos disponibles del plan efectivo) y el prompt
+  restringe la ayuda a esos módulos.
+- **`GlobalExceptionFilter`:** mensaje 500 genérico ahora en español ("Ocurrió un error inesperado").
+- **Migración `20260722000001`:** `ALTER TYPE subscription_status ADD VALUE IF NOT EXISTS 'trialing'` — el enum PG
+  no tenía `trialing` (que el código asigna al trial de onboarding) → rompía TODO registro nuevo en prod. Fix idempotente.

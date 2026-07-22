@@ -2,6 +2,51 @@
 
 > Registro cronológico. Una entrada por fase/hito completado.
 
+## 2026-07-22 — Fix registro prod + fix verificación MPPS + staging + manual IA + histórico ✅ (VERIFICADO EN VIVO)
+
+Sesión larga, todo desplegado a prod y verificado. Orden de merges a `main`: `249cfa3` (enum), `aee89bd`
+(MPPS), `7ad7ff2` (manual+histórico), `f3310c4` (CI fix + workflow staging).
+
+- **🔴 REGISTRO ROTO EN PROD — causa raíz + fix (`2cce383`, mig `20260722000001`):** todo doctor nuevo rebotaba a
+  la landing al loguearse (Google/email) y no aparecía en super admin; crear doctor por admin daba "error inesperado".
+  Diagnóstico por logs de Cloud Run: `POST /api/auth/resolve-identity` → **500**. El enum PG `subscription_status`
+  se creó (mig inicial) con solo `active/suspended/cancelled/trial/past_due` — **sin `trialing`**, pero el código
+  asigna `status='trialing'` al trial de onboarding (self-service Y admin). El INSERT de la suscripción reventaba
+  (`invalid input value for enum … "trialing"`), y como el alta es **transaccional**, rollback → sin perfil huérfano.
+  Fix: `ALTER TYPE subscription_status ADD VALUE IF NOT EXISTS 'trialing'` (idempotente). Verificado en vivo:
+  resolve-identity ahora 200, login llega a `/doctor/onboarding`. **Bonus:** `GlobalExceptionFilter` mensaje 500
+  genérico ahora en español ("Ocurrió un error inesperado").
+- **Fix verificación MPPS automática (SACS) — 3 bugs (`f123e02`):** nunca funcionó contra el SACS real (todo doctor
+  → "MPPS no coincide"). Verificado con la respuesta real de la cédula V-13083881 (MÉDICO CIRUJANO, MPPS-65583).
+  (1) el adapter parseaba profesiones desde `xajax_userTable` pero SACS las manda en **`xajax_tableProfesion`** →
+  lista vacía; (2) SACS devuelve `licencia:"MPPS-65583"` y el dr declara `65583` → `normalizeMpps` (quita prefijo
+  `MPPS`+ceros); (3) profesión `"M&Eacute;DICO(A)…"` con entidad HTML → el adapter ahora **decodifica entidades**.
+  Tests nuevos contra el XML real (adapter spec + normalizeMpps). ⚠️ `mpps-sacs-verification-research` decía "fácil";
+  en realidad requería estos 3 fixes.
+- **Manual de la IA de ayuda actualizado (`d554178`):** `feature-labels` agrega label de plan `free_trial` (mostraba
+  el key crudo); guía del especialista corregida — recordatorios YA automáticos (24h/1h) + confirmación por token
+  (decía "diferido"), PDF/plantillas YA funcionan + firma dibujada (decía "en desarrollo"), + Seguimiento del
+  paciente, bloque Paraclínico, Generar Documento (5 tipos), explicación del período de prueba. El help-assistant
+  **ya era plan-aware** (contexto inyectado con módulos disponibles del plan efectivo + regla en el prompt).
+- **Feature "Revisar historial" (`73eef42`):** botón en el editor de consulta (junto a "Ver ficha") que abre un
+  drawer de **solo lectura** con las consultas anteriores del mismo paciente (excluye la actual, orden DESC, pagina
+  de 5), mostrando cada bloque (label+valor de `blocks_snapshot`/`blocks_structure`) + diagnóstico, sin salir de la
+  consulta. 100% frontend: reusa la action existente `getPatientConsultations` (`GET /api/consultations/patient/:id`,
+  owner-scoped). Componente `PatientHistoryModal.tsx`. Delegado a frontend-agent, verificado por el lead (tsc 0).
+- **Entorno STAGING construido (espejo de prod):** ver detalle en `01-architecture` (ADR-024) y memoria
+  `dominio-cloudflare-y-ramas`. BD clon `delta-db-staging`, servicios Cloud Run `-staging` (backend IAM / frontend
+  público), `.github/workflows/staging.yml` (push a rama `staging`), dominio `staging.deltasalud.app` (Cloudflare
+  DNS-only + domain mapping, cert emitido y VIVO), Auth0+Google con URLs de staging. `EMAIL_DRIVER=noop` + Sentry off.
+- **Fix CI `cloud-sql-proxy` (`fdd15a5`, en `staging.yml` Y `deploy.yml`):** la versión "latest" se leía de la API de
+  GitHub sin auth → al rate-limitar, `VER` vacío → URL con `//` → binario NoSuchKey → migraciones `ECONNREFUSED`
+  (rompió el 1er deploy de staging). Fix: API con `${{ github.token }}` + fallback `v2.23.0` + `curl -f`.
+- **Limpieza `migracion/` → `docs/` (`a70b045`):** eliminada la carpeta `migracion/` (planes ya ejecutados; historial
+  en git); reubicados los docs vivos a `docs/` (`presentacion-inversionistas.html`, `dominio-dns-snapshot.md`,
+  `guides/estructura-modulo.md`); `06-agentes-equipo.md` (superado por `.claude/agents/orchestrator.md`) a
+  `docs/_archivo/`. Refs actualizadas en CLAUDE.md/README/memory-bank + 3 comentarios de código.
+- **Presentación de costos (`docs/presentacion-inversionistas.html`):** BD dedicada con holgura + conexiones,
+  Cloudflare+Cloud Armor base desde 100 usr, Auth0 pago desde 1.000, IA vía Vertex, baseline real ~$50/mes.
+
 ## 2026-07-20 — Recordatorios automáticos + confirmación de cita por token ✅ (VERIFICADO EN VIVO)
 
 Feature desplegada a prod (`main` @ `6620c80`) y **verificada end-to-end en Cloud Run** tras un reinicio de la

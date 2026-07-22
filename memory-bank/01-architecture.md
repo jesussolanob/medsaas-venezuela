@@ -243,6 +243,24 @@ consultations}` (+ Consultorios/Plantillas sin moduleKey); deshabilitados agenda
     Load Balancer + Cloud Armor; entorno de staging real (BD propia — se levantó por error una vez y se eliminó).
   * Detalle operativo completo: `docs/dominio-dns-snapshot.md`.
 
+- **ADR-024 (2026-07-22):** **Entorno de STAGING = espejo de prod con BD clon aislada, recursos mínimos.**
+  Servicios Cloud Run `delta-backend-staging` (IAM-only, `--no-allow-unauthenticated`, igual que prod) y
+  `delta-frontend-staging` (público, servido por Cloudflare en `staging.deltasalud.app`). **min-instances=0 /
+  max-instances=1**, 512Mi/1cpu. BD **`delta-db-staging` = clon** de `delta-db` (`gcloud sql instances clone`,
+  db-g1-small, **aislado — NUNCA apunta a prod**; se puede DETENER cuando no se usa → paga solo storage). Secreto
+  `DATABASE_URL_STAGING` (mismo URL de prod cambiando solo la instancia). **Reusa las MISMAS llaves de cifrado de
+  prod** (obligatorio: la BD clonada está cifrada con esa llave). Salvaguardas por tener datos reales clonados:
+  **`EMAIL_DRIVER=noop`** (NO manda correos a pacientes) + **Sentry off**. Workflow `.github/workflows/staging.yml`
+  dispara en push a la rama **`staging`** (imágenes `staging-<sha>`, `NEXT_PUBLIC_URL=https://staging.deltasalud.app`).
+  Dominio: domain mapping → `delta-frontend-staging` + CNAME Cloudflare `staging → ghs.googlehosted.com` **DNS-only**
+  (cert managed de Cloud Run, VIVO). Backend por IAM/`.run.app` (sin dominio, como prod; `api.deltasalud.app` + LB/Armor
+  quedan para cuando se haga la app móvil). Auth0 y Google OAuth: agregadas las URLs de staging a callbacks/redirects
+  (prod intacto). **Corrección operativa:** las mutaciones de la API del dashboard Cloudflare funcionan con solo la
+  cookie (`credentials:'include'`); NO usar `x-cross-site-security:dash` (da 403). Detalle: memoria `dominio-cloudflare-y-ramas`.
+- **Nota estructura (2026-07-22):** carpeta `migracion/` **eliminada** (planes de migración ya ejecutados; historial en
+  git). Docs vivos reubicados a `docs/` (`presentacion-inversionistas.html`, `dominio-dns-snapshot.md`,
+  `guides/estructura-modulo.md`); el manual de agentes viejo → `docs/_archivo/` (lo suplió `.claude/agents/orchestrator.md`).
+
 ## Inventario de tablas (auditoría Fase 0 — fuente de verdad: archivos `*.sql`)
 
 Core: `profiles`, `appointments`, `consultations`, `patients`, `patient_packages`,
