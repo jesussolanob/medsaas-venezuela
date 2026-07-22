@@ -3,8 +3,39 @@ import {
   tokenizeName,
   namesMatch,
   isMedicalProfession,
+  normalizeMpps,
   NAME_MATCH_THRESHOLD,
 } from './name-matcher';
+
+describe('normalizeMpps', () => {
+  it('strips the MPPS- prefix returned by SACS', () => {
+    // Real SACS format vs. what the doctor declares in onboarding.
+    expect(normalizeMpps('MPPS-65583')).toBe('65583');
+    expect(normalizeMpps('65583')).toBe('65583');
+  });
+
+  it('strips leading zeros so padded and unpadded values compare equal', () => {
+    expect(normalizeMpps('065583')).toBe('65583');
+    expect(normalizeMpps('MPPS-065583')).toBe('65583');
+  });
+
+  it('is case-insensitive and ignores separators/spaces', () => {
+    expect(normalizeMpps('mpps 65583')).toBe('65583');
+    expect(normalizeMpps(' MPPS-65583 ')).toBe('65583');
+  });
+
+  it('returns empty string when there is no content', () => {
+    expect(normalizeMpps('')).toBe('');
+    expect(normalizeMpps('MPPS-')).toBe('');
+  });
+});
+
+describe('isMedicalProfession (decoded SACS value)', () => {
+  it('recognizes the accented profession SACS returns for a surgeon', () => {
+    // After HTML-entity decoding in the adapter, the profession reads "MÉDICO(A) CIRUJANO(A)".
+    expect(isMedicalProfession('MÉDICO(A) CIRUJANO(A)')).toBe(true);
+  });
+});
 
 describe('normalizeNameStr', () => {
   it('strips accents and uppercases', () => {

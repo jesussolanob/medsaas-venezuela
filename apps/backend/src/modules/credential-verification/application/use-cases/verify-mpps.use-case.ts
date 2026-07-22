@@ -19,7 +19,7 @@ import {
   DoctorProfileNotFoundError,
   NoActiveVerifierError,
 } from '../../domain/errors/credential-verification.errors';
-import { namesMatch, isMedicalProfession } from '../name-matcher';
+import { namesMatch, isMedicalProfession, normalizeMpps } from '../name-matcher';
 import type { VerificationEvidence } from '../../domain/entities/credential-verification.entity';
 
 const CREDENTIAL_TYPE = 'mpps';
@@ -167,12 +167,18 @@ export class VerifyMppsUseCase {
       return this.toOutput(doctorId, saved.status, saved.attempts, saved.checkedAt);
     }
 
-    // 6b. MPPS number matching + profession check
-    const declaredMpps = (profile.mppsNumber ?? '').toUpperCase();
+    // 6b. MPPS number matching + profession check.
+    // Compare on the NORMALIZED license (SACS returns "MPPS-65583", the doctor
+    // declares "65583"). Skip matching entirely when the declared value has no
+    // numeric content so an empty declaration never matches an empty license.
+    const declaredMpps = normalizeMpps(profile.mppsNumber ?? '');
     const professions = sacsResult.professions ?? [];
-    const matchedProfession = professions.find(
-      (p) => p.licencia.toUpperCase() === declaredMpps && isMedicalProfession(p.profesion),
-    );
+    const matchedProfession =
+      declaredMpps.length > 0
+        ? professions.find(
+            (p) => normalizeMpps(p.licencia) === declaredMpps && isMedicalProfession(p.profesion),
+          )
+        : undefined;
 
     if (!matchedProfession) {
       this.logger.log(`[verify-mpps] doctorId=${doctorId} mpps not in medical professions`);
