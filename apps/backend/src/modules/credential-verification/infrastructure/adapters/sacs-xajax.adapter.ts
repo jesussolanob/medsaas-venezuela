@@ -10,6 +10,61 @@ const SACS_URL = 'https://sistemas.sacs.gob.ve/consultas/prfsnal_salud';
 const TIMEOUT_MS = 8_000;
 
 /**
+ * Named HTML entities SACS embeds in text fields (Spanish accents + common
+ * structural ones). SACS emits e.g. "M&Eacute;DICO(A) CIRUJANO(A)".
+ */
+const HTML_ENTITIES: Record<string, string> = {
+  '&aacute;': 'á',
+  '&eacute;': 'é',
+  '&iacute;': 'í',
+  '&oacute;': 'ó',
+  '&uacute;': 'ú',
+  '&Aacute;': 'Á',
+  '&Eacute;': 'É',
+  '&Iacute;': 'Í',
+  '&Oacute;': 'Ó',
+  '&Uacute;': 'Ú',
+  '&ntilde;': 'ñ',
+  '&Ntilde;': 'Ñ',
+  '&uuml;': 'ü',
+  '&Uuml;': 'Ü',
+  '&amp;': '&',
+  '&quot;': '"',
+  '&apos;': "'",
+  '&#39;': "'",
+  '&lt;': '<',
+  '&gt;': '>',
+  '&nbsp;': ' ',
+};
+
+/** Converts a Unicode code point to a string, ignoring out-of-range values. */
+function safeFromCodePoint(cp: number): string {
+  if (!Number.isFinite(cp) || cp <= 0 || cp > 0x10ffff) return '';
+  try {
+    return String.fromCodePoint(cp);
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * Decodes the HTML entities SACS embeds in text fields (e.g. "M&Eacute;DICO").
+ * Handles named Spanish entities plus decimal (&#233;) and hex (&#xE9;) forms.
+ * Applied AFTER JSON.parse on individual field values, never on the whole XML,
+ * so structural entities cannot corrupt the JSON. Pure, no side effects.
+ */
+function decodeHtmlEntities(input: string): string {
+  if (!input) return input;
+  let out = input;
+  for (const [entity, char] of Object.entries(HTML_ENTITIES)) {
+    if (out.includes(entity)) out = out.split(entity).join(char);
+  }
+  out = out.replace(/&#(\d+);/g, (_m, n: string) => safeFromCodePoint(parseInt(n, 10)));
+  out = out.replace(/&#x([0-9a-fA-F]+);/g, (_m, n: string) => safeFromCodePoint(parseInt(n, 16)));
+  return out;
+}
+
+/**
  * SacsXajaxAdapter — infrastructure adapter implementing IMppsVerificationPort.
  *
  * Queries the Venezuelan SACS portal (xajax/PHP) to verify MPPS credentials.
@@ -19,8 +74,11 @@ const TIMEOUT_MS = 8_000;
  *      Body: xajax=getPrfsnalByCed&xajaxr=<timestamp_ms>&xajaxargs[]=V-<cedula>
  *   2. Response is an XML envelope containing JS callback calls:
  *        xajax_userTable('{"cedula":"...","nombre1":"...","apellido1":"..."}')
- *        xajax_userTable('[{"licencia":"MPPS-...","profesion":"..."}]')
- *   3. Regex-extract the JSON arguments from those calls.
+ *        xajax_tableProfesion('[{"licencia":"MPPS-65583","profesion":"M&Eacute;DICO...",...}]')
+ *      NOTE: the professions array arrives in a SEPARATE xajax_tableProfesion
+ *      call (NOT a second xajax_userTable), and text fields carry HTML entities
+ *      (e.g. "M&Eacute;DICO"). Both facts must be handled or every match fails.
+ *   3. Regex-extract the JSON argument from each call and decode HTML entities.
  *   4. Return a structured MppsVerificationResult.
  *
  * TLS: SACS cert is expired. A dedicated https.Agent({rejectUnauthorized:false})
@@ -99,22 +157,17 @@ export class SacsXajaxAdapter implements IMppsVerificationPort {
   }
 
   private parseResponse(rawXml: string): MppsVerificationResult {
-    // Extract arguments from xajax_userTable('...') calls.
-    // There are typically two calls:
-    //   1st: single-object JSON with personal data
-    //   2nd: array JSON with professional licenses
-    const callMatches = [...rawXml.matchAll(/xajax_userTable\(('|")([\s\S]*?)\1\)/g)];
+    // Personal data arrives in xajax_userTable('{...}'); professions arrive in a
+    // SEPARATE xajax_tableProfesion('[...]') call. Extract each independently.
+    const personalArg = this.extractXajaxArg(rawXml, 'xajax_userTable');
 
-    if (callMatches.length === 0) {
-      this.logger.debug('[sacs] no xajax_userTable calls found in response');
+    if (personalArg === null) {
+      this.logger.debug('[sacs] no xajax_userTable call found in response');
       return { found: false };
     }
 
-    // The first match contains the personal data object.
-    const firstArg = callMatches[0]?.[2] ?? '';
-
     // Empty string or '""' means the cedula was not found.
-    const trimmed = firstArg.trim().replace(/^"|"$/g, '');
+    const trimmed = personalArg.trim().replace(/^"|"$/g, '');
     if (trimmed.length === 0 || trimmed === '""') {
       return { found: false };
     }
@@ -134,21 +187,21 @@ export class SacsXajaxAdapter implements IMppsVerificationPort {
       return { found: false };
     }
 
-    const nombre1 = personData['nombre1'] ?? '';
-    const apellido1 = personData['apellido1'] ?? '';
+    const nombre1 = decodeHtmlEntities(personData['nombre1'] ?? '');
+    const apellido1 = decodeHtmlEntities(personData['apellido1'] ?? '');
     const name = `${nombre1} ${apellido1}`.trim().toUpperCase();
 
-    // The second match (if present) contains the professions array.
-    const secondArg = callMatches[1]?.[2] ?? '';
+    // Professions come from xajax_tableProfesion('[...]') — a distinct call.
+    const professionsArg = this.extractXajaxArg(rawXml, 'xajax_tableProfesion');
     let professions: MppsProfessionEntry[] = [];
 
-    if (secondArg.trim().length > 0) {
+    if (professionsArg !== null && professionsArg.trim().length > 0) {
       try {
-        const rawArr: unknown = JSON.parse(secondArg.trim());
+        const rawArr: unknown = JSON.parse(professionsArg.trim());
         if (Array.isArray(rawArr)) {
           professions = (rawArr as Record<string, string>[]).map((item) => ({
-            licencia: String(item['licencia'] ?? ''),
-            profesion: String(item['profesion'] ?? ''),
+            licencia: decodeHtmlEntities(String(item['licencia'] ?? '')),
+            profesion: decodeHtmlEntities(String(item['profesion'] ?? '')),
             fechaRegistro: String(item['fecha_registro'] ?? ''),
             tomoRegistro: String(item['tomo_registro'] ?? ''),
             folioRegistro: String(item['folio_registro'] ?? ''),
@@ -160,5 +213,15 @@ export class SacsXajaxAdapter implements IMppsVerificationPort {
     }
 
     return { found: true, name, professions };
+  }
+
+  /**
+   * Extracts the single- or double-quoted argument of the first
+   * `<fnName>('<arg>')` call in the raw xajax XML. Returns null when absent.
+   */
+  private extractXajaxArg(rawXml: string, fnName: string): string | null {
+    const re = new RegExp(`${fnName}\\((['"])([\\s\\S]*?)\\1\\)`);
+    const m = rawXml.match(re);
+    return m ? (m[2] ?? '') : null;
   }
 }

@@ -82,3 +82,19 @@ export function isMedicalProfession(profesion: string): boolean {
   const normalized = normalizeNameStr(profesion);
   return normalized.includes('MEDICO') || normalized.includes('MEDICA');
 }
+
+/**
+ * Normalizes an MPPS license value for comparison.
+ *
+ * SACS returns licenses prefixed like "MPPS-65583", while doctors declare the
+ * bare number ("65583") — sometimes with leading zeros ("065583"). This strips
+ * the "MPPS" prefix, any non-alphanumeric separators, and leading zeros so both
+ * sides compare equal. Returns an empty string when there is no numeric content.
+ */
+export function normalizeMpps(value: string): string {
+  return value
+    .toUpperCase()
+    .replace(/[^0-9A-Z]/g, '')
+    .replace(/^MPPS/, '')
+    .replace(/^0+/, '');
+}
