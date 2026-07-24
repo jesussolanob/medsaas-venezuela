@@ -412,6 +412,18 @@ export class SequelizeAppointmentRepository implements IAppointmentRepository {
     return this.toDomain(row);
   }
 
+  async findFirstCompletedByPaymentId(paymentId: string): Promise<Appointment | null> {
+    const row = await this.appointmentModel.findOne({
+      where: {
+        paymentId,
+        status: 'completed',
+      } as WhereOptions,
+      order: [['updatedAt', 'ASC']],
+    });
+    if (!row) return null;
+    return this.toDomain(row);
+  }
+
   private toDomain(row: AppointmentModel): Appointment {
     return Appointment.create({
       id: row.id,

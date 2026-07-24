@@ -48,6 +48,7 @@ import { HelpAssistantModule } from './modules/help-assistant/help-assistant.mod
 import { PatientRequestsModule } from './modules/patient-requests/patient-requests.module';
 import { SharedFilesModule } from './modules/shared-files/shared-files.module';
 import { LegalModule } from './modules/legal/legal.module';
+import { PendingConsultationsModule } from './modules/pending-consultations/pending-consultations.module';
 import { InfraAuthModule } from './infrastructure/auth/infra-auth.module';
 
 @Module({
@@ -106,6 +107,7 @@ import { InfraAuthModule } from './infrastructure/auth/infra-auth.module';
     PatientRequestsModule,
     SharedFilesModule,
     LegalModule,
+    PendingConsultationsModule,
   ],
   controllers: [HealthController],
   providers: [

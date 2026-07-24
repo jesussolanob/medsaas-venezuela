@@ -412,6 +412,14 @@ export default function BookingClient({
   const [bookedMeetLink, setBookedMeetLink] = useState<string | null>(null);
   const [error, setError] = useState('');
 
+  // Multi-sesión: sesiones adicionales para planes con sessions_count > 1.
+  // Cada elemento es un datetime ISO (sesiones 2..N) o vacío si no se agendó.
+  // `deferAllSessions` = true cuando el paciente eligió "Agendar después" para todas.
+  const [additionalSessionDates, setAdditionalSessionDates] = useState<string[]>([]);
+  const [deferAllSessions, setDeferAllSessions] = useState(false);
+  // Indica que la cita se creó exitosamente y quedaron sesiones sin agendar.
+  const [hasPendingSessions, setHasPendingSessions] = useState(false);
+
   // RONDA 24: cualquier cambio de `submitting` libera el ref automaticamente.
   // Asi no hay que repetir submittingRef.current = false en los 5 setSubmitting(false).
   useEffect(() => {
@@ -700,6 +708,23 @@ export default function BookingClient({
           appointmentMode: appointmentMode || 'presencial',
           packageId: usingPackage ? activePackage?.id : null,
           officeId: selectedOffice?.id ?? null,
+          // Multi-sesión: enviar plan_id y las sesiones adicionales agendadas.
+          // El backend resuelve expiresAt desde validity_days del plan; el cliente
+          // NO calcula ni envía fechas de expiración.
+          planId: selectedPlan?.id ?? null,
+          additionalSessions: deferAllSessions
+            ? []
+            : additionalSessionDates
+                .map((d) => {
+                  if (!d) return null;
+                  const dt = new Date(d);
+                  return {
+                    scheduled_at: dt.toISOString(),
+                    office_id: selectedOffice?.id ?? null,
+                    appointment_mode: appointmentMode || 'presencial',
+                  };
+                })
+                .filter(Boolean),
           // ETAPA 2 TODO: forward patientClinical to backend CreateBookingDto
           // when the backend schema is extended to accept it.
         }),
@@ -742,6 +767,15 @@ export default function BookingClient({
       // Guardar codigo de la cita y meet link para mostrarlo en el resumen
       setBookedCode(result.appointmentCode || '');
       setBookedMeetLink(result.meetLink ?? null);
+      // Verificar si quedaron sesiones pendientes de agendar
+      const planSessions = selectedPlan?.sessions_count ?? 1;
+      const scheduledExtra = deferAllSessions
+        ? 0
+        : additionalSessionDates.filter((d) => d.trim() !== '').length;
+      const pendingCount = planSessions - 1 - scheduledExtra;
+      if (planSessions > 1 && pendingCount > 0) {
+        setHasPendingSessions(true);
+      }
       setDone(true);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Error inesperado');
@@ -914,8 +948,20 @@ export default function BookingClient({
                 </p>
               </div>
             )}
+          {/* Aviso de sesiones pendientes por agendar */}
+          {hasPendingSessions && (
+            <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-4 text-left">
+              <p className="text-xs font-semibold text-amber-800 mb-1">
+                Consultas restantes por agendar
+              </p>
+              <p className="text-xs text-amber-700">
+                Tu plan incluye más consultas. Recibirás un enlace por correo para agendar cada
+                sesión cuando estés listo.
+              </p>
+            </div>
+          )}
           <p className="text-xs text-slate-400 mb-5">
-            El médico confirmará tu cita y se pondrá en contacto contigo.
+            El especialista confirmará tu cita y se pondrá en contacto contigo.
           </p>
           <div className="flex items-center justify-center gap-2 mt-6 opacity-40">
             <DeltaIsotipo size={20} />
@@ -1116,6 +1162,9 @@ export default function BookingClient({
                     onClick={() => {
                       setSelectedPlan(plan);
                       setUsingPackage(false);
+                      // Resetear sesiones adicionales al cambiar de plan
+                      setAdditionalSessionDates([]);
+                      setDeferAllSessions(false);
                       // Skip office selector when 0 or 1 offices
                       setActiveStep(doctorOffices.length >= 2 ? 2 : 3);
                     }}
@@ -1463,7 +1512,14 @@ export default function BookingClient({
                                   if (!unavailable) {
                                     setSelectedSlot(slot);
                                     setSlotError('');
-                                    setActiveStep(4);
+                                    // Si el plan tiene múltiples sesiones, permanecer en el
+                                    // paso 3 para mostrar el panel de sesiones adicionales.
+                                    // Para planes de 1 sesión, avanzar directamente.
+                                    const planSessions = selectedPlan?.sessions_count ?? 1;
+                                    if (planSessions <= 1) {
+                                      setActiveStep(4);
+                                    }
+                                    // else: el panel de sesiones adicionales aparece abajo
                                   }
                                 }}
                                 disabled={unavailable}
@@ -1493,6 +1549,103 @@ export default function BookingClient({
                       </>
                     );
                   })()}
+                </div>
+              )}
+
+              {/* ── Panel de sesiones adicionales (planes multi-sesión) ── */}
+              {selectedSlot && selectedPlan && (selectedPlan.sessions_count ?? 1) > 1 && (
+                <div className="mt-4 border border-cyan-200 rounded-xl bg-cyan-50/40 p-4 space-y-4">
+                  <div>
+                    <p className="text-sm font-bold text-slate-800">
+                      Este servicio incluye {selectedPlan.sessions_count} consultas
+                    </p>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      Acabas de elegir la fecha de la 1.ª consulta. Puedes agendar las demás ahora o
+                      después — recibirás un enlace por correo para hacerlo.
+                    </p>
+                  </div>
+
+                  {!deferAllSessions && (
+                    <div className="space-y-3">
+                      {Array.from({ length: (selectedPlan.sessions_count ?? 1) - 1 }).map(
+                        (_, i) => {
+                          const sessionNum = i + 2;
+                          return (
+                            <div key={sessionNum}>
+                              <label className="block text-xs font-semibold text-slate-600 mb-1.5">
+                                Consulta {sessionNum}{' '}
+                                <span className="font-normal text-slate-400">(opcional)</span>
+                              </label>
+                              <input
+                                type="datetime-local"
+                                value={additionalSessionDates[i] ?? ''}
+                                onChange={(e) => {
+                                  setAdditionalSessionDates((prev) => {
+                                    const next = [...prev];
+                                    next[i] = e.target.value;
+                                    return next;
+                                  });
+                                }}
+                                className={fi}
+                              />
+                            </div>
+                          );
+                        },
+                      )}
+                    </div>
+                  )}
+
+                  {deferAllSessions && (
+                    <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
+                      <p className="text-xs text-amber-700">
+                        Recibirás un enlace por correo electrónico para agendar las consultas
+                        restantes cuando lo desees.
+                      </p>
+                    </div>
+                  )}
+
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    {!deferAllSessions ? (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => setActiveStep(4)}
+                          className="flex-1 py-2.5 rounded-xl text-sm font-bold text-white transition-all hover:opacity-90"
+                          style={{ background: BRAND.turquoise }}
+                        >
+                          Continuar
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setDeferAllSessions(true);
+                            setAdditionalSessionDates([]);
+                          }}
+                          className="flex-1 py-2.5 rounded-xl text-sm font-semibold border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 transition-all"
+                        >
+                          Agendar después
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => setActiveStep(4)}
+                          className="flex-1 py-2.5 rounded-xl text-sm font-bold text-white transition-all hover:opacity-90"
+                          style={{ background: BRAND.turquoise }}
+                        >
+                          Continuar
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setDeferAllSessions(false)}
+                          className="flex-1 py-2.5 rounded-xl text-sm font-semibold border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 transition-all"
+                        >
+                          Agendar ahora
+                        </button>
+                      </>
+                    )}
+                  </div>
                 </div>
               )}
             </div>

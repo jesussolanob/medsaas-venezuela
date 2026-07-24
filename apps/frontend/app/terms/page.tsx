@@ -123,9 +123,9 @@ export default async function TermsPage() {
               <section>
                 <h2 className="text-lg font-semibold text-slate-900 mt-6">4. Uso aceptable</h2>
                 <p>
-                  El médico se compromete a usar la plataforma sólo para su práctica legítima. Está
-                  prohibido cargar información falsa, suplantar identidad o usar la plataforma para
-                  fines ilegales.
+                  El especialista se compromete a usar la plataforma sólo para su práctica legítima.
+                  Está prohibido cargar información falsa, suplantar identidad o usar la plataforma
+                  para fines ilegales.
                 </p>
               </section>
 

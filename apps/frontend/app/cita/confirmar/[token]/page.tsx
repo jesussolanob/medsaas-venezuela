@@ -165,7 +165,11 @@ interface AppointmentCardProps {
 function AppointmentCard({ info }: AppointmentCardProps) {
   return (
     <div className="bg-slate-50 rounded-xl p-4 space-y-3.5 border border-slate-100">
-      <InfoRow icon={<Stethoscope className="w-4 h-4" />} label="Médico" value={info.doctorName} />
+      <InfoRow
+        icon={<Stethoscope className="w-4 h-4" />}
+        label="Especialista"
+        value={info.doctorName}
+      />
       <InfoRow icon={<Calendar className="w-4 h-4" />} label="Fecha" value={info.date} />
       <InfoRow icon={<Clock className="w-4 h-4" />} label="Hora" value={info.time} />
       <InfoRow

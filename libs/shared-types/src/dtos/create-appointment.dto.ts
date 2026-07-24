@@ -28,6 +28,28 @@ export const CreateAppointmentDtoSchema = z
      *   2. The office's modality supports the requested appointment_mode.
      */
     office_id: z.string().uuid().nullable().optional(),
+
+    /**
+     * ID of the pricing_plan selected for this appointment.
+     * When set and the plan has sessions_count > 1, pending_consultations are
+     * created for sessions not scheduled via additional_sessions. Fully
+     * backward-compatible: absent or sessions_count=1 → identical behaviour.
+     */
+    pricing_plan_id: z.string().uuid().nullable().optional(),
+
+    /**
+     * Additional sessions to schedule immediately (beyond this appointment).
+     * Only processed when pricing_plan_id resolves to a plan with sessions_count > 1.
+     */
+    additional_sessions: z
+      .array(
+        z.object({
+          scheduled_at: z.string().datetime({ offset: true }),
+          office_id: z.string().uuid().nullable().optional(),
+          appointment_mode: z.enum(['presencial', 'online']).optional(),
+        }),
+      )
+      .optional(),
   })
   .strict()
   // A cédula is mandatory for every patient. Existing patients are referenced by

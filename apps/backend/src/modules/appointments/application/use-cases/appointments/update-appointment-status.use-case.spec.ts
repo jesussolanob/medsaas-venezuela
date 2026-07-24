@@ -89,6 +89,7 @@ function makeRepo(
         Promise.resolve(makeAppointment({ consultationId: CONSULTATION_ID, status: 'confirmed' })),
       ),
     deleteById: jest.fn().mockResolvedValue(undefined),
+    findFirstCompletedByPaymentId: jest.fn().mockResolvedValue(null),
     ...overrides,
   } as jest.Mocked<IAppointmentRepository>;
 }
@@ -123,6 +124,7 @@ function makeConsultationRepo(
     findByPatient: jest.fn(),
     findByAppointmentId: jest.fn().mockResolvedValue(existingConsultation),
     deleteById: jest.fn().mockResolvedValue(undefined),
+    findFirstCompletedByPaymentId: jest.fn().mockResolvedValue(null),
     listWithAppointment: jest.fn(),
   } as jest.Mocked<IConsultationRepository>;
 }

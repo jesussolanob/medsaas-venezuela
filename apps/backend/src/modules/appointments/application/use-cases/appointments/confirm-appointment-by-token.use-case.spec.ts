@@ -170,7 +170,7 @@ describe('ConfirmAppointmentByTokenUseCase', () => {
     mockDoctorProfileRepo.findByDoctorId.mockResolvedValue(null);
 
     const result = await useCase.execute('token');
-    expect(result.doctorName).toBe('Su médico');
+    expect(result.doctorName).toBe('Su especialista');
   });
 
   // ---------------------------------------------------------------------------

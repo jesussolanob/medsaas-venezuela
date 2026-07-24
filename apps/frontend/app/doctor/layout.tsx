@@ -36,6 +36,7 @@ import {
   Lock,
   FileUp,
   FileText,
+  CalendarClock,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { logoutAction } from './logout-action';
@@ -79,8 +80,9 @@ const navSections: NavSection[] = [
       },
       { name: 'Consultorios', href: '/doctor/offices', icon: Building2 },
       { name: 'Plantillas', href: '/doctor/templates', icon: FileEdit },
-      // Solicitudes de documentos al paciente. Sin moduleKey → siempre visible
-      // (no está gateado por plan/capacidad, igual que Consultorios/Plantillas).
+      // Sin moduleKey → siempre visible (igual que Consultorios/Plantillas/Solicitudes).
+      { name: 'Consultas por agendar', href: '/doctor/pending-consultations', icon: CalendarClock },
+      // Solicitudes de documentos al paciente. Sin moduleKey → siempre visible.
       { name: 'Solicitudes', href: '/doctor/patient-requests', icon: FileUp },
     ],
   },
@@ -364,7 +366,7 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
       ? 'Configuración'
       : pathname.includes('/suggestions')
         ? 'Sugerencias'
-        : 'Portal Médico');
+        : 'Portal del Especialista');
 
   // Block render until we know whether to show the portal or redirect.
   // This prevents a flash of the full portal UI before the gate fires.

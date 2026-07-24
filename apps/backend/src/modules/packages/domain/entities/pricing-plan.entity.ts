@@ -18,6 +18,11 @@ export interface PricingPlanCreateParams {
   priceUsd: number;
   durationMinutes: number;
   sessionsCount: number;
+  /**
+   * How many days after purchase the patient has to schedule deferred sessions.
+   * null = no expiry (pending_consultations never expire).
+   */
+  validityDays?: number | null;
   description: string | null;
   type: PricingPlanType;
   showInBooking: boolean;
@@ -35,6 +40,11 @@ export class PricingPlan {
   readonly priceUsd: number;
   readonly durationMinutes: number;
   readonly sessionsCount: number;
+  /**
+   * How many days after purchase the patient has to schedule deferred sessions.
+   * null = no expiry.
+   */
+  readonly validityDays: number | null;
   readonly description: string | null;
   readonly type: PricingPlanType;
   readonly showInBooking: boolean;
@@ -50,6 +60,7 @@ export class PricingPlan {
     this.priceUsd = params.priceUsd;
     this.durationMinutes = params.durationMinutes;
     this.sessionsCount = params.sessionsCount;
+    this.validityDays = params.validityDays ?? null;
     this.description = params.description;
     this.type = params.type;
     this.showInBooking = params.showInBooking;

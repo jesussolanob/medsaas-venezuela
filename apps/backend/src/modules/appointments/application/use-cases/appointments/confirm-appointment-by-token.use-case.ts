@@ -63,7 +63,7 @@ export class ConfirmAppointmentByTokenUseCase {
 
     // 3. Resolve doctor name (safe, non-PII)
     const doctorProfile = await this.doctorProfileRepo.findByDoctorId(appointment.doctorId);
-    const doctorName = doctorProfile?.fullName ?? 'Su médico';
+    const doctorName = doctorProfile?.fullName ?? 'Su especialista';
 
     const buildInfo = (status: string): AppointmentPublicInfo => ({
       status,

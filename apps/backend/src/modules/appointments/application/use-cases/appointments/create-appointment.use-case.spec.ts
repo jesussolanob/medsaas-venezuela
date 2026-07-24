@@ -103,6 +103,7 @@ function makeAppointmentRepo(
       ),
     ),
     deleteById: jest.fn().mockResolvedValue(undefined),
+    findFirstCompletedByPaymentId: jest.fn().mockResolvedValue(null),
     ...overrides,
   } as jest.Mocked<IAppointmentRepository>;
 }

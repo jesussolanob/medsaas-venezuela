@@ -3,13 +3,13 @@
 export const SPECIALIST_GUIDE = `
 # Manual del Especialista — Delta Salud
 
-Esta guia es la base de conocimiento del asistente de ayuda para el perfil ESPECIALISTA (medico). Responde con base UNICAMENTE en este contenido. Todo esta en espanol de Venezuela (es-VE). Las rutas, botones y reglas descritas corresponden al portal del medico, ubicado en la ruta /doctor.
+Esta guia es la base de conocimiento del asistente de ayuda para el perfil ESPECIALISTA. Responde con base UNICAMENTE en este contenido. Todo esta en espanol de Venezuela (es-VE). Las rutas, botones y reglas descritas corresponden al portal del especialista, ubicado en la ruta /doctor.
 
 ---
 
 ## 1. Introduccion: que es Delta Salud para el especialista
 
-Delta Salud (tambien llamado Delta) es un CRM medico para especialistas en Venezuela. Como medico, desde un solo portal puedes:
+Delta Salud (tambien llamado Delta) es un CRM medico para especialistas en Venezuela. Como especialista, desde un solo portal puedes:
 
 - Gestionar tus pacientes con su historia clinica cifrada.
 - Llevar una agenda de citas con calendario semanal, mensual y diario.
@@ -189,7 +189,7 @@ Gestion de tus pacientes. Solo ves TUS pacientes.
   - **Ver consultas** del paciente — historial; cada fila tiene 'Dx:' (diagnostico) y 'Tx:' (tratamiento) y un boton para abrir.
   - **Nueva consulta** — crea una consulta nueva para ese paciente.
   - **Subir archivo al paciente** / **Pedirle algo al paciente** — adjuntos y solicitudes.
-  - **Seguimiento del paciente** — una pestana **Seguimiento** dentro de la ficha del paciente donde llevas un hilo de **tareas, comentarios y archivos** entre el medico y el paciente (por ejemplo, enviarle una indicacion, adjuntarle un resultado, pedirle que suba un examen). Cada mensaje/archivo se marca como leido y el paciente puede ver y responder ese seguimiento desde su portal (seccion Seguimiento), siempre que tenga cuenta.
+  - **Seguimiento del paciente** — una pestana **Seguimiento** dentro de la ficha del paciente donde llevas un hilo de **tareas, comentarios y archivos** entre el especialista y el paciente (por ejemplo, enviarle una indicacion, adjuntarle un resultado, pedirle que suba un examen). Cada mensaje/archivo se marca como leido y el paciente puede ver y responder ese seguimiento desde su portal (seccion Seguimiento), siempre que tenga cuenta.
   - **Eliminar** — el paciente se oculta pero no se borra (borrado suave).
 
 **Reglas importantes:** la cedula del paciente es obligatoria; sin ella no podras compartirle documentos. Los datos sensibles (nombre, cedula, telefono, email) se guardan cifrados. En listados pueden mostrarse enmascarados; revelar datos completos queda registrado en una auditoria de acceso.
@@ -394,18 +394,18 @@ Es la pagina donde tus pacientes reservan cita, sin necesidad de iniciar sesion 
 
 1. **Tipo de consulta (plan):** el paciente elige el servicio/plan; si tiene un paquete prepagado activo, aparece como 'Paquete activo' y se marca como ya pagado.
 2. **Consultorio:** si tienes varios, el paciente elige sede; si tienes uno solo, se selecciona automaticamente; si solo atiendes online, se indica 'Solo disponible por videoconsulta'.
-3. **Fecha de la cita:** elige dia y hora entre los horarios disponibles. Los horarios bloqueados aparecen deshabilitados ('Horario bloqueado por el medico').
+3. **Fecha de la cita:** elige dia y hora entre los horarios disponibles. Los horarios bloqueados aparecen deshabilitados ('Horario bloqueado por el especialista').
 4. **Modalidad:** Presencial o Videoconsulta (online).
 5. **Datos del paciente y metodo de pago:** el paciente ingresa Nombre, email, telefono y **cedula** (obligatorios). Si paga por un metodo que requiere comprobante, lo adjunta; con paquete prepagado se salta el pago.
 6. **Confirmacion:** muestra un resumen y, al confirmar, un **Codigo de cita**, la fecha, el plan, la modalidad y, si es online, el link de videoconsulta. El paciente puede anadir la cita a su calendario.
 
-El mensaje final indica: 'El medico confirmara tu cita y se pondra en contacto contigo.' Si tu mismo (como doctor) o un administrador abren su propia pagina, se muestra un banner de modo previsualizacion y no se generan citas reales.
+El mensaje final indica: 'El especialista confirmara tu cita y se pondra en contacto contigo.' Si tu mismo (como doctor) o un administrador abren su propia pagina, se muestra un banner de modo previsualizacion y no se generan citas reales.
 
 ---
 
 ## 9. Seguridad y reglas clinicas para el doctor
 
-- **Solo ves tus datos:** todos tus pacientes, citas, consultas y finanzas son tuyos; el sistema valida que no accedas a datos de otro medico.
+- **Solo ves tus datos:** todos tus pacientes, citas, consultas y finanzas son tuyos; el sistema valida que no accedas a datos de otro especialista.
 - **Datos cifrados:** nombre, cedula, telefono, email de pacientes, asi como diagnosticos, tratamientos, historia clinica y recetas, se guardan cifrados.
 - **Enmascarado en listas:** los datos sensibles pueden aparecer enmascarados en listados. Revelar el dato completo queda registrado en una auditoria de acceso.
 - **Cedula obligatoria del paciente:** es requerida para crear/editar un paciente y para poder compartirle documentos.

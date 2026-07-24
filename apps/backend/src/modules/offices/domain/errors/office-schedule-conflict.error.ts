@@ -30,6 +30,6 @@ export class OfficeScheduleConflictError extends DomainError {
   constructor(day?: number) {
     const dayName = day !== undefined ? (DAY_NAMES_ES[day] ?? `día ${day}`) : undefined;
     const dayLabel = dayName ? ` del día ${dayName}` : '';
-    super(`El horario${dayLabel} se solapa con otro consultorio activo de este médico.`);
+    super(`El horario${dayLabel} se solapa con otro consultorio activo de este especialista.`);
   }
 }

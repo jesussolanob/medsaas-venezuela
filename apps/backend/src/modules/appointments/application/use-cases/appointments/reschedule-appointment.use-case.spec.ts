@@ -72,6 +72,7 @@ function makeRepo(
     updateGoogleEventId: jest.fn().mockResolvedValue(undefined),
     updateConsultationId: jest.fn().mockResolvedValue(undefined),
     deleteById: jest.fn().mockResolvedValue(undefined),
+    findFirstCompletedByPaymentId: jest.fn().mockResolvedValue(null),
     ...overrides,
   } as jest.Mocked<IAppointmentRepository>;
 }
