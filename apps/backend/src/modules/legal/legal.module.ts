@@ -5,6 +5,7 @@ import { LegalDocumentModel } from './infrastructure/persistence/models/legal-do
 import { SequelizeLegalDocumentRepository } from './infrastructure/persistence/repositories/sequelize-legal-document.repository';
 import { LEGAL_DOCUMENT_REPOSITORY } from './domain/repositories/legal-document.repository';
 import { GetCurrentTermsUseCase } from './application/use-cases/get-current-terms.use-case';
+import { GetCurrentPrivacyUseCase } from './application/use-cases/get-current-privacy.use-case';
 import { LegalController } from './presentation/controllers/legal.controller';
 
 /**
@@ -25,6 +26,7 @@ import { LegalController } from './presentation/controllers/legal.controller';
       useClass: SequelizeLegalDocumentRepository,
     },
     GetCurrentTermsUseCase,
+    GetCurrentPrivacyUseCase,
   ],
   // Export LEGAL_DOCUMENT_REPOSITORY so other modules (e.g. DoctorRegistrationModule)
   // can inject it without duplicating the Sequelize model registration.

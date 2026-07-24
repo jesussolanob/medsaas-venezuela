@@ -157,4 +157,12 @@ export interface IAppointmentRepository {
    * writing an audit log entry before calling this method.
    */
   deleteById(id: string): Promise<void>;
+
+  /**
+   * Finds the first completed appointment whose payment_id matches the given
+   * paymentId. Used by DispatchPendingConsultationRemindersUseCase to determine
+   * the anchor date (when session 1 was attended) for escalated reminders.
+   * Returns null when no matching completed appointment exists.
+   */
+  findFirstCompletedByPaymentId(paymentId: string): Promise<Appointment | null>;
 }

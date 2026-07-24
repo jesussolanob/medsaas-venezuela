@@ -55,7 +55,7 @@ export default function RegisterPaymentPage() {
         if (!cancelled && r.ok) setDoctors(j.doctors || []);
       } catch {
         if (!cancelled)
-          showToast({ type: 'error', message: 'No se pudo cargar la lista de médicos.' });
+          showToast({ type: 'error', message: 'No se pudo cargar la lista de especialistas.' });
       } finally {
         if (!cancelled) setLoadingDoctors(false);
       }
@@ -102,7 +102,7 @@ export default function RegisterPaymentPage() {
 
       showToast({
         type: 'success',
-        message: `Pago registrado. Suscripción de ${doctor?.doctor_name ?? 'el médico'} extendida ${monthsNum} mes${monthsNum > 1 ? 'es' : ''}.`,
+        message: `Pago registrado. Suscripción de ${doctor?.doctor_name ?? 'el especialista'} extendida ${monthsNum} mes${monthsNum > 1 ? 'es' : ''}.`,
       });
       // Reset (keep method as a sensible default).
       setDoctorId('');
@@ -137,7 +137,7 @@ export default function RegisterPaymentPage() {
           </h1>
           <p className="mt-0.5 text-sm" style={{ color: 'var(--dh-gray-600)' }}>
             Registra un pago recibido por fuera de la app. Se aprueba al instante y extiende la
-            suscripción del médico.
+            suscripción del especialista.
           </p>
         </div>
       </header>
@@ -147,7 +147,7 @@ export default function RegisterPaymentPage() {
         className="space-y-5 rounded-[var(--dh-r-lg)] bg-white p-6"
         style={{ border: '1px solid var(--dh-gray-100)', boxShadow: 'var(--dh-shadow-sm)' }}
       >
-        <Field label="Médico">
+        <Field label="Especialista">
           <select
             value={doctorId}
             onChange={(e) => setDoctorId(e.target.value)}
@@ -156,7 +156,7 @@ export default function RegisterPaymentPage() {
             required
           >
             <option value="" disabled>
-              {loadingDoctors ? 'Cargando médicos…' : 'Selecciona un médico…'}
+              {loadingDoctors ? 'Cargando especialistas…' : 'Selecciona un especialista…'}
             </option>
             {doctors.map((d) => (
               <option key={d.doctor_id} value={d.doctor_id}>

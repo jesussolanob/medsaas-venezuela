@@ -243,6 +243,43 @@ consultations}` (+ Consultorios/Plantillas sin moduleKey); deshabilitados agenda
     Load Balancer + Cloud Armor; entorno de staging real (BD propia — se levantó por error una vez y se eliminó).
   * Detalle operativo completo: `docs/dominio-dns-snapshot.md`.
 
+- **ADR-024 (2026-07-22):** **Entorno de STAGING = espejo de prod con BD clon aislada, recursos mínimos.**
+  Servicios Cloud Run `delta-backend-staging` (IAM-only, `--no-allow-unauthenticated`, igual que prod) y
+  `delta-frontend-staging` (público, servido por Cloudflare en `staging.deltasalud.app`). **min-instances=0 /
+  max-instances=1**, 512Mi/1cpu. BD **`delta-db-staging` = clon** de `delta-db` (`gcloud sql instances clone`,
+  db-g1-small, **aislado — NUNCA apunta a prod**; se puede DETENER cuando no se usa → paga solo storage). Secreto
+  `DATABASE_URL_STAGING` (mismo URL de prod cambiando solo la instancia). **Reusa las MISMAS llaves de cifrado de
+  prod** (obligatorio: la BD clonada está cifrada con esa llave). Salvaguardas por tener datos reales clonados:
+  **`EMAIL_DRIVER=noop`** (NO manda correos a pacientes) + **Sentry off**. Workflow `.github/workflows/staging.yml`
+  dispara en push a la rama **`staging`** (imágenes `staging-<sha>`, `NEXT_PUBLIC_URL=https://staging.deltasalud.app`).
+  Dominio: domain mapping → `delta-frontend-staging` + CNAME Cloudflare `staging → ghs.googlehosted.com` **DNS-only**
+  (cert managed de Cloud Run, VIVO). Backend por IAM/`.run.app` (sin dominio, como prod; `api.deltasalud.app` + LB/Armor
+  quedan para cuando se haga la app móvil). Auth0 y Google OAuth: agregadas las URLs de staging a callbacks/redirects
+  (prod intacto). **Corrección operativa:** las mutaciones de la API del dashboard Cloudflare funcionan con solo la
+  cookie (`credentials:'include'`); NO usar `x-cross-site-security:dash` (da 403). Detalle: memoria `dominio-cloudflare-y-ramas`.
+- **ADR-025 (2026-07-23):** **Preconsultas / "Consultas por agendar" — módulo `pending-consultations`.** Un servicio
+  (`pricing_plans`) con `sessions_count>1` gana `validity_days` (días de validez). Al comprar (booking público o
+  especialista) se paga TODO por adelantado (precio **UNITARIO × nº consultas** — decisión del usuario; el booking ya
+  sumaba así, NO se tocó) y se agenda la 1ª; las restantes se agendan de una (citas adicionales, mismo pago, `planPrice=0`
+  - consulta best-effort ADR-021) **o** quedan como **preconsultas** (`pending_consultations`). Diseño clave: las
+    preconsultas son **AUTOSUFICIENTES** — NO se acoplan al contador de `patient_packages`; llevan `payment_id` (mismo pago
+    o distintos), `expires_at` (= compra + validity_days, calculado en backend), `session_number`, `status`
+    (pending_scheduling→scheduled→completed/expired/cancelled). Tabla + `pricing_plans.validity_days` + `patient_packages.expires_at`
+    en mig `20260723000002`. Endpoints doctor (list/schedule/cancel + **bulk-create** para el camino del especialista, que evita
+    el ciclo `PendingConsultationsModule→AppointmentsModule` sin forwardRef) + **públicos por token HMAC** (namespace
+    `pending-consult:v1:` sobre `AUTH_RESOLVE_SECRET`, patrón confirm-appointment): `GET/POST /api/public/pending-consultations/:token`
+    para auto-agendar desde el correo (página `/agendar/[token]`). **Recordatorios ESCALONADOS** (tras atendida la 1ª: 3d →
+    semanal → aviso final 3d antes de vencer; `reminder_stage`+`last_reminder_at`, centinela `1000`=final; plantilla
+    `pending_consultation_reminder` mig `20260723000003`) + **expiración** automática, ambos wired al cron existente
+    `/api/cron/appointment-reminders` (sin nuevo Cloud Scheduler). Anti-IDOR: doctor de `user.sub`, ownership de paciente+plan en
+    el bulk; token → 404 anti-enumeración, sin PII ni IDs en mensajes de error. Deuda Etapa 2: rate-limiting de los públicos.
+- **Terminología (2026-07-23):** "médico" (SUSTANTIVO que nombra al usuario) → **"especialista"** en UI/correos/guías;
+  se conservan adjetivos ("informe/reposo/insumos/datos médicos") y honoríficos Dr./Dra. Plantillas de email sembradas se
+  actualizan en BD vía mig `20260723000001` (REPLACE de frases sustantivas; `REPLACE` no toca adjetivos).
+- **Nota estructura (2026-07-22):** carpeta `migracion/` **eliminada** (planes de migración ya ejecutados; historial en
+  git). Docs vivos reubicados a `docs/` (`presentacion-inversionistas.html`, `dominio-dns-snapshot.md`,
+  `guides/estructura-modulo.md`); el manual de agentes viejo → `docs/_archivo/` (lo suplió `.claude/agents/orchestrator.md`).
+
 ## Inventario de tablas (auditoría Fase 0 — fuente de verdad: archivos `*.sql`)
 
 Core: `profiles`, `appointments`, `consultations`, `patients`, `patient_packages`,

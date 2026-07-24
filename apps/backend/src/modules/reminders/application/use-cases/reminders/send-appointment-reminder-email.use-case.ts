@@ -110,7 +110,7 @@ export class SendAppointmentReminderEmailUseCase {
     // 3. Resolve doctor display name
     // ------------------------------------------------------------------
     const doctorProfile = await this.doctorProfileRepo.findByDoctorId(input.doctorId);
-    const doctorName = doctorProfile?.fullName ?? 'Su médico';
+    const doctorName = doctorProfile?.fullName ?? 'Su especialista';
 
     // ------------------------------------------------------------------
     // 4. Format date and time in Caracas timezone (America/Caracas UTC-4)

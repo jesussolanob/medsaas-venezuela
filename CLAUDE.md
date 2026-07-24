@@ -108,8 +108,13 @@ Definiciones en `.claude/agents/`; manual del team-lead en `.claude/agents/orche
 
 ## Git Flow
 
-Ramas: main · develop · feature/_ · release/_ · hotfix/\*. Nunca commit directo a
-main/develop. Commits `<tipo>(<scope>): <desc>` (feat|fix|chore|docs|refactor|test|perf|ci).
+Ramas: master(=main, prod) · develop (integración) · staging (pre-prod) · feature/\* ·
+hotfix/\*. **Flujo de despliegue OBLIGATORIO (definido 2026-07-23):** la cadena SIEMPRE es
+**`feature/*` → `develop` → `staging` → `master`**. Cada cambio: rama feature desde `develop`
+→ merge a `develop` → merge/push a `staging` → **validar en `staging.deltasalud.app`** (pre-prod:
+BD clonada, `EMAIL_DRIVER=noop`, Sentry off) → recién validado, `staging` → `master` (dispara el
+deploy a prod). NUNCA commit directo a `master`/`develop`; NADA va a prod sin pasar por staging.
+Commits `<tipo>(<scope>): <desc>` (feat|fix|chore|docs|refactor|test|perf|ci).
 
 ## Idioma
 

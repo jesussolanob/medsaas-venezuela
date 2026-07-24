@@ -18,6 +18,7 @@ import { IdentityResolverService } from './identity-resolver.service';
 import { DevAuthGuard } from './dev-auth.guard';
 import { Auth0Guard } from './auth0.guard';
 import { AppAuthGuard } from './app-auth.guard';
+import { ReviewerTokenService } from './reviewer-token.service';
 
 /**
  * InfraAuthModule
@@ -53,12 +54,14 @@ import { AppAuthGuard } from './app-auth.guard';
     DevAuthGuard,
     Auth0Guard,
     AppAuthGuard,
+    ReviewerTokenService,
   ],
   exports: [
     AppAuthGuard,
     DevAuthGuard,
     Auth0Guard,
     IdentityResolverService,
+    ReviewerTokenService,
     // Must be exported: AppAuthGuard is re-resolved in every consuming module's
     // injector (via @UseGuards), so its ACCOUNT_STATUS_PORT dependency has to be
     // globally available — otherwise modules like StorageModule fail to bootstrap.

@@ -116,6 +116,19 @@ function installBackendAuthInterceptor(): void {
     }
   }
 
+  // Reviewer access token: forwarded unconditionally when the cookie is present.
+  // The backend ignores it when REVIEWER_ACCESS_ENABLED is off, so forwarding
+  // it is always safe. Imported once (module-cached).
+  const reviewerTokenModule = import('@/lib/reviewer-token.server');
+  async function reviewerToken(): Promise<string | null> {
+    try {
+      const { getReviewerToken } = await reviewerTokenModule;
+      return await getReviewerToken();
+    } catch {
+      return null;
+    }
+  }
+
   async function idToken(): Promise<string> {
     const now = Date.now();
     if (cached && cached.expMs - REFRESH_SKEW_MS > now) return cached.token;
@@ -155,6 +168,11 @@ function installBackendAuthInterceptor(): void {
         const userToken = await userAuth0Token();
         if (userToken) headers.set('x-auth0-token', userToken);
       }
+      // Reviewer access: forward the HMAC token when the cookie is present.
+      // The backend validates it via AppAuthGuard (x-reviewer-token) and maps it
+      // to a demo doctor profile. Inert when REVIEWER_ACCESS_ENABLED is off.
+      const rvToken = await reviewerToken();
+      if (rvToken) headers.set('x-reviewer-token', rvToken);
       return originalFetch(input, { ...init, headers });
     }
     return originalFetch(input, init);

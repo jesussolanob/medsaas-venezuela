@@ -137,11 +137,11 @@ export default async function ConsultationReportPage({
               {/* Médico */}
               <div>
                 <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest mb-3">
-                  Datos del Médico
+                  Datos del Especialista
                 </h3>
                 <div className="space-y-2">
                   <div>
-                    <p className="text-xs text-slate-500">Médico</p>
+                    <p className="text-xs text-slate-500">Especialista</p>
                     <p className="font-semibold text-slate-900">Dr(a). {data.doctor.full_name}</p>
                   </div>
                   {data.doctor.specialty && (

@@ -310,6 +310,7 @@ export class DoctorController {
       priceUsd: dto.price_usd,
       durationMinutes: dto.duration_minutes,
       sessionsCount: dto.sessions_count,
+      validityDays: dto.validity_days ?? null,
       description: dto.description ?? null,
       type: dto.type,
       showInBooking: dto.show_in_booking,
@@ -338,6 +339,8 @@ export class DoctorController {
       // Pass office_id only when the caller explicitly includes it in the body.
       // This allows setting to null (general plan) or a specific UUID.
       ...('office_id' in dto && { officeId: dto.office_id ?? null }),
+      // Pass validity_days only when explicitly included (supports clearing to null).
+      ...('validity_days' in dto && { validityDays: dto.validity_days ?? null }),
     });
     return { success: true, data: result };
   }

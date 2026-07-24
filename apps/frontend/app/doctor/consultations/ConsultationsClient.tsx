@@ -3813,7 +3813,7 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                       </div>
                     </div>
                     <p className="text-xs text-slate-500">
-                      Exámenes e indicaciones que el médico ordena al paciente (laboratorio,
+                      Exámenes e indicaciones que el especialista ordena al paciente (laboratorio,
                       imágenes, etc.)
                     </p>
 
@@ -4044,7 +4044,7 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                         <span className="text-slate-400 font-normal text-xs">(opcional)</span>
                       </label>
                       <textarea
-                        placeholder="Observaciones adicionales del médico..."
+                        placeholder="Observaciones adicionales del especialista..."
                         value={reposoComments}
                         onChange={(e) => setReposoComments(e.target.value)}
                         rows={3}
@@ -4146,8 +4146,8 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                       <p className="text-sm font-bold text-slate-800">Notas internas</p>
                     </div>
                     <p className="text-xs text-slate-500">
-                      Notas privadas del médico sobre esta consulta. No se incluyen en documentos
-                      del paciente.
+                      Notas privadas del especialista sobre esta consulta. No se incluyen en
+                      documentos del paciente.
                     </p>
                     <RichTextEditor
                       value={
@@ -4520,9 +4520,9 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                         <button
                           type="button"
                           onClick={() => setShowHistory(true)}
-                          className="inline-flex items-center gap-0.5 text-xs font-semibold text-slate-500 hover:text-teal-600 transition-colors"
+                          className="self-start inline-flex items-center gap-1 mt-1 px-2.5 py-1 rounded-lg text-xs font-semibold text-teal-700 bg-teal-50 border border-teal-200 hover:bg-teal-100 hover:border-teal-300 transition-colors"
                         >
-                          <History className="w-3 h-3" /> Revisar historial
+                          <History className="w-3.5 h-3.5" /> Revisar historial
                         </button>
                       </div>
                     )}

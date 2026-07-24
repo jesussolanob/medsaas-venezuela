@@ -186,7 +186,7 @@ describe('SendAppointmentReminderEmailUseCase', () => {
   });
 
   describe('doctor name fallback', () => {
-    it('uses "Su médico" when doctor profile is not found', async () => {
+    it('uses "Su especialista" when doctor profile is not found', async () => {
       const apt = makeAppointment({ patientEmail: 'p@test.com' });
       const { useCase, mailer } = buildUseCase({
         appointment: apt,
@@ -198,7 +198,7 @@ describe('SendAppointmentReminderEmailUseCase', () => {
       expect(mailer.sendTemplate).toHaveBeenCalledWith(
         'reminder_manual',
         'p@test.com',
-        expect.objectContaining({ doctor_name: 'Su médico' }),
+        expect.objectContaining({ doctor_name: 'Su especialista' }),
         expect.any(Object),
       );
     });

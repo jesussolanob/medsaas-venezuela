@@ -67,6 +67,31 @@ export const CreateBookingDtoSchema = z
      * Must be a valid HTTPS URL when provided; null/omitted means no receipt yet.
      */
     receipt_url: z.string().url().nullable().optional(),
+
+    /**
+     * ID of the pricing_plan selected for this booking.
+     * When set and the plan has sessions_count > 1, the booking flow creates
+     * the extra appointment slots (additional_sessions) and/or pending
+     * consultations for deferred scheduling. Fully backward-compatible:
+     * absent or sessions_count=1 → identical behaviour to today.
+     */
+    plan_id: z.string().uuid().nullable().optional(),
+
+    /**
+     * Additional sessions the patient wants to schedule right now
+     * (beyond the first one in scheduled_at). Only processed when plan_id
+     * resolves to a plan with sessions_count > 1.
+     * Max entries honoured: min(sessions_count - 1, array length).
+     */
+    additional_sessions: z
+      .array(
+        z.object({
+          scheduled_at: z.string().datetime({ offset: true }),
+          office_id: z.string().uuid().nullable().optional(),
+          appointment_mode: z.enum(['presencial', 'online']).optional(),
+        }),
+      )
+      .optional(),
   })
   .strict();
 

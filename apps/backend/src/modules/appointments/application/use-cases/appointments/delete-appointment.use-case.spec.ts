@@ -78,6 +78,7 @@ function makeAppointmentRepo(
     updateGoogleEventId: jest.fn().mockResolvedValue(undefined),
     updateConsultationId: jest.fn(),
     deleteById: jest.fn().mockResolvedValue(undefined),
+    findFirstCompletedByPaymentId: jest.fn().mockResolvedValue(null),
     ...overrides,
   } as jest.Mocked<IAppointmentRepository>;
 }
@@ -98,6 +99,7 @@ function makeConsultationRepo(): jest.Mocked<IConsultationRepository> {
     findByPatient: jest.fn(),
     findByAppointmentId: jest.fn(),
     deleteById: jest.fn().mockResolvedValue(undefined),
+    findFirstCompletedByPaymentId: jest.fn().mockResolvedValue(null),
     listWithAppointment: jest.fn(),
   } as jest.Mocked<IConsultationRepository>;
 }

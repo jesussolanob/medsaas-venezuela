@@ -816,7 +816,7 @@ export default function DoctorDashboard() {
                 letterSpacing: '-0.02em',
               }}
             >
-              Tu portal médico está listo
+              Tu portal de especialista está listo
             </h2>
             <p className="text-white/80 text-sm max-w-lg leading-relaxed">
               Gestiona pacientes, agenda citas, lleva historial clínico y controla tus finanzas,

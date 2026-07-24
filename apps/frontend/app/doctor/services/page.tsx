@@ -73,6 +73,7 @@ export default function ServicesPage() {
   const [priceUsd, setPriceUsd] = useState('');
   const [durationMinutes, setDurationMinutes] = useState('30');
   const [sessionsCount, setSessionsCount] = useState('1');
+  const [validityDays, setValidityDays] = useState('');
   const [description, setDescription] = useState('');
   const [type, setType] = useState<'plan' | 'service'>('plan');
   const [showInBooking, setShowInBooking] = useState(true);
@@ -96,6 +97,7 @@ export default function ServicesPage() {
     setPriceUsd('');
     setDurationMinutes('30');
     setSessionsCount('1');
+    setValidityDays('');
     setDescription('');
     setType(itemType);
     setShowInBooking(true);
@@ -109,6 +111,7 @@ export default function ServicesPage() {
     setPriceUsd(item.price_usd.toString());
     setDurationMinutes(item.duration_minutes.toString());
     setSessionsCount(item.sessions_count.toString());
+    setValidityDays(item.validity_days != null ? item.validity_days.toString() : '');
     setDescription(item.description);
     setType(item.type);
     setShowInBooking(item.show_in_booking);
@@ -127,11 +130,15 @@ export default function ServicesPage() {
       return;
     }
     setSaving(true);
+    const parsedSessions = parseInt(sessionsCount) || 1;
+    const parsedValidity = validityDays.trim() !== '' ? parseInt(validityDays) : null;
     const payload = {
       name: name.trim(),
       price_usd: parseFloat(priceUsd) || 0,
       duration_minutes: parseInt(durationMinutes) || 30,
-      sessions_count: parseInt(sessionsCount) || 1,
+      sessions_count: parsedSessions,
+      // validity_days only applies to multi-session plans; clear if sessions == 1
+      validity_days: parsedSessions > 1 ? (parsedValidity ?? null) : null,
       description: description.trim() || null,
       type,
       show_in_booking: showInBooking,
@@ -441,6 +448,11 @@ export default function ServicesPage() {
                       {(item.price_usd * item.sessions_count).toFixed(2)} total
                     </div>
                   )}
+                  {item.sessions_count > 1 && item.validity_days != null && (
+                    <div className="flex items-center gap-1 text-amber-600">
+                      <span>Validez: {item.validity_days}d</span>
+                    </div>
+                  )}
                 </div>
 
                 {/* Booking toggle */}
@@ -647,6 +659,28 @@ export default function ServicesPage() {
                     }
                     return null;
                   })()}
+
+                  {/* Validez — solo visible cuando sessions > 1 */}
+                  {(parseInt(sessionsCount) || 1) > 1 && (
+                    <div className="mt-3">
+                      <label className="block text-xs font-medium text-slate-600 mb-1.5">
+                        Validez (días)
+                        <span className="ml-1 text-slate-400 font-normal">(opcional)</span>
+                      </label>
+                      <input
+                        type="number"
+                        min="1"
+                        value={validityDays}
+                        onChange={(e) => setValidityDays(e.target.value)}
+                        placeholder="Ej. 90"
+                        className={inp}
+                      />
+                      <p className="text-[10px] text-slate-400 mt-1">
+                        Días que tiene el paciente para agendar todas las consultas del paquete.
+                        Deja vacío si no tiene fecha de vencimiento.
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
 

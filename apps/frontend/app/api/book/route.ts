@@ -62,6 +62,8 @@ export async function POST(req: NextRequest) {
       packageId,
       officeId,
       receiptUrl,
+      planId,
+      additionalSessions,
     } = body as {
       doctorId?: string;
       patientId?: string;
@@ -79,6 +81,12 @@ export async function POST(req: NextRequest) {
       packageId?: string;
       officeId?: string;
       receiptUrl?: string | null;
+      planId?: string | null;
+      additionalSessions?: Array<{
+        scheduled_at: string;
+        office_id?: string | null;
+        appointment_mode?: string | null;
+      }> | null;
     };
 
     // Basic required field validation
@@ -142,6 +150,12 @@ export async function POST(req: NextRequest) {
       // Bug 7: forward receipt_url uploaded via /api/storage/public-upload.
       // Conditional so this is a no-op if the backend DTO doesn't accept it yet.
       ...(receiptUrl ? { receipt_url: receiptUrl } : {}),
+      // Multi-sesión: plan_id para que el backend resuelva validity_days y cree
+      // las preconsultas pendientes de las sesiones adicionales.
+      ...(planId ? { plan_id: planId } : {}),
+      // additional_sessions: array de fechas para sesiones 2..N que el paciente
+      // eligió agendar ahora. Si es vacío [] el backend las crea como pendientes.
+      ...(Array.isArray(additionalSessions) ? { additional_sessions: additionalSessions } : {}),
     };
 
     // Forward to the backend booking endpoint (no auth headers — it's public)

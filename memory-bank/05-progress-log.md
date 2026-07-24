@@ -2,6 +2,64 @@
 
 > Registro cronológico. Una entrada por fase/hito completado.
 
+## 2026-07-23/24 — "Consultas por agendar" (preconsultas) + terminología especialista ✅ (VALIDADO EN VIVO en staging; PENDIENTE promover a prod)
+
+Sesión de equipo de agentes (lead + backend-agent + frontend-agent + security/code review). Desplegado y **validado end-to-end en `staging.deltasalud.app` con Playwright (2026-07-24)**; falta solo promover `staging → main` (prod) tras el visto bueno final del usuario. tsc/eslint/jest verdes en todo.
+
+- **QA en vivo staging (Playwright, logueado como Especialista) — TODO PASÓ:** TERM (sidebar "Especialista", "Precio USD unitario", "El especialista confirmará tu cita", landing/terms/privacy); PREC-01 servicio 3 consultas → campo "Validez (días)" aparece con sesiones>1 → creado con **$30×3=$90** + badge "Validez: 60d"; PREC-02 booking muestra panel "agendar ahora las restantes / Agendar después"; PREC-03 confirmación con aviso "Consultas restantes por agendar — recibirás un enlace por correo"; PREC-05 módulo lista 2 preconsultas (Sesión 2/3, "Vence en 60d"); PREC-06 Agendar → cita creada + pasa a "Agendadas"; PREC-07 Cancelar (modal, no confirm nativo) → sale de "Por agendar". Data de prueba quedó en la BD clon de staging (descartable). ⚠️ Caveat: `/agendar/[token]` con token VÁLIDO no se probó end-to-end (email noop en staging).
+- **Fixes cosméticos del QA (commit `e500875`, ya en develop+staging):** (1) `PendingConsultationInvalidTokenError` + `AgendarTokenClient` → mensaje del enlace inválido en es-VE (era inglés "Invalid or expired scheduling token"); (2) `/privacy` §2 "entre médico y paciente" → "entre especialista y paciente". Pre-existente NO tocado: el label "Teléfono" del booking sin asterisco aunque es requerido.
+- **Estado git (para retomar mañana):** `develop` y `staging` tienen feature + fixes; `main`/prod NO. **Próximo paso:** usuario revisa staging → `staging → main` para desplegar a prod.
+
+- **Terminología "médico → especialista"** (regla: solo el SUSTANTIVO que nombra al usuario; se conservan adjetivos "informe/reposo/insumos/datos médicos" y honoríficos Dr./Dra.): ~40 cadenas en UI (admin/doctor/patient/booking/documents/legal) + guías de ayuda (`help-assistant`) + fallbacks de correo `'Su médico'→'Su especialista'` + error de consultorio + PDF de documento compartido. Migración `20260723000001` actualiza las plantillas de email SEMBRADAS en BD (REPLACE de `<strong>Médico:</strong>`, `Su/su/Tu/tu/el médico`). Specs de fallback ajustados. ⚠️ El Explore inicial sub-reportó ~50% de las ocurrencias — la verificación del lead (grep no-comentario) cazó 3 lotes.
+- **Preconsultas (feature nueva, ver ADR-025):** un servicio (`pricing_plans`) con `sessions_count>1` gana `validity_days` (fecha límite). Al comprar (booking público o especialista), se paga TODO por adelantado (precio UNITARIO × nº consultas — el booking ya lo sumaba, NO se tocó) y se agenda la 1ª; las restantes se agendan de una o quedan como **preconsultas** (`pending_consultations`, autosuficientes, ligadas al pago, con `expires_at`). Módulo backend DDD `pending-consultations` (migración `20260723000002`), endpoints doctor (list/schedule/cancel/bulk) + públicos por token HMAC (`/agendar/[token]`). Recordatorios ESCALONADOS al paciente tras atendida la 1ª (3d → semanal → aviso final 3d antes de vencer, plantilla `pending_consultation_reminder` mig `20260723000003`, wired al cron existente `/api/cron/appointment-reminders` sin nuevo Scheduler) + expiración automática. Frontend: campo Validez en servicios, módulo "Consultas por agendar" en Consultorio, "agendar después" en booking + especialista, página pública `/agendar/[token]`.
+- **Review:** security-agent 0 CRIT/HIGH (token HMAC namespaced, anti-IDOR, anti-enumeración OK); code-reviewer → 4 bloqueantes CORREGIDOS: (1) plantilla usaba `{{#if}}` que el `MailerService.render` (solo `{{key}}`) NO procesa → el paciente vería literales; (2) `'skipped' as 'failed'` contaba mal a pacientes sin email; (3) UUID interno en mensajes de error de dominio filtrado al paciente vía BFF; (4) `plan_id` sin verificar ownership en booking multi-sesión. + 5 quality (doble UUID, mutación de Date, processOne private, typo "Sesión", SequelizeModule fuera de exports).
+- **Deuda Etapa 2 (documentada, no bloquea):** rate-limiting de endpoints públicos por token; `doctor_id` en la respuesta pública del token (aceptable, el booking ya es público por doctor); límite de 200 en el enriquecimiento de `patient_name` del BFF doctor (mejor un JOIN backend).
+
+## 2026-07-22 — Fix registro prod + fix verificación MPPS + staging + manual IA + histórico ✅ (VERIFICADO EN VIVO)
+
+Sesión larga, todo desplegado a prod y verificado. Orden de merges a `main`: `249cfa3` (enum), `aee89bd`
+(MPPS), `7ad7ff2` (manual+histórico), `f3310c4` (CI fix + workflow staging).
+
+- **🔴 REGISTRO ROTO EN PROD — causa raíz + fix (`2cce383`, mig `20260722000001`):** todo doctor nuevo rebotaba a
+  la landing al loguearse (Google/email) y no aparecía en super admin; crear doctor por admin daba "error inesperado".
+  Diagnóstico por logs de Cloud Run: `POST /api/auth/resolve-identity` → **500**. El enum PG `subscription_status`
+  se creó (mig inicial) con solo `active/suspended/cancelled/trial/past_due` — **sin `trialing`**, pero el código
+  asigna `status='trialing'` al trial de onboarding (self-service Y admin). El INSERT de la suscripción reventaba
+  (`invalid input value for enum … "trialing"`), y como el alta es **transaccional**, rollback → sin perfil huérfano.
+  Fix: `ALTER TYPE subscription_status ADD VALUE IF NOT EXISTS 'trialing'` (idempotente). Verificado en vivo:
+  resolve-identity ahora 200, login llega a `/doctor/onboarding`. **Bonus:** `GlobalExceptionFilter` mensaje 500
+  genérico ahora en español ("Ocurrió un error inesperado").
+- **Fix verificación MPPS automática (SACS) — 3 bugs (`f123e02`):** nunca funcionó contra el SACS real (todo doctor
+  → "MPPS no coincide"). Verificado con la respuesta real de la cédula V-13083881 (MÉDICO CIRUJANO, MPPS-65583).
+  (1) el adapter parseaba profesiones desde `xajax_userTable` pero SACS las manda en **`xajax_tableProfesion`** →
+  lista vacía; (2) SACS devuelve `licencia:"MPPS-65583"` y el dr declara `65583` → `normalizeMpps` (quita prefijo
+  `MPPS`+ceros); (3) profesión `"M&Eacute;DICO(A)…"` con entidad HTML → el adapter ahora **decodifica entidades**.
+  Tests nuevos contra el XML real (adapter spec + normalizeMpps). ⚠️ `mpps-sacs-verification-research` decía "fácil";
+  en realidad requería estos 3 fixes.
+- **Manual de la IA de ayuda actualizado (`d554178`):** `feature-labels` agrega label de plan `free_trial` (mostraba
+  el key crudo); guía del especialista corregida — recordatorios YA automáticos (24h/1h) + confirmación por token
+  (decía "diferido"), PDF/plantillas YA funcionan + firma dibujada (decía "en desarrollo"), + Seguimiento del
+  paciente, bloque Paraclínico, Generar Documento (5 tipos), explicación del período de prueba. El help-assistant
+  **ya era plan-aware** (contexto inyectado con módulos disponibles del plan efectivo + regla en el prompt).
+- **Feature "Revisar historial" (`73eef42`):** botón en el editor de consulta (junto a "Ver ficha") que abre un
+  drawer de **solo lectura** con las consultas anteriores del mismo paciente (excluye la actual, orden DESC, pagina
+  de 5), mostrando cada bloque (label+valor de `blocks_snapshot`/`blocks_structure`) + diagnóstico, sin salir de la
+  consulta. 100% frontend: reusa la action existente `getPatientConsultations` (`GET /api/consultations/patient/:id`,
+  owner-scoped). Componente `PatientHistoryModal.tsx`. Delegado a frontend-agent, verificado por el lead (tsc 0).
+- **Entorno STAGING construido (espejo de prod):** ver detalle en `01-architecture` (ADR-024) y memoria
+  `dominio-cloudflare-y-ramas`. BD clon `delta-db-staging`, servicios Cloud Run `-staging` (backend IAM / frontend
+  público), `.github/workflows/staging.yml` (push a rama `staging`), dominio `staging.deltasalud.app` (Cloudflare
+  DNS-only + domain mapping, cert emitido y VIVO), Auth0+Google con URLs de staging. `EMAIL_DRIVER=noop` + Sentry off.
+- **Fix CI `cloud-sql-proxy` (`fdd15a5`, en `staging.yml` Y `deploy.yml`):** la versión "latest" se leía de la API de
+  GitHub sin auth → al rate-limitar, `VER` vacío → URL con `//` → binario NoSuchKey → migraciones `ECONNREFUSED`
+  (rompió el 1er deploy de staging). Fix: API con `${{ github.token }}` + fallback `v2.23.0` + `curl -f`.
+- **Limpieza `migracion/` → `docs/` (`a70b045`):** eliminada la carpeta `migracion/` (planes ya ejecutados; historial
+  en git); reubicados los docs vivos a `docs/` (`presentacion-inversionistas.html`, `dominio-dns-snapshot.md`,
+  `guides/estructura-modulo.md`); `06-agentes-equipo.md` (superado por `.claude/agents/orchestrator.md`) a
+  `docs/_archivo/`. Refs actualizadas en CLAUDE.md/README/memory-bank + 3 comentarios de código.
+- **Presentación de costos (`docs/presentacion-inversionistas.html`):** BD dedicada con holgura + conexiones,
+  Cloudflare+Cloud Armor base desde 100 usr, Auth0 pago desde 1.000, IA vía Vertex, baseline real ~$50/mes.
+
 ## 2026-07-20 — Recordatorios automáticos + confirmación de cita por token ✅ (VERIFICADO EN VIVO)
 
 Feature desplegada a prod (`main` @ `6620c80`) y **verificada end-to-end en Cloud Run** tras un reinicio de la

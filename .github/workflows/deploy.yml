@@ -62,8 +62,10 @@ jobs:
 
       - name: Run migrations
         run: |
-          VER=$(curl -sS -H "Authorization: Bearer ${{ github.token }}" https://api.github.com/repos/GoogleCloudPlatform/cloud-sql-proxy/releases/latest | grep -o '"tag_name": *"[^"]*"' | head -1 | cut -d'"' -f4)
-          VER=${VER:-v2.23.0}  # fallback si la API de GitHub falla / rate-limita (evita URL con //)
+          # Versión de cloud-sql-proxy FIJADA a v2 (existe en el bucket, verificado 200).
+          # NO usar 'releases/latest' de GitHub: puede devolver un backport de la línea v1
+          # (p.ej. v1.38.2) cuyo binario NO existe en este bucket → curl -f falla con 404.
+          VER=v2.23.0
           curl -fLo cloud-sql-proxy "https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/${VER}/cloud-sql-proxy.linux.amd64"
           chmod +x cloud-sql-proxy
           ./cloud-sql-proxy --port 5432 "$SQL_CONN" &
@@ -81,8 +83,8 @@ jobs:
             --region="$REGION" --service-account="$BACKEND_SA" \
             --no-allow-unauthenticated \
             --add-cloudsql-instances="$SQL_CONN" \
-            --set-secrets=DATABASE_URL=DATABASE_URL:latest,ENCRYPTION_KEY=ENCRYPTION_KEY:latest,ENCRYPTION_HMAC_SECRET=ENCRYPTION_HMAC_SECRET:latest,AUTH_RESOLVE_SECRET=AUTH_RESOLVE_SECRET:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,GOOGLE_CLIENT_SECRET=GOOGLE_CLIENT_SECRET:latest,RESEND_API_KEY=RESEND_API_KEY:latest,CRON_SECRET=CRON_SECRET:latest \
-            --set-env-vars=NODE_ENV=production,AUTH_MODE=auth0,AUTH0_DOMAIN=${{ vars.AUTH0_DOMAIN }},AUTH0_CLIENT_ID=${{ vars.AUTH0_CLIENT_ID }},AUTH0_ROLE_NAMESPACE=${{ vars.AUTH0_ROLE_NAMESPACE }},REDIS_DISABLED=true,DB_POOL_MAX=5,DB_POOL_MIN=0,STORAGE_DRIVER=gcs,GCS_BUCKET=$GCS_BUCKET,GCS_PROJECT_ID=$PROJECT_ID,EMAIL_DRIVER=resend,EMAIL_FROM=noreply@deltasalud.app,SANDBOX=false,GOOGLE_CLIENT_ID=${{ vars.GOOGLE_CLIENT_ID }},SENTRY_ENABLED=true,SENTRY_DSN=https://4625772d0a646495299927f853ea9978@o4511532342640640.ingest.us.sentry.io/4511532365119488 \
+            --set-secrets=DATABASE_URL=DATABASE_URL:latest,ENCRYPTION_KEY=ENCRYPTION_KEY:latest,ENCRYPTION_HMAC_SECRET=ENCRYPTION_HMAC_SECRET:latest,AUTH_RESOLVE_SECRET=AUTH_RESOLVE_SECRET:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,GOOGLE_CLIENT_SECRET=GOOGLE_CLIENT_SECRET:latest,RESEND_API_KEY=RESEND_API_KEY:latest,CRON_SECRET=CRON_SECRET:latest,REVIEWER_PASSWORD=REVIEWER_PASSWORD:latest,REVIEWER_SESSION_SECRET=REVIEWER_SESSION_SECRET:latest \
+            --set-env-vars=NODE_ENV=production,AUTH_MODE=auth0,AUTH0_DOMAIN=${{ vars.AUTH0_DOMAIN }},AUTH0_CLIENT_ID=${{ vars.AUTH0_CLIENT_ID }},AUTH0_ROLE_NAMESPACE=${{ vars.AUTH0_ROLE_NAMESPACE }},REDIS_DISABLED=true,DB_POOL_MAX=5,DB_POOL_MIN=0,STORAGE_DRIVER=gcs,GCS_BUCKET=$GCS_BUCKET,GCS_PROJECT_ID=$PROJECT_ID,EMAIL_DRIVER=resend,EMAIL_FROM=noreply@deltasalud.app,SANDBOX=false,GOOGLE_CLIENT_ID=${{ vars.GOOGLE_CLIENT_ID }},SENTRY_ENABLED=true,SENTRY_DSN=https://4625772d0a646495299927f853ea9978@o4511532342640640.ingest.us.sentry.io/4511532365119488,REVIEWER_ACCESS_ENABLED=${{ vars.REVIEWER_ACCESS_ENABLED }},REVIEWER_EMAIL=${{ vars.REVIEWER_EMAIL }},REVIEWER_PROFILE_ID=${{ vars.REVIEWER_PROFILE_ID }} \
             --memory=512Mi --cpu=1 --min-instances=0 --max-instances=3 --port=8080
 
       - name: Resolve backend URL + grant frontend invoker
@@ -103,7 +105,7 @@ jobs:
             --region="$REGION" --service-account="$FRONTEND_SA" \
             --allow-unauthenticated \
             --set-secrets=AUTH0_SECRET=AUTH0_SECRET:latest,AUTH0_CLIENT_SECRET=AUTH0_CLIENT_SECRET:latest,GOOGLE_CLIENT_SECRET=GOOGLE_CLIENT_SECRET:latest,AUTH_RESOLVE_SECRET=AUTH_RESOLVE_SECRET:latest \
-            --set-env-vars=NODE_ENV=production,AUTH_MODE=auth0,AUTH0_DOMAIN=${{ vars.AUTH0_DOMAIN }},AUTH0_ISSUER_BASE_URL=https://${{ vars.AUTH0_DOMAIN }}/,AUTH0_CLIENT_ID=${{ vars.AUTH0_CLIENT_ID }},AUTH0_ROLE_NAMESPACE=${{ vars.AUTH0_ROLE_NAMESPACE }},GOOGLE_CLIENT_ID=${{ vars.GOOGLE_CLIENT_ID }},BACKEND_INTERNAL_URL=$BURL,BACKEND_IAM_AUDIENCE=$BURL \
+            --set-env-vars=NODE_ENV=production,AUTH_MODE=auth0,AUTH0_DOMAIN=${{ vars.AUTH0_DOMAIN }},AUTH0_ISSUER_BASE_URL=https://${{ vars.AUTH0_DOMAIN }}/,AUTH0_CLIENT_ID=${{ vars.AUTH0_CLIENT_ID }},AUTH0_ROLE_NAMESPACE=${{ vars.AUTH0_ROLE_NAMESPACE }},GOOGLE_CLIENT_ID=${{ vars.GOOGLE_CLIENT_ID }},BACKEND_INTERNAL_URL=$BURL,BACKEND_IAM_AUDIENCE=$BURL,REVIEWER_ACCESS_ENABLED=${{ vars.REVIEWER_ACCESS_ENABLED }} \
             --memory=512Mi --cpu=1 --min-instances=0 --max-instances=3 --port=8080
           # Public base URL. Prefer the custom domain (repo var PUBLIC_URL, p.ej.
           # https://deltasalud.app tras la migración a Cloudflare); si no está seteada,
