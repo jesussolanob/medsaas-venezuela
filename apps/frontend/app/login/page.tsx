@@ -505,6 +505,10 @@ function LoginInner() {
               <Link href="/terms" className="hover:opacity-70 transition-opacity">
                 Términos y Condiciones
               </Link>
+              <span aria-hidden="true">·</span>
+              <Link href="/privacy" className="hover:opacity-70 transition-opacity">
+                Privacidad
+              </Link>
             </p>
           </div>
         </div>
