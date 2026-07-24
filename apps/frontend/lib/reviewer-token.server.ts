@@ -23,3 +23,31 @@ export const getReviewerToken = cache(async (): Promise<string | null> => {
     return null;
   }
 });
+
+/**
+ * Decodes the `sub` (demo profile UUID) from the reviewer_token payload WITHOUT
+ * verifying the HMAC — the backend independently verifies the token via
+ * x-reviewer-token, so a forged cookie only yields a sub the backend rejects.
+ *
+ * Used by identity.server.ts so a reviewer session (which has NO Auth0 session)
+ * still resolves a backend identity and reaches authenticated BFF endpoints.
+ * Returns null when there is no token, the payload is malformed, or it expired.
+ */
+export const getReviewerSub = cache(async (): Promise<string | null> => {
+  const token = await getReviewerToken();
+  if (!token) return null;
+  try {
+    const payloadB64 = token.split('.')[0];
+    if (!payloadB64) return null;
+    const payload = JSON.parse(Buffer.from(payloadB64, 'base64url').toString('utf8')) as {
+      sub?: string;
+      exp?: number;
+    };
+    if (!payload.sub) return null;
+    // Reject an expired token so we never present a stale identity.
+    if (typeof payload.exp === 'number' && payload.exp * 1000 < Date.now()) return null;
+    return payload.sub;
+  } catch {
+    return null;
+  }
+});
