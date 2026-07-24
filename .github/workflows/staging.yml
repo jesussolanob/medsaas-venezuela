@@ -87,8 +87,10 @@ jobs:
 
       - name: Run migrations (staging DB)
         run: |
-          VER=$(curl -sS -H "Authorization: Bearer ${{ github.token }}" https://api.github.com/repos/GoogleCloudPlatform/cloud-sql-proxy/releases/latest | grep -o '"tag_name": *"[^"]*"' | head -1 | cut -d'"' -f4)
-          VER=${VER:-v2.23.0}  # fallback si la API de GitHub falla / rate-limita (evita URL con //)
+          # Versión de cloud-sql-proxy FIJADA a v2 (existe en el bucket, verificado 200).
+          # NO usar 'releases/latest' de GitHub: puede devolver un backport de la línea v1
+          # (p.ej. v1.38.2) cuyo binario NO existe en este bucket → curl -f falla con 404.
+          VER=v2.23.0
           curl -fLo cloud-sql-proxy "https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/${VER}/cloud-sql-proxy.linux.amd64"
           chmod +x cloud-sql-proxy
           ./cloud-sql-proxy --port 5432 "$SQL_CONN" &
