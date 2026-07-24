@@ -15,13 +15,16 @@ import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 
 export async function blockedLogoutAction(): Promise<void> {
+  // Clear reviewer_token regardless of auth mode (same as logoutAction).
+  const cookieStore = await cookies();
+  cookieStore.delete('reviewer_token');
+
   // Etapa 2 (Auth0): delegar al /auth/logout del SDK (limpia la sesión httpOnly).
   // Nota: en auth0 se pierde el aviso ?blocked=1 (el retorno lo controla Auth0);
   // la cuenta bloqueada igual será rechazada por el guard en el siguiente acceso.
   if ((process.env.AUTH_MODE ?? 'dev') === 'auth0') {
     redirect('/auth/logout');
   }
-  const cookieStore = await cookies();
   cookieStore.delete('dev_user_id');
   cookieStore.delete('dev_user_role');
   redirect('/login?blocked=1');

@@ -126,6 +126,27 @@ async function resolveRoleFromBackend(
 }
 
 // ---------------------------------------------------------------------------
+// Reviewer access check (auth0 mode only)
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns true when the reviewer cookie is present AND REVIEWER_ACCESS_ENABLED
+ * is 'true'. The cookie's actual HMAC validity is NOT checked here — the Edge
+ * runtime has no crypto access to the backend secret, and that check runs on
+ * every API call in the backend's AppAuthGuard. The middleware only decides
+ * whether to let the request reach /doctor without an Auth0 session.
+ *
+ * This is intentionally a presence check, not a cryptographic check.
+ * An attacker who forges an arbitrary cookie value will pass this gate but
+ * will be rejected (401) by the backend on the first data request.
+ */
+function hasReviewerCookie(request: NextRequest): boolean {
+  if (process.env.REVIEWER_ACCESS_ENABLED !== 'true') return false;
+  const token = request.cookies.get('reviewer_token')?.value;
+  return typeof token === 'string' && token.length > 0;
+}
+
+// ---------------------------------------------------------------------------
 // Auth0 mode handler
 // ---------------------------------------------------------------------------
 
@@ -178,6 +199,14 @@ async function handleAuth0Mode(request: NextRequest): Promise<NextResponse> {
   // return it immediately — do not apply RBAC on /auth/* paths.
   if (path.startsWith('/auth/')) {
     return auth0Response as NextResponse;
+  }
+
+  // Reviewer shortcut: when the reviewer_token cookie is present (and the
+  // feature flag is on) let the request through as role='doctor', bypassing the
+  // Auth0 session gate entirely. The real token validation happens on every
+  // backend call via AppAuthGuard (x-reviewer-token header).
+  if (hasReviewerCookie(request)) {
+    return applyRbac(request, 'doctor') ?? (auth0Response as NextResponse);
   }
 
   // For protected routes: check that a valid session exists.
