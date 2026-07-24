@@ -7,6 +7,7 @@ import { AlertCircle, Loader2, Mail, Lock, Eye, EyeOff, ArrowRight } from 'lucid
 import { loginUser } from './actions';
 import { Suspense } from 'react';
 import { DeltaMark } from '@/components/dh';
+import { ReviewerLoginBlock } from './ReviewerLoginBlock';
 
 // Injected at build time by Next.js — safe to read in 'use client' components.
 const IS_AUTH0_MODE = process.env.NEXT_PUBLIC_AUTH_MODE === 'auth0';
@@ -52,6 +53,7 @@ function LoginInner() {
   const router = useRouter();
   const authError = searchParams.get('error');
   const isBlocked = searchParams.get('blocked') === '1';
+  const isReviewMode = searchParams.get('review') === '1';
   const [loading] = useState(false);
   const [error, setError] = useState(
     isBlocked
@@ -493,6 +495,9 @@ function LoginInner() {
                 Si es tu primera vez con Google, se creará tu cuenta automáticamente.
               </p>
             </div>
+
+            {/* Reviewer access block — only visible when ?review=1 */}
+            {isReviewMode && <ReviewerLoginBlock />}
 
             <p
               className="text-center text-xs mt-5 flex items-center justify-center gap-3"
