@@ -95,7 +95,10 @@ Estado (orden histórico de módulos):
 - 02 patients → ✅ DDD completo. PII cifrada (full_name/cedula/phone/email) + search hashes;
   /reveal auditado; búsqueda híbrida; soft delete (paranoid). `modules/patients/`.
 - 03 appointments → ✅ DDD. Transiciones de estado + `appointment_changes_log`; optimistic
-  lock de paquetes. `modules/appointments/`. Diferido: slots/reschedule (falta doctor_schedule).
+  lock de paquetes. `modules/appointments/`. **Reschedule ✅** (`PUT /:id/reschedule`, botón "Reagendar" en
+  la agenda) que además **mueve el evento de Google Calendar** (`UpdateCalendarEventUseCase` →
+  `GoogleCalendarService.updateEventTime`/`events.patch`, `@Optional` best-effort). Diferido: slots (usa
+  horarios genéricos).
 - 04 consultations → ✅ DDD. Campos clínicos cifrados; `ConsultationCode` VO (DLT-YYYYMM-XXXX,
   retry ante colisión); aprobación de pago. `modules/consultations/`.
 - 05 ehr-prescriptions → ✅ DDD. EHR (diagnosis/treatment_plan cifrados) + prescriptions

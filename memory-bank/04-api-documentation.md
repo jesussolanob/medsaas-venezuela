@@ -77,8 +77,9 @@ Módulo `pending-consultations`. Envelope `{success,data}`. Doctor scoped por `u
 | `/api/appointments`            | GET    | Lista paginada del doctor (filtros date_from/to, status, page, limit). PII enmascarada.                                                                    |
 | `/api/appointments/:id`        | GET    | Detalle (ownership).                                                                                                                                       |
 | `/api/appointments`            | POST   | Crear. Optimistic lock de paquetes; duplicado ±15min → AppointmentDuplicateError; slot ocupado → AppointmentConflictError.                                 |
-| `/api/appointments/:id/status` | PUT    | Transición de estado (scheduled→confirmed→completed/no_show/cancelled) + audit en `appointment_changes_log`. Inválida → AppointmentInvalidTransitionError. |
-| _(diferidos)_                  |        | `/slots` y `/reschedule` requieren tabla `doctor_schedule` (no existe aún).                                                                                |
+| `/api/appointments/:id/status` | PUT    | Transición de estado (scheduled→confirmed→completed/no_show/cancelled) + audit en `appointment_changes_log`. Inválida → AppointmentInvalidTransitionError. Al `cancelled` cancela el evento de Google Calendar (best-effort). |
+| `/api/appointments/:id/reschedule` | PUT | Reagenda (scheduled\|confirmed). Valida ownership + solape (doctor y paciente) + audit. **Mueve el evento de Google Calendar** a la nueva hora (best-effort, `UpdateCalendarEventUseCase` → `events.patch` con `sendUpdates:'all'`; conserva Meet/invitados; notifica al paciente). BFF: `POST /api/doctor/reschedule` `{appointmentId,newDate}`. UI: botón **"Reagendar"** en el detalle de la cita (agenda). Verificado en prod 2026-07-24 (10:00→15:00 movió el evento en el calendar del doctor y del paciente). |
+| _(diferido)_                   |        | `/slots` (usa horarios genéricos por ahora).                                                                                                              |
 
 ### Patients (módulo ✅ — PII cifrada AES-256-GCM)
 

@@ -2,6 +2,34 @@
 
 > Registro cronológico. Una entrada por fase/hito completado.
 
+## 2026-07-24 — Reagendar cita (botón) + sync del evento de Google al reprogramar ✅ (DESPLEGADO Y VERIFICADO EN VIVO EN PROD)
+
+**Contexto:** durante la verificación E2E de Google Calendar en prod (cuenta demo del reviewer con el
+calendario `lucas.rivas.55@gmail.com` conectado), se confirmó que crear una cita online sincroniza a los
+**3 lugares** (agenda del portal + Google Calendar del doctor con Meet + Google Calendar del paciente como
+invitado) y envía el correo de confirmación al paciente. Faltaba **reagendar**.
+
+**Hallazgo:** el modal "Reagendar cita" (selector de día/hora) ya existía en `agenda/page.tsx` pero quedó
+**huérfano** — nada llamaba `setRescheduling`, así que no había forma de abrirlo desde la UI (solo el drag,
+que no funcionaba). Y el `reschedule-appointment.use-case` persistía el nuevo `scheduled_at` pero **NO movía
+el evento de Google** (el BFF `/api/doctor/reschedule` tenía el TODO "Fase 5: sync con Google Calendar diferido").
+
+**Fix (commit `feature/reschedule-google-sync`):**
+- **Frontend:** botón **"Reagendar"** en las acciones del detalle de la cita (`scheduled|confirmed`) que abre el
+  modal existente (`setRescheduling(detailAppt)`). `apps/frontend/app/doctor/agenda/page.tsx`.
+- **Backend:** cierra el TODO. `GoogleCalendarService.updateEventTime` (`events.patch`, `sendUpdates:'all'`,
+  conserva Meet/invitados/reminders) + nuevo `UpdateCalendarEventUseCase` (espejo de cancel: gating +
+  refresh de token). `RescheduleAppointmentUseCase` lo inyecta `@Optional` y, tras persistir, mueve el evento
+  por `googleCalendarEventId` (best-effort, no rompe el reschedule si Google falla).
+- tsc back+front 0; jest reschedule 13/13.
+
+**Verificación en vivo:** staging (botón aparece → modal → cita 09:00→11:00 persiste). **Prod:** cita 10:00→15:00 →
+el evento se movió a **3pm** en el Google Calendar del **doctor** (un solo evento, patch limpio) y del **paciente**
+(invitación 3pm). Flujo `feature → develop → staging → main`, deploys OK.
+
+⚠️ Nota E2E: quedó un evento suelto a las 11am en el calendar personal del paciente (remanente de pruebas
+previas; el patch nunca inserta, y el calendar del organizador está limpio). Borrable.
+
 ## 2026-07-23/24 — "Consultas por agendar" (preconsultas) + terminología especialista ✅ (VALIDADO EN VIVO en staging; PENDIENTE promover a prod)
 
 Sesión de equipo de agentes (lead + backend-agent + frontend-agent + security/code review). Desplegado y **validado end-to-end en `staging.deltasalud.app` con Playwright (2026-07-24)**; falta solo promover `staging → main` (prod) tras el visto bueno final del usuario. tsc/eslint/jest verdes en todo.
