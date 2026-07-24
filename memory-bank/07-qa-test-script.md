@@ -1131,6 +1131,45 @@ guardado de `blocks_data` DEBE mergear el snapshot COMPLETO** del ref (nunca un 
 **Guía "cómo probar":** dominio de QA = `https://deltasalud.app`. Login real (código llega a `lucas@deltasalud.app`,
 o "Continuar con Google"). Verificar efectos en la pantalla siguiente / en Resend (emails) / en BD si aplica.
 
+## D-2026-07-23) "Consultas por agendar" (preconsultas) + terminología especialista
+
+> Feature nueva (ADR-025) + cambio médico→especialista. Validar primero en `staging.deltasalud.app`
+> (flujo `feature→develop→staging→main`). ⚠️ Staging tiene `EMAIL_DRIVER=noop`: los recordatorios y el
+> correo con el enlace `/agendar/[token]` NO se envían de verdad → validar ese tramo revisando
+> `email_send_log` / logs, o el token page con un token generado, y el envío real recién en prod.
+>
+> ✅ **VALIDADO en staging (Playwright, 2026-07-24):** TERM + PREC-01..07 PASARON end-to-end (crear servicio 3
+> consultas con validez 60d → booking "agendar después" → 2 preconsultas en el módulo → Agendar una / Cancelar
+> otra). Pendiente por el email noop: PREC-09 token válido, PREC-10, PREC-11 (recordatorios/token — validar en
+> prod). Fixes cosméticos del pase (commit `e500875`): mensaje es-VE en enlace inválido + privacy §2.
+
+**Terminología (médico → especialista):**
+
+| Caso    | Ruta / acción                                                                                                    | Esperado                                                                                        |
+| ------- | ---------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| TERM-01 | `/admin/doctors` (lista, botón "Nuevo especialista"), `/admin/verifications` ("Verificaciones de especialistas") | Dice "especialista(s)", NO "médico(s)"                                                          |
+| TERM-02 | `/admin/email-templates` (previews)                                                                              | Labels y cuerpos con "Especialista:" / "Su especialista" (mig `20260723000001` corrió en la BD) |
+| TERM-03 | Portal paciente `/patient/seguimiento`, `/documents/[token]`, `/cita/confirmar/[token]`                          | "Tu/Su especialista", label "Especialista"                                                      |
+| TERM-04 | Booking público confirmación; `/privacy`, `/terms`                                                               | "El especialista confirmará tu cita…"; textos legales con "especialista"                        |
+| TERM-05 | Se CONSERVAN adjetivos/honoríficos                                                                               | "Informe Médico", "Reposo Médico", "documentos médicos", opciones "Dr./Dra." intactos           |
+
+**Preconsultas (autenticado como especialista salvo indicado):**
+
+| Caso    | Precondición / pasos                                                            | Esperado UI                                                                                             | Verificación técnica                                                                                               |
+| ------- | ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| PREC-01 | `/doctor/services` → crear/editar servicio con **nº consultas > 1**             | Aparece campo **"Validez (días)"** (oculto si =1); guarda                                               | `pricing_plans.validity_days` persiste; `sessions_count>1`                                                         |
+| PREC-02 | Booking público `/book/[id]` con ese servicio → elegir fecha 1ª consulta        | Aparece panel "agendar las restantes ahora / **Agendar después**"                                       | `POST /api/book` con `plan_id`+`additional_sessions`                                                               |
+| PREC-03 | PREC-02 → "Agendar después" → confirmar                                         | Aviso "te enviaremos correo para agendar las N restantes"; 1ª cita creada                               | N-1 filas `pending_consultations` (`status=pending_scheduling`, `payment_id`, `expires_at`)                        |
+| PREC-04 | PREC-02 → agendar todas ahora                                                   | N citas en agenda, mismo pago, sin preconsultas                                                         | `appointments` N filas (extras `plan_price=0`, con consulta ADR-021); `pending_consultations`=0                    |
+| PREC-05 | `/doctor/pending-consultations` (sidebar Consultorio)                           | Lista con paciente/servicio/nº sesión + badge "Vence en X días" (rojo <3, ámbar <7); filtros por estado | GET owner-scoped                                                                                                   |
+| PREC-06 | PREC-05 → "Agendar" (fecha/hora, consultorio)                                   | Crea cita+consulta, fila pasa a `scheduled`                                                             | `pending_consultations.status=scheduled` + `scheduled_appointment_id`/`consultation_id`; cita creada               |
+| PREC-07 | PREC-05 → "Cancelar" (confirmar en modal)                                       | Fila pasa a cancelada                                                                                   | `status=cancelled`                                                                                                 |
+| PREC-08 | Especialista crea cita con servicio multi-consulta → **diferir**                | Modal ofrece diferir; crea preconsultas                                                                 | `POST /api/doctor/pending-consultations` (bulk); anti-IDOR paciente+plan                                           |
+| PREC-09 | Página pública `/agendar/[token]` con token inválido                            | Error amable, sin filtrar detalles (404)                                                                | token HMAC inválido → 404                                                                                          |
+| PREC-10 | `/agendar/[token]` con token válido (obtener de logs/email_send_log en staging) | Muestra especialista/servicio/nº sesión/fecha límite + selector de slots → agendar                      | `POST /api/public/pending-consultations/:token/schedule` → cita creada, pending `scheduled`                        |
+| PREC-11 | Recordatorios escalonados (validar en prod / `email_send_log`)                  | Tras atendida la 1ª: 3d → semanal → aviso final 3d antes de vencer; expira al vencer                    | cron `/api/cron/appointment-reminders` → `pendingRemindersSent/Skipped`, `pendingExpired`; `reminder_stage` avanza |
+| PREC-12 | RBAC/anti-IDOR                                                                  | Preconsulta de otro doctor no accesible; token no agenda vencidas/ya agendadas                          | schedule/cancel scoped por `user.sub`; error sin UUID interno                                                      |
+
 ---
 
 > Mantener este guion vivo: cuando aparezca un bug de prod, agregar una fila a la

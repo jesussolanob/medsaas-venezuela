@@ -4520,9 +4520,9 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                         <button
                           type="button"
                           onClick={() => setShowHistory(true)}
-                          className="inline-flex items-center gap-0.5 text-xs font-semibold text-slate-500 hover:text-teal-600 transition-colors"
+                          className="self-start inline-flex items-center gap-1 mt-1 px-2.5 py-1 rounded-lg text-xs font-semibold text-teal-700 bg-teal-50 border border-teal-200 hover:bg-teal-100 hover:border-teal-300 transition-colors"
                         >
-                          <History className="w-3 h-3" /> Revisar historial
+                          <History className="w-3.5 h-3.5" /> Revisar historial
                         </button>
                       </div>
                     )}
