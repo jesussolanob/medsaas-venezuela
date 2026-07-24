@@ -206,6 +206,34 @@ export class GoogleCalendarService implements OnModuleInit {
     await calendar.events.delete({ calendarId: 'primary', eventId });
   }
 
+  /**
+   * Updates the start/end time of an existing Google Calendar event (e.g. when
+   * an appointment is rescheduled). Uses events.patch so the Meet link,
+   * attendees, and reminders are preserved. sendUpdates:'all' notifies the
+   * attendees (patient) so their calendar reflects the new time.
+   */
+  async updateEventTime(
+    accessToken: string,
+    eventId: string,
+    startISO: string,
+    endISO: string,
+  ): Promise<void> {
+    this.assertConfigured();
+    const oauth2Client = this.buildOAuth2Client();
+    oauth2Client.setCredentials({ access_token: accessToken });
+
+    const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
+    await calendar.events.patch({
+      calendarId: 'primary',
+      eventId,
+      sendUpdates: 'all',
+      requestBody: {
+        start: { dateTime: startISO, timeZone: 'UTC' },
+        end: { dateTime: endISO, timeZone: 'UTC' },
+      },
+    });
+  }
+
   // ---------------------------------------------------------------------------
   // Private helpers
   // ---------------------------------------------------------------------------
