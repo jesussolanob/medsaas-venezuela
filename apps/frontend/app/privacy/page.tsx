@@ -21,7 +21,7 @@ export default function PrivacyPage() {
             </div>
             <div>
               <h1 className="text-2xl font-bold text-slate-900">Política de Privacidad</h1>
-              <p className="text-sm text-slate-500 mt-0.5">Última actualización: Abril 2026</p>
+              <p className="text-sm text-slate-500 mt-0.5">Última actualización: Julio 2026</p>
             </div>
           </div>
 
@@ -81,6 +81,67 @@ export default function PrivacyPage() {
                   hola@deltahealth.tech
                 </a>
                 .
+              </p>
+            </section>
+
+            <section>
+              <h2 className="text-lg font-semibold text-slate-900 mt-6">
+                6. Integración con Google Calendar y Uso Limitado (Limited Use)
+              </h2>
+              <p>
+                La conexión con Google es <strong>opcional</strong>. Si el especialista decide
+                conectar su cuenta de Google, Delta Salud solicita acceso a los eventos de su
+                calendario (<code>calendar.events</code>) y a su dirección de correo (
+                <code>userinfo.email</code>) con el <strong>único fin</strong> de crear y gestionar
+                los eventos de las citas del especialista y generar enlaces de Google Meet. No
+                accedemos a ningún otro dato de Google ni a los calendarios de otros usuarios.
+              </p>
+              <p>
+                El uso y la transferencia de la información recibida de las APIs de Google Workspace
+                se ajusta a la{' '}
+                <a
+                  href="https://developers.google.com/terms/api-services-user-data-policy"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-teal-600 hover:underline"
+                >
+                  Política de Datos de Usuario de los Servicios de API de Google
+                </a>
+                , incluyendo los requisitos de Uso Limitado (Limited Use).
+              </p>
+              <p className="text-sm text-slate-500 italic">
+                The use of information received from Google APIs will adhere to the{' '}
+                <a
+                  href="https://developers.google.com/terms/api-services-user-data-policy"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-teal-600 hover:underline"
+                >
+                  Google API Services User Data Policy
+                </a>
+                , including the Limited Use requirements.
+              </p>
+            </section>
+
+            <section>
+              <h2 className="text-lg font-semibold text-slate-900 mt-6">
+                7. Uso de Inteligencia Artificial
+              </h2>
+              <p>
+                Algunas funciones opcionales —transcripción del audio de la consulta dictado por el
+                especialista, mejora de redacción y resumen del historial clínico— utilizan la API
+                de Google Gemini bajo un plan de <strong>pago (pay‑as‑you‑go)</strong>, cuyos
+                términos establecen que Google{' '}
+                <strong>no utiliza los datos enviados para entrenar ni mejorar</strong> sus modelos
+                de inteligencia artificial.
+              </p>
+              <p>
+                Los datos obtenidos de las APIs de Google Workspace (Google Calendar){' '}
+                <strong>nunca</strong> se transfieren a servicios de inteligencia artificial ni se
+                utilizan para crear, entrenar o mejorar modelos de IA o aprendizaje automático. Las
+                funciones de IA operan exclusivamente sobre el contenido clínico que el especialista
+                introduce en la consulta, de forma completamente aislada de la integración con
+                Google.
               </p>
             </section>
 
