@@ -20,7 +20,10 @@ import { createHmac, timingSafeEqual } from 'crypto';
  *   Namespaces this HMAC away from all other tokens so a token crafted for
  *   another service can never validate here.
  *
- * Expiry: 15 minutes (900 seconds) from issue time.
+ * Expiry: 12 hours (43200 seconds) from issue time. Long enough for a Google
+ * reviewer to explore the app AND complete the Google Calendar OAuth round-trip
+ * in one sitting without the session dying mid-flow (which would bounce them to
+ * Auth0 login and fail). Re-login via /login?review=1 mints a fresh token.
  *
  * Security guarantees:
  *   - Secret is read lazily; if REVIEWER_SESSION_SECRET is absent at mint() time
@@ -41,7 +44,7 @@ import { createHmac, timingSafeEqual } from 'crypto';
  */
 @Injectable()
 export class ReviewerTokenService {
-  static readonly EXPIRY_SECONDS = 900; // 15 minutes
+  static readonly EXPIRY_SECONDS = 43200; // 12 hours
   private static readonly PURPOSE = 'reviewer-session:v1:';
 
   constructor(private readonly config: ConfigService) {}
