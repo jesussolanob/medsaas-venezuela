@@ -117,6 +117,28 @@ const resolveAuth0Identity = cache(async (): Promise<ResolvedIdentity> => {
 // ---------------------------------------------------------------------------
 
 /**
+ * Reviewer access identity (Etapa 2 · Google OAuth review).
+ *
+ * A reviewer session carries a reviewer_token cookie but NO Auth0 session, so
+ * resolveAuth0Identity() would throw UnauthenticatedError and every BFF data
+ * call would 401 (empty sidebar, fallback plan). When the feature flag is on and
+ * a valid reviewer_token is present, resolve the identity straight from the
+ * token's sub with the fixed demo role ('doctor'). The backend still validates
+ * the token via x-reviewer-token (forwarded by instrumentation.ts), so this is
+ * plumbing only — no trust is placed in the unverified client cookie.
+ *
+ * Returns null (→ fall through to Auth0) for every normal user: they have no
+ * reviewer_token cookie, or the flag is off.
+ */
+async function resolveReviewerIdentity(): Promise<ResolvedIdentity | null> {
+  if (process.env.REVIEWER_ACCESS_ENABLED !== 'true') return null;
+  const { getReviewerSub } = await import('./reviewer-token.server');
+  const sub = await getReviewerSub();
+  if (!sub) return null;
+  return { id: sub, role: 'doctor' };
+}
+
+/**
  * Resolves the current user's identity based on AUTH_MODE.
  * Returns { id, role } where id is always the backend profile UUID.
  */
@@ -124,6 +146,10 @@ export async function resolveIdentity(): Promise<ResolvedIdentity> {
   const authMode = process.env.AUTH_MODE ?? 'dev';
 
   if (authMode === 'auth0') {
+    // Reviewer access short-circuits Auth0 (reviewer has no Auth0 session).
+    const reviewer = await resolveReviewerIdentity();
+    if (reviewer) return reviewer;
+
     return resolveAuth0Identity();
   }
 
