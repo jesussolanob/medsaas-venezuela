@@ -17,7 +17,15 @@
  */
 
 import { useEffect, useState } from 'react';
-import { X, History, Loader2, ChevronLeft, ChevronRight, ClipboardList } from 'lucide-react';
+import {
+  X,
+  History,
+  Loader2,
+  ChevronLeft,
+  ChevronRight,
+  ChevronDown,
+  ClipboardList,
+} from 'lucide-react';
 import { getPatientConsultations, type Consultation } from './actions';
 
 // ---------------------------------------------------------------------------
@@ -120,7 +128,15 @@ function ParaclinicalList({ items }: { items: string[] }) {
   );
 }
 
-function ConsultationCard({ consultation }: { consultation: Consultation }) {
+function ConsultationCard({
+  consultation,
+  defaultExpanded = false,
+}: {
+  consultation: Consultation;
+  defaultExpanded?: boolean;
+}) {
+  const [expanded, setExpanded] = useState(defaultExpanded);
+
   const structure: BlockStructure[] = Array.isArray(consultation.blocks_structure)
     ? [...consultation.blocks_structure].sort((a, b) => a.sort_order - b.sort_order)
     : [];
@@ -145,106 +161,123 @@ function ConsultationCard({ consultation }: { consultation: Consultation }) {
   const hasDiagnosisBlock = structureKeys.has('diagnosis');
 
   return (
-    <article className="bg-white border border-slate-200 rounded-xl p-4 space-y-3">
-      {/* Header de la consulta */}
-      <div className="flex items-start justify-between gap-3">
-        <div className="space-y-0.5">
+    <article className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+      {/* Header de la consulta — clic para colapsar/descolapsar */}
+      <button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        aria-expanded={expanded}
+        className="w-full flex items-center justify-between gap-3 p-4 text-left hover:bg-slate-50 transition-colors"
+      >
+        <div className="min-w-0 space-y-0.5">
           <p className="text-xs font-bold text-slate-800">
             {formatDate(consultation.consultation_date)}
           </p>
           <p className="text-[10px] font-mono text-slate-400">{consultation.consultation_code}</p>
         </div>
-        <StatusBadge status={consultation.appointment_status ?? undefined} />
-      </div>
-
-      {/* Diagnóstico destacado — solo si no está ya en blocks_structure */}
-      {!hasDiagnosisBlock && consultation.diagnosis && (
-        <div className="px-3 py-2 bg-teal-50 border border-teal-100 rounded-lg">
-          <p className="text-[10px] font-bold uppercase tracking-wider text-teal-600 mb-0.5">
-            Diagnóstico
-          </p>
-          <p className="text-xs text-slate-800 leading-relaxed">{consultation.diagnosis}</p>
+        <div className="flex items-center gap-2 shrink-0">
+          <StatusBadge status={consultation.appointment_status ?? undefined} />
+          <ChevronDown
+            className={`w-4 h-4 text-slate-400 transition-transform ${
+              expanded ? 'rotate-180' : ''
+            }`}
+          />
         </div>
-      )}
+      </button>
 
-      {/* Bloques dinámicos desde blocks_structure */}
-      {structure.length > 0 && (
-        <div className="space-y-2.5">
-          {structure.map((block) => {
-            const raw = snapshot[block.key];
-            if (isValueEmpty(raw)) return null;
+      {/* Cuerpo colapsable */}
+      {expanded && (
+        <div className="px-4 pb-4 space-y-3">
+          {/* Diagnóstico destacado — solo si no está ya en blocks_structure */}
+          {!hasDiagnosisBlock && consultation.diagnosis && (
+            <div className="px-3 py-2 bg-teal-50 border border-teal-100 rounded-lg">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-teal-600 mb-0.5">
+                Diagnóstico
+              </p>
+              <p className="text-xs text-slate-800 leading-relaxed">{consultation.diagnosis}</p>
+            </div>
+          )}
 
-            if (block.key === 'paraclinical') {
-              const items = parseParaclinicalValue(raw);
-              if (items.length === 0) return null;
-              return (
-                <div key={block.key}>
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
-                    {block.label}
-                  </p>
-                  <ParaclinicalList items={items} />
-                </div>
-              );
-            }
+          {/* Bloques dinámicos desde blocks_structure */}
+          {structure.length > 0 && (
+            <div className="space-y-2.5">
+              {structure.map((block) => {
+                const raw = snapshot[block.key];
+                if (isValueEmpty(raw)) return null;
 
-            const strValue = typeof raw === 'string' ? raw.trim() : String(raw);
-            if (!strValue) return null;
-
-            // Diagnóstico dentro de bloques: mostrar destacado
-            if (block.key === 'diagnosis') {
-              return (
-                <div
-                  key={block.key}
-                  className="px-3 py-2 bg-teal-50 border border-teal-100 rounded-lg"
-                >
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-teal-600 mb-0.5">
-                    {block.label}
-                  </p>
-                  <p className="text-xs text-slate-800 leading-relaxed">{strValue}</p>
-                </div>
-              );
-            }
-
-            return (
-              <div key={block.key}>
-                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-0.5">
-                  {block.label}
-                </p>
-                <p className="text-xs text-slate-700 leading-relaxed whitespace-pre-line">
-                  {strValue}
-                </p>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {/* Fallback: campos legacy cuando no hay blocks_structure */}
-      {legacyFields.length > 0 && (
-        <div className="space-y-2.5">
-          {legacyFields.map(({ label, value }) => {
-            if (!value?.trim()) return null;
-            const isdiag = label === 'Diagnóstico';
-            return (
-              <div
-                key={label}
-                className={
-                  isdiag ? 'px-3 py-2 bg-teal-50 border border-teal-100 rounded-lg' : undefined
+                if (block.key === 'paraclinical') {
+                  const items = parseParaclinicalValue(raw);
+                  if (items.length === 0) return null;
+                  return (
+                    <div key={block.key}>
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+                        {block.label}
+                      </p>
+                      <ParaclinicalList items={items} />
+                    </div>
+                  );
                 }
-              >
-                <p
-                  className={`text-[10px] font-bold uppercase tracking-wider mb-0.5 ${
-                    isdiag ? 'text-teal-600' : 'text-slate-400'
-                  }`}
-                >
-                  {label}
-                </p>
-                <p className="text-xs text-slate-700 leading-relaxed whitespace-pre-line">
-                  {value}
-                </p>
-              </div>
-            );
-          })}
+
+                const strValue = typeof raw === 'string' ? raw.trim() : String(raw);
+                if (!strValue) return null;
+
+                // Diagnóstico dentro de bloques: mostrar destacado
+                if (block.key === 'diagnosis') {
+                  return (
+                    <div
+                      key={block.key}
+                      className="px-3 py-2 bg-teal-50 border border-teal-100 rounded-lg"
+                    >
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-teal-600 mb-0.5">
+                        {block.label}
+                      </p>
+                      <p className="text-xs text-slate-800 leading-relaxed">{strValue}</p>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div key={block.key}>
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-0.5">
+                      {block.label}
+                    </p>
+                    <p className="text-xs text-slate-700 leading-relaxed whitespace-pre-line">
+                      {strValue}
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Fallback: campos legacy cuando no hay blocks_structure */}
+          {legacyFields.length > 0 && (
+            <div className="space-y-2.5">
+              {legacyFields.map(({ label, value }) => {
+                if (!value?.trim()) return null;
+                const isdiag = label === 'Diagnóstico';
+                return (
+                  <div
+                    key={label}
+                    className={
+                      isdiag ? 'px-3 py-2 bg-teal-50 border border-teal-100 rounded-lg' : undefined
+                    }
+                  >
+                    <p
+                      className={`text-[10px] font-bold uppercase tracking-wider mb-0.5 ${
+                        isdiag ? 'text-teal-600' : 'text-slate-400'
+                      }`}
+                    >
+                      {label}
+                    </p>
+                    <p className="text-xs text-slate-700 leading-relaxed whitespace-pre-line">
+                      {value}
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
     </article>
@@ -413,8 +446,8 @@ export default function PatientHistoryModal({
                   : `${consultations.length} consultas anteriores`}
               </p>
               <div className="space-y-3">
-                {paginated.map((c) => (
-                  <ConsultationCard key={c.id} consultation={c} />
+                {paginated.map((c, idx) => (
+                  <ConsultationCard key={c.id} consultation={c} defaultExpanded={idx === 0} />
                 ))}
               </div>
             </>
