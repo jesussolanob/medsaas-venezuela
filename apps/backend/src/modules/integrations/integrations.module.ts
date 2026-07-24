@@ -15,6 +15,7 @@ import { GetIntegrationStatusUseCase } from './application/use-cases/integration
 import { DisconnectGoogleUseCase } from './application/use-cases/integrations/disconnect-google.use-case';
 import { CreateCalendarEventUseCase } from './application/use-cases/integrations/create-calendar-event.use-case';
 import { CancelCalendarEventUseCase } from './application/use-cases/integrations/cancel-calendar-event.use-case';
+import { UpdateCalendarEventUseCase } from './application/use-cases/integrations/update-calendar-event.use-case';
 
 // Services
 import {
@@ -60,6 +61,7 @@ import { EmailModule } from '../email/email.module';
     DisconnectGoogleUseCase,
     CreateCalendarEventUseCase,
     CancelCalendarEventUseCase,
+    UpdateCalendarEventUseCase,
 
     // Application services — registered with both class and string token
     // so cross-module injection works even when TypeScript emits Object as paramtype
@@ -72,6 +74,7 @@ import { EmailModule } from '../email/email.module';
   exports: [
     CreateCalendarEventUseCase,
     CancelCalendarEventUseCase,
+    UpdateCalendarEventUseCase,
     AppointmentNotificationService,
     APPOINTMENT_NOTIFICATION_SERVICE,
   ],
