@@ -11,6 +11,6 @@ export class PendingConsultationInvalidTokenError extends DomainError {
   override readonly httpStatus = 404;
 
   constructor() {
-    super('Invalid or expired scheduling token');
+    super('El enlace no es válido o ha expirado.');
   }
 }

@@ -187,7 +187,7 @@ export default function AgendarTokenClient({ token }: { token: string }) {
         if (!res.ok || !json.data) {
           setPageState({
             kind: 'invalid',
-            message: json.error ?? 'El enlace no es válido o ha expirado.',
+            message: 'El enlace no es válido o ha expirado.',
           });
           return;
         }
