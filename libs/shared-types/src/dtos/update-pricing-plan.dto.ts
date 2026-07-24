@@ -16,6 +16,11 @@ export const UpdatePricingPlanDtoSchema = z
      * When a UUID is supplied, the use case validates doctor ownership (anti-IDOR).
      */
     office_id: z.string().uuid().nullable().optional(),
+    /**
+     * Validity in days for services with sessions_count > 1.
+     * Pass null to remove the expiry limit.
+     */
+    validity_days: z.number().int().positive().nullable().optional(),
   })
   .strict();
 

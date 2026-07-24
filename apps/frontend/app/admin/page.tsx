@@ -389,7 +389,7 @@ export default async function AdminDashboard() {
           ) : (
             <div className="space-y-0">
               {pendingPayments.slice(0, 4).map((p, i) => {
-                const fullName = p.profiles?.full_name || 'Doctor/a';
+                const fullName = p.profiles?.full_name || 'Especialista';
                 const specialty = p.profiles?.specialty || '—';
                 const init = fullName
                   .split(' ')

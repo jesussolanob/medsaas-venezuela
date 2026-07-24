@@ -56,6 +56,9 @@ import { StorageModule } from '../storage/storage.module';
 // ConsultationsModule exports CreateConsultationUseCase for auto-creating consultations after booking.
 // No circular dependency: ConsultationsModule does NOT import BookingModule.
 import { ConsultationsModule } from '../consultations/consultations.module';
+// PendingConsultationsModule exports CreatePendingConsultationsUseCase for the A1b multi-session path.
+// No circular dependency: PendingConsultationsModule does NOT import BookingModule.
+import { PendingConsultationsModule } from '../pending-consultations/pending-consultations.module';
 
 // DOCTOR_SCHEDULE_REPOSITORY for horizon check in GetAvailableSlotsUseCase.
 import { DOCTOR_SCHEDULE_REPOSITORY } from '../doctor-settings/domain/repositories/doctor-schedule.repository';
@@ -93,6 +96,10 @@ import { DoctorScheduleModel } from '../doctor-settings/infrastructure/database/
     // ConsultationsModule exports CreateConsultationUseCase for auto-creating consultations
     // after a public booking is completed (non-fatal, best-effort).
     ConsultationsModule,
+    // PendingConsultationsModule exports CreatePendingConsultationsUseCase + PENDING_CONSULTATION_REPOSITORY.
+    // Used by CreateBookingUseCase for the multi-session path (A1b). When plan_id is absent
+    // or sessionsCount=1, these dependencies are never invoked — backward compat guaranteed.
+    PendingConsultationsModule,
     // StorageModule provides STORAGE_PORT for GCS URL re-signing in GetBookingDoctorInfoUseCase.
     StorageModule,
   ],

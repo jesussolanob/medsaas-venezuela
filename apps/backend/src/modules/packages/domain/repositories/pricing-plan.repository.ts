@@ -7,6 +7,8 @@ export interface PricingPlanUpdateParams {
   priceUsd?: number;
   durationMinutes?: number;
   sessionsCount?: number;
+  /** Days after purchase that deferred sessions must be scheduled. null = no expiry. */
+  validityDays?: number | null;
   description?: string | null;
   type?: 'plan' | 'service';
   showInBooking?: boolean;

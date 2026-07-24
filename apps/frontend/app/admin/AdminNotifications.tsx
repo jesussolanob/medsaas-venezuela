@@ -46,7 +46,7 @@ export default function AdminNotifications() {
       <button
         onClick={() => setIsOpen(!isOpen)}
         className="relative p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors"
-        title="Médicos nuevos (últimos 7 días)"
+        title="Especialistas nuevos (últimos 7 días)"
       >
         <Bell className="w-5 h-5" />
         {count > 0 && (
@@ -59,7 +59,7 @@ export default function AdminNotifications() {
       {isOpen && (
         <div className="absolute right-0 mt-2 w-screen sm:w-80 sm:max-w-xs bg-white rounded-lg border border-slate-200 shadow-lg z-50 max-h-[60vh] sm:max-h-96 overflow-y-auto -mr-4 sm:mr-0">
           <div className="p-3 sm:p-4 border-b border-slate-200 sticky top-0 bg-white">
-            <h3 className="font-semibold text-slate-900 text-sm">Médicos recientes</h3>
+            <h3 className="font-semibold text-slate-900 text-sm">Especialistas recientes</h3>
             <p className="text-xs text-slate-500 mt-1">
               {count === 0 ? 'Sin registros' : `${count} en los últimos 7 días`}
             </p>

@@ -100,7 +100,7 @@ export default async function PublicBookingPage({
           </div>
           <h2 className="text-lg font-bold text-slate-700">Médico no encontrado</h2>
           <p className="text-sm text-slate-400 mt-2">
-            El link de booking no es válido o el médico ya no está disponible.
+            El link de booking no es válido o el especialista ya no está disponible.
           </p>
           <p className="text-xs text-slate-300 mt-4 font-mono break-all">ID: {doctorId}</p>
         </div>

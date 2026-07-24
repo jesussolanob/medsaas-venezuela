@@ -622,7 +622,7 @@ export default function PatientRequestPage() {
                   <CheckCircle2 className="w-5 h-5 text-white" />
                 </div>
                 <h1 className="text-lg font-bold">Solicitud enviada</h1>
-                <p className="text-sm text-white/70 mt-1">Tu médico recibió tu respuesta.</p>
+                <p className="text-sm text-white/70 mt-1">Tu especialista recibió tu respuesta.</p>
               </div>
 
               <div className="px-6 py-6 space-y-3">

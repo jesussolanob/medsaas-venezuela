@@ -25,6 +25,22 @@
 | ------------- | ------ | ------- | ------------------------------------------------------------------------------------ |
 | `/api/health` | GET    | Pública | `{ status, timestamp, dependencies: { postgres, redis } }`. `ok` solo si ambos `up`. |
 
+### Preconsultas "Consultas por agendar" (2026-07-23 — ver ADR-025)
+
+Módulo `pending-consultations`. Envelope `{success,data}`. Doctor scoped por `user.sub` (anti-IDOR); públicos por token HMAC.
+
+| Endpoint                                            | Método | Auth            | Body / Query                                                                           | Respuesta                                                                                                                                               |
+| --------------------------------------------------- | ------ | --------------- | -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/api/doctor/pending-consultations`                 | GET    | doctor          | `?status=` (pending_scheduling\|scheduled\|expired\|cancelled)                         | lista owner-scoped                                                                                                                                      |
+| `/api/doctor/pending-consultations`                 | POST   | doctor          | `{patient_id, plan_id, session_numbers[], payment_id?, office_id?, appointment_mode?}` | bulk-create (valida ownership paciente+plan; `expires_at` desde `plan.validity_days`)                                                                   |
+| `/api/doctor/pending-consultations/:id/schedule`    | POST   | doctor          | `{scheduled_at, office_id?, appointment_mode?}`                                        | crea cita+consulta en tx, consume, `status=scheduled`                                                                                                   |
+| `/api/doctor/pending-consultations/:id/cancel`      | PUT    | doctor          | —                                                                                      | `status=cancelled`                                                                                                                                      |
+| `/api/public/pending-consultations/:token`          | GET    | Pública (token) | —                                                                                      | `{doctor_id, plan_name, session_number, expires_at, is_schedulable, doctor_name}` (sin PII; token inválido→404)                                         |
+| `/api/public/pending-consultations/:token/schedule` | POST   | Pública (token) | `{scheduled_at, office_id?, appointment_mode?}`                                        | `{scheduled:true, session_number}`                                                                                                                      |
+| `/api/cron/appointment-reminders`                   | POST   | CronSecret      | —                                                                                      | (ampliado) ahora también despacha recordatorios escalonados de preconsultas + expira vencidas → `pendingRemindersSent/Skipped/Failed`, `pendingExpired` |
+
+> `POST/PUT /api/doctor/services` ahora aceptan `validity_days` (nullable). Booking `POST /api/book` acepta `plan_id` + `additional_sessions[]` (opcionales, retrocompatibles).
+
 ### Storage image proxy (BFF — route handler Next, NO NestJS) — 2026-07-07
 
 > Excepción: NO vive en `apps/backend`. Es un route handler de `apps/frontend`

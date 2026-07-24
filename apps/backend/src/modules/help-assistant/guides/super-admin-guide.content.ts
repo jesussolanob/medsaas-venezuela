@@ -10,14 +10,14 @@ los pasos concretos de cada flujo y las reglas de negocio importantes.
 
 ## 1. Qué es Delta Salud
 
-Delta Salud (nombre comercial: Delta) es un sistema SaaS multi-tenant para médicos
-especialistas en Venezuela. Es un CRM clínico que combina gestión de pacientes, agenda de citas,
-historia clínica, finanzas del consultorio, recordatorios y un portal para pacientes. Cada médico
+Delta Salud (nombre comercial: Delta) es un sistema SaaS multi-tenant para especialistas
+en Venezuela. Es un CRM clínico que combina gestión de pacientes, agenda de citas,
+historia clínica, finanzas del consultorio, recordatorios y un portal para pacientes. Cada especialista
 trabaja en su propio espacio aislado; sus datos de pacientes son confidenciales y no se comparten
-entre médicos ni con la administración.
+entre especialistas ni con la administración.
 
 El SUPER ADMIN es el administrador de la plataforma completa. No atiende pacientes: gestiona a los
-médicos (llamados "especialistas"), sus suscripciones y pagos, las verificaciones de credenciales,
+especialistas, sus suscripciones y pagos, las verificaciones de credenciales,
 el catálogo de planes y especialidades, los permisos por rol, las plantillas de correo y la
 configuración global (tasa de cambio, parámetros del sistema). El super admin NUNCA ve datos
 personales de pacientes: solo estadísticas agregadas.
@@ -64,11 +64,11 @@ Estas reglas son la base para responder muchas preguntas. Memorízalas.
 
 - **Privacidad de pacientes (PII):** El super admin NUNCA ve datos personales de pacientes
   (nombre, cédula, teléfono, email, diagnóstico, tratamiento). Solo ve estadísticas agregadas
-  (totales, promedios). El detalle de cada paciente es confidencial de su médico.
+  (totales, promedios). El detalle de cada paciente es confidencial de su especialista.
 - **Pagos manuales con aprobación:** Las suscripciones se pagan por transferencia, Pago Móvil o
-  Zelle. El médico sube un comprobante y el super admin lo aprueba o rechaza. No hay cobro
+  Zelle. El especialista sube un comprobante y el super admin lo aprueba o rechaza. No hay cobro
   automático con tarjeta (Stripe está marcado como "próximamente").
-- **Downgrade perezoso (lazy downgrade):** Cuando la suscripción de un médico vence, NO se le
+- **Downgrade perezoso (lazy downgrade):** Cuando la suscripción de un especialista vence, NO se le
   borran datos. El sistema lo baja al plan Delta Free automáticamente en su próximo inicio de
   sesión. No hay un cron que lo haga: ocurre "perezosamente" al entrar.
 - **Estados de actividad del especialista:** Se calculan según el último acceso (last_sign_in_at).
@@ -76,13 +76,13 @@ Estas reglas son la base para responder muchas preguntas. Memorízalas.
   - Frío: sin acceso entre 7 y 30 días.
   - Inactivo: sin acceso más de 30 días.
 - **Plan permanente:** Delta Free es permanente (is_permanent) y no tiene fecha de vencimiento.
-- **Gating doble del médico:** Lo que un médico puede usar = capacidades de su ROL (matriz de
+- **Gating doble del especialista:** Lo que un especialista puede usar = capacidades de su ROL (matriz de
   Roles) INTERSECCIÓN features de su PLAN. Si su plan no incluye un módulo, le aparece un candado
   que lo lleva a /doctor/upgrade.
 - **Bloqueo de acceso vs verificación:** Son cosas distintas. El bloqueo de acceso es un veto
   duro a la cuenta (no puede entrar). La verificación de credenciales es revisar su MPPS/colegiado
   y en Etapa 1 NO restringe el acceso.
-- **Cédula obligatoria:** La cédula es obligatoria para médicos y pacientes (normalizada como
+- **Cédula obligatoria:** La cédula es obligatoria para especialistas y pacientes (normalizada como
   V/E/P). Sin cédula del paciente no se pueden compartir documentos.
 - **Auditoría:** Las acciones sensibles (aprobaciones de pago, cambios de suscripción, cambios de
   estado de cita) quedan registradas en bitácoras inmutables.
@@ -116,20 +116,20 @@ Es el panel de control central. Sirve para ver de un vistazo el estado de la pla
   Botón **Ver todos** lleva a /admin/doctors.
 
 **Reglas:** Los datos se refrescan automáticamente cada 30 segundos. Los estados de actividad se
-basan en el último acceso del médico.
+basan en el último acceso del especialista.
 
 ## 5. Especialistas (/admin/doctors)
 
-Gestión completa de los médicos de la plataforma. Aquí se busca, se ve detalle, se crea, se
+Gestión completa de los especialistas de la plataforma. Aquí se busca, se ve detalle, se crea, se
 exporta y se activa/suspende a un especialista.
 
 **Encabezado y acciones principales:**
 - Subtítulo con el total de profesionales registrados y cuántos están activos.
-- Botón **Exportar** — descarga un archivo CSV (especialistas.csv) con la lista de médicos
+- Botón **Exportar** — descarga un archivo CSV (especialistas.csv) con la lista de especialistas
   (compatible con Excel).
-- Botón **Nuevo médico** — abre un formulario (titulado "Nuevo médico") para dar de alta a un
-  médico nuevo. Campos: nombre completo, email, especialidad (selector dinámico) y plan. El botón
-  para guardar dice **Crear médico**: al guardar se crea la cuenta y el perfil, y se envía un
+- Botón **Nuevo especialista** — abre un formulario (titulado "Nuevo especialista") para dar de alta a un
+  especialista nuevo. Campos: nombre completo, email, especialidad (selector dinámico) y plan. El botón
+  para guardar dice **Crear especialista**: al guardar se crea la cuenta y el perfil, y se envía un
   correo de verificación automático.
 
 **Tarjetas KPI:** Total registrados (y nuevos este mes), Activos (% del total), "+7d sin
@@ -147,17 +147,17 @@ actividad" (posible churn) y Nuevos este mes.
   (Activo, Trial, Vencido, Suspendido).
 - **Vencimiento:** fecha de expiración de la suscripción.
 - **Actividad:** días desde el último acceso (verde si reciente, amarillo 7+ días, rojo 14+ días).
-- Botón de los tres puntos / clic en la fila — abre el **Drawer de Detalle del Médico**.
+- Botón de los tres puntos / clic en la fila — abre el **Drawer de Detalle del Especialista**.
 
-**Drawer de Detalle del Médico** (panel lateral derecho):
+**Drawer de Detalle del Especialista** (panel lateral derecho):
 - Muestra avatar, nombre, especialidad, email, teléfono, cédula, ubicación (ciudad/estado/país),
   badge de plan, fecha de registro y estadísticas (pacientes, citas del mes, ingresos del mes).
-- Botón **Suspender** / **Activar** al pie: cambia el estado de la cuenta del médico. Pide
-  confirmación. Suspender impide que el médico opere; Activar lo reactiva.
+- Botón **Suspender** / **Activar** al pie: cambia el estado de la cuenta del especialista. Pide
+  confirmación. Suspender impide que el especialista opere; Activar lo reactiva.
 - Botón **Cerrar** para salir del drawer.
 
 **Reglas:** El bloqueo/suspensión de cuenta es independiente del plan y de la verificación.
-Todas las acciones validan que se trate del médico correcto (anti-IDOR). El super admin no puede
+Todas las acciones validan que se trate del especialista correcto (anti-IDOR). El super admin no puede
 bloquearse a sí mismo ni bloquear a otro super admin.
 
 ## 6. Aprobaciones (/admin/aprobaciones)
@@ -170,12 +170,12 @@ Tiempo promedio de respuesta.
 
 **Pestañas:** Pendientes, Aprobados, Rechazados (cada una muestra su contador).
 
-**Cada fila de la cola muestra:** avatar e iniciales del médico, nombre, especialidad, monto en
+**Cada fila de la cola muestra:** avatar e iniciales del especialista, nombre, especialidad, monto en
 USD (y en Bs si aplica, con la tasa BCV usada), duración en meses, método de pago, número de
-referencia, nota del médico (si la dejó) y fecha de envío.
+referencia, nota del especialista (si la dejó) y fecha de envío.
 
 **Botones por fila (solo en la pestaña Pendientes):**
-- Icono de ojo **Ver comprobante** — abre el comprobante subido por el médico (imagen o PDF) en
+- Icono de ojo **Ver comprobante** — abre el comprobante subido por el especialista (imagen o PDF) en
   un visor modal.
 - **Rechazar** — pide la razón del rechazo (obligatoria) y marca el pago como rechazado.
 - **Aprobar** — pide confirmación e indica por cuántos meses se extenderá la suscripción.
@@ -187,21 +187,21 @@ botones de acción.
 
 1. Entra a **Aprobaciones** (/admin/aprobaciones) o a **Suscripciones** pestaña **Comprobantes**.
 2. Quédate en la pestaña **Pendientes**.
-3. Ubica el comprobante del médico. Pulsa el icono de **ojo** para verificar el comprobante
+3. Ubica el comprobante del especialista. Pulsa el icono de **ojo** para verificar el comprobante
    subido (monto, referencia, banco) contra los datos de la fila.
 4. Si todo coincide, pulsa **Aprobar**.
 5. Confirma en el cuadro de diálogo (te indica cuántos meses se extenderá la suscripción).
 6. El sistema, en una sola operación atómica: marca el pago como aprobado, extiende la fecha de
    fin del periodo de la suscripción (periodo actual + meses pagados), pone la suscripción en
    estado activo y registra el cambio en la bitácora. Se le envía un correo de confirmación al
-   médico.
+   especialista.
 7. Verás un mensaje de éxito con la nueva fecha de expiración.
 
 ### Flujo: rechazar un pago
 
 1. En la pestaña **Pendientes**, pulsa **Rechazar** en la fila del comprobante.
 2. Escribe la **razón del rechazo** (es obligatoria). Si la cancelas, no pasa nada.
-3. El pago queda como rechazado y la razón queda visible en la pestaña Rechazados. El médico es
+3. El pago queda como rechazado y la razón queda visible en la pestaña Rechazados. El especialista es
    notificado.
 
 ## 7. Pacientes (/admin/patients)
@@ -216,13 +216,13 @@ nunca ve datos individuales ni PII de pacientes.
 - **Citas totales** (y número de consultas registradas).
 
 Al pie hay una nota de confidencialidad: el detalle de los pacientes es confidencial de cada
-médico; la administración solo ve estadísticas agregadas. No hay botones de acción en esta
+especialista; la administración solo ve estadísticas agregadas. No hay botones de acción en esta
 pantalla.
 
 ## 8. Finanzas (/admin/finanzas)
 
 Resumen financiero global de la plataforma: ingresos por suscripciones aprobadas. Es distinto de
-las finanzas de cada médico (eso vive en /doctor/finances). Es una vista de solo lectura/consulta.
+las finanzas de cada especialista (eso vive en /doctor/finances). Es una vista de solo lectura/consulta.
 
 **Tarjetas KPI:**
 - **Ingresos MTD** (mes en curso, con comparación vs mes anterior).
@@ -239,30 +239,30 @@ las finanzas de cada médico (eso vive en /doctor/finances). Es una vista de sol
 
 ## 9. Suscripciones (/admin/subscriptions)
 
-Centro de control de las suscripciones de los médicos. Tiene TRES pestañas: Doctores,
+Centro de control de las suscripciones de los especialistas. Tiene TRES pestañas: Doctores,
 Comprobantes y Configuración.
 
 ### Pestaña Doctores
 
-Lista de todos los médicos con su estado de suscripción.
+Lista de todos los especialistas con su estado de suscripción.
 
 - Buscador por nombre o email y botón de recargar.
 - Filtros rápidos: Todos, Por vencer, Vencidos, En trial, Activos, Suspendidos.
 - Tabla con: Doctor (nombre/email/especialidad), Estado (Activo, Trial, Vencido, Suspendido,
   Cancelado), Plan, Días restantes (en rojo si llegó a 0, naranja si menos de 7), Vence (fecha) y
   Acciones.
-- Botones de acción por médico:
+- Botones de acción por especialista:
   - **Extender** (icono +): pregunta cuántos meses (entre 1 y 36) y una razón/nota opcional, y
     extiende la suscripción. Muestra la nueva fecha de vencimiento.
-  - **Suspender** (icono de pausa): pide una razón y suspende la suscripción del médico.
-  - **Reactivar** (icono de play): aparece si el médico está suspendido; pide confirmación y
+  - **Suspender** (icono de pausa): pide una razón y suspende la suscripción del especialista.
+  - **Reactivar** (icono de play): aparece si el especialista está suspendido; pide confirmación y
     reactiva la suscripción.
 
 ### Pestaña Comprobantes
 
 Es la misma cola de pagos manuales que Aprobaciones, dentro de Suscripciones.
 - Filtros: Pendientes, Aprobados, Rechazados.
-- Cada comprobante muestra médico, email, monto USD, monto Bs (con tasa BCV usada), duración en
+- Cada comprobante muestra especialista, email, monto USD, monto Bs (con tasa BCV usada), duración en
   meses, método, referencia, fecha y notas.
 - Botón de ojo para ver el comprobante.
 - En Pendientes: botones **Aprobar** (confirma y extiende meses) y **Rechazar** (pide razón).
@@ -275,10 +275,10 @@ Parámetros globales del modelo de suscripción y promociones.
   - Precio mensual base (USD): se aplica a nuevas compras, no es retroactivo.
   - Duración del trial Beta (días): solo para registros nuevos.
   - Días de aviso de vencimiento: lista separada por comas (ej: 7,3,1) que define cuándo se avisa
-    al médico antes de vencer.
+    al especialista antes de vencer.
 - **Métodos de pago habilitados:** casillas para Pago Móvil, Transferencia y Zelle, con sus
   campos de datos (teléfono, cédula, banco, número de cuenta, titular, email Zelle). Stripe
-  aparece deshabilitado (próximamente). Estos son los métodos que el médico verá al pagar.
+  aparece deshabilitado (próximamente). Estos son los métodos que el especialista verá al pagar.
 - **Botón "Hablar con ventas" del landing:** número de WhatsApp (con código de país, sin el signo
   +) y mensaje pre-rellenado que usa el botón de la página de inicio. Incluye un enlace para
   probar el link.
@@ -315,7 +315,7 @@ Dentro de una tarjeta expandida hay dos pestañas: **Features** y **Precios**.
 **Pestaña Features:** lista de funcionalidades con un interruptor por cada una. Las features
 dashboard y settings están bloqueadas (siempre activas, no se pueden quitar). Cuando hay cambios,
 aparece el botón **Guardar features**. Cambiar features afecta de inmediato lo que ven los
-médicos de ese plan.
+especialistas de ese plan.
 
 **Pestaña Precios:** una fila por periodo (Mensual, Trimestral, Semestral, Anual). Cada fila tiene
 un interruptor para activar ese periodo y un campo de precio en USD (solo editable si el periodo
@@ -346,61 +346,61 @@ está activo). Botón **Guardar precios** cuando hay cambios.
 
 ## 11. Verificaciones (/admin/verifications)
 
-Panel para verificar las credenciales profesionales de los médicos: número MPPS (Ministerio del
+Panel para verificar las credenciales profesionales de los especialistas: número MPPS (Ministerio del
 Poder Popular para la Salud) de forma automática contra el portal SACS, y el número de colegiado
 de forma manual.
 
-**Encabezado:** título "Verificaciones de médicos" y botón **Actualizar** (recarga la lista).
+**Encabezado:** título "Verificaciones de especialistas" y botón **Actualizar** (recarga la lista).
 
-**Pestañas:** Pendientes, Verificados, Rechazados (cada una con su contador). Si hay médicos
+**Pestañas:** Pendientes, Verificados, Rechazados (cada una con su contador). Si hay especialistas
 pendientes, se muestra un aviso con la cantidad.
 
-**Cada médico aparece como una tarjeta** con: nombre, fecha de registro, etiqueta de estado
+**Cada especialista aparece como una tarjeta** con: nombre, fecha de registro, etiqueta de estado
 (Pendiente, Verificado, Rechazado), email, cédula, MPPS, colegiado.
 
 **Verificación automática de MPPS (contra SACS):**
 - Junto al número MPPS hay un botón **Verificar MPPS** (o **Re-verificar MPPS** si ya se intentó).
-- Al pulsarlo, el sistema consulta el portal SACS por la cédula del médico y devuelve un resultado
+- Al pulsarlo, el sistema consulta el portal SACS por la cédula del especialista y devuelve un resultado
   visible como insignia:
   - **MPPS verificado** (verde): el número coincide en SACS.
   - **MPPS no coincide** (ámbar): el número declarado no coincide con SACS; muestra detalle.
   - **No encontrado en SACS** (gris): no se halló el registro.
   - **Sin verificar** (gris): aún no se intentó.
   - **Error de portal** (rojo): falló la consulta al portal.
-- Si un médico no tiene número MPPS, aparece "Sin MPPS".
+- Si un especialista no tiene número MPPS, aparece "Sin MPPS".
 
 **Verificación manual (decisión del admin):** en la pestaña Pendientes cada tarjeta tiene:
-- **Verificar** (botón turquesa con escudo): marca al médico como Verificado.
-- **Rechazar** (botón con escudo tachado): marca al médico como Rechazado.
+- **Verificar** (botón turquesa con escudo): marca al especialista como Verificado.
+- **Rechazar** (botón con escudo tachado): marca al especialista como Rechazado.
 
 **Bloqueo/desbloqueo de acceso desde Verificaciones:** en todas las pestañas, cada tarjeta tiene
 un control de acceso de cuenta independiente de la verificación:
-- **Bloquear acceso** (icono de prohibido): veta la cuenta; el médico recibirá error 403 en
+- **Bloquear acceso** (icono de prohibido): veta la cuenta; el especialista recibirá error 403 en
   cualquier operación. Pide confirmación.
 - **Desbloquear acceso** (icono de escudo): reactiva la cuenta. Si la cuenta está bloqueada se
   muestra una insignia roja "Acceso bloqueado".
 - El sistema no permite bloquear a un super admin ni bloquearte a ti mismo.
 
-### Flujo: verificar credenciales de un médico (paso a paso)
+### Flujo: verificar credenciales de un especialista (paso a paso)
 
 1. Entra a **Verificaciones** (/admin/verifications) y quédate en **Pendientes**.
-2. Ubica la tarjeta del médico.
+2. Ubica la tarjeta del especialista.
 3. Para el **MPPS (automático):** pulsa **Verificar MPPS**. Espera el resultado (insignia). Si dice
    "MPPS verificado", su número es legítimo según SACS. Si dice "no coincide" o "no encontrado",
    revisa el dato manualmente.
 4. Para el **colegiado (manual):** no hay verificador automático. Confirma el número con la fuente
    correspondiente por tu cuenta.
-5. Cuando estés conforme, pulsa **Verificar** para aprobar al médico, o **Rechazar** si las
+5. Cuando estés conforme, pulsa **Verificar** para aprobar al especialista, o **Rechazar** si las
    credenciales no son válidas (en Etapa 1 esto NO le quita el acceso, es una marca).
 6. Si necesitas vetar la cuenta (por fraude o abuso), usa **Bloquear acceso** en su tarjeta.
 
-> Importante: en Etapa 1 la verificación NO restringe el acceso del médico a la plataforma. El
+> Importante: en Etapa 1 la verificación NO restringe el acceso del especialista a la plataforma. El
 > control real de acceso es el botón Bloquear acceso, que es independiente.
 
 ## 12. Especialidades (/admin/specialties)
 
 Mantenedor del catálogo de especialidades médicas. Es 100% editable desde la base de datos sin
-necesidad de redeploy. Estas especialidades alimentan el registro y el onboarding de los médicos.
+necesidad de redeploy. Estas especialidades alimentan el registro y el onboarding de los especialistas.
 
 **Encabezado:** título "Especialidades" y botón **Nueva Especialidad**.
 
@@ -443,9 +443,9 @@ y el total. Al pulsar una plantilla se abre el editor.
 
 **Plantillas disponibles (las 9 fijas):**
 - appointment_confirmed — confirmación de cita al paciente.
-- doctor_pending_verification — aviso de verificación pendiente al médico.
-- invoice — factura de pago al médico.
-- payment_approved — aviso de pago aprobado al médico.
+- doctor_pending_verification — aviso de verificación pendiente al especialista.
+- invoice — factura de pago al especialista.
+- payment_approved — aviso de pago aprobado al especialista.
 - reminder_24h — recordatorio 24 horas antes de la cita.
 - reminder_3h — recordatorio 3 horas antes de la cita.
 - reminder_7d — recordatorio 7 días antes de la cita.
@@ -517,14 +517,14 @@ Crear, Editar, Eliminar. Cada celda es un interruptor (permitido/denegado).
 
 ## 15. Sugerencias (/admin/suggestions)
 
-Bandeja de sugerencias enviadas por los médicos. Sirve para leer, clasificar y responder.
+Bandeja de sugerencias enviadas por los especialistas. Sirve para leer, clasificar y responder.
 
 **Encabezado:** muestra cuántas sugerencias se han recibido y cuántas están pendientes.
 
 **Estadísticas:** contadores por estado (Pendiente, En progreso, Resuelto).
 
 **Cada sugerencia muestra:** categoría (Nueva funcionalidad, Problema, Mejora, General) con color,
-estado, asunto, mensaje, médico que la envió, su especialidad y fecha. Si ya respondiste, se ve tu
+estado, asunto, mensaje, especialista que la envió, su especialidad y fecha. Si ya respondiste, se ve tu
 respuesta resaltada.
 
 **Acciones por sugerencia (si no está resuelta):**
@@ -582,18 +582,18 @@ la plataforma.
 
 **¿Puedo ver el nombre, la cédula o el historial de un paciente?**
 No. El super admin nunca ve datos personales de pacientes. Solo ves estadísticas agregadas en
-/admin/patients (totales, edad promedio, citas). El detalle es confidencial de cada médico.
+/admin/patients (totales, edad promedio, citas). El detalle es confidencial de cada especialista.
 
-**¿Dónde apruebo el pago de la suscripción de un médico?**
+**¿Dónde apruebo el pago de la suscripción de un especialista?**
 En /admin/aprobaciones (pestaña Pendientes) o en /admin/subscriptions, pestaña Comprobantes. Pulsa
 el ojo para ver el comprobante y luego Aprobar.
 
-**¿Qué pasa cuando vence la suscripción de un médico?**
-No se borra nada. En su próximo inicio de sesión el médico baja automáticamente al plan Delta Free
+**¿Qué pasa cuando vence la suscripción de un especialista?**
+No se borra nada. En su próximo inicio de sesión el especialista baja automáticamente al plan Delta Free
 (downgrade perezoso). Conserva todos sus datos.
 
-**¿Cómo bloqueo a un médico para que no entre?**
-Dos caminos: en /admin/doctors abre el drawer del médico y pulsa Suspender; o en
+**¿Cómo bloqueo a un especialista para que no entre?**
+Dos caminos: en /admin/doctors abre el drawer del especialista y pulsa Suspender; o en
 /admin/verifications usa el botón Bloquear acceso en su tarjeta. El bloqueo es un veto duro
 (error 403). No puedes bloquear a un super admin ni a ti mismo.
 
@@ -601,8 +601,8 @@ Dos caminos: en /admin/doctors abre el drawer del médico y pulsa Suspender; o e
 No. Rechazar la verificación es una marca sobre sus credenciales y en Etapa 1 NO le quita el
 acceso. Bloquear acceso sí le impide entrar.
 
-**¿Cómo verifico el MPPS de un médico?**
-En /admin/verifications, en la tarjeta del médico pulsa Verificar MPPS. El sistema consulta el
+**¿Cómo verifico el MPPS de un especialista?**
+En /admin/verifications, en la tarjeta del especialista pulsa Verificar MPPS. El sistema consulta el
 portal SACS por su cédula y muestra el resultado. El colegiado se verifica de forma manual.
 
 **¿Dónde cambio el precio de un plan?**
@@ -617,7 +617,7 @@ En /admin/email-templates selecciona la plantilla, edita el Asunto, el HTML y/o 
 usa Preview para revisarla y pulsa Guardar. Son 9 plantillas fijas: solo se editan, no se crean
 ni se borran.
 
-**¿Por qué un médico no ve un módulo (por ejemplo, Finanzas o IA)?**
+**¿Por qué un especialista no ve un módulo (por ejemplo, Finanzas o IA)?**
 Por el gating doble: necesita que su ROL tenga permiso (matriz de Roles) Y que su PLAN incluya esa
 feature (Planes). La IA solo está en Delta Plus. Si su plan no la incluye, le aparece un candado.
 
@@ -633,13 +633,13 @@ papelera (Revocar acceso) lo degrada a doctor.
 En /admin/settings, bloque Fuente de tasa del sistema. Elige Binance P2P, BCV o Manual. La "Tasa
 efectiva" es la que se aplica en toda la app.
 
-**¿Cómo extiendo manualmente la suscripción de un médico sin esperar un pago?**
+**¿Cómo extiendo manualmente la suscripción de un especialista sin esperar un pago?**
 En /admin/subscriptions, pestaña Doctores, pulsa Extender en su fila e indica los meses (1 a 36).
 
-**¿Dónde descargo la lista de médicos?**
+**¿Dónde descargo la lista de especialistas?**
 En /admin/doctors, botón Exportar (descarga un CSV).
 
-**¿Cómo respondo una sugerencia de un médico?**
+**¿Cómo respondo una sugerencia de un especialista?**
 En /admin/suggestions pulsa Responder, escribe el texto y pulsa Responder y resolver. También
 puedes marcar En progreso o Resuelto.
 

@@ -16,6 +16,11 @@ export interface BackendServiceRaw {
   priceUsd: number;
   durationMinutes: number;
   sessionsCount: number | null;
+  /**
+   * Days after purchase the patient has to schedule deferred sessions.
+   * null = no expiry.
+   */
+  validityDays: number | null;
   isActive: boolean;
   showInBooking: boolean;
   description: string | null;
@@ -33,6 +38,11 @@ export interface DoctorService {
   price_usd: number;
   duration_minutes: number;
   sessions_count: number;
+  /**
+   * Days the patient has to schedule all sessions in the package.
+   * null = no expiry.
+   */
+  validity_days: number | null;
   is_active: boolean;
   show_in_booking: boolean;
   description: string;
@@ -48,6 +58,7 @@ export function mapDoctorService(raw: BackendServiceRaw): DoctorService {
     price_usd: raw.priceUsd ?? 0,
     duration_minutes: raw.durationMinutes ?? 30,
     sessions_count: raw.sessionsCount ?? 1,
+    validity_days: raw.validityDays ?? null,
     is_active: raw.isActive ?? true,
     show_in_booking: raw.showInBooking ?? true,
     description: raw.description ?? '',

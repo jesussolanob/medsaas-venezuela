@@ -67,7 +67,7 @@ function extractVariables(text: string): string[] {
 /** Mapa de nombres internos de plantillas a etiquetas legibles en español. */
 const TEMPLATE_LABELS: Record<string, string> = {
   appointment_confirmed: 'Cita confirmada',
-  doctor_pending_verification: 'Verificación de médico pendiente',
+  doctor_pending_verification: 'Verificación de especialista pendiente',
   invoice: 'Factura',
   payment_approved: 'Pago aprobado',
   reminder_24h: 'Recordatorio 24h',

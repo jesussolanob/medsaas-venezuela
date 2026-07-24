@@ -38,8 +38,8 @@ export default function PrivacyPage() {
               </h2>
               <p>
                 Recopilamos únicamente la información necesaria para proveer el servicio: datos de
-                identificación del médico y paciente, historial clínico cargado por el médico,
-                información de pagos para procesamiento de cobros.
+                identificación del especialista y paciente, historial clínico cargado por el
+                especialista, información de pagos para procesamiento de cobros.
               </p>
             </section>
 

@@ -416,7 +416,7 @@ export default function NewDoctorModal() {
         className="flex items-center gap-2 bg-teal-500 hover:bg-teal-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
       >
         <Plus className="w-4 h-4" />
-        Nuevo médico
+        Nuevo especialista
       </button>
 
       {open && (
@@ -429,7 +429,7 @@ export default function NewDoctorModal() {
           <div className="relative w-full max-w-lg bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden max-h-[90vh] flex flex-col">
             <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 shrink-0">
               <div>
-                <h2 className="text-lg font-semibold text-slate-900">Nuevo médico</h2>
+                <h2 className="text-lg font-semibold text-slate-900">Nuevo especialista</h2>
                 <p className="text-xs text-slate-400 mt-0.5">
                   Completa los datos para crear la cuenta
                 </p>
@@ -642,7 +642,7 @@ export default function NewDoctorModal() {
                       Creando cuenta...
                     </>
                   ) : (
-                    'Crear médico'
+                    'Crear especialista'
                   )}
                 </button>
               </div>

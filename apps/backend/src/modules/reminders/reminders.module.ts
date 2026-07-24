@@ -25,6 +25,10 @@ import { ConsultationsModule } from '../consultations/consultations.module';
 import { PatientsModule } from '../patients/patients.module';
 import { DoctorSettingsModule } from '../doctor-settings/doctor-settings.module';
 import { EmailModule } from '../email/email.module';
+// PendingConsultationsModule exports DispatchPendingConsultationRemindersUseCase
+// and ExpireDuePendingConsultationsUseCase for the cron endpoint.
+// Dependency chain: RemindersModule → PendingConsultationsModule → AppointmentsModule (no cycle).
+import { PendingConsultationsModule } from '../pending-consultations/pending-consultations.module';
 
 /**
  * RemindersModule — Doctor reminder configuration + queue monitoring + cron dispatch.
@@ -55,6 +59,7 @@ import { EmailModule } from '../email/email.module';
     PatientsModule,
     DoctorSettingsModule,
     EmailModule,
+    PendingConsultationsModule,
   ],
   controllers: [DoctorRemindersController, AdminRemindersController, CronRemindersController],
   providers: [

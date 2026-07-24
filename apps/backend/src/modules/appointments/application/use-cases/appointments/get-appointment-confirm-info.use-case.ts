@@ -52,7 +52,7 @@ export class GetAppointmentConfirmInfoUseCase {
     }
 
     const doctorProfile = await this.doctorProfileRepo.findByDoctorId(appointment.doctorId);
-    const doctorName = doctorProfile?.fullName ?? 'Su médico';
+    const doctorName = doctorProfile?.fullName ?? 'Su especialista';
 
     return {
       status: appointment.status,

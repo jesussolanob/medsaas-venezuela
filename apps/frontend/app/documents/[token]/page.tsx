@@ -365,7 +365,7 @@ export default function DocumentDownloadPage() {
               <div className="px-6 py-6 space-y-5">
                 {/* Info */}
                 <div className="space-y-2">
-                  <InfoRow label="Médico" value={session.doctorName} />
+                  <InfoRow label="Especialista" value={session.doctorName} />
                   <InfoRow label="Paciente" value={session.patientNameMasked} />
                   <InfoRow label="Enlace válido hasta" value={formatDate(session.expiresAt)} />
                 </div>

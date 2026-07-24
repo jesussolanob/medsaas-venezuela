@@ -26,6 +26,27 @@ const FALLBACK_DEV_DOCTOR_UUID = '00000000-0000-4000-8000-000000000001';
 // Hook return type
 // ---------------------------------------------------------------------------
 
+/**
+ * Context passed to the deferred-sessions prompt shown after a successful
+ * multi-session appointment creation.
+ */
+export type DeferredSessionsContext = {
+  /** UUID of the created appointment (session 1). */
+  appointmentId: string;
+  /** UUID of the pricing plan (used by the bulk-create endpoint). */
+  planId: string;
+  /** plan.name for display purposes. */
+  planName: string;
+  /** Total number of sessions in the plan. */
+  sessionsCount: number;
+  /** UUID of the patient. */
+  patientId: string;
+  /** UUID of the selected office, if any. */
+  officeId: string | null;
+  /** Appointment mode chosen for the first session. */
+  appointmentMode: 'presencial' | 'online';
+};
+
 export type AppointmentFlowState = {
   currentStep: number;
   setCurrentStep: (n: number) => void;
@@ -35,6 +56,13 @@ export type AppointmentFlowState = {
   globalError: string | null;
   setGlobalError: (msg: string | null) => void;
   submit: () => Promise<void>;
+  /**
+   * Set after a successful multi-session plan appointment is created.
+   * Consumed by NewAppointmentFlow to show the "schedule remaining / agendar después" prompt.
+   * null = no deferred prompt needed (single-session plan, or package used).
+   */
+  deferredContext: DeferredSessionsContext | null;
+  clearDeferredContext: () => void;
 
   // Step 1 — Paciente
   patientQuery: string;
@@ -116,6 +144,7 @@ export function useAppointmentFlow(
   const [submitting, setSubmitting] = useState(false);
   const [uploadingReceipt, setUploadingReceipt] = useState(false);
   const [globalError, setGlobalError] = useState<string | null>(null);
+  const [deferredContext, setDeferredContext] = useState<DeferredSessionsContext | null>(null);
 
   // Step 1 — Paciente
   const [patientQuery, setPatientQuery] = useState('');
@@ -484,6 +513,10 @@ export function useAppointmentFlow(
 
   // ── Handlers ─────────────────────────────────────────────────────────────
 
+  function clearDeferredContext() {
+    setDeferredContext(null);
+  }
+
   function selectPatient(p: PatientLookup) {
     setSelectedPatient(p);
     setCurrentStep(2);
@@ -629,7 +662,30 @@ export function useAppointmentFlow(
       });
       const j = (await r.json()) as { error?: string; appointmentId?: string };
       if (!r.ok) throw new Error(j.error ?? 'Error al crear cita');
-      onSuccess?.(j.appointmentId ?? '');
+
+      const createdAppointmentId = j.appointmentId ?? '';
+      onSuccess?.(createdAppointmentId);
+
+      // Multi-session plan (not a package): offer to defer remaining sessions.
+      // Condition: plan has >1 session, we're not using an existing package,
+      // and the plan has a real UUID (not the generic fallback).
+      const planSessions = selectedPlan?.sessions_count ?? 1;
+      const planId = selectedPlan?.id ?? 'generic';
+      if (!usePackage && planSessions > 1 && planId !== 'generic' && selectedPatient) {
+        // Session numbers to defer: [2, 3, ..., planSessions] (session 1 just created).
+        setDeferredContext({
+          appointmentId: createdAppointmentId,
+          planId,
+          planName: selectedPlan?.name ?? '',
+          sessionsCount: planSessions,
+          patientId: selectedPatient.id,
+          officeId: selectedOffice?.id ?? null,
+          appointmentMode: mode,
+        });
+        // Do NOT call onClose() yet — the parent will close after the deferred prompt.
+        return;
+      }
+
       onClose();
     } catch (err: unknown) {
       setGlobalError(err instanceof Error ? err.message : 'Error desconocido');
@@ -673,6 +729,8 @@ export function useAppointmentFlow(
     globalError,
     setGlobalError,
     submit,
+    deferredContext,
+    clearDeferredContext,
 
     patientQuery,
     setPatientQuery,

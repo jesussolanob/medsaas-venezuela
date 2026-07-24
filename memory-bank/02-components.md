@@ -391,3 +391,45 @@ Widget de ayuda con IA, disponible para los 3 perfiles. Patrón: panel global + 
   HTML 404 y no marcaba ocupados/bloqueados. Desempaqueta `{data:{slots}}` (#10).
 - **Paraclínico:** el bloque perdió su botón "PDF" viejo (print HTML); el PDF sale por "Generar Documento"
   branded (#5). El toast de "Guardar" del paraclínico muestra el error real del backend (#6).
+
+### Componentes/rutas/fixes nuevos (2026-07-22)
+
+- **`PatientHistoryModal.tsx`** (`app/doctor/consultations/`, nuevo): drawer de **solo lectura** que abre el botón
+  **"Revisar historial"** en el editor de consulta (junto a "Ver ficha del paciente"). Muestra las consultas
+  anteriores del mismo paciente (excluye la actual, orden DESC, **pagina de 5**) con cada bloque (label de
+  `blocks_structure` + valor de `blocks_snapshot`, `paraclinical` como lista) + diagnóstico. 100% frontend: reusa la
+  action existente `getPatientConsultations` → `GET /api/consultations/patient/:id` (owner-scoped, ya devolvía la
+  consulta completa con `blocks_snapshot`+`blocks_structure`). Sin cambios de backend.
+- **credential-verification — fix MPPS/SACS (3 bugs):** `SacsXajaxAdapter` ahora parsea las profesiones desde
+  `xajax_tableProfesion` (no `xajax_userTable`) y **decodifica entidades HTML** (`M&Eacute;DICO`→`MÉDICO`);
+  `name-matcher` gana `normalizeMpps` (quita prefijo `MPPS`+ceros); `verify-mpps.use-case` compara con normalizeMpps.
+  Tests contra el XML real de SACS. Con esto la verificación MPPS automática por fin funciona (antes: todo doctor
+  "no coincide").
+- **help-assistant — manual del doctor actualizado:** `specialist-guide.content.ts` (recordatorios auto, PDF/firma
+  dibujada, Seguimiento, Paraclínico, Generar Documento 5 tipos, período de prueba) + `feature-labels.ts` agrega label
+  del plan `free_trial`. El módulo ya inyecta contexto plan-aware (módulos disponibles del plan efectivo) y el prompt
+  restringe la ayuda a esos módulos.
+- **`GlobalExceptionFilter`:** mensaje 500 genérico ahora en español ("Ocurrió un error inesperado").
+- **Migración `20260722000001`:** `ALTER TYPE subscription_status ADD VALUE IF NOT EXISTS 'trialing'` — el enum PG
+  no tenía `trialing` (que el código asigna al trial de onboarding) → rompía TODO registro nuevo en prod. Fix idempotente.
+
+### Preconsultas "Consultas por agendar" + terminología especialista (2026-07-23 — ver ADR-025)
+
+- **Backend módulo NUEVO `modules/pending-consultations/`** (DDD): entidad `PendingConsultation` (`isSchedulable()`,
+  `markScheduled()`), repo `IPendingConsultationRepository` (findByIdAndDoctor/findByDoctor/findById/findDueForReminder/
+  findExpired/bulkCreate/save/bulkExpire/updateReminderStage), use-cases (get-doctor-list, schedule, cancel, create-bulk,
+  create-doctor-bulk [anti-IDOR paciente+plan], expire-due, dispatch-reminders, get-by-token, schedule-by-token),
+  `PendingConsultationTokenService` (HMAC namespaced). Tabla `pending_consultations` (mig `20260723000002`) + columnas
+  `pricing_plans.validity_days` y `patient_packages.expires_at`. Endpoints en 04-api.
+- **Módulos tocados:** `booking` (CreateBookingUseCase: bloque multi-sesión — 1ª cita + adicionales + preconsultas diferidas,
+  retrocompatible si `sessions_count<=1`), `doctor-settings` (create/update-service acepta `validity_days`; `PricingPlan`
+  gana `validityDays`), `reminders` (cron controller invoca dispatch+expire de preconsultas), `appointments`
+  (`findFirstCompletedByPaymentId` para el ancla del recordatorio).
+- **Frontend NUEVO:** `app/doctor/pending-consultations/` (page + `PendingConsultationsClient` — lista/filtros/badge de
+  vencimiento/modales agendar-cancelar) con item "Consultas por agendar" en el sidebar Consultorio; página pública
+  `app/agendar/[token]/` (`AgendarTokenClient` — info por token + selector de slots + confirmar). BFF: `app/api/doctor/
+pending-consultations/**`, `app/api/public/pending-consultations/[token]/**`, `app/api/booking/[doctorId]/offices`.
+  Booking (`BookingClient.tsx`): paso "agendar ahora las restantes / Agendar después" cuando `sessions_count>1`, envía
+  `plan_id`+`additional_sessions`. `NewAppointmentFlow`: modal de diferir (bulk-create). Servicios: campo "Validez (días)".
+- **Terminología:** "médico" sustantivo→"especialista" en UI/guías/correos (conserva adjetivos + Dr./Dra.). Mig
+  `20260723000001` actualiza plantillas de email en BD.

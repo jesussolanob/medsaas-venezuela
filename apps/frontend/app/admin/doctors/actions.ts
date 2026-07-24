@@ -54,7 +54,7 @@ export async function createDoctor(input: CreateDoctorInput): Promise<ActionResu
   });
 
   if (!result.ok) {
-    return { success: false, error: result.error.message || 'Error al crear el médico' };
+    return { success: false, error: result.error.message || 'Error al crear el especialista' };
   }
 
   revalidatePath('/admin/doctors');
