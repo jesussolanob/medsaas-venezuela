@@ -2360,6 +2360,29 @@ export default function AgendaPage() {
                         Cancelar cita
                       </button>
                     )}
+                    {(detailAppt.status === 'scheduled' || detailAppt.status === 'confirmed') &&
+                      !(detailAppt.source === 'consultation' && !detailAppt.appointment_id) && (
+                        <button
+                          onClick={() => {
+                            setRescheduling({
+                              id: detailAppt.appointment_id || detailAppt.id,
+                              patient_name: detailAppt.patient_name,
+                              patient_phone: detailAppt.patient_phone ?? null,
+                              patient_email: detailAppt.patient_email ?? null,
+                              patient_cedula: detailAppt.patient_cedula ?? null,
+                              scheduled_at: detailAppt.isoDate,
+                              chief_complaint: detailAppt.chief_complaint ?? null,
+                              plan_name: detailAppt.plan_name ?? null,
+                              plan_price: detailAppt.plan_price ?? null,
+                              status: detailAppt.status,
+                            });
+                            setDetailAppt(null);
+                          }}
+                          className="flex items-center gap-1 px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-700 text-xs font-bold rounded-lg border border-amber-200"
+                        >
+                          <Calendar className="w-3.5 h-3.5" /> Reagendar
+                        </button>
+                      )}
                   </div>
                   <p className="text-[11px] text-slate-500 italic mt-2">
                     💡 El estado de la <strong>consulta</strong> (atendida / no asistió) y del{' '}
