@@ -49,8 +49,8 @@ export default function PrivacyPage() {
               </h2>
               <p>
                 La información se usa exclusivamente para permitir el funcionamiento del CRM médico,
-                la comunicación entre médico y paciente, y la generación de reportes financieros y
-                clínicos.
+                la comunicación entre especialista y paciente, y la generación de reportes
+                financieros y clínicos.
               </p>
             </section>
 
