@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { Appointment } from '../../../domain/entities/appointment.entity';
 import { AppointmentNotFoundError } from '../../../domain/errors/appointment-not-found.error';
 import { AppointmentNotReschedulableError } from '../../../domain/errors/appointment-not-reschedulable.error';
@@ -8,6 +8,10 @@ import {
   APPOINTMENT_REPOSITORY,
   type IAppointmentRepository,
 } from '../../../domain/repositories/appointment.repository';
+import { UpdateCalendarEventUseCase } from '../../../../integrations/application/use-cases/integrations/update-calendar-event.use-case';
+
+/** Milliseconds in one minute — used to compute the new event end time. */
+const MS_PER_MINUTE = 60_000;
 
 /** Statuses that allow a reschedule operation. */
 const RESCHEDULABLE_STATUSES: ReadonlySet<string> = new Set(['scheduled', 'confirmed']);
@@ -35,9 +39,22 @@ export interface RescheduleAppointmentInput {
  */
 @Injectable()
 export class RescheduleAppointmentUseCase {
+  private readonly logger = new Logger(RescheduleAppointmentUseCase.name);
+
   constructor(
     @Inject(APPOINTMENT_REPOSITORY)
     private readonly appointmentRepo: IAppointmentRepository,
+    /**
+     * UpdateCalendarEventUseCase — optional for backward compatibility with
+     * existing tests that do not inject it. When present, moves the Google
+     * Calendar event (best-effort) to the new time after a reschedule.
+     *
+     * @Inject is mandatory: TypeScript emits `Object` for union types (`T | null`)
+     * in reflect-metadata, so NestJS cannot resolve the class token without it.
+     */
+    @Optional()
+    @Inject(UpdateCalendarEventUseCase)
+    private readonly updateCalendarEvent: UpdateCalendarEventUseCase | null = null,
   ) {}
 
   async execute(input: RescheduleAppointmentInput): Promise<Appointment> {
@@ -97,6 +114,29 @@ export class RescheduleAppointmentUseCase {
       oldStatus: appointment.status,
       newStatus: appointment.status, // status does not change; log preserves rescheduled context
     });
+
+    // 8. Move the Google Calendar event to the new time (best-effort — must not
+    //    break the reschedule). Only when the appointment has a synced event and
+    //    the use-case is injected. sendUpdates:'all' inside the service notifies
+    //    the patient so their calendar reflects the new time.
+    if (appointment.googleCalendarEventId && this.updateCalendarEvent) {
+      const startISO = input.newScheduledAt.toISOString();
+      const endISO = new Date(
+        input.newScheduledAt.getTime() + durationMinutes * MS_PER_MINUTE,
+      ).toISOString();
+      try {
+        await this.updateCalendarEvent.execute(
+          appointment.doctorId,
+          appointment.googleCalendarEventId,
+          startISO,
+          endISO,
+        );
+      } catch (err) {
+        this.logger.warn(
+          `[reschedule-event] Google Calendar event update failed for appointment ${input.appointmentId} (non-fatal): ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
 
     return updated;
   }
