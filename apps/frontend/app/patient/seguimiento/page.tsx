@@ -165,7 +165,7 @@ function FeedItem({ item, replies, onReply }: FeedItemProps) {
                 className="text-xs font-semibold"
                 style={{ color: isFromDoctor ? 'var(--dh-turquoise-700)' : 'var(--dh-ink)' }}
               >
-                {isFromDoctor ? 'Tu médico' : 'Tú'}
+                {isFromDoctor ? 'Tu especialista' : 'Tú'}
               </span>
               <span className="text-xs" style={{ color: 'var(--dh-gray-400)' }}>
                 {formatDate(item.createdAt)}
@@ -308,7 +308,7 @@ function FeedItem({ item, replies, onReply }: FeedItemProps) {
                         reply.createdBy === 'doctor' ? 'var(--dh-turquoise-700)' : 'var(--dh-ink)',
                     }}
                   >
-                    {reply.createdBy === 'doctor' ? 'Tu médico' : 'Tú'}
+                    {reply.createdBy === 'doctor' ? 'Tu especialista' : 'Tú'}
                   </span>
                   <span className="text-xs" style={{ color: 'var(--dh-gray-400)' }}>
                     {formatDate(reply.createdAt)}
@@ -722,8 +722,8 @@ export default function PatientSeguimientoPage() {
             <div>
               <h2 className="text-base font-semibold text-slate-800 mb-1">Sin actividad todavía</h2>
               <p className="text-sm text-slate-500 leading-relaxed">
-                Cuando tu médico envíe tareas, instrucciones o archivos, aparecerán aquí. También
-                puedes enviar una respuesta o adjuntar un archivo tú mismo.
+                Cuando tu especialista envíe tareas, instrucciones o archivos, aparecerán aquí.
+                También puedes enviar una respuesta o adjuntar un archivo tú mismo.
               </p>
             </div>
             <div
@@ -735,7 +735,7 @@ export default function PatientSeguimientoPage() {
               }}
             >
               <Stethoscope className="w-3.5 h-3.5 shrink-0" />
-              <span>Consulta directamente con tu médico mientras tanto.</span>
+              <span>Consulta directamente con tu especialista mientras tanto.</span>
             </div>
           </div>
         </div>

@@ -3813,7 +3813,7 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                       </div>
                     </div>
                     <p className="text-xs text-slate-500">
-                      Exámenes e indicaciones que el médico ordena al paciente (laboratorio,
+                      Exámenes e indicaciones que el especialista ordena al paciente (laboratorio,
                       imágenes, etc.)
                     </p>
 
@@ -4044,7 +4044,7 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                         <span className="text-slate-400 font-normal text-xs">(opcional)</span>
                       </label>
                       <textarea
-                        placeholder="Observaciones adicionales del médico..."
+                        placeholder="Observaciones adicionales del especialista..."
                         value={reposoComments}
                         onChange={(e) => setReposoComments(e.target.value)}
                         rows={3}
@@ -4146,8 +4146,8 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                       <p className="text-sm font-bold text-slate-800">Notas internas</p>
                     </div>
                     <p className="text-xs text-slate-500">
-                      Notas privadas del médico sobre esta consulta. No se incluyen en documentos
-                      del paciente.
+                      Notas privadas del especialista sobre esta consulta. No se incluyen en
+                      documentos del paciente.
                     </p>
                     <RichTextEditor
                       value={

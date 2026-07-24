@@ -75,7 +75,7 @@ const FEATURE_LABELS: Record<string, string> = {
 
 const WHATSAPP_NUMBER = '584221033582'; // WhatsApp de ventas Delta Salud (+58 422 103 3582)
 const WHATSAPP_MESSAGE = encodeURIComponent(
-  'Hola, soy médico de Delta Salud y me interesa actualizar mi plan. ¿Pueden orientarme?',
+  'Hola, soy especialista de Delta Salud y me interesa actualizar mi plan. ¿Pueden orientarme?',
 );
 
 interface UpgradeClientProps {

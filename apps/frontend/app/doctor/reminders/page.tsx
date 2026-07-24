@@ -143,7 +143,7 @@ export default function RemindersPage() {
   function buildWAMessage(consult: Consultation) {
     const date = formatDate(consult.consultation_date);
     const time = formatTime(consult.consultation_date);
-    const doc = doctorName || 'tu médico';
+    const doc = doctorName || 'tu especialista';
     // Sin emojis: la pantalla intermedia de WhatsApp en escritorio los renderiza como
     // "�" (mojibake) en su vista previa, aunque la URL sea correcta. Se usan guiones
     // como viñeta hasta resolver el flujo con WhatsApp. Retomar emojis en Fase 5.

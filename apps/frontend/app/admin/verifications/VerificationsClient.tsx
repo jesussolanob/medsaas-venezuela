@@ -451,7 +451,9 @@ export default function VerificationsClient({ initialItems }: Props) {
           showToast({
             type: 'success',
             message:
-              status === 'verified' ? 'Médico verificado correctamente.' : 'Médico rechazado.',
+              status === 'verified'
+                ? 'Especialista verificado correctamente.'
+                : 'Especialista rechazado.',
           });
         }
       } catch {
@@ -476,8 +478,8 @@ export default function VerificationsClient({ initialItems }: Props) {
     const action = targetActive ? 'desbloquear' : 'bloquear';
     const confirmed = window.confirm(
       targetActive
-        ? `¿Confirmas que deseas DESBLOQUEAR el acceso de ${fullName}? El médico podrá usar la plataforma nuevamente.`
-        : `¿Confirmas que deseas BLOQUEAR el acceso de ${fullName}? El médico recibirá un error 403 en cualquier operación.`,
+        ? `¿Confirmas que deseas DESBLOQUEAR el acceso de ${fullName}? El especialista podrá usar la plataforma nuevamente.`
+        : `¿Confirmas que deseas BLOQUEAR el acceso de ${fullName}? El especialista recibirá un error 403 en cualquier operación.`,
     );
     if (!confirmed) return;
 
@@ -499,7 +501,7 @@ export default function VerificationsClient({ initialItems }: Props) {
 
       if (!res.ok || !json.success) {
         const knownErrors: Record<string, string> = {
-          DOCTOR_NOT_FOUND: 'Médico no encontrado.',
+          DOCTOR_NOT_FOUND: 'Especialista no encontrado.',
           CANNOT_BLOCK_SUPER_ADMIN: 'No se puede bloquear a un super administrador.',
           CANNOT_BLOCK_SELF: 'No puedes bloquearte a ti mismo.',
         };
@@ -568,10 +570,10 @@ export default function VerificationsClient({ initialItems }: Props) {
             className="font-bold text-xl tracking-tight"
             style={{ color: 'var(--dh-ink)', fontFamily: 'var(--dh-font-display)' }}
           >
-            Verificaciones de médicos
+            Verificaciones de especialistas
           </h1>
           <p className="text-sm mt-0.5" style={{ color: 'var(--dh-gray-500)' }}>
-            Revisa y aprueba los registros profesionales enviados por los médicos
+            Revisa y aprueba los registros profesionales enviados por los especialistas
           </p>
         </div>
 
@@ -653,7 +655,8 @@ export default function VerificationsClient({ initialItems }: Props) {
             style={{ color: 'var(--dh-turquoise)' }}
           />
           <p className="text-sm" style={{ color: 'var(--dh-turquoise-700)' }}>
-            Hay <strong>{pendingCount}</strong> médico{pendingCount !== 1 ? 's' : ''} pendiente
+            Hay <strong>{pendingCount}</strong> especialista{pendingCount !== 1 ? 's' : ''}{' '}
+            pendiente
             {pendingCount !== 1 ? 's' : ''} de verificación.
           </p>
         </div>

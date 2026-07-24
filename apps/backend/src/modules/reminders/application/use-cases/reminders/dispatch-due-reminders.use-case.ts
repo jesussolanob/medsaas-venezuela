@@ -138,7 +138,7 @@ export class DispatchDueRemindersUseCase {
       return 'skipped';
     }
 
-    const doctorName = doctorNames.get(appt.doctorId) ?? 'Su médico';
+    const doctorName = doctorNames.get(appt.doctorId) ?? 'Su especialista';
     const confirmUrl = this.buildConfirmUrl(appt.appointmentId);
     const { date, time } = this.formatCaracas(appt.scheduledAt);
     const patientName = appt.patientName ?? 'Paciente';
@@ -228,7 +228,7 @@ export class DispatchDueRemindersUseCase {
       return 'skipped';
     }
 
-    const doctorName = doctorNames.get(appt.doctorId) ?? 'Su médico';
+    const doctorName = doctorNames.get(appt.doctorId) ?? 'Su especialista';
     const { date, time } = this.formatCaracas(appt.scheduledAt);
     const patientName = appt.patientName ?? 'Paciente';
 
@@ -262,7 +262,7 @@ export class DispatchDueRemindersUseCase {
    * list with a single Promise.all (one DB call per unique doctor, not per
    * appointment — avoids N+1 when many appointments share the same doctor).
    *
-   * Returns a Map<doctorId, displayName> with 'Su médico' as the fallback.
+   * Returns a Map<doctorId, displayName> with 'Su especialista' as the fallback.
    */
   private async buildDoctorNameMap(
     appointments: AppointmentDueRow[],
@@ -271,7 +271,7 @@ export class DispatchDueRemindersUseCase {
     const entries = await Promise.all(
       uniqueIds.map(async (doctorId) => {
         const profile = await this.doctorProfileRepo.findByDoctorId(doctorId);
-        return [doctorId, profile?.fullName ?? 'Su médico'] as const;
+        return [doctorId, profile?.fullName ?? 'Su especialista'] as const;
       }),
     );
     return new Map(entries);

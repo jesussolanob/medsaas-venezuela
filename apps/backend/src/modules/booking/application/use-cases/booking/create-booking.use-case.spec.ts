@@ -128,6 +128,7 @@ describe('CreateBookingUseCase', () => {
       updateGoogleEventId: jest.fn().mockResolvedValue(undefined),
       updateConsultationId: jest.fn().mockResolvedValue(undefined),
       deleteById: jest.fn().mockResolvedValue(undefined),
+      findFirstCompletedByPaymentId: jest.fn().mockResolvedValue(null),
     };
 
     mockPatientRepo = {
@@ -1003,6 +1004,203 @@ describe('CreateBookingUseCase', () => {
         patient_id: 'not-a-uuid',
       });
       expect(result.success).toBe(false);
+    });
+
+    it('accepts plan_id as a valid uuid', () => {
+      const result = CreateBookingDtoSchema.safeParse({
+        ...basePayload,
+        plan_id: 'a2ae2d7f-7445-4aff-b39b-ab08f1b75dc0',
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it('accepts additional_sessions array with valid entries', () => {
+      const result = CreateBookingDtoSchema.safeParse({
+        ...basePayload,
+        plan_id: 'a2ae2d7f-7445-4aff-b39b-ab08f1b75dc0',
+        additional_sessions: [
+          { scheduled_at: '2026-08-08T10:00:00Z', appointment_mode: 'presencial' },
+          { scheduled_at: '2026-08-15T10:00:00Z' },
+        ],
+      });
+      expect(result.success).toBe(true);
+    });
+  });
+
+  describe('multi-session plan (A1b) — CreatePendingConsultationsUseCase integration', () => {
+    const PLAN_ID = 'plan-uuid-3333-4444-5555-666666666666';
+
+    const makePricingPlan = (sessionsCount: number, validityDays: number | null = null) => ({
+      id: PLAN_ID,
+      doctorId: 'doc-001',
+      officeId: null,
+      name: 'Paquete 3 sesiones',
+      priceUsd: 90,
+      durationMinutes: 30,
+      sessionsCount,
+      validityDays,
+      description: null,
+      type: 'plan' as const,
+      showInBooking: true,
+      isActive: true,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      isPubliclyVisible: () => true,
+      isApplicableForOffice: () => true,
+    });
+
+    function makeUseCaseWithMultiSession(
+      mockPricingPlanRepo: { findById: jest.Mock },
+      mockCreatePendingUC: { execute: jest.Mock },
+    ) {
+      return new CreateBookingUseCase(
+        mockAppointmentRepo,
+        mockPatientRepo,
+        mockDoctorLoader,
+        mockConsumeUseCase,
+        mockCrypto as unknown as import('../../../../../infrastructure/crypto/crypto.service').CryptoService,
+        mockSequelize as unknown as import('sequelize-typescript').Sequelize,
+        null, // paymentRepo
+        mockResolveIdentity,
+        null, // officeRepo
+        null, // notificationService
+        null, // featureChecker
+        null, // scheduleRepo
+        null, // createConsultationUC
+        mockPricingPlanRepo as unknown as import('../../../../packages/domain/repositories/pricing-plan.repository').IPricingPlanRepository,
+        mockCreatePendingUC as unknown as import('../../../../pending-consultations/application/use-cases/create-pending-consultations.use-case').CreatePendingConsultationsUseCase,
+      );
+    }
+
+    beforeEach(() => {
+      mockDoctorLoader.findById.mockResolvedValue(DOCTOR);
+      mockAppointmentRepo.hasOverlap.mockResolvedValue(false);
+      mockAppointmentRepo.hasPatientOverlap.mockResolvedValue(false);
+      mockPatientRepo.findByEmailHash.mockResolvedValue(makePatient());
+      mockAppointmentRepo.save.mockResolvedValue(makeAppointment());
+    });
+
+    it('behaves identically to today when plan_id is absent (backward compat)', async () => {
+      const mockPricingPlanRepo = { findById: jest.fn() };
+      const mockCreatePendingUC = { execute: jest.fn() };
+
+      const uc = makeUseCaseWithMultiSession(mockPricingPlanRepo, mockCreatePendingUC);
+
+      await uc.execute(makeDto()); // no plan_id
+
+      expect(mockPricingPlanRepo.findById).not.toHaveBeenCalled();
+      expect(mockCreatePendingUC.execute).not.toHaveBeenCalled();
+    });
+
+    it('does not create pending consultations when plan sessionsCount=1', async () => {
+      const mockPricingPlanRepo = { findById: jest.fn().mockResolvedValue(makePricingPlan(1)) };
+      const mockCreatePendingUC = { execute: jest.fn() };
+
+      const uc = makeUseCaseWithMultiSession(mockPricingPlanRepo, mockCreatePendingUC);
+
+      await uc.execute(makeDto({ plan_id: PLAN_ID }));
+
+      expect(mockCreatePendingUC.execute).not.toHaveBeenCalled();
+    });
+
+    it('creates pending consultations for all deferred sessions when none are immediately scheduled', async () => {
+      // Plan: 3 sessions total. First is booked now, 2 are deferred.
+      const mockPricingPlanRepo = { findById: jest.fn().mockResolvedValue(makePricingPlan(3)) };
+      const mockCreatePendingUC = { execute: jest.fn().mockResolvedValue([]) };
+
+      const uc = makeUseCaseWithMultiSession(mockPricingPlanRepo, mockCreatePendingUC);
+
+      await uc.execute(makeDto({ plan_id: PLAN_ID }));
+
+      expect(mockCreatePendingUC.execute).toHaveBeenCalledTimes(1);
+      const callArgs = mockCreatePendingUC.execute.mock.calls[0]?.[0];
+      // Sessions 2 and 3 are deferred
+      expect(callArgs?.sessionNumbers).toEqual([2, 3]);
+      expect(callArgs?.expiresAt).toBeNull(); // no validity_days on plan
+    });
+
+    it('sets expiresAt based on plan validityDays when provided', async () => {
+      const mockPricingPlanRepo = {
+        findById: jest.fn().mockResolvedValue(makePricingPlan(3, 30)),
+      };
+      const mockCreatePendingUC = { execute: jest.fn().mockResolvedValue([]) };
+
+      const uc = makeUseCaseWithMultiSession(mockPricingPlanRepo, mockCreatePendingUC);
+      const beforeCall = new Date();
+
+      await uc.execute(makeDto({ plan_id: PLAN_ID }));
+
+      const callArgs = mockCreatePendingUC.execute.mock.calls[0]?.[0];
+      expect(callArgs?.expiresAt).toBeInstanceOf(Date);
+      const diffMs = (callArgs?.expiresAt as Date).getTime() - beforeCall.getTime();
+      const diffDays = diffMs / (1000 * 60 * 60 * 24);
+      // Should be ~30 days in the future (allow ±1 second tolerance)
+      expect(diffDays).toBeGreaterThanOrEqual(29.9);
+      expect(diffDays).toBeLessThanOrEqual(30.1);
+    });
+
+    it('creates additional appointments for immediately-scheduled extra sessions', async () => {
+      // Plan: 3 sessions. First booked now, 1 extra scheduled immediately, 1 deferred.
+      const mockPricingPlanRepo = { findById: jest.fn().mockResolvedValue(makePricingPlan(3)) };
+      const mockCreatePendingUC = { execute: jest.fn().mockResolvedValue([]) };
+
+      const uc = makeUseCaseWithMultiSession(mockPricingPlanRepo, mockCreatePendingUC);
+
+      await uc.execute(
+        makeDto({
+          plan_id: PLAN_ID,
+          additional_sessions: [{ scheduled_at: '2026-08-08T10:00:00Z' }],
+        }),
+      );
+
+      // appointmentRepo.save called: once for primary + once for the extra session
+      expect(mockAppointmentRepo.save).toHaveBeenCalledTimes(2);
+
+      // pending created for only 1 deferred session (session 3)
+      const pendingCallArgs = mockCreatePendingUC.execute.mock.calls[0]?.[0];
+      expect(pendingCallArgs?.sessionNumbers).toEqual([3]);
+    });
+
+    it('does not create pending consultations when all sessions are immediately scheduled', async () => {
+      // Plan: 3 sessions. First booked now, 2 extras scheduled immediately → 0 deferred.
+      const mockPricingPlanRepo = { findById: jest.fn().mockResolvedValue(makePricingPlan(3)) };
+      const mockCreatePendingUC = { execute: jest.fn().mockResolvedValue([]) };
+
+      const uc = makeUseCaseWithMultiSession(mockPricingPlanRepo, mockCreatePendingUC);
+
+      await uc.execute(
+        makeDto({
+          plan_id: PLAN_ID,
+          additional_sessions: [
+            { scheduled_at: '2026-08-08T10:00:00Z' },
+            { scheduled_at: '2026-08-15T10:00:00Z' },
+          ],
+        }),
+      );
+
+      // 3 appointments total (primary + 2 extras)
+      expect(mockAppointmentRepo.save).toHaveBeenCalledTimes(3);
+      // No pending consultations created
+      expect(mockCreatePendingUC.execute).not.toHaveBeenCalled();
+    });
+
+    it('skips multi-session path when pricingPlanRepo is null (backward compat)', async () => {
+      // Passing null for pricingPlanRepo simulates legacy context (no plan repo injected).
+      const ucWithoutPlanRepo = new CreateBookingUseCase(
+        mockAppointmentRepo,
+        mockPatientRepo,
+        mockDoctorLoader,
+        mockConsumeUseCase,
+        mockCrypto as unknown as import('../../../../../infrastructure/crypto/crypto.service').CryptoService,
+        mockSequelize as unknown as import('sequelize-typescript').Sequelize,
+        null,
+        mockResolveIdentity,
+      );
+
+      // Should complete without error, ignoring plan_id
+      await expect(ucWithoutPlanRepo.execute(makeDto({ plan_id: PLAN_ID }))).resolves.toBeDefined();
+      // Only the primary appointment is saved
+      expect(mockAppointmentRepo.save).toHaveBeenCalledTimes(1);
     });
   });
 });

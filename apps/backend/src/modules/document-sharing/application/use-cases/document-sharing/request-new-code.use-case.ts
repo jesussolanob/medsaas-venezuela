@@ -145,7 +145,7 @@ export class RequestNewCodeUseCase {
         patient.email,
         {
           patientName: patient.fullName,
-          doctorName: 'Su médico',
+          doctorName: 'Su especialista',
           code: params.code,
           url: params.url,
           expiresAt: expiresAtStr,

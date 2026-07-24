@@ -46,6 +46,11 @@ import {
   type IDoctorScheduleRepository,
 } from '../../../../doctor-settings/domain/repositories/doctor-schedule.repository';
 import { CreateConsultationUseCase } from '../../../../consultations/application/use-cases/consultations/create-consultation.use-case';
+import {
+  PRICING_PLAN_REPOSITORY,
+  type IPricingPlanRepository,
+} from '../../../../packages/domain/repositories/pricing-plan.repository';
+import { CreatePendingConsultationsUseCase } from '../../../../pending-consultations/application/use-cases/create-pending-consultations.use-case';
 
 export interface CreateBookingResult {
   appointment: Appointment;
@@ -155,6 +160,28 @@ export class CreateBookingUseCase {
     @Optional()
     @Inject(CreateConsultationUseCase)
     private readonly createConsultationUC: CreateConsultationUseCase | null = null,
+    /**
+     * PricingPlanRepository — optional for backward compatibility with existing tests.
+     * When present and dto.plan_id is provided, the plan is loaded and, if
+     * sessionsCount > 1, additional appointments + pending_consultations are created
+     * inside the booking transaction.
+     *
+     * When absent (e.g. legacy tests), the multi-session path is silently skipped
+     * and the booking behaves exactly as before A1b.
+     */
+    @Optional()
+    @Inject(PRICING_PLAN_REPOSITORY)
+    private readonly pricingPlanRepo: IPricingPlanRepository | null = null,
+    /**
+     * CreatePendingConsultationsUseCase — optional for backward compatibility.
+     * Creates pending_consultation rows for deferred sessions inside the booking
+     * transaction. Requires pricingPlanRepo to be present to take effect.
+     *
+     * @Inject is mandatory: TypeScript emits Object for union types with null.
+     */
+    @Optional()
+    @Inject(CreatePendingConsultationsUseCase)
+    private readonly createPendingUC: CreatePendingConsultationsUseCase | null = null,
   ) {}
 
   async execute(
@@ -358,6 +385,127 @@ export class CreateBookingUseCase {
           doctorId: dto.doctor_id,
           transaction: t,
         });
+      }
+
+      // --- Multi-session path (A1b) ---
+      // Only runs when plan_id is provided AND the plan has sessions_count > 1.
+      // RULE: sessions_count <= 1 → identical behaviour to today (no-op block).
+      // RULE: pricingPlanRepo or createPendingUC absent → silently skip (backward compat).
+      if (dto.plan_id && this.pricingPlanRepo && this.createPendingUC) {
+        const plan = await this.pricingPlanRepo.findById(dto.plan_id);
+
+        // Ownership guard: silently skip if plan not found, belongs to a different
+        // doctor, or has only one session. This degrades gracefully — the booking
+        // still succeeds as a normal single-session appointment.
+        if (plan && plan.doctorId === dto.doctor_id && plan.sessionsCount > 1) {
+          const additionalRequested = dto.additional_sessions ?? [];
+          // Determine how many sessions can be immediately scheduled (beyond the first).
+          const maxAdditional = plan.sessionsCount - 1;
+          const toScheduleNow = additionalRequested.slice(0, maxAdditional);
+          const deferredCount = maxAdditional - toScheduleNow.length;
+
+          // Session numbers: first session = 1 (already created above),
+          // immediately-scheduled extra sessions = 2...(1+toScheduleNow.length),
+          // deferred sessions = (2+toScheduleNow.length)...sessionsCount.
+          let nextSessionNumber = 2;
+
+          // Create immediately-scheduled additional appointments.
+          for (const extra of toScheduleNow) {
+            const extraAt = new Date(extra.scheduled_at);
+
+            // Corrección 1: chequeo de solape antes de persistir cada cita adicional.
+            // Si el slot está ocupado la transacción entera aborta (igual que la 1ª cita).
+            const extraConflict = await this.appointmentRepo.hasOverlap({
+              doctorId: dto.doctor_id,
+              scheduledAt: extraAt,
+              durationMinutes: officeDuration,
+            });
+            if (extraConflict) {
+              throw new AppointmentConflictError(extraAt);
+            }
+
+            const extraAppt = Appointment.create({
+              id: randomUUID(),
+              doctorId: dto.doctor_id,
+              patientId: patient.id,
+              authUserId: null,
+              consultationId: null,
+              patientName: dto.patient_name,
+              patientPhone: dto.patient_phone ?? null,
+              patientEmail: dto.patient_email ?? null,
+              patientCedula: dto.patient_cedula ?? null,
+              scheduledAt: extraAt,
+              status: 'scheduled',
+              appointmentMode: extra.appointment_mode ?? dto.appointment_mode,
+              source: 'booking',
+              planName: dto.plan_name,
+              planPrice: 0, // Price is paid upfront on the first session; extras cost 0.
+              paymentMethod: null,
+              paymentReference: null,
+              paymentReceiptUrl: null,
+              insuranceName: null,
+              bcvRate: null,
+              amountBs: null,
+              packageId: null,
+              sessionNumber: nextSessionNumber,
+              chiefComplaint: null,
+              appointmentCode: null,
+              durationMinutes: officeDuration,
+              officeId: extra.office_id ?? dto.office_id ?? null,
+              createdAt: new Date(),
+              updatedAt: new Date(),
+            });
+            const savedExtra = await this.appointmentRepo.save(extraAppt, t);
+            nextSessionNumber++;
+
+            // Corrección 2: ADR-021 — toda cita con paciente auto-crea su consulta.
+            // Best-effort dentro de la transacción: un fallo no aborta el booking.
+            if (this.createConsultationUC) {
+              try {
+                const extraConsultation = await this.createConsultationUC.execute({
+                  doctorId: dto.doctor_id,
+                  patientId: patient.id,
+                  appointmentId: savedExtra.id,
+                  consultationDate: extraAt,
+                  chiefComplaint: null,
+                  amount: 0, // Price already collected on the first session.
+                });
+                await this.appointmentRepo.updateConsultationId(
+                  savedExtra.id,
+                  extraConsultation.id,
+                );
+              } catch (err: unknown) {
+                const detail = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
+                this.logger.warn(
+                  `[booking] auto-create consultation for extra session failed (non-fatal): ${detail}`,
+                );
+              }
+            }
+          }
+
+          // Create pending_consultation rows for deferred sessions.
+          if (deferredCount > 0) {
+            const deferredSessionNumbers = Array.from(
+              { length: deferredCount },
+              (_, i) => nextSessionNumber + i,
+            );
+            const expiresAt = plan.validityDays
+              ? new Date(Date.now() + plan.validityDays * 24 * 60 * 60 * 1000)
+              : null;
+
+            await this.createPendingUC.execute({
+              doctorId: dto.doctor_id,
+              patientId: patient.id,
+              paymentId,
+              planName: dto.plan_name,
+              officeId: dto.office_id ?? null,
+              appointmentMode: dto.appointment_mode,
+              sessionNumbers: deferredSessionNumbers,
+              expiresAt,
+              transaction: t,
+            });
+          }
+        }
       }
 
       return saved;

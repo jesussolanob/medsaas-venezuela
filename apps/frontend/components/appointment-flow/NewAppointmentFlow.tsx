@@ -13,15 +13,150 @@
  * API pública (no cambiar): Props + AppointmentContext
  */
 
-import { AlertCircle, Calendar, CreditCard, MapPin, Pill, User, X } from 'lucide-react';
+import { useState } from 'react';
+import {
+  AlertCircle,
+  Calendar,
+  CalendarClock,
+  CreditCard,
+  MapPin,
+  Pill,
+  User,
+  X,
+} from 'lucide-react';
 import AccordionSection from './AccordionSection';
 import { DeltaMark } from '@/components/dh';
 import { useAppointmentFlow } from './useAppointmentFlow';
+import type { DeferredSessionsContext } from './useAppointmentFlow';
 import StepPatient from './steps/StepPatient';
 import StepOffice from './steps/StepOffice';
 import StepServiceType from './steps/StepServiceType';
 import StepSchedule from './steps/StepSchedule';
 import StepPayment from './steps/StepPayment';
+import { showToast } from '@/components/ui/Toaster';
+
+// ---------------------------------------------------------------------------
+// DeferredSessionsModal
+// Shown after a successful multi-session plan appointment when sessions > 1.
+// Offers "schedule remaining sessions later" (bulk-create pending-consultations)
+// or dismissal (user will schedule on demand from the pending-consultations list).
+// ---------------------------------------------------------------------------
+
+function DeferredSessionsModal({
+  ctx,
+  onClose,
+  onDone,
+}: {
+  ctx: DeferredSessionsContext;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const deferredCount = ctx.sessionsCount - 1;
+  const sessionNumbers = Array.from({ length: deferredCount }, (_, i) => i + 2);
+  const [submitting, setSubmitting] = useState(false);
+
+  async function handleDeferLater() {
+    setSubmitting(true);
+    try {
+      const res = await fetch('/api/doctor/pending-consultations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          patient_id: ctx.patientId,
+          plan_id: ctx.planId,
+          session_numbers: sessionNumbers,
+          office_id: ctx.officeId ?? null,
+          appointment_mode: ctx.appointmentMode,
+        }),
+      });
+      const json = (await res.json()) as { error?: string };
+      if (!res.ok) {
+        showToast({
+          type: 'error',
+          message: json.error ?? 'No se pudieron crear las consultas diferidas',
+        });
+        return;
+      }
+      showToast({
+        type: 'success',
+        message: `${deferredCount} ${deferredCount === 1 ? 'consulta creada' : 'consultas creadas'} en "Consultas por agendar"`,
+      });
+      onDone();
+    } catch {
+      showToast({ type: 'error', message: 'Error de conexión. Intenta de nuevo.' });
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4">
+      <div
+        className="bg-white rounded-2xl w-full max-w-md shadow-2xl"
+        style={{ fontFamily: "'Inter', sans-serif" }}
+      >
+        {/* Header */}
+        <div
+          className="px-5 py-4 text-white rounded-t-2xl"
+          style={{ background: 'linear-gradient(135deg, #06B6D4 0%, #0891b2 50%, #0E7490 100%)' }}
+        >
+          <div className="flex items-center gap-3">
+            <CalendarClock className="w-6 h-6 text-white/90" />
+            <div>
+              <h3 className="text-base font-bold">Cita creada</h3>
+              <p className="text-xs text-white/80">
+                {ctx.planName} — sesión 1 de {ctx.sessionsCount} agendada
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="px-5 py-5 space-y-4">
+          <p className="text-sm text-slate-700">
+            Este plan incluye <strong>{ctx.sessionsCount} sesiones en total.</strong> ¿Qué hacemos
+            con las{' '}
+            <strong>
+              {deferredCount} {deferredCount === 1 ? 'sesión restante' : 'sesiones restantes'}
+            </strong>
+            ?
+          </p>
+
+          <div className="space-y-2">
+            <button
+              onClick={handleDeferLater}
+              disabled={submitting}
+              className="w-full flex items-center gap-3 px-4 py-3.5 rounded-xl border-2 border-teal-400 bg-teal-50 text-teal-800 text-sm font-semibold hover:bg-teal-100 transition-colors disabled:opacity-50 text-left"
+            >
+              <CalendarClock className="w-5 h-5 shrink-0 text-teal-600" />
+              <div>
+                <p className="font-bold text-teal-800">Agendar después</p>
+                <p className="text-xs font-normal text-teal-600 mt-0.5">
+                  Se crean {deferredCount}{' '}
+                  {deferredCount === 1 ? 'consulta pendiente' : 'consultas pendientes'} en
+                  &quot;Consultas por agendar&quot;
+                </p>
+              </div>
+            </button>
+
+            <button
+              onClick={onClose}
+              disabled={submitting}
+              className="w-full flex items-center gap-3 px-4 py-3.5 rounded-xl border-2 border-slate-200 bg-white text-slate-700 text-sm font-semibold hover:bg-slate-50 transition-colors disabled:opacity-50 text-left"
+            >
+              <X className="w-5 h-5 shrink-0 text-slate-400" />
+              <div>
+                <p className="font-bold">Ignorar por ahora</p>
+                <p className="text-xs font-normal text-slate-500 mt-0.5">
+                  Podrás crearlas manualmente más adelante
+                </p>
+              </div>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Public types (unchanged API)
@@ -57,6 +192,24 @@ export default function NewAppointmentFlow({ open, onClose, onSuccess, initialCo
   const flow = useAppointmentFlow(open, onClose, onSuccess, initialContext);
 
   if (!open) return null;
+
+  // Deferred-sessions prompt: shown when a multi-session plan appointment was
+  // just created. It sits on top of the (now closed) wizard.
+  if (flow.deferredContext) {
+    return (
+      <DeferredSessionsModal
+        ctx={flow.deferredContext}
+        onClose={() => {
+          flow.clearDeferredContext();
+          onClose();
+        }}
+        onDone={() => {
+          flow.clearDeferredContext();
+          onClose();
+        }}
+      />
+    );
+  }
 
   const fmtDateTime = (iso: string) => {
     if (!iso) return '';

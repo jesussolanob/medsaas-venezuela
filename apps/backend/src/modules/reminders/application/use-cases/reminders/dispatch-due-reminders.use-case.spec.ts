@@ -278,7 +278,7 @@ describe('DispatchDueRemindersUseCase', () => {
   // Fallback doctor name
   // ---------------------------------------------------------------------------
 
-  it('uses "Su médico" when doctor profile is not found', async () => {
+  it('uses "Su especialista" when doctor profile is not found', async () => {
     const row = makeDueRow();
     mockQueueRepo.findDueForReminder.mockImplementation((offsetType: string) => {
       return Promise.resolve(offsetType === '24h' ? [row] : []);
@@ -290,7 +290,7 @@ describe('DispatchDueRemindersUseCase', () => {
     expect(mockMailer.sendTemplate).toHaveBeenCalledWith(
       'reminder_confirm_24h',
       row.patientEmail,
-      expect.objectContaining({ doctor_name: 'Su médico' }),
+      expect.objectContaining({ doctor_name: 'Su especialista' }),
       expect.anything(),
     );
   });

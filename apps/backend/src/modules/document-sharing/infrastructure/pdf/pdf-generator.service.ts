@@ -112,7 +112,7 @@ export class PdfGeneratorService {
     });
 
     const infoLines = [
-      `Médico: ${data.doctorName}`,
+      `Especialista: ${data.doctorName}`,
       `Paciente: ${data.patientName}`,
       ...(data.patientCedula ? [`Cédula: ${data.patientCedula}`] : []),
       `Fecha de consulta: ${consultationDateStr}`,

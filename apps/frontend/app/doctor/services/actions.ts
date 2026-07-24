@@ -56,6 +56,7 @@ export async function createDoctorService(input: {
   price_usd: number;
   duration_minutes: number;
   sessions_count: number;
+  validity_days?: number | null;
   description?: string | null;
   type?: 'plan' | 'service';
   show_in_booking?: boolean;
@@ -79,6 +80,7 @@ export async function updateDoctorService(
     price_usd: number;
     duration_minutes: number;
     sessions_count: number;
+    validity_days: number | null;
     description: string | null;
     type: 'plan' | 'service';
     show_in_booking: boolean;

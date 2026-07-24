@@ -72,6 +72,13 @@ export class PricingPlanModel extends Model {
   @Column({ type: DataType.BOOLEAN, allowNull: true, field: 'is_active' })
   declare isActive: boolean;
 
+  /**
+   * Days after purchase that a patient has to schedule deferred sessions.
+   * null = no expiry. Populated by migration 20260723000002-pending-consultations.
+   */
+  @Column({ type: DataType.INTEGER, allowNull: true, field: 'validity_days' })
+  declare validityDays: number | null;
+
   @CreatedAt
   @Column({ field: 'created_at' })
   declare createdAt: Date;

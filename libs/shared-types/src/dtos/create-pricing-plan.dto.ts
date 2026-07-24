@@ -16,6 +16,13 @@ export const CreatePricingPlanDtoSchema = z
      * null / absent = general plan (usable at all offices — backward compat).
      */
     office_id: z.string().uuid().nullable().optional(),
+    /**
+     * Validity in days for services with sessions_count > 1.
+     * Defines the deadline after purchase within which the patient must schedule
+     * all remaining sessions (pending consultations).
+     * null / absent = no expiry limit.
+     */
+    validity_days: z.number().int().positive().nullable().optional(),
   })
   .strict();
 

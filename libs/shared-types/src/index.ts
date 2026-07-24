@@ -55,3 +55,4 @@ export * from './dtos/income-list-item.dto';
 export * from './dtos/update-payment-details-cobros.dto';
 export * from './dtos/send-appointment-reminder.dto';
 export * from './dtos/confirm-appointment.dto';
+export * from './pending-consultation.schema';

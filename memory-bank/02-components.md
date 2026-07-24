@@ -412,3 +412,24 @@ Widget de ayuda con IA, disponible para los 3 perfiles. Patrón: panel global + 
 - **`GlobalExceptionFilter`:** mensaje 500 genérico ahora en español ("Ocurrió un error inesperado").
 - **Migración `20260722000001`:** `ALTER TYPE subscription_status ADD VALUE IF NOT EXISTS 'trialing'` — el enum PG
   no tenía `trialing` (que el código asigna al trial de onboarding) → rompía TODO registro nuevo en prod. Fix idempotente.
+
+### Preconsultas "Consultas por agendar" + terminología especialista (2026-07-23 — ver ADR-025)
+
+- **Backend módulo NUEVO `modules/pending-consultations/`** (DDD): entidad `PendingConsultation` (`isSchedulable()`,
+  `markScheduled()`), repo `IPendingConsultationRepository` (findByIdAndDoctor/findByDoctor/findById/findDueForReminder/
+  findExpired/bulkCreate/save/bulkExpire/updateReminderStage), use-cases (get-doctor-list, schedule, cancel, create-bulk,
+  create-doctor-bulk [anti-IDOR paciente+plan], expire-due, dispatch-reminders, get-by-token, schedule-by-token),
+  `PendingConsultationTokenService` (HMAC namespaced). Tabla `pending_consultations` (mig `20260723000002`) + columnas
+  `pricing_plans.validity_days` y `patient_packages.expires_at`. Endpoints en 04-api.
+- **Módulos tocados:** `booking` (CreateBookingUseCase: bloque multi-sesión — 1ª cita + adicionales + preconsultas diferidas,
+  retrocompatible si `sessions_count<=1`), `doctor-settings` (create/update-service acepta `validity_days`; `PricingPlan`
+  gana `validityDays`), `reminders` (cron controller invoca dispatch+expire de preconsultas), `appointments`
+  (`findFirstCompletedByPaymentId` para el ancla del recordatorio).
+- **Frontend NUEVO:** `app/doctor/pending-consultations/` (page + `PendingConsultationsClient` — lista/filtros/badge de
+  vencimiento/modales agendar-cancelar) con item "Consultas por agendar" en el sidebar Consultorio; página pública
+  `app/agendar/[token]/` (`AgendarTokenClient` — info por token + selector de slots + confirmar). BFF: `app/api/doctor/
+pending-consultations/**`, `app/api/public/pending-consultations/[token]/**`, `app/api/booking/[doctorId]/offices`.
+  Booking (`BookingClient.tsx`): paso "agendar ahora las restantes / Agendar después" cuando `sessions_count>1`, envía
+  `plan_id`+`additional_sessions`. `NewAppointmentFlow`: modal de diferir (bulk-create). Servicios: campo "Validez (días)".
+- **Terminología:** "médico" sustantivo→"especialista" en UI/guías/correos (conserva adjetivos + Dr./Dra.). Mig
+  `20260723000001` actualiza plantillas de email en BD.
