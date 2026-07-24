@@ -367,7 +367,7 @@ describe('AuthController', () => {
 
     expect(result.success).toBe(true);
     expect(result.data.token).toBe('the-reviewer-token');
-    expect(result.data.expiresInSeconds).toBe(900);
+    expect(result.data.expiresInSeconds).toBe(ReviewerTokenService.EXPIRY_SECONDS);
   });
 
   it('calls ReviewerTokenService.mint with the configured REVIEWER_PROFILE_ID', async () => {

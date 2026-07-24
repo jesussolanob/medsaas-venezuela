@@ -87,16 +87,17 @@ describe('ReviewerTokenService', () => {
     expect(payload!.sub).toBe(PROFILE_ID);
   });
 
-  it('verify payload.exp is approximately 15 minutes from now', () => {
+  it('verify payload.exp is approximately EXPIRY_SECONDS from now', () => {
+    const ttl = ReviewerTokenService.EXPIRY_SECONDS;
     const before = Math.floor(Date.now() / 1000);
     const token = service.mint(PROFILE_ID);
     const after = Math.floor(Date.now() / 1000);
 
     const payload = service.verify(token);
     expect(payload).not.toBeNull();
-    // exp should be in [before+900, after+900]
-    expect(payload!.exp).toBeGreaterThanOrEqual(before + 900);
-    expect(payload!.exp).toBeLessThanOrEqual(after + 900);
+    // exp should be in [before+ttl, after+ttl]
+    expect(payload!.exp).toBeGreaterThanOrEqual(before + ttl);
+    expect(payload!.exp).toBeLessThanOrEqual(after + ttl);
   });
 
   // ---------------------------------------------------------------------------
@@ -118,8 +119,10 @@ describe('ReviewerTokenService', () => {
   it('returns null for an expired token (exp in the past)', () => {
     const realDateNow = Date.now;
     try {
-      // Set clock to 30 minutes ago so mint() sets exp = (now-30min) + 15min < real now
-      Date.now = () => realDateNow() - 30 * 60 * 1000;
+      // Set clock to (EXPIRY_SECONDS + 1h) ago so mint() sets exp = (now - ttl - 1h) + ttl,
+      // i.e. one hour in the past relative to the real clock → definitely expired.
+      const pastMs = (ReviewerTokenService.EXPIRY_SECONDS + 60 * 60) * 1000;
+      Date.now = () => realDateNow() - pastMs;
       const expiredToken = service.mint(PROFILE_ID);
       Date.now = realDateNow;
 
