@@ -23,11 +23,18 @@ import { backendPost } from '@/lib/api-client.server';
 const STATE_COOKIE = 'g_oauth_state';
 
 export async function GET(req: NextRequest): Promise<NextResponse> {
-  // En Cloud Run, new URL(req.url).origin resuelve al bind interno (0.0.0.0:8080).
-  // Usar la URL pública configurada para el redirect de vuelta a la app.
+  // APP_BASE_URL PRIMERO: es la URL pública REAL que sirve la app, seteada en
+  // runtime por Cloud Run (= deltasalud.app en prod, staging.deltasalud.app en
+  // staging). NEXT_PUBLIC_URL se inlinea en build-time desde vars.FRONTEND_URL, que
+  // quedó apuntando al *.run.app viejo tras el cutover de dominio (2026-07-18) → si
+  // se prioriza, el callback redirige a OTRO host donde las cookies de sesión
+  // (reviewer_token / Auth0) NO existen → rebote a /auth/login. Debe reflejar la
+  // prioridad de google/auth/route.ts (APP_BASE_URL primero) para que ida y vuelta
+  // usen el MISMO host. En Cloud Run, new URL(req.url).origin cae al bind interno
+  // (0.0.0.0:8080), por eso es el último recurso.
   const origin =
-    process.env.NEXT_PUBLIC_URL ||
     process.env.APP_BASE_URL ||
+    process.env.NEXT_PUBLIC_URL ||
     process.env.NEXTAUTH_URL ||
     new URL(req.url).origin;
   const settingsUrl = `${origin}/doctor/settings?tab=integrations`;
