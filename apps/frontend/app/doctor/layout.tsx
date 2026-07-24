@@ -37,6 +37,7 @@ import {
   FileUp,
   FileText,
   CalendarClock,
+  Shield,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { logoutAction } from './logout-action';
@@ -221,6 +222,7 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
   const [planFeatures, setPlanFeatures] = useState<PlanFeatures | null>(null);
   const [accountBlocked, setAccountBlocked] = useState(false);
   const [termsModalOpen, setTermsModalOpen] = useState(false);
+  const [privacyModalOpen, setPrivacyModalOpen] = useState(false);
 
   // Intercept 403 ACCOUNT_BLOCKED from any BFF fetch in the doctor portal.
   useAccountBlockedGuard(() => {
@@ -785,6 +787,23 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
             </button>
 
             <button
+              onClick={() => setPrivacyModalOpen(true)}
+              className="flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm w-full transition-all"
+              style={{ color: 'var(--dh-gray-400)' }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.color = 'var(--dh-gray-600)';
+                e.currentTarget.style.background = 'var(--dh-gray-50)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.color = 'var(--dh-gray-400)';
+                e.currentTarget.style.background = 'transparent';
+              }}
+            >
+              <Shield className="w-4 h-4" />
+              Política de Privacidad
+            </button>
+
+            <button
               onClick={handleLogout}
               className="flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm w-full transition-all"
               style={{ color: 'var(--dh-gray-400)' }}
@@ -803,6 +822,11 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
           </div>
         </aside>
         <TermsModal open={termsModalOpen} onClose={() => setTermsModalOpen(false)} />
+        <TermsModal
+          docType="privacy"
+          open={privacyModalOpen}
+          onClose={() => setPrivacyModalOpen(false)}
+        />
 
         {/* Main content */}
         <div

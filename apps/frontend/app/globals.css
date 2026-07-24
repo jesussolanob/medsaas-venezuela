@@ -1,6 +1,6 @@
-@import "tailwindcss";
-@import "tw-animate-css";
-@import "shadcn/tailwind.css";
+@import 'tailwindcss';
+@import 'tw-animate-css';
+@import 'shadcn/tailwind.css';
 
 @custom-variant dark (&:is(.dark *));
 
@@ -13,37 +13,37 @@
    ============================================================ */
 :root {
   /* Primary palette */
-  --dh-turquoise:        #06B6D4;
-  --dh-turquoise-700:    #0891B2;
-  --dh-turquoise-500:    #22D3EE;
-  --dh-turquoise-100:    #CFFAFE;
-  --dh-turquoise-50:     #ECFEFF;
+  --dh-turquoise: #06b6d4;
+  --dh-turquoise-700: #0891b2;
+  --dh-turquoise-500: #22d3ee;
+  --dh-turquoise-100: #cffafe;
+  --dh-turquoise-50: #ecfeff;
 
   /* Neutrals */
-  --dh-white:            #FFFFFF;
-  --dh-bone:             #FAFBFC;
-  --dh-gray-50:          #F4F6F8;
-  --dh-gray-100:         #E8ECF0;
-  --dh-gray-200:         #D6DCE3;
-  --dh-gray-400:         #97A3AF;
-  --dh-gray-600:         #5A6773;
-  --dh-gray-800:         #2A3340;
-  --dh-ink:              #0F1A2A;
+  --dh-white: #ffffff;
+  --dh-bone: #fafbfc;
+  --dh-gray-50: #f4f6f8;
+  --dh-gray-100: #e8ecf0;
+  --dh-gray-200: #d6dce3;
+  --dh-gray-400: #97a3af;
+  --dh-gray-600: #5a6773;
+  --dh-gray-800: #2a3340;
+  --dh-ink: #0f1a2a;
 
   /* Coral accent */
-  --dh-coral:            #FF8A65;
-  --dh-coral-600:        #F26F4A;
-  --dh-coral-100:        #FFE5DA;
+  --dh-coral: #ff8a65;
+  --dh-coral-600: #f26f4a;
+  --dh-coral-100: #ffe5da;
 
   /* Semantic */
-  --dh-success:          #10B981;
-  --dh-warning:          #F59E0B;
-  --dh-error:            #EF4444;
+  --dh-success: #10b981;
+  --dh-warning: #f59e0b;
+  --dh-error: #ef4444;
 
   /* Type scale */
-  --dh-font-display:     var(--font-sans, "Plus Jakarta Sans"), system-ui, sans-serif;
-  --dh-font-body:        var(--font-sans, "Plus Jakarta Sans"), system-ui, sans-serif;
-  --dh-font-mono:        var(--font-mono, "JetBrains Mono"), ui-monospace, monospace;
+  --dh-font-display: var(--font-sans, 'Plus Jakarta Sans'), system-ui, sans-serif;
+  --dh-font-body: var(--font-sans, 'Plus Jakarta Sans'), system-ui, sans-serif;
+  --dh-font-mono: var(--font-mono, 'JetBrains Mono'), ui-monospace, monospace;
 
   /* Radius */
   --dh-r-sm: 8px;
@@ -53,39 +53,56 @@
   --dh-r-pill: 999px;
 
   /* Shadow */
-  --dh-shadow-sm: 0 1px 2px rgba(15,26,42,.06), 0 1px 3px rgba(15,26,42,.04);
-  --dh-shadow-md: 0 4px 12px rgba(15,26,42,.06), 0 2px 6px rgba(15,26,42,.04);
-  --dh-shadow-lg: 0 18px 40px rgba(6,182,212,.10), 0 6px 14px rgba(15,26,42,.06);
+  --dh-shadow-sm: 0 1px 2px rgba(15, 26, 42, 0.06), 0 1px 3px rgba(15, 26, 42, 0.04);
+  --dh-shadow-md: 0 4px 12px rgba(15, 26, 42, 0.06), 0 2px 6px rgba(15, 26, 42, 0.04);
+  --dh-shadow-lg: 0 18px 40px rgba(6, 182, 212, 0.1), 0 6px 14px rgba(15, 26, 42, 0.06);
 }
 
 /* Type system DH */
 .dh-eyebrow {
-  font-size: 14px; font-weight: 600;
-  letter-spacing: .14em; text-transform: uppercase;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
   color: var(--dh-turquoise-700);
 }
 .dh-display {
-  font-family: var(--dh-font-display); font-weight: 700;
-  font-size: 96px; line-height: .98; letter-spacing: -.035em;
+  font-family: var(--dh-font-display);
+  font-weight: 700;
+  font-size: 96px;
+  line-height: 0.98;
+  letter-spacing: -0.035em;
 }
 .dh-h1 {
-  font-family: var(--dh-font-display); font-weight: 700;
-  font-size: 64px; line-height: 1.02; letter-spacing: -.028em;
+  font-family: var(--dh-font-display);
+  font-weight: 700;
+  font-size: 64px;
+  line-height: 1.02;
+  letter-spacing: -0.028em;
 }
 .dh-h2 {
-  font-weight: 600; font-size: 36px;
-  line-height: 1.15; letter-spacing: -.018em;
+  font-weight: 600;
+  font-size: 36px;
+  line-height: 1.15;
+  letter-spacing: -0.018em;
 }
 .dh-body-lg {
-  font-size: 22px; line-height: 1.5;
-  color: var(--dh-gray-600); text-wrap: pretty;
+  font-size: 22px;
+  line-height: 1.5;
+  color: var(--dh-gray-600);
+  text-wrap: pretty;
 }
 .dh-body {
-  font-size: 18px; line-height: 1.55; color: var(--dh-gray-600);
+  font-size: 18px;
+  line-height: 1.55;
+  color: var(--dh-gray-600);
 }
 .dh-caption {
-  font-family: var(--dh-font-mono); font-size: 12px;
-  letter-spacing: .04em; color: var(--dh-gray-400); text-transform: uppercase;
+  font-family: var(--dh-font-mono);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  color: var(--dh-gray-400);
+  text-transform: uppercase;
 }
 
 /* DH Card */
@@ -98,23 +115,46 @@
 
 /* DH Buttons (legacy class — preferir <Btn> componente) */
 .dh-btn {
-  font-family: var(--dh-font-display); font-weight: 600; font-size: 16px;
-  border-radius: var(--dh-r-pill); padding: 16px 28px;
-  border: none; cursor: pointer; display: inline-flex;
-  align-items: center; gap: 10px;
-  transition: all .18s cubic-bezier(.2,.8,.2,1);
+  font-family: var(--dh-font-display);
+  font-weight: 600;
+  font-size: 16px;
+  border-radius: var(--dh-r-pill);
+  padding: 16px 28px;
+  border: none;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  transition: all 0.18s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
-.dh-btn-primary { background: var(--dh-ink); color: var(--dh-white); }
-.dh-btn-primary:hover { background: var(--dh-turquoise-700); transform: translateY(-1px); }
-.dh-btn-accent { background: var(--dh-coral); color: var(--dh-white); }
-.dh-btn-accent:hover { background: var(--dh-coral-600); }
-.dh-btn-ghost { background: transparent; color: var(--dh-ink); border: 1.5px solid var(--dh-gray-200); }
-.dh-btn-ghost:hover { border-color: var(--dh-ink); }
+.dh-btn-primary {
+  background: var(--dh-ink);
+  color: var(--dh-white);
+}
+.dh-btn-primary:hover {
+  background: var(--dh-turquoise-700);
+  transform: translateY(-1px);
+}
+.dh-btn-accent {
+  background: var(--dh-coral);
+  color: var(--dh-white);
+}
+.dh-btn-accent:hover {
+  background: var(--dh-coral-600);
+}
+.dh-btn-ghost {
+  background: transparent;
+  color: var(--dh-ink);
+  border: 1.5px solid var(--dh-gray-200);
+}
+.dh-btn-ghost:hover {
+  border-color: var(--dh-ink);
+}
 
 /* Utility class for monospace metadata (cédulas, IDs, timestamps) */
 .dh-mono {
   font-family: var(--dh-font-mono);
-  letter-spacing: .02em;
+  letter-spacing: 0.02em;
 }
 
 @theme inline {
@@ -240,4 +280,86 @@
   html {
     @apply font-sans;
   }
+}
+
+/* ---------------------------------------------------------------------------
+ * Documentos legales inyectados por HTML (dangerouslySetInnerHTML): Términos y
+ * Condiciones y Política de Privacidad servidos desde legal_documents.
+ * Tailwind preflight resetea los márgenes de h1/h2/p, por lo que sin estas
+ * reglas el texto sale amontonado. Da jerarquía, espaciado y justificado limpio.
+ * ------------------------------------------------------------------------- */
+.terms-page-content {
+  color: #334155; /* slate-700 */
+}
+.terms-page-content h1 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #0f172a; /* slate-900 */
+  line-height: 1.3;
+  margin-bottom: 0.5rem;
+}
+.terms-page-content h2 {
+  font-size: 1.075rem;
+  font-weight: 600;
+  color: #0f172a;
+  line-height: 1.4;
+  margin-top: 1.75rem;
+  margin-bottom: 0.5rem;
+}
+.terms-page-content h3 {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #1e293b; /* slate-800 */
+  margin-top: 1.25rem;
+  margin-bottom: 0.4rem;
+}
+.terms-page-content p {
+  margin-bottom: 0.9rem;
+  line-height: 1.75;
+  text-align: justify;
+  hyphens: auto;
+}
+.terms-page-content ul,
+.terms-page-content ol {
+  margin: 0.5rem 0 1.1rem;
+  padding-left: 1.4rem;
+}
+.terms-page-content ul {
+  list-style: disc;
+}
+.terms-page-content ol {
+  list-style: decimal;
+}
+.terms-page-content li {
+  margin-bottom: 0.55rem;
+  line-height: 1.7;
+  text-align: justify;
+  hyphens: auto;
+}
+.terms-page-content a {
+  color: #0d9488; /* teal-600 */
+  text-decoration: underline;
+}
+.terms-page-content a:hover {
+  color: #0f766e; /* teal-700 */
+}
+.terms-page-content strong {
+  font-weight: 600;
+  color: #0f172a;
+}
+.terms-page-content em {
+  font-style: italic;
+}
+.terms-page-content code {
+  background: #f1f5f9; /* slate-100 */
+  padding: 0.1rem 0.35rem;
+  border-radius: 0.25rem;
+  font-size: 0.85em;
+  font-family: var(--font-mono, ui-monospace, monospace);
+}
+/* La primera línea (fecha) en cursiva se ve como metadato, no como cuerpo. */
+.terms-page-content h1 + p {
+  margin-top: -0.25rem;
+  color: #64748b; /* slate-500 */
+  text-align: left;
 }

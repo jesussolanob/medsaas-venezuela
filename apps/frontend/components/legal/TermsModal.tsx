@@ -30,6 +30,8 @@ interface TermsResponse {
 interface TermsModalProps {
   open: boolean;
   onClose: () => void;
+  /** Documento legal a mostrar. Por defecto los Términos y Condiciones. */
+  docType?: 'terms' | 'privacy';
 }
 
 function formatUpdatedAt(rawDate: string): string {
@@ -45,7 +47,9 @@ function formatUpdatedAt(rawDate: string): string {
   }
 }
 
-export default function TermsModal({ open, onClose }: TermsModalProps) {
+export default function TermsModal({ open, onClose, docType = 'terms' }: TermsModalProps) {
+  const title = docType === 'privacy' ? 'Política de Privacidad' : 'Términos y Condiciones';
+  const pageHref = `/${docType}`;
   const [termsData, setTermsData] = useState<TermsData | null>(null);
   const [loading, setLoading] = useState(false);
   const [fetchError, setFetchError] = useState(false);
@@ -64,7 +68,7 @@ export default function TermsModal({ open, onClose }: TermsModalProps) {
     setLoading(true);
     setFetchError(false);
 
-    void fetch('/api/legal/terms')
+    void fetch(`/api/legal/${docType}`)
       .then((r) => r.json() as Promise<TermsResponse>)
       .then((json) => {
         if (json.success) {
@@ -79,7 +83,7 @@ export default function TermsModal({ open, onClose }: TermsModalProps) {
       .finally(() => {
         setLoading(false);
       });
-  }, [open, termsData]);
+  }, [open, termsData, docType]);
 
   // Escape key to close
   useEffect(() => {
@@ -120,7 +124,7 @@ export default function TermsModal({ open, onClose }: TermsModalProps) {
       className="fixed inset-0 z-[9999] flex items-center justify-center p-4"
       role="dialog"
       aria-modal="true"
-      aria-label="Términos y Condiciones"
+      aria-label={title}
     >
       {/* Backdrop */}
       <div
@@ -144,9 +148,7 @@ export default function TermsModal({ open, onClose }: TermsModalProps) {
               <FileText className="w-4 h-4 text-teal-600" />
             </div>
             <div>
-              <h2 className="text-base font-bold text-slate-800 leading-tight">
-                Términos y Condiciones
-              </h2>
+              <h2 className="text-base font-bold text-slate-800 leading-tight">{title}</h2>
               {formattedDate && (
                 <p className="text-xs text-slate-400 mt-0.5">
                   Última actualización: {formattedDate}
@@ -160,7 +162,7 @@ export default function TermsModal({ open, onClose }: TermsModalProps) {
           <button
             ref={closeButtonRef}
             onClick={onClose}
-            aria-label="Cerrar Términos y Condiciones"
+            aria-label={`Cerrar ${title}`}
             className="p-2 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
           >
             <X className="w-4 h-4" />
@@ -172,24 +174,22 @@ export default function TermsModal({ open, onClose }: TermsModalProps) {
           {loading && (
             <div className="flex flex-col items-center justify-center py-16 gap-3">
               <Loader2 className="w-6 h-6 text-teal-500 animate-spin" />
-              <p className="text-sm text-slate-500">Cargando términos...</p>
+              <p className="text-sm text-slate-500">Cargando…</p>
             </div>
           )}
 
           {!loading && fetchError && (
             <div className="flex flex-col items-center justify-center py-16 gap-2 text-center">
-              <p className="text-sm font-medium text-slate-700">
-                No se pudieron cargar los términos
-              </p>
+              <p className="text-sm font-medium text-slate-700">No se pudo cargar el documento</p>
               <p className="text-sm text-slate-500">
                 Intenta nuevamente o{' '}
                 <a
-                  href="/terms"
+                  href={pageHref}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-teal-600 hover:underline"
                 >
-                  ábrelos en una nueva pestaña
+                  ábrelo en una nueva pestaña
                 </a>
                 .
               </p>
@@ -204,6 +204,21 @@ export default function TermsModal({ open, onClose }: TermsModalProps) {
                   className="terms-content prose-terms text-slate-700 text-sm leading-relaxed"
                   dangerouslySetInnerHTML={{ __html: termsData.contentHtml }}
                 />
+              ) : docType === 'privacy' ? (
+                <div className="terms-content text-slate-700 text-sm leading-relaxed space-y-4">
+                  <p>
+                    Consulta nuestra{' '}
+                    <a
+                      href="/privacy"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-teal-600 hover:underline"
+                    >
+                      Política de Privacidad
+                    </a>
+                    .
+                  </p>
+                </div>
               ) : (
                 /* Fallback cuando backend devuelve datos pero sin HTML */
                 <div className="terms-content text-slate-700 text-sm leading-relaxed space-y-4">
