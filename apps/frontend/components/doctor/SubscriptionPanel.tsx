@@ -30,6 +30,7 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import { useBcvRate } from '@/lib/useBcvRate';
+import { showToast } from '@/components/ui/Toaster';
 
 type SubscriptionData = {
   state: {
@@ -365,11 +366,14 @@ function CheckoutModal({ data, onClose }: { data: SubscriptionData; onClose: () 
 
   async function submit() {
     if (!reference.trim()) {
-      alert('Ingresa el número de referencia o comprobante');
+      showToast({ type: 'error', message: 'Ingresa el número de referencia o comprobante' });
       return;
     }
     if (isBsMethod && !bcvRate) {
-      alert('No se pudo obtener la tasa BCV. Refrescá e intentá de nuevo.');
+      showToast({
+        type: 'error',
+        message: 'No se pudo obtener la tasa BCV. Refresca e intenta de nuevo.',
+      });
       return;
     }
     setSubmitting(true);
@@ -391,9 +395,10 @@ function CheckoutModal({ data, onClose }: { data: SubscriptionData; onClose: () 
       const r = await fetch('/api/doctor/subscription/checkout', { method: 'POST', body: fd });
       const j = await r.json();
       if (!r.ok) throw new Error(j.error);
+      showToast({ type: 'success', message: 'Comprobante enviado correctamente' });
       setSuccess(true);
     } catch (e: any) {
-      alert(`Error: ${e.message}`);
+      showToast({ type: 'error', message: e.message || 'Error al enviar el comprobante' });
     } finally {
       setSubmitting(false);
     }

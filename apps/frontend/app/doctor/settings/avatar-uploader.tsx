@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { User, Camera, Loader2, Check, X, ZoomIn, ZoomOut } from 'lucide-react';
+import { showToast } from '@/components/ui/Toaster';
 
 type Props = {
   doctorId: string | null;
@@ -134,6 +135,7 @@ export default function AvatarUploader({ doctorId, currentUrl, onUploaded }: Pro
       // Do NOT append ?t= — it breaks GCS signed URLs (second ? invalidates the signature).
       // Each upload produces a unique GCS path (timestamp in path), so no caching issue.
       const finalUrl = uploadJson.data.url;
+      showToast({ type: 'success', message: 'Foto de perfil actualizada' });
       onUploaded(finalUrl);
       setSourceImg(null);
       setSourceDataUrl(null);

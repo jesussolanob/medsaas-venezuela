@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { isValidEmail } from '@/lib/validation';
+import { showToast } from '@/components/ui/Toaster';
 import {
   DoctorOffice,
   PatientLookup,
@@ -587,6 +588,7 @@ export function useAppointmentFlow(
       if (!json?.data) throw new Error('Respuesta inesperada del servidor');
       const created = normalizePatient(json.data);
       setSelectedPatient(created);
+      showToast({ type: 'success', message: 'Paciente creado correctamente' });
       setShowInlineCreator(false);
       setCurrentStep(2);
     } catch (err: unknown) {
@@ -664,6 +666,7 @@ export function useAppointmentFlow(
       if (!r.ok) throw new Error(j.error ?? 'Error al crear cita');
 
       const createdAppointmentId = j.appointmentId ?? '';
+      showToast({ type: 'success', message: 'Cita agendada correctamente' });
       onSuccess?.(createdAppointmentId);
 
       // Multi-session plan (not a package): offer to defer remaining sessions.

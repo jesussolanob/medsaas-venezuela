@@ -12,6 +12,7 @@
 import { useRef, useState, useEffect, useCallback } from 'react';
 import { Eraser, Check, Loader2 } from 'lucide-react';
 import { saveSignatureUrl } from './actions';
+import { showToast } from '@/components/ui/Toaster';
 
 interface SignaturePadProps {
   /** Callback que recibe la URL guardada en el backend para actualizar el preview externo. */
@@ -184,6 +185,7 @@ export default function SignaturePad({ onSaved, onError }: SignaturePadProps) {
         throw new Error(saved.error ?? 'Error al guardar la URL de la firma');
       }
 
+      showToast({ type: 'success', message: 'Firma guardada correctamente' });
       onSaved(url);
       clearPad();
     } catch (err: unknown) {

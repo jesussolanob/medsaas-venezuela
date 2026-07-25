@@ -39,12 +39,6 @@ import { toLocalHHMM, toLocalYMD } from '@/lib/timezone';
 import { showToast } from '@/components/ui/Toaster';
 import { reportError } from '@/lib/report-error';
 
-// AUDIT FIX 2026-04-28 (FASE 5C): toast real con Toaster propio (sin alert nativo).
-const toast = {
-  success: (msg: string) => showToast({ type: 'success', message: msg }),
-  error: (msg: string) => showToast({ type: 'error', message: msg }),
-};
-
 // RONDA 19c — Helper UNICO de estilos por status para citas en la agenda.
 // Cancelled: rojo claro fondo, texto rojo oscuro, borde rojo solido + opacity + line-through.
 const APPT_STYLE: Record<
@@ -738,10 +732,10 @@ export default function AgendaPage() {
         }),
       });
       if (!res.ok) throw new Error('Error guardando');
-      toast.success('Disponibilidad guardada');
+      showToast({ type: 'success', message: 'Disponibilidad guardada' });
     } catch (e) {
       reportError('doctor/agenda', 'handleSaveAvailability', e);
-      toast.error('Error al guardar');
+      showToast({ type: 'error', message: 'Error al guardar' });
     }
     setSaving(false);
   }
@@ -774,10 +768,10 @@ export default function AgendaPage() {
       if (!res.ok) throw new Error('Error guardando configuración');
       setBookingHorizonWeeks(clamped);
       setMinLeadDays(clampedLead);
-      toast.success('Configuración de booking actualizada');
+      showToast({ type: 'success', message: 'Configuración de booking actualizada' });
     } catch (e) {
       reportError('doctor/agenda', 'saveBookingHorizon', e);
-      toast.error('Error al guardar configuración');
+      showToast({ type: 'error', message: 'Error al guardar configuración' });
     } finally {
       setSavingHorizon(false);
     }
@@ -798,14 +792,18 @@ export default function AgendaPage() {
       if (!isValidSlotTime(timeStr, dayOfWeek, availSlots, config)) {
         const validSlots = generateTimeSlots(dayOfWeek, availSlots, config);
         if (validSlots.length > 0) {
-          toast.error(
-            `Horario ${timeStr} no es válido. Horarios disponibles: ${validSlots
+          showToast({
+            type: 'error',
+            message: `Horario ${timeStr} no es válido. Horarios disponibles: ${validSlots
               .slice(0, 5)
               .map((s) => s.time)
               .join(', ')}...`,
-          );
+          });
         } else {
-          toast.error(`No hay horarios disponibles para ${DAYS_FULL[dayOfWeek]}`);
+          showToast({
+            type: 'error',
+            message: `No hay horarios disponibles para ${DAYS_FULL[dayOfWeek]}`,
+          });
         }
         setAccepting(null);
         return;
@@ -822,9 +820,7 @@ export default function AgendaPage() {
       });
 
       if (conflict) {
-        toast.error(
-          `Conflicto: ya hay una cita a las ${conflict.time} con ${conflict.patient_name}`,
-        );
+        showToast({ type: 'error', message: `Conflicto: ya hay una cita a las ${conflict.time}` });
         setAccepting(null);
         return;
       }
@@ -893,9 +889,9 @@ export default function AgendaPage() {
         patient_email: appt.patient_email,
       };
       setAllAppointments((prev) => [...prev, newAppt]);
-      toast.success(`Consulta ${result.code} confirmada`);
+      showToast({ type: 'success', message: `Consulta confirmada` });
     } catch (e: any) {
-      toast.error(e.message || 'Error al aprobar');
+      showToast({ type: 'error', message: e.message || 'Error al aprobar' });
     }
     setAccepting(null);
   }
@@ -910,14 +906,15 @@ export default function AgendaPage() {
       });
       if (!res.ok) {
         const err = await res.json();
-        toast.error(err?.error || 'Error al rechazar la cita');
+        showToast({ type: 'error', message: err?.error || 'Error al rechazar la cita' });
         return;
       }
     } catch {
-      toast.error('Error de conexión al rechazar la cita');
+      showToast({ type: 'error', message: 'Error de conexión al rechazar la cita' });
       return;
     }
     setPendingAppointments((prev) => prev.filter((a) => a.id !== apptId));
+    showToast({ type: 'success', message: 'Cita rechazada' });
   }
 
   async function handleUploadReceipt(apptId: string, file: File) {
@@ -947,10 +944,10 @@ export default function AgendaPage() {
         prev.map((a) => (a.id === apptId ? { ...a, payment_receipt_url: receiptUrl } : a)),
       );
 
-      toast.success('Comprobante subido correctamente');
+      showToast({ type: 'success', message: 'Comprobante subido correctamente' });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Error al subir comprobante';
-      toast.error(message);
+      showToast({ type: 'error', message });
     }
     setUploadingReceipt(null);
   }
@@ -975,14 +972,14 @@ export default function AgendaPage() {
       setPendingAppointments((prev) =>
         prev.map((a) => (a.id === rescheduling.id ? { ...a, scheduled_at: rescheduledDate } : a)),
       );
-      toast.success('Cita reagendada (calendario actualizado)');
+      showToast({ type: 'success', message: 'Cita reagendada (calendario actualizado)' });
       setRescheduling(null);
       setRescheduleDate(null);
       setRescheduleTime(null);
       setRescheduleWeekOffset(0);
     } catch (e: unknown) {
       reportError('doctor/agenda', 'handleReschedule', e);
-      toast.error(e instanceof Error ? e.message : 'Error al reagendar');
+      showToast({ type: 'error', message: e instanceof Error ? e.message : 'Error al reagendar' });
     }
   }
 
@@ -996,16 +993,16 @@ export default function AgendaPage() {
       const data = await res.json();
       if (!res.ok) {
         setSyncResult({ message: data.error || 'Error en sync', success: false });
-        toast.error(data.error || 'Error al sincronizar');
+        showToast({ type: 'error', message: data.error || 'Error al sincronizar' });
       } else {
         setSyncResult({ message: data.message, success: true });
-        toast.success(data.message || 'Sincronización completada');
+        showToast({ type: 'success', message: data.message || 'Sincronización completada' });
         // Reload appointments to reflect changes
         loadData();
       }
     } catch (err: any) {
       setSyncResult({ message: err?.message || 'Error de conexión', success: false });
-      toast.error('Error al sincronizar con Google Calendar');
+      showToast({ type: 'error', message: 'Error al sincronizar con Google Calendar' });
     }
     setSyncing(false);
     // Auto-hide result after 6 seconds
@@ -1030,10 +1027,13 @@ export default function AgendaPage() {
       setPendingAppointments((prev) => prev.filter((a) => a.id !== appt.id));
       setDetailAppt(null);
       setConfirmDelete(null);
-      toast.success('Cita eliminada correctamente');
+      showToast({ type: 'success', message: 'Cita eliminada correctamente' });
     } catch (err: unknown) {
       reportError('doctor/agenda', 'handleDeleteAppointment', err);
-      toast.error(err instanceof Error ? err.message : 'Error al eliminar la cita');
+      showToast({
+        type: 'error',
+        message: err instanceof Error ? err.message : 'Error al eliminar la cita',
+      });
     }
     setDeletingAppt(null);
   }
@@ -1140,11 +1140,11 @@ export default function AgendaPage() {
 
   async function createConsultaFromAgenda() {
     if (!newConsulta.patient_id || !newConsulta.date || !newConsulta.time) {
-      toast.error('Completa paciente, fecha y hora');
+      showToast({ type: 'error', message: 'Completa paciente, fecha y hora' });
       return;
     }
     if (!newConsulta.plan_id) {
-      toast.error('Selecciona un plan de consulta');
+      showToast({ type: 'error', message: 'Selecciona un plan de consulta' });
       return;
     }
     setCreatingConsulta(true);
@@ -1188,7 +1188,7 @@ export default function AgendaPage() {
       });
       const result = await res.json();
       if (!res.ok) throw new Error(result.error || 'Error al crear');
-      toast.success('Consulta creada y agregada a la agenda');
+      showToast({ type: 'success', message: 'Consulta creada y agregada a la agenda' });
       setShowNewConsulta(false);
       setNewReceiptFile(null);
       setNewConsulta({
@@ -1203,7 +1203,10 @@ export default function AgendaPage() {
       await loadData();
     } catch (err: unknown) {
       reportError('doctor/agenda', 'handleCreateConsulta', err);
-      toast.error(err instanceof Error ? err.message : 'Error al crear consulta');
+      showToast({
+        type: 'error',
+        message: err instanceof Error ? err.message : 'Error al crear consulta',
+      });
     } finally {
       setCreatingConsulta(false);
     }
@@ -2404,7 +2407,10 @@ export default function AgendaPage() {
                     if (consultaId) {
                       router.push(`/doctor/consultations?open=${consultaId}`);
                     } else {
-                      toast.success('Confirma la cita para generar su consulta.');
+                      showToast({
+                        type: 'info',
+                        message: 'Confirma la cita para generar su consulta.',
+                      });
                       router.push('/doctor/consultations');
                     }
                     setDetailAppt(null);

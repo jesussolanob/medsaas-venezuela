@@ -533,8 +533,10 @@ function SettingsPageInner() {
     if (!result.ok) {
       // Surface the error inline instead of swallowing it.
       setSignatureError(result.error ?? 'Error al eliminar la firma');
+      showToast({ type: 'error', message: 'No se pudo eliminar la firma' });
     } else {
       setSignatureUrl(null);
+      showToast({ type: 'success', message: 'Firma eliminada' });
     }
     setConfirmRemoveSignature(false);
   }
@@ -624,6 +626,7 @@ function SettingsPageInner() {
 
     setPaymentSaved(true);
     setTimeout(() => setPaymentSaved(false), 2500);
+    showToast({ type: 'success', message: 'Métodos de pago guardados' });
   }
 
   /* ---------------- INSURANCE ---------------- */
@@ -757,6 +760,7 @@ function SettingsPageInner() {
     // Simulate async so the UI spinner shows consistently.
     await new Promise<void>((resolve) => setTimeout(resolve, 300));
     setIntegrationsLoading(false);
+    showToast({ type: 'success', message: 'Configuración guardada' });
     setSaved(true);
     setTimeout(() => setSaved(false), 2500);
   }

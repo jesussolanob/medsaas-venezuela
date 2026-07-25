@@ -87,7 +87,8 @@ export function HelpWidget() {
       if (!res.ok) {
         throw new Error(data.error || 'No se pudo obtener respuesta.');
       }
-      const reply = (data.reply || '').trim() || 'No tengo una respuesta para eso ahora mismo.';
+      const rawReply = data.reply ?? '';
+      const reply = rawReply.trim() || 'No tengo una respuesta para eso ahora mismo.';
       setMessages((prev) => [...prev, { id: nextId.current++, role: 'assistant', content: reply }]);
     } catch (error: unknown) {
       // The panel was closed mid-request — the conversation is already cleared.
