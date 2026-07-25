@@ -12,6 +12,7 @@ import {
   Building2,
 } from 'lucide-react';
 import { reportError } from '@/lib/report-error';
+import { showToast } from '@/components/ui/Toaster';
 import DoctorPatientsList from './DoctorPatientsList';
 
 interface DoctorDetailDrawerProps {
@@ -31,7 +32,6 @@ export default function DoctorDetailDrawer({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [suspending, setSuspending] = useState(false);
-  const [successMessage, setSuccessMessage] = useState('');
 
   useEffect(() => {
     if (!isOpen || !doctor) {
@@ -95,12 +95,16 @@ export default function DoctorDetailDrawer({
         },
       });
 
-      setSuccessMessage(`Médico ${action === 'activate' ? 'activado' : 'suspendido'} exitosamente`);
-      setTimeout(() => setSuccessMessage(''), 3000);
+      showToast({
+        type: 'success',
+        message: `Especialista ${action === 'activate' ? 'activado' : 'suspendido'}`,
+      });
       onDoctorUpdated?.();
     } catch (err: unknown) {
       reportError('DoctorDetailDrawer', 'handleToggleStatus', err);
-      setError(err instanceof Error ? err.message : 'Error al actualizar el estado');
+      const errMsg = err instanceof Error ? err.message : 'Error al actualizar el estado';
+      setError(errMsg);
+      showToast({ type: 'error', message: errMsg });
     } finally {
       setSuspending(false);
     }
@@ -142,10 +146,6 @@ export default function DoctorDetailDrawer({
           ) : error ? (
             <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
               {error}
-            </div>
-          ) : successMessage ? (
-            <div className="bg-emerald-50 border border-emerald-200 text-emerald-700 px-4 py-3 rounded-lg text-sm">
-              {successMessage}
             </div>
           ) : (
             <>

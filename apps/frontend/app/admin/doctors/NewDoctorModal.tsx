@@ -16,6 +16,7 @@ import {
 import { createDoctor, type CreateDoctorInput, type DoctorPlan } from './actions';
 import CedulaInput from '@/components/shared/CedulaInput';
 import PhoneInput from '@/components/shared/PhoneInput';
+import { showToast } from '@/components/ui/Toaster';
 
 const ESPECIALIDADES = [
   'Cardiología',
@@ -403,8 +404,10 @@ export default function NewDoctorModal() {
       const result = await createDoctor(input);
       if (result.success) {
         setSuccess(true);
+        showToast({ type: 'success', message: 'Especialista creado exitosamente' });
       } else {
         setServerError(result.error);
+        showToast({ type: 'error', message: result.error || 'Error al crear la cuenta' });
       }
     });
   }

@@ -120,6 +120,7 @@ export default function PromotionsPage() {
         const err = await res.json();
         showToast({ type: 'error', message: err.error || 'Error al crear promoción' });
       } else {
+        showToast({ type: 'success', message: 'Promoción creada' });
         resetForm();
         loadData();
       }
@@ -131,24 +132,39 @@ export default function PromotionsPage() {
 
   async function togglePromo(id: string, currentActive: boolean) {
     try {
-      await fetch('/api/admin/promotions', {
+      const res = await fetch('/api/admin/promotions', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id, is_active: !currentActive }),
       });
+      if (!res.ok) throw new Error('Error al actualizar la promoción');
+      showToast({
+        type: 'success',
+        message: currentActive ? 'Promoción desactivada' : 'Promoción activada',
+      });
       loadData();
     } catch (err) {
       reportError('admin/promotions', 'togglePromo', err);
+      showToast({
+        type: 'error',
+        message: err instanceof Error ? err.message : 'Error al actualizar la promoción',
+      });
     }
   }
 
   async function deletePromo(id: string) {
     if (!confirm('¿Eliminar esta promoción?')) return;
     try {
-      await fetch(`/api/admin/promotions?id=${id}`, { method: 'DELETE' });
+      const res = await fetch(`/api/admin/promotions?id=${id}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error('Error al eliminar la promoción');
+      showToast({ type: 'success', message: 'Promoción eliminada' });
       loadData();
     } catch (err) {
       reportError('admin/promotions', 'deletePromo', err);
+      showToast({
+        type: 'error',
+        message: err instanceof Error ? err.message : 'Error al eliminar la promoción',
+      });
     }
   }
 

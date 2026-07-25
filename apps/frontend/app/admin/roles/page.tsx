@@ -12,6 +12,7 @@
 
 import { useState, useEffect } from 'react';
 import { Shield, RefreshCw, Loader2, Check } from 'lucide-react';
+import { showToast } from '@/components/ui/Toaster';
 
 type Action = 'view' | 'create' | 'edit' | 'delete';
 
@@ -144,10 +145,14 @@ export default function RolesPage() {
         if (idx >= 0) rows[idx] = saved;
         return { ...prev, [selectedRole]: rows };
       });
-      setSuccess(`${moduleKey} · ${action} → ${next ? 'permitido' : 'denegado'}`);
+      const successMsg = `${moduleKey} · ${action} → ${next ? 'permitido' : 'denegado'}`;
+      setSuccess(successMsg);
+      showToast({ type: 'success', message: successMsg });
     } catch (e: unknown) {
       setGrouped(snapshot); // rollback
-      setError(e instanceof Error ? e.message : 'Error al guardar');
+      const errMsg = e instanceof Error ? e.message : 'Error al guardar';
+      setError(errMsg);
+      showToast({ type: 'error', message: errMsg });
     } finally {
       setPending((p) => {
         const copy = { ...p };
@@ -169,11 +174,13 @@ export default function RolesPage() {
         typeof data === 'object' && data && 'keysDeleted' in data
           ? Number((data as { keysDeleted: unknown }).keysDeleted)
           : 0;
-      setSuccess(
-        `Caché refrescada — ${keysDeleted} ${keysDeleted === 1 ? 'entrada borrada' : 'entradas borradas'}`,
-      );
+      const msg = `Caché refrescada — ${keysDeleted} ${keysDeleted === 1 ? 'entrada borrada' : 'entradas borradas'}`;
+      setSuccess(msg);
+      showToast({ type: 'success', message: msg });
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Error al refrescar la caché');
+      const errMsg = e instanceof Error ? e.message : 'Error al refrescar la caché';
+      setError(errMsg);
+      showToast({ type: 'error', message: errMsg });
     } finally {
       setRefreshing(false);
     }

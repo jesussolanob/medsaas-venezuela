@@ -12,6 +12,7 @@ import {
   ArrowLeft,
   Lock,
 } from 'lucide-react';
+import { showToast } from '@/components/ui/Toaster';
 
 /**
  * Bloques del catálogo estándar con nombre fijo (no renombrables por el doctor).
@@ -236,8 +237,10 @@ export default function ConsultationBlocksConfigPage() {
       const j = await r.json();
       if (!r.ok) throw new Error(j.error || 'Error al guardar');
       setMsg({ kind: 'ok', text: 'Configuración guardada' });
+      showToast({ type: 'success', message: 'Bloques de consulta guardados' });
     } catch (e: any) {
       setMsg({ kind: 'err', text: e.message });
+      showToast({ type: 'error', message: e.message || 'Error al guardar la configuración' });
     } finally {
       setSaving(false);
     }
