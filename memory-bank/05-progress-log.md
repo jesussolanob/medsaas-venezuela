@@ -2,6 +2,37 @@
 
 > Registro cronológico. Una entrada por fase/hito completado.
 
+## 2026-07-25 — Hotfix: el check de Términos del onboarding no respondía al click en la caja ✅ (HOTFIX DIRECTO A PROD)
+
+**Síntoma (reportado por el usuario, con médicos probando en prod):** en `/doctor/onboarding`, el checkbox de
+Términos y Condiciones **no se marcaba al clickear el cuadro**; sí funcionaba al clickear el texto.
+
+**Causa raíz — doble toggle:** en `OnboardingForm.tsx` el cuadro visual (`<div aria-hidden>`) vive DENTRO del
+`<label>` y además tenía su propio `onClick` con `setTermsAccepted(v => !v)`. Un click sobre la caja disparaba
+**dos** cambios: (1) el `onClick` del div y (2) el `<label>` reenviando la activación al `<input type=checkbox>`
+asociado implícitamente (sr-only), que corre `onChange`. Los dos toggles se anulaban → el estado volvía al valor
+original y parecía muerto. El texto solo recorría el camino (2), por eso sí respondía.
+
+**Fix (`bee1b8c`, merge `a88a4c7`):** se elimina el `onClick` del div presentacional (6 líneas). El `<label>` queda
+como única fuente de activación → caja y texto funcionan.
+
+**Verificación:** tsc frontend 0. Repro aislado en navegador (Playwright, dos variantes lado a lado): click en la
+caja → versión con `onClick` queda `false` (doble toggle confirmado empíricamente), versión sin `onClick` queda
+`true`; click en el texto sigue alternando. 
+
+**Regla general (aprendizaje):** con el patrón "input `sr-only peer` + div visual dentro de un `<label>`", el div
+NUNCA debe tener su propio handler de toggle — el label ya activa el input. Grep `sr-only peer`: este era el
+ÚNICO caso en el frontend.
+
+⚠️ **Excepciones de proceso (autorizadas por el usuario por urgencia — había médicos probando):**
+- Fue **directo a `main`** (rama `hotfix/onboarding-terms-checkbox` desde `main`), sin pasar por staging. Tras
+  desplegar se sincronizaron `staging` (ff) y `develop` para que no divergieran.
+- El merge a `main` requirió `--no-verify`: el hook pre-commit de rama protegida corre `nx affected --target=test`
+  y **8 suites de backend fallan de antes en `main`** (billing/send-invoice-email, ehr, appointments, payments,
+  consultations, prescriptions, auth/sequelize-identity, ai-transcription/controller — 37 tests, errores de tipo
+  en los specs). NO los introduce este fix (el commit toca 1 archivo `.tsx`, 0 backend). **DEUDA: arreglar esos
+  8 suites** — hoy el hook de `main` está inservible y obliga a saltarlo.
+
 ## 2026-07-24 — Reagendar cita (botón) + sync del evento de Google al reprogramar ✅ (DESPLEGADO Y VERIFICADO EN VIVO EN PROD)
 
 **Contexto:** durante la verificación E2E de Google Calendar en prod (cuenta demo del reviewer con el

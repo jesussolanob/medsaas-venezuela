@@ -416,6 +416,14 @@ Widget de ayuda con IA, disponible para los 3 perfiles. Patrón: panel global + 
 - **Migración `20260722000001`:** `ALTER TYPE subscription_status ADD VALUE IF NOT EXISTS 'trialing'` — el enum PG
   no tenía `trialing` (que el código asigna al trial de onboarding) → rompía TODO registro nuevo en prod. Fix idempotente.
 
+### Fix checkbox del onboarding (2026-07-25)
+
+`app/doctor/onboarding/OnboardingForm.tsx` — el check de Términos usa el patrón **input `sr-only peer` + cuadro
+visual (`div aria-hidden`) dentro del `<label>`**. El cuadro tenía además su propio `onClick` de toggle → click en
+la caja = doble toggle (div + label→input `onChange`) = no pasaba nada; el texto sí funcionaba. **Regla: en este
+patrón el div visual NUNCA lleva handler propio** — el `<label>` es la única fuente de activación. Era el único
+caso de `sr-only peer` en el frontend. Detalle en 05-progress-log (2026-07-25).
+
 ### Preconsultas "Consultas por agendar" + terminología especialista (2026-07-23 — ver ADR-025)
 
 - **Backend módulo NUEVO `modules/pending-consultations/`** (DDD): entidad `PendingConsultation` (`isSchedulable()`,
