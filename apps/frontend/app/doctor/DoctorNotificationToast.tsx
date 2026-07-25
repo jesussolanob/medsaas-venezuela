@@ -36,6 +36,26 @@ type Toast = {
   visible: boolean;
 };
 
+/**
+ * Messages Next.js emits when a poll invokes a server action belonging to a
+ * bundle that a new deploy already replaced (version skew). They are transient —
+ * the next poll runs against the fresh bundle — so they must never reach Sentry.
+ *
+ * Both need substring matching: the first embeds the action id
+ * (`Server Action "<hash>" was not found on the server.`) and the second is the
+ * generic transport error Next.js raises when the action response is not a valid
+ * RSC payload (a 404 or an HTML redirect from the stale deployment).
+ */
+const VERSION_SKEW_MESSAGES = [
+  'was not found on the server',
+  'An unexpected response was received from the server',
+] as const;
+
+function isVersionSkewError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  return VERSION_SKEW_MESSAGES.some((fragment) => error.message.includes(fragment));
+}
+
 export default function DoctorNotificationToast() {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const knownIdsRef = useRef<Set<string>>(new Set());
@@ -126,10 +146,9 @@ export default function DoctorNotificationToast() {
         }
       } catch (err) {
         // Non-blocking — polling errors do not surface to the user.
-        // Specifically suppress version-skew "Server Action was not found" errors
-        // that fire when Next.js deploys a new bundle mid-session: the next poll
-        // will pick up the updated action automatically.
-        if (err instanceof Error && err.message.includes('Server Action was not found')) {
+        // Version-skew errors are dropped: they fire when Next.js deploys a new
+        // bundle mid-session and the next poll picks up the updated action.
+        if (isVersionSkewError(err)) {
           return;
         }
         reportError('DoctorNotificationToast', 'checkNewBookings', err);
