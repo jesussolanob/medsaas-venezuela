@@ -23,12 +23,7 @@ function extractMessage(error: unknown): string {
   return safeStringify(error);
 }
 
-export function reportError(
-  file: string,
-  method: string,
-  error: unknown,
-  extra?: unknown,
-): void {
+export function reportError(file: string, method: string, error: unknown, extra?: unknown): void {
   const msg = extractMessage(error);
   const extraStr = extra !== undefined ? ` | extra: ${safeStringify(extra)}` : '';
   // Always warn — visible in local dev console and Node.js server output.
@@ -43,6 +38,12 @@ export function reportError(
         withScope((scope) => {
           scope.setTag('file', file);
           scope.setTag('method', method);
+          // Group by call site. Every report captured here shares this function's
+          // stack, so Sentry's default stack-based grouping merged unrelated
+          // failures into a single issue whose title came from whichever error
+          // landed first (e.g. [getScheduledAppointments] and
+          // [getDashboardFinanceSummary] shared one issue).
+          scope.setFingerprint([file, method]);
           if (extra !== undefined) {
             // Attach extra context under a safe key — never set PII here.
             scope.setExtra('context', extra);
