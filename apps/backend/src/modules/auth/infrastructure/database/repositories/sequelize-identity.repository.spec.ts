@@ -1,7 +1,13 @@
 import { QueryTypes, UniqueConstraintError } from 'sequelize';
+import * as Sentry from '@sentry/nestjs';
 import { SequelizeIdentityRepository } from './sequelize-identity.repository';
 import { Identity } from '../../../domain/entities/identity.entity';
 import type { IdentityCreateData } from '../../../domain/repositories/identity.repository';
+
+jest.mock('@sentry/nestjs', () => ({
+  withScope: jest.fn(),
+  captureException: jest.fn(),
+}));
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -44,17 +50,6 @@ function makeCreateData(overrides: Partial<IdentityCreateData> = {}): IdentityCr
   };
 }
 
-// ---------------------------------------------------------------------------
-// Mock factories
-// ---------------------------------------------------------------------------
-
-function makeTransactionMock() {
-  return {
-    commit: jest.fn().mockResolvedValue(undefined),
-    rollback: jest.fn().mockResolvedValue(undefined),
-  };
-}
-
 function makeSubscriptionModelMock() {
   return {
     findOrCreate: jest.fn().mockResolvedValue([{ id: 'sub-uuid-1' }, true]),
@@ -64,12 +59,12 @@ function makeSubscriptionModelMock() {
 /**
  * By default, sequelizeMock.query returns a row with trial_days = 30,
  * simulating the common production state.  Individual tests override this.
+ *
+ * No transaction mock: createDoctorWithSubscription no longer opens a
+ * Sequelize transaction — the profile INSERT commits on its own.
  */
-function makeSequelizeMock(txMock?: ReturnType<typeof makeTransactionMock>) {
-  const tx = txMock ?? makeTransactionMock();
+function makeSequelizeMock() {
   return {
-    _tx: tx,
-    transaction: jest.fn().mockResolvedValue(tx),
     query: jest.fn().mockResolvedValue([{ trial_days: 30 }]),
   };
 }
@@ -87,6 +82,7 @@ describe('SequelizeIdentityRepository', () => {
   let subscriptionModelMock: { findOrCreate: jest.Mock };
   let sequelizeMock: ReturnType<typeof makeSequelizeMock>;
   let repo: SequelizeIdentityRepository;
+  let errorSpy: jest.SpyInstance;
 
   beforeEach(() => {
     modelMock = {
@@ -103,6 +99,19 @@ describe('SequelizeIdentityRepository', () => {
       subscriptionModelMock as never,
       sequelizeMock as never,
     );
+
+    // Silence logger output and allow assertions on error calls.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    errorSpy = jest.spyOn((repo as any).logger, 'error').mockImplementation(() => undefined);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    jest.spyOn((repo as any).logger, 'log').mockImplementation(() => undefined);
+
+    jest.mocked(Sentry.withScope).mockReset();
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+    delete process.env['SENTRY_ENABLED'];
   });
 
   // -------------------------------------------------------------------------
@@ -130,11 +139,11 @@ describe('SequelizeIdentityRepository', () => {
   });
 
   // -------------------------------------------------------------------------
-  // create — doctor (atomic: profile + subscription in transaction)
+  // create — doctor (profile first, subscription best-effort)
   // -------------------------------------------------------------------------
 
   describe('create (doctor role)', () => {
-    it('persists profile and subscription in a transaction, returns Identity', async () => {
+    it('persists profile standalone then creates subscription, returns Identity', async () => {
       const data = makeCreateData({ role: 'doctor' });
       const row = makeRow({
         id: data.id,
@@ -147,12 +156,11 @@ describe('SequelizeIdentityRepository', () => {
       modelMock.create.mockResolvedValue(row);
       subscriptionModelMock.findOrCreate.mockResolvedValue([{ id: 'sub-1' }, true]);
 
+      // Capture reference BEFORE the await so innerNow >= beforeMs is guaranteed.
+      const beforeMs = Date.now();
       const result = await repo.create(data);
 
-      // Transaction opened
-      expect(sequelizeMock.transaction).toHaveBeenCalledTimes(1);
-
-      // Profile created with free_trial + trialing snapshot
+      // Profile created WITHOUT a transaction argument.
       expect(modelMock.create).toHaveBeenCalledWith(
         expect.objectContaining({
           id: data.id,
@@ -164,10 +172,9 @@ describe('SequelizeIdentityRepository', () => {
           plan: 'free_trial',
           subscriptionStatus: 'trialing',
         }),
-        expect.objectContaining({ transaction: sequelizeMock._tx }),
       );
 
-      // Subscription created via findOrCreate with 30-day trial
+      // Subscription created via findOrCreate WITHOUT a transaction argument.
       const findOrCreateCall = subscriptionModelMock.findOrCreate.mock.calls[0]![0] as {
         where: { doctorId: string };
         defaults: {
@@ -178,30 +185,24 @@ describe('SequelizeIdentityRepository', () => {
           currentPeriodEnd: Date;
           trialEndsAt: Date;
         };
-        transaction: unknown;
       };
       expect(findOrCreateCall.where).toEqual({ doctorId: data.id });
       expect(findOrCreateCall.defaults.plan).toBe('free_trial');
       expect(findOrCreateCall.defaults.status).toBe('trialing');
       expect(findOrCreateCall.defaults.priceUsd).toBe(0);
-      // currentPeriodEnd should be approximately 30 days from now
+      // currentPeriodEnd should be approximately 30 days from now.
+      // Reference captured before the await so innerNow >= beforeMs is guaranteed.
       const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
-      const nowMs = Date.now();
       expect(findOrCreateCall.defaults.currentPeriodEnd.getTime()).toBeGreaterThan(
-        nowMs + thirtyDaysMs - 5000,
+        beforeMs + thirtyDaysMs - 5000,
       );
       expect(findOrCreateCall.defaults.currentPeriodEnd.getTime()).toBeLessThan(
-        nowMs + thirtyDaysMs + 5000,
+        beforeMs + thirtyDaysMs + 5000,
       );
       // trialEndsAt should equal currentPeriodEnd
       expect(findOrCreateCall.defaults.trialEndsAt.getTime()).toBe(
         findOrCreateCall.defaults.currentPeriodEnd.getTime(),
       );
-      expect(findOrCreateCall.transaction).toBe(sequelizeMock._tx);
-
-      // Transaction committed
-      expect(sequelizeMock._tx.commit).toHaveBeenCalledTimes(1);
-      expect(sequelizeMock._tx.rollback).not.toHaveBeenCalled();
 
       expect(result).toBeInstanceOf(Identity);
       expect(result.id).toBe(data.id);
@@ -214,7 +215,8 @@ describe('SequelizeIdentityRepository', () => {
       const row = makeRow({ id: data.id, email: data.email, role: 'doctor' });
       modelMock.create.mockResolvedValue(row);
 
-      // Act
+      // Act — capture reference BEFORE the await so innerNow >= beforeMs is guaranteed.
+      const beforeMs = Date.now();
       await repo.create(data);
 
       // Assert: resolveTrialDurationDays was called with the parametrized query
@@ -226,17 +228,16 @@ describe('SequelizeIdentityRepository', () => {
         }),
       );
 
-      // currentPeriodEnd must be ~45 days from now
+      // currentPeriodEnd must be ~45 days from beforeMs (millisecond arithmetic, exact).
       const findOrCreateCall = subscriptionModelMock.findOrCreate.mock.calls[0]![0] as {
         defaults: { currentPeriodEnd: Date };
       };
       const fortyFiveDaysMs = 45 * 24 * 60 * 60 * 1000;
-      const nowMs = Date.now();
       expect(findOrCreateCall.defaults.currentPeriodEnd.getTime()).toBeGreaterThan(
-        nowMs + fortyFiveDaysMs - 5000,
+        beforeMs + fortyFiveDaysMs - 5000,
       );
       expect(findOrCreateCall.defaults.currentPeriodEnd.getTime()).toBeLessThan(
-        nowMs + fortyFiveDaysMs + 5000,
+        beforeMs + fortyFiveDaysMs + 5000,
       );
     });
 
@@ -247,18 +248,18 @@ describe('SequelizeIdentityRepository', () => {
       const row = makeRow({ id: data.id, email: data.email, role: 'doctor' });
       modelMock.create.mockResolvedValue(row);
 
+      const beforeMs = Date.now();
       await repo.create(data);
 
       const findOrCreateCall = subscriptionModelMock.findOrCreate.mock.calls[0]![0] as {
         defaults: { currentPeriodEnd: Date };
       };
       const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
-      const nowMs = Date.now();
       expect(findOrCreateCall.defaults.currentPeriodEnd.getTime()).toBeGreaterThan(
-        nowMs + thirtyDaysMs - 5000,
+        beforeMs + thirtyDaysMs - 5000,
       );
       expect(findOrCreateCall.defaults.currentPeriodEnd.getTime()).toBeLessThan(
-        nowMs + thirtyDaysMs + 5000,
+        beforeMs + thirtyDaysMs + 5000,
       );
     });
 
@@ -268,18 +269,18 @@ describe('SequelizeIdentityRepository', () => {
       const row = makeRow({ id: data.id, email: data.email, role: 'doctor' });
       modelMock.create.mockResolvedValue(row);
 
+      const beforeMs = Date.now();
       await repo.create(data);
 
       const findOrCreateCall = subscriptionModelMock.findOrCreate.mock.calls[0]![0] as {
         defaults: { currentPeriodEnd: Date };
       };
       const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
-      const nowMs = Date.now();
       expect(findOrCreateCall.defaults.currentPeriodEnd.getTime()).toBeGreaterThan(
-        nowMs + thirtyDaysMs - 5000,
+        beforeMs + thirtyDaysMs - 5000,
       );
       expect(findOrCreateCall.defaults.currentPeriodEnd.getTime()).toBeLessThan(
-        nowMs + thirtyDaysMs + 5000,
+        beforeMs + thirtyDaysMs + 5000,
       );
     });
 
@@ -290,6 +291,7 @@ describe('SequelizeIdentityRepository', () => {
       modelMock.create.mockResolvedValue(row);
 
       // Registration must succeed despite the query error
+      const beforeMs = Date.now();
       const result = await repo.create(data);
       expect(result).toBeInstanceOf(Identity);
 
@@ -297,26 +299,88 @@ describe('SequelizeIdentityRepository', () => {
         defaults: { currentPeriodEnd: Date };
       };
       const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
-      const nowMs = Date.now();
       expect(findOrCreateCall.defaults.currentPeriodEnd.getTime()).toBeGreaterThan(
-        nowMs + thirtyDaysMs - 5000,
+        beforeMs + thirtyDaysMs - 5000,
       );
       expect(findOrCreateCall.defaults.currentPeriodEnd.getTime()).toBeLessThan(
-        nowMs + thirtyDaysMs + 5000,
+        beforeMs + thirtyDaysMs + 5000,
       );
     });
 
-    it('rolls back and re-throws on non-UniqueConstraintError', async () => {
+    it('throws on non-UniqueConstraintError during profile creation', async () => {
       const data = makeCreateData({ role: 'doctor' });
       const dbError = new Error('connection refused');
       modelMock.create.mockRejectedValue(dbError);
 
       await expect(repo.create(data)).rejects.toThrow('connection refused');
 
-      expect(sequelizeMock._tx.rollback).toHaveBeenCalledTimes(1);
-      expect(sequelizeMock._tx.commit).not.toHaveBeenCalled();
-      // No subscription attempt after non-race error
+      // No subscription attempt after profile insert failure
       expect(subscriptionModelMock.findOrCreate).not.toHaveBeenCalled();
+    });
+
+    // -----------------------------------------------------------------------
+    // Best-effort subscription — the key design: doctor survives sub failure
+    // -----------------------------------------------------------------------
+
+    it('returns the profile even when subscription creation throws (best-effort)', async () => {
+      const data = makeCreateData({ role: 'doctor', email: 'resilient@example.com' });
+      const row = makeRow({ id: data.id, email: data.email, role: 'doctor' });
+      modelMock.create.mockResolvedValue(row);
+      // Simulate a DB error during subscription creation
+      subscriptionModelMock.findOrCreate.mockRejectedValue(new Error('subscriptions table locked'));
+
+      // Must resolve — not reject — despite the subscription failure.
+      const result = await repo.create(data);
+
+      expect(result).toBeInstanceOf(Identity);
+      expect(result.id).toBe(data.id);
+    });
+
+    it('subscription failure emits [signup] log with email and reports to Sentry', async () => {
+      process.env['SENTRY_ENABLED'] = 'true';
+      const data = makeCreateData({ role: 'doctor', email: 'sentry@example.com' });
+      const row = makeRow({ id: data.id, email: 'sentry@example.com', role: 'doctor' });
+      modelMock.create.mockResolvedValue(row);
+      subscriptionModelMock.findOrCreate.mockRejectedValue(new Error('constraint violation'));
+
+      const capturedScope = {
+        setUser: jest.fn(),
+        setTag: jest.fn(),
+        setExtra: jest.fn(),
+        captureException: jest.fn(),
+      };
+      jest.mocked(Sentry.withScope).mockImplementation((cb) => {
+        (cb as unknown as (scope: unknown) => void)(capturedScope);
+        return undefined as never;
+      });
+
+      await repo.create(data);
+
+      // Log must contain [signup] prefix and email
+      expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('[signup]'));
+      const logCall = (errorSpy.mock.calls as string[][]).find(([msg]) =>
+        msg?.includes('subscription-missing'),
+      );
+      expect(logCall).toBeDefined();
+      expect(logCall?.[0]).toContain('sentry@example.com');
+      expect(logCall?.[0]).toContain('constraint violation');
+
+      // Sentry must be notified with email in setUser
+      expect(Sentry.withScope).toHaveBeenCalledTimes(1);
+      expect(capturedScope.setUser).toHaveBeenCalledWith({ email: 'sentry@example.com' });
+      expect(capturedScope.setTag).toHaveBeenCalledWith('signup_failure', 'true');
+    });
+
+    it('subscription failure does NOT call Sentry when SENTRY_ENABLED is not set', async () => {
+      delete process.env['SENTRY_ENABLED'];
+      const data = makeCreateData({ role: 'doctor' });
+      const row = makeRow({ id: data.id, email: data.email, role: 'doctor' });
+      modelMock.create.mockResolvedValue(row);
+      subscriptionModelMock.findOrCreate.mockRejectedValue(new Error('db error'));
+
+      await repo.create(data);
+
+      expect(Sentry.withScope).not.toHaveBeenCalled();
     });
 
     // -----------------------------------------------------------------------
@@ -341,11 +405,7 @@ describe('SequelizeIdentityRepository', () => {
 
       const result = await repo.create(data);
 
-      // Rollback called (Postgres aborted the transaction)
-      expect(sequelizeMock._tx.rollback).toHaveBeenCalledTimes(1);
-      expect(sequelizeMock._tx.commit).not.toHaveBeenCalled();
-
-      // Defensive subscription check outside transaction
+      // Defensive subscription check outside any transaction
       const findOrCreateCall = subscriptionModelMock.findOrCreate.mock.calls[0]![0] as {
         where: { doctorId: string };
         defaults: { doctorId: string; plan: string; status: string; priceUsd: number };
@@ -354,6 +414,8 @@ describe('SequelizeIdentityRepository', () => {
       expect(findOrCreateCall.defaults.plan).toBe('free_trial');
       expect(findOrCreateCall.defaults.status).toBe('trialing');
       expect(findOrCreateCall.defaults.priceUsd).toBe(0);
+      // No transaction key on the findOrCreate call
+      expect(findOrCreateCall).not.toHaveProperty('transaction');
 
       expect(result).toBeInstanceOf(Identity);
       expect(result.id).toBe('uuid-winner');
@@ -370,7 +432,6 @@ describe('SequelizeIdentityRepository', () => {
 
       await expect(repo.create(data)).rejects.toBeInstanceOf(UniqueConstraintError);
 
-      expect(sequelizeMock._tx.rollback).toHaveBeenCalledTimes(1);
       // No subscription created since profile not found
       expect(subscriptionModelMock.findOrCreate).not.toHaveBeenCalled();
     });
@@ -388,8 +449,6 @@ describe('SequelizeIdentityRepository', () => {
 
       const result = await repo.create(data);
 
-      // No transaction for non-doctor
-      expect(sequelizeMock.transaction).not.toHaveBeenCalled();
       expect(subscriptionModelMock.findOrCreate).not.toHaveBeenCalled();
 
       expect(modelMock.create).toHaveBeenCalledWith(
@@ -421,7 +480,6 @@ describe('SequelizeIdentityRepository', () => {
 
       expect(result).toBeInstanceOf(Identity);
       expect(result.id).toBe('uuid-winner');
-      expect(sequelizeMock.transaction).not.toHaveBeenCalled();
       expect(subscriptionModelMock.findOrCreate).not.toHaveBeenCalled();
     });
 

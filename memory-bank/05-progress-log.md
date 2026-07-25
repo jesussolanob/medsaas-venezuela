@@ -2,6 +2,97 @@
 
 > Registro cronológico. Una entrada por fase/hito completado.
 
+## 2026-07-25 — 🔴 Hotfix de AUTH: la cookie de reviewer secuestraba la identidad de un usuario autenticado ✅ (DIRECTO A PROD)
+
+**Síntoma:** el usuario entraba con `lucas@deltasalud.app` (super_admin en BD) y la app le abría el **portal del
+doctor demo**; `/admin` lo rebotaba a `/doctor`. Cerrar sesión y volver a entrar no lo curaba.
+
+**Causa raíz — precedencia de identidad invertida.** El login oculto de reviewer (encendido en prod para la
+revisión de Google) deja una cookie `reviewer_token` de **12h** que apunta al profile del doctor demo. Ambas capas
+la consultaban **ANTES** que la sesión de Auth0:
+- `proxy.ts` (middleware): el atajo de reviewer resolvía el RBAC como `'doctor'` y **nunca llamaba a
+  `auth0.getSession()`** → `/admin` inalcanzable.
+- `lib/identity.server.ts`: `resolveIdentity()` retornaba la identidad del reviewer sin leer la sesión → todos los
+  datos del BFF eran los del doctor demo.
+
+Convivían las DOS cookies (`reviewer_token` + `__session` de Auth0) — verificado en el navegador. El login de Auth0
+era correcto; simplemente nunca se leía. El botón *Cerrar sesión* sí borra `reviewer_token`, pero entrar de nuevo
+por `/login` o pasar por `/auth/logout` la dejaba viva → el siguiente login volvía a ser secuestrado.
+
+**Fix (`b1d877d`, merge `d3eeec7`):** la sesión de Auth0 se evalúa **primero** en ambas capas; el atajo de reviewer
+queda como **fallback solo cuando NO hay sesión** (el caso real del reviewer, que no tiene ninguna). Además, si hay
+sesión de Auth0 y sobrevive un `reviewer_token`, el middleware lo **borra en la respuesta** (auto-limpieza).
+
+**Alcance real (para no sobredimensionar):** la cookie solo se emite a quien conoce el secreto del login de
+reviewer → NO era fuga de datos entre médicos. Lo inaceptable era que una cookie de demo pisara una sesión
+autenticada real.
+
+**Regla general:** cualquier atajo de identidad (demo/impersonación/bypass) va SIEMPRE **después** de la sesión
+real y solo como fallback; y debe auto-limpiarse cuando aparece una sesión real. Al apagar el acceso de reviewer
+(runbook en la memoria `reviewer-access-runbook`) este riesgo desaparece del todo.
+
+⚠️ Desplegado **directo a `main`** por decisión explícita del usuario (había médicos probando); `staging`/`develop`
+sincronizados después.
+
+## 2026-07-25 — Hotfix: el check de Términos del onboarding no respondía al click en la caja ✅ (HOTFIX DIRECTO A PROD)
+
+**Síntoma (reportado por el usuario, con médicos probando en prod):** en `/doctor/onboarding`, el checkbox de
+Términos y Condiciones **no se marcaba al clickear el cuadro**; sí funcionaba al clickear el texto.
+
+**Causa raíz — doble toggle:** en `OnboardingForm.tsx` el cuadro visual (`<div aria-hidden>`) vive DENTRO del
+`<label>` y además tenía su propio `onClick` con `setTermsAccepted(v => !v)`. Un click sobre la caja disparaba
+**dos** cambios: (1) el `onClick` del div y (2) el `<label>` reenviando la activación al `<input type=checkbox>`
+asociado implícitamente (sr-only), que corre `onChange`. Los dos toggles se anulaban → el estado volvía al valor
+original y parecía muerto. El texto solo recorría el camino (2), por eso sí respondía.
+
+**Fix (`bee1b8c`, merge `a88a4c7`):** se elimina el `onClick` del div presentacional (6 líneas). El `<label>` queda
+como única fuente de activación → caja y texto funcionan.
+
+**Verificación:** tsc frontend 0. Repro aislado en navegador (Playwright, dos variantes lado a lado): click en la
+caja → versión con `onClick` queda `false` (doble toggle confirmado empíricamente), versión sin `onClick` queda
+`true`; click en el texto sigue alternando. 
+
+**Regla general (aprendizaje):** con el patrón "input `sr-only peer` + div visual dentro de un `<label>`", el div
+NUNCA debe tener su propio handler de toggle — el label ya activa el input. Grep `sr-only peer`: este era el
+ÚNICO caso en el frontend.
+
+⚠️ **Excepciones de proceso (autorizadas por el usuario por urgencia — había médicos probando):**
+- Fue **directo a `main`** (rama `hotfix/onboarding-terms-checkbox` desde `main`), sin pasar por staging. Tras
+  desplegar se sincronizaron `staging` (ff) y `develop` para que no divergieran.
+- El merge a `main` requirió `--no-verify`: el hook pre-commit de rama protegida corre `nx affected --target=test`
+  y **8 suites de backend fallan de antes en `main`** (billing/send-invoice-email, ehr, appointments, payments,
+  consultations, prescriptions, auth/sequelize-identity, ai-transcription/controller — 37 tests, errores de tipo
+  en los specs). NO los introduce este fix (el commit toca 1 archivo `.tsx`, 0 backend). **DEUDA: arreglar esos
+  8 suites** — hoy el hook de `main` está inservible y obliga a saltarlo.
+
+## 2026-07-24 — Reagendar cita (botón) + sync del evento de Google al reprogramar ✅ (DESPLEGADO Y VERIFICADO EN VIVO EN PROD)
+
+**Contexto:** durante la verificación E2E de Google Calendar en prod (cuenta demo del reviewer con el
+calendario `lucas.rivas.55@gmail.com` conectado), se confirmó que crear una cita online sincroniza a los
+**3 lugares** (agenda del portal + Google Calendar del doctor con Meet + Google Calendar del paciente como
+invitado) y envía el correo de confirmación al paciente. Faltaba **reagendar**.
+
+**Hallazgo:** el modal "Reagendar cita" (selector de día/hora) ya existía en `agenda/page.tsx` pero quedó
+**huérfano** — nada llamaba `setRescheduling`, así que no había forma de abrirlo desde la UI (solo el drag,
+que no funcionaba). Y el `reschedule-appointment.use-case` persistía el nuevo `scheduled_at` pero **NO movía
+el evento de Google** (el BFF `/api/doctor/reschedule` tenía el TODO "Fase 5: sync con Google Calendar diferido").
+
+**Fix (commit `feature/reschedule-google-sync`):**
+- **Frontend:** botón **"Reagendar"** en las acciones del detalle de la cita (`scheduled|confirmed`) que abre el
+  modal existente (`setRescheduling(detailAppt)`). `apps/frontend/app/doctor/agenda/page.tsx`.
+- **Backend:** cierra el TODO. `GoogleCalendarService.updateEventTime` (`events.patch`, `sendUpdates:'all'`,
+  conserva Meet/invitados/reminders) + nuevo `UpdateCalendarEventUseCase` (espejo de cancel: gating +
+  refresh de token). `RescheduleAppointmentUseCase` lo inyecta `@Optional` y, tras persistir, mueve el evento
+  por `googleCalendarEventId` (best-effort, no rompe el reschedule si Google falla).
+- tsc back+front 0; jest reschedule 13/13.
+
+**Verificación en vivo:** staging (botón aparece → modal → cita 09:00→11:00 persiste). **Prod:** cita 10:00→15:00 →
+el evento se movió a **3pm** en el Google Calendar del **doctor** (un solo evento, patch limpio) y del **paciente**
+(invitación 3pm). Flujo `feature → develop → staging → main`, deploys OK.
+
+⚠️ Nota E2E: quedó un evento suelto a las 11am en el calendar personal del paciente (remanente de pruebas
+previas; el patch nunca inserta, y el calendar del organizador está limpio). Borrable.
+
 ## 2026-07-23/24 — "Consultas por agendar" (preconsultas) + terminología especialista ✅ (VALIDADO EN VIVO en staging; PENDIENTE promover a prod)
 
 Sesión de equipo de agentes (lead + backend-agent + frontend-agent + security/code review). Desplegado y **validado end-to-end en `staging.deltasalud.app` con Playwright (2026-07-24)**; falta solo promover `staging → main` (prod) tras el visto bueno final del usuario. tsc/eslint/jest verdes en todo.
