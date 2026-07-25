@@ -387,6 +387,10 @@ export default function OfficesPage() {
         return;
       }
 
+      showToast({
+        type: 'success',
+        message: editing ? 'Consultorio actualizado' : 'Consultorio creado',
+      });
       closeForm();
       fetchOffices();
     } catch (err: unknown) {
@@ -406,14 +410,24 @@ export default function OfficesPage() {
 
   async function performDelete(id: string) {
     setDeleting(id);
-    await deleteOffice(id);
+    try {
+      await deleteOffice(id);
+      showToast({ type: 'success', message: 'Consultorio eliminado' });
+    } catch {
+      showToast({ type: 'error', message: 'Error al eliminar el consultorio' });
+    }
     setDeleting(null);
     setConfirmDelete(null);
     fetchOffices();
   }
 
   async function toggleActive(office: Office) {
-    await toggleOffice(office.id);
+    try {
+      await toggleOffice(office.id);
+      showToast({ type: 'success', message: 'Estado del consultorio actualizado' });
+    } catch {
+      showToast({ type: 'error', message: 'Error al actualizar el estado' });
+    }
     fetchOffices();
   }
 

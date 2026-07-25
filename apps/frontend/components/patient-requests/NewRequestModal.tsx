@@ -15,6 +15,7 @@
  */
 
 import { useState } from 'react';
+import { showToast } from '@/components/ui/Toaster';
 import {
   X,
   Loader2,
@@ -111,6 +112,7 @@ export default function NewRequestModal({
         return;
       }
 
+      showToast({ type: 'success', message: 'Solicitud creada correctamente' });
       setCreated(json.data);
       onSuccess(json.data.id);
     } catch {
