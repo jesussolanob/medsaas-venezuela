@@ -2,6 +2,38 @@
 
 > Registro cronológico. Una entrada por fase/hito completado.
 
+## 2026-07-25 — 🔴 Hotfix de AUTH: la cookie de reviewer secuestraba la identidad de un usuario autenticado ✅ (DIRECTO A PROD)
+
+**Síntoma:** el usuario entraba con `lucas@deltasalud.app` (super_admin en BD) y la app le abría el **portal del
+doctor demo**; `/admin` lo rebotaba a `/doctor`. Cerrar sesión y volver a entrar no lo curaba.
+
+**Causa raíz — precedencia de identidad invertida.** El login oculto de reviewer (encendido en prod para la
+revisión de Google) deja una cookie `reviewer_token` de **12h** que apunta al profile del doctor demo. Ambas capas
+la consultaban **ANTES** que la sesión de Auth0:
+- `proxy.ts` (middleware): el atajo de reviewer resolvía el RBAC como `'doctor'` y **nunca llamaba a
+  `auth0.getSession()`** → `/admin` inalcanzable.
+- `lib/identity.server.ts`: `resolveIdentity()` retornaba la identidad del reviewer sin leer la sesión → todos los
+  datos del BFF eran los del doctor demo.
+
+Convivían las DOS cookies (`reviewer_token` + `__session` de Auth0) — verificado en el navegador. El login de Auth0
+era correcto; simplemente nunca se leía. El botón *Cerrar sesión* sí borra `reviewer_token`, pero entrar de nuevo
+por `/login` o pasar por `/auth/logout` la dejaba viva → el siguiente login volvía a ser secuestrado.
+
+**Fix (`b1d877d`, merge `d3eeec7`):** la sesión de Auth0 se evalúa **primero** en ambas capas; el atajo de reviewer
+queda como **fallback solo cuando NO hay sesión** (el caso real del reviewer, que no tiene ninguna). Además, si hay
+sesión de Auth0 y sobrevive un `reviewer_token`, el middleware lo **borra en la respuesta** (auto-limpieza).
+
+**Alcance real (para no sobredimensionar):** la cookie solo se emite a quien conoce el secreto del login de
+reviewer → NO era fuga de datos entre médicos. Lo inaceptable era que una cookie de demo pisara una sesión
+autenticada real.
+
+**Regla general:** cualquier atajo de identidad (demo/impersonación/bypass) va SIEMPRE **después** de la sesión
+real y solo como fallback; y debe auto-limpiarse cuando aparece una sesión real. Al apagar el acceso de reviewer
+(runbook en la memoria `reviewer-access-runbook`) este riesgo desaparece del todo.
+
+⚠️ Desplegado **directo a `main`** por decisión explícita del usuario (había médicos probando); `staging`/`develop`
+sincronizados después.
+
 ## 2026-07-25 — Hotfix: el check de Términos del onboarding no respondía al click en la caja ✅ (HOTFIX DIRECTO A PROD)
 
 **Síntoma (reportado por el usuario, con médicos probando en prod):** en `/doctor/onboarding`, el checkbox de
