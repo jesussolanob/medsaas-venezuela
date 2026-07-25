@@ -73,6 +73,7 @@ import {
   Legend,
 } from 'recharts';
 import { reportError } from '@/lib/report-error';
+import { showToast } from '@/components/ui/Toaster';
 
 type Income = {
   id: string;
@@ -884,6 +885,7 @@ export default function FinancesPage() {
       if (!result.success) {
         setExpenseModalError(result.error);
       } else {
+        showToast({ type: 'success', message: 'Gasto registrado' });
         setExpenseModalForm({
           amount: '',
           concept: 'other',
@@ -908,13 +910,16 @@ export default function FinancesPage() {
       const result = await deleteTransaction(id);
       if (!result.success) {
         reportError('doctor/finances', 'handleDeleteExpense', result.error);
+        showToast({ type: 'error', message: result.error || 'Error al eliminar el gasto' });
         return;
       }
+      showToast({ type: 'success', message: 'Gasto eliminado' });
       setExpenses((prev) => prev.filter((e) => e.id !== id));
       loadData(true);
       setRefreshKey((k) => k + 1);
     } catch (err) {
       reportError('doctor/finances', 'handleDeleteExpense', err);
+      showToast({ type: 'error', message: 'Error al eliminar el gasto' });
     }
   };
 
@@ -925,13 +930,16 @@ export default function FinancesPage() {
       const result = await deleteTransaction(id);
       if (!result.success) {
         reportError('doctor/finances', 'handleDeleteIncome', result.error);
+        showToast({ type: 'error', message: result.error || 'Error al eliminar el ingreso' });
         return;
       }
+      showToast({ type: 'success', message: 'Ingreso eliminado' });
       setManualIncomes((prev) => prev.filter((m) => m.id !== id));
       loadData(true);
       setRefreshKey((k) => k + 1);
     } catch (err) {
       reportError('doctor/finances', 'handleDeleteIncome', err);
+      showToast({ type: 'error', message: 'Error al eliminar el ingreso' });
     }
   };
 
@@ -958,6 +966,7 @@ export default function FinancesPage() {
       if (!result.success) {
         setIncomeError(result.error);
       } else {
+        showToast({ type: 'success', message: 'Ingreso registrado' });
         setIncomeForm({
           description: '',
           amount: '',
@@ -998,6 +1007,7 @@ export default function FinancesPage() {
       if (!result.success) {
         setEditError(result.error);
       } else {
+        showToast({ type: 'success', message: 'Cambios guardados' });
         setEditingTx(null);
         loadData(true);
         setRefreshKey((k) => k + 1);

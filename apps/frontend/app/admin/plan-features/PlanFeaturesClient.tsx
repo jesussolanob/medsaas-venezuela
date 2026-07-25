@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useCallback, useMemo } from 'react';
-import { Lock, Loader2, CheckCircle2, AlertCircle, Save } from 'lucide-react';
+import { Lock, Loader2, Save } from 'lucide-react';
+import { showToast } from '@/components/ui/Toaster';
 
 interface PlanFeature {
   id: string;
@@ -55,7 +56,6 @@ export default function PlanFeaturesClient({ initialData }: PlanFeaturesClientPr
   const [savedFeatures, setSavedFeatures] = useState<PlanFeature[]>(initialData);
   const [loading, setLoading] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   // Track if there are unsaved changes
   const hasChanges = useMemo(() => {
@@ -72,11 +72,6 @@ export default function PlanFeaturesClient({ initialData }: PlanFeaturesClientPr
       return saved && saved.enabled !== f.enabled;
     }).length;
   }, [features, savedFeatures]);
-
-  const showToast = (type: 'success' | 'error', message: string) => {
-    setToast({ type, message });
-    setTimeout(() => setToast(null), 3000);
-  };
 
   // Toggle locally without saving to API
   const handleToggle = useCallback(
@@ -121,12 +116,15 @@ export default function PlanFeaturesClient({ initialData }: PlanFeaturesClientPr
 
     if (errorCount === 0) {
       setSavedFeatures([...features]);
-      showToast(
-        'success',
-        `${changed.length} cambio${changed.length > 1 ? 's' : ''} guardado${changed.length > 1 ? 's' : ''} exitosamente`,
-      );
+      showToast({
+        type: 'success',
+        message: `${changed.length} cambio${changed.length > 1 ? 's' : ''} guardado${changed.length > 1 ? 's' : ''}`,
+      });
     } else {
-      showToast('error', `Error al guardar ${errorCount} de ${changed.length} cambios`);
+      showToast({
+        type: 'error',
+        message: `Error al guardar ${errorCount} de ${changed.length} cambios`,
+      });
     }
 
     setSaving(false);
@@ -268,22 +266,6 @@ export default function PlanFeaturesClient({ initialData }: PlanFeaturesClientPr
           </div>
         </div>
       </div>
-
-      {/* Toast Notification */}
-      {toast && (
-        <div
-          className={`fixed bottom-4 right-4 px-4 py-3 rounded-lg flex items-center gap-2 shadow-lg text-white ${
-            toast.type === 'success' ? 'bg-teal-500' : 'bg-red-500'
-          }`}
-        >
-          {toast.type === 'success' ? (
-            <CheckCircle2 className="w-5 h-5" />
-          ) : (
-            <AlertCircle className="w-5 h-5" />
-          )}
-          <span className="text-sm font-medium">{toast.message}</span>
-        </div>
-      )}
     </div>
   );
 }

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { MessageSquarePlus, Send, Loader2, CheckCircle2, Clock, MessageCircle } from 'lucide-react';
+import { showToast } from '@/components/ui/Toaster';
 
 type Suggestion = {
   id: string;
@@ -53,13 +54,21 @@ export default function SuggestionsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(form),
       });
-      if (res.ok) {
-        setForm({ subject: '', message: '', category: 'general' });
-        setSent(true);
-        setTimeout(() => setSent(false), 3000);
-        loadSuggestions();
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error(j.error || 'Error al enviar la sugerencia');
       }
-    } catch {}
+      setForm({ subject: '', message: '', category: 'general' });
+      setSent(true);
+      showToast({ type: 'success', message: 'Sugerencia enviada' });
+      setTimeout(() => setSent(false), 3000);
+      loadSuggestions();
+    } catch (e: unknown) {
+      showToast({
+        type: 'error',
+        message: e instanceof Error ? e.message : 'Error al enviar la sugerencia',
+      });
+    }
     setSending(false);
   };
 

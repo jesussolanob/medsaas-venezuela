@@ -22,6 +22,7 @@ import {
   Zap,
   Package,
 } from 'lucide-react';
+import { showToast } from '@/components/ui/Toaster';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -51,11 +52,6 @@ interface Plan {
   trial_days: number;
   features: PlanFeature[];
   prices: PlanPrice[];
-}
-
-interface Toast {
-  type: 'success' | 'error';
-  msg: string;
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -292,9 +288,12 @@ function FeaturesEditor({
         const j = (await res.json()) as { error?: string };
         throw new Error(j.error ?? 'Error guardando features');
       }
+      showToast({ type: 'success', message: 'Features del plan guardadas' });
       onSaved(planKey, local);
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Error desconocido');
+      const errMsg = e instanceof Error ? e.message : 'Error desconocido';
+      setError(errMsg);
+      showToast({ type: 'error', message: errMsg });
     } finally {
       setSaving(false);
     }
@@ -399,9 +398,12 @@ function PricesEditor({
         const j = (await res.json()) as { error?: string };
         throw new Error(j.error ?? 'Error guardando precios');
       }
+      showToast({ type: 'success', message: 'Precios del plan guardados' });
       onSaved(planKey, local);
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Error desconocido');
+      const errMsg = e instanceof Error ? e.message : 'Error desconocido';
+      setError(errMsg);
+      showToast({ type: 'error', message: errMsg });
     } finally {
       setSaving(false);
     }
@@ -621,12 +623,6 @@ interface PlansAdminClientProps {
 export default function PlansAdminClient({ initialPlans }: PlansAdminClientProps) {
   const [plans, setPlans] = useState<Plan[]>(initialPlans);
   const [showCreate, setShowCreate] = useState(false);
-  const [toast, setToast] = useState<Toast | null>(null);
-
-  function showToast(type: Toast['type'], msg: string) {
-    setToast({ type, msg });
-    setTimeout(() => setToast(null), 3000);
-  }
 
   const updatePlan = useCallback(async (planKey: string, data: PlanFormData) => {
     try {
@@ -641,9 +637,9 @@ export default function PlansAdminClient({ initialPlans }: PlansAdminClientProps
       if (json.data) {
         setPlans((prev) => prev.map((p) => (p.plan_key === planKey ? { ...p, ...json.data } : p)));
       }
-      showToast('success', `Plan "${data.name}" actualizado`);
+      showToast({ type: 'success', message: `Plan "${data.name}" actualizado` });
     } catch (e: unknown) {
-      showToast('error', e instanceof Error ? e.message : 'Error desconocido');
+      showToast({ type: 'error', message: e instanceof Error ? e.message : 'Error desconocido' });
       throw e; // re-throw so form stays open
     }
   }, []);
@@ -661,45 +657,25 @@ export default function PlansAdminClient({ initialPlans }: PlansAdminClientProps
         setPlans((prev) => [...prev, { ...json.data!, features: [], prices: [] }]);
       }
       setShowCreate(false);
-      showToast('success', `Plan "${data.name}" creado exitosamente`);
+      showToast({ type: 'success', message: `Plan "${data.name}" creado` });
     } catch (e: unknown) {
-      showToast('error', e instanceof Error ? e.message : 'Error desconocido');
+      showToast({ type: 'error', message: e instanceof Error ? e.message : 'Error desconocido' });
       throw e;
     }
   }, []);
 
   const handleFeaturesUpdate = useCallback((planKey: string, features: PlanFeature[]) => {
     setPlans((prev) => prev.map((p) => (p.plan_key === planKey ? { ...p, features } : p)));
-    showToast('success', 'Features actualizadas');
   }, []);
 
   const handlePricesUpdate = useCallback((planKey: string, prices: PlanPrice[]) => {
     setPlans((prev) => prev.map((p) => (p.plan_key === planKey ? { ...p, prices } : p)));
-    showToast('success', 'Precios actualizados');
   }, []);
 
   const activePlans = plans.filter((p) => p.is_active).length;
 
   return (
     <div className="space-y-6">
-      {/* Toast */}
-      {toast && (
-        <div
-          className={`fixed top-4 right-4 z-50 flex items-center gap-2 px-4 py-3 rounded-xl shadow-lg text-sm font-medium max-w-sm ${
-            toast.type === 'success'
-              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-              : 'bg-red-50 text-red-700 border border-red-200'
-          }`}
-        >
-          {toast.type === 'success' ? (
-            <CheckCircle2 className="w-4 h-4 shrink-0" />
-          ) : (
-            <AlertCircle className="w-4 h-4 shrink-0" />
-          )}
-          {toast.msg}
-        </div>
-      )}
-
       {/* Header */}
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="flex items-start gap-3">
