@@ -845,12 +845,6 @@ export default function OnboardingForm({
                       ? '#fef2f2'
                       : '#fff',
                 }}
-                onClick={() => {
-                  setTermsAccepted((v) => {
-                    if (!v) setTermsError(false);
-                    return !v;
-                  });
-                }}
                 aria-hidden="true"
               >
                 {termsAccepted && (
