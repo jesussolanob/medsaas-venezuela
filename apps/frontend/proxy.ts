@@ -201,18 +201,23 @@ async function handleAuth0Mode(request: NextRequest): Promise<NextResponse> {
     return auth0Response as NextResponse;
   }
 
-  // Reviewer shortcut: when the reviewer_token cookie is present (and the
-  // feature flag is on) let the request through as role='doctor', bypassing the
-  // Auth0 session gate entirely. The real token validation happens on every
-  // backend call via AppAuthGuard (x-reviewer-token header).
-  if (hasReviewerCookie(request)) {
-    return applyRbac(request, 'doctor') ?? (auth0Response as NextResponse);
-  }
-
   // For protected routes: check that a valid session exists.
+  //
+  // ORDEN CRÍTICO: la sesión de Auth0 se evalúa ANTES del atajo de reviewer. Al
+  // revés, una cookie reviewer_token sobrante (dura 12h) SECUESTRABA la identidad
+  // de un usuario realmente autenticado: quien hubiera usado el login oculto de
+  // reviewer entraba luego con su cuenta real y seguía viendo el portal del doctor
+  // demo, y /admin lo rebotaba a /doctor. El reviewer NO tiene sesión de Auth0, así
+  // que el atajo sigue funcionando para él como fallback.
   const session = await auth0.getSession();
 
   if (!session?.user) {
+    // Reviewer shortcut: sin sesión de Auth0, la cookie reviewer_token (con el flag
+    // encendido) deja pasar como role='doctor'. La validación real del token ocurre
+    // en cada llamada al backend vía AppAuthGuard (header x-reviewer-token).
+    if (hasReviewerCookie(request)) {
+      return applyRbac(request, 'doctor') ?? (auth0Response as NextResponse);
+    }
     // Not authenticated — redirect to Auth0 Universal Login.
     return NextResponse.redirect(new URL('/auth/login', request.url));
   }
@@ -223,7 +228,15 @@ async function handleAuth0Mode(request: NextRequest): Promise<NextResponse> {
   const role: string =
     (await resolveRoleFromBackend(session.user, claimRole)) ?? claimRole ?? 'doctor';
 
-  return applyRbac(request, role) ?? (auth0Response as NextResponse);
+  const response = applyRbac(request, role) ?? (auth0Response as NextResponse);
+
+  // Hay sesión real de Auth0: una cookie de reviewer sobrante ya no pinta nada y
+  // no debe volver a ensombrecer esta identidad. Se borra en la respuesta.
+  if (request.cookies.has('reviewer_token')) {
+    response.cookies.delete('reviewer_token');
+  }
+
+  return response;
 }
 
 // ---------------------------------------------------------------------------
