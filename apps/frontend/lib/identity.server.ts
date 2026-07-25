@@ -146,11 +146,19 @@ export async function resolveIdentity(): Promise<ResolvedIdentity> {
   const authMode = process.env.AUTH_MODE ?? 'dev';
 
   if (authMode === 'auth0') {
-    // Reviewer access short-circuits Auth0 (reviewer has no Auth0 session).
-    const reviewer = await resolveReviewerIdentity();
-    if (reviewer) return reviewer;
-
-    return resolveAuth0Identity();
+    // ORDEN CRÍTICO: una sesión real de Auth0 SIEMPRE gana sobre la cookie de
+    // reviewer. Al revés, un reviewer_token sobrante (dura 12h) secuestraba la
+    // identidad de un usuario autenticado y le servía el perfil del doctor demo.
+    // El reviewer no tiene sesión de Auth0, así que cae al fallback de abajo.
+    try {
+      return await resolveAuth0Identity();
+    } catch (error: unknown) {
+      if (error instanceof UnauthenticatedError) {
+        const reviewer = await resolveReviewerIdentity();
+        if (reviewer) return reviewer;
+      }
+      throw error;
+    }
   }
 
   // Default: dev-stub (safe fallback even if AUTH_MODE is undefined or empty).
