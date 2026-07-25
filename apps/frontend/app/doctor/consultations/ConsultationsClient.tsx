@@ -1719,6 +1719,7 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
       // Reload consultation list from backend using current paged state
       await fetchPagedConsultations();
 
+      showToast({ type: 'success', message: 'Consulta creada correctamente' });
       setShowNewConsultation(false);
       setReceiptFile(null);
       setNewConsultation({
@@ -2310,6 +2311,7 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
       }
       setConsultations((prev) => prev.map((c) => (c.id === selected.id ? { ...c, ...report } : c)));
       setSelected((prev) => (prev ? { ...prev, ...report } : null));
+      showToast({ type: 'success', message: 'Informe guardado' });
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
     });

@@ -251,9 +251,11 @@ export default function RemindersPage() {
           });
           const json = (await res.json()) as { success?: boolean; error?: string };
           if (!res.ok || !json.success) {
+            // En un envío masivo el especialista necesita saber CUÁL falló; el
+            // nombre ya está visible en esta pantalla y el toast es sólo UI suya.
             showToast({
               type: 'error',
-              message: `${consult.patient_name}: ${json.error ?? 'Error al enviar'}`,
+              message: `${consult.patient_name}: ${json.error ?? 'no se pudo enviar el correo'}`,
             });
           } else {
             markSent(consult.id, 'email');
@@ -261,12 +263,13 @@ export default function RemindersPage() {
         } catch {
           showToast({
             type: 'error',
-            message: `${consult.patient_name}: error de red`,
+            message: `${consult.patient_name}: error de red al enviar el correo`,
           });
         }
         await new Promise((r) => setTimeout(r, 300));
       }
     }
+    showToast({ type: 'success', message: 'Recordatorios enviados' });
     setSelected(new Set());
     setBulkSending(false);
   }

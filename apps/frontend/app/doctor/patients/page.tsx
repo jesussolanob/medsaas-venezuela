@@ -832,6 +832,7 @@ export default function PatientsPage() {
       const result = await res.json();
       if (!res.ok) throw new Error(result.error || 'Error al crear consulta');
 
+      showToast({ type: 'success', message: 'Consulta creada' });
       setConsultSuccess(`Consulta creada: ${result.code}`);
       setNewConsult({
         chief_complaint: '',

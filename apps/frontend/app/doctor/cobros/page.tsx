@@ -166,6 +166,7 @@ export default function CobrosPage() {
           p.id === selectedPayment.id ? { ...p, payment_receipt_url: publicUrl } : p,
         ),
       );
+      showToast({ type: 'success', message: 'Comprobante subido correctamente' });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Error desconocido';
       reportError('doctor/cobros', 'handleReceiptUpload', err);
@@ -359,7 +360,8 @@ export default function CobrosPage() {
         return;
       }
 
-      const newTotal = (selectedPayment.plan_price || 0) + item.price_usd;
+      const planPriceBase = selectedPayment.plan_price || 0;
+      const newTotal = planPriceBase + item.price_usd;
       if (result.item) {
         setExtraItems((prev) => [
           ...prev,
@@ -372,6 +374,7 @@ export default function CobrosPage() {
       }
       setSelectedPayment((prev) => (prev ? { ...prev, plan_price: newTotal } : prev));
 
+      showToast({ type: 'success', message: 'Servicio agregado al cobro' });
       setActionToast({ type: 'success', msg: `${item.name} agregado al cobro` });
       setTimeout(() => setActionToast(null), 2500);
       setShowAddItemModal(false);
@@ -399,6 +402,7 @@ export default function CobrosPage() {
       const newTotal = Math.max(0, (selectedPayment.plan_price || 0) - amount);
       setExtraItems((prev) => prev.filter((i) => i.id !== itemId));
       setSelectedPayment((prev) => (prev ? { ...prev, plan_price: newTotal } : prev));
+      showToast({ type: 'success', message: 'Cargo eliminado del cobro' });
       setActionToast({ type: 'success', msg: 'Cargo eliminado' });
       setTimeout(() => setActionToast(null), 2000);
       await fetchPayments();
@@ -711,6 +715,11 @@ export default function CobrosPage() {
         return;
       }
 
+      showToast({
+        type: 'success',
+        message:
+          newStatus === 'approved' ? 'Pago aprobado correctamente' : 'Pago marcado como pendiente',
+      });
       setActionToast({
         type: 'success',
         msg:
