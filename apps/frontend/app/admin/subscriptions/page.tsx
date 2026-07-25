@@ -252,6 +252,7 @@ function DoctorsTab() {
         body: JSON.stringify({ doctor_id, reason }),
       });
       if (!r.ok) throw new Error((await r.json()).error);
+      showToast({ type: 'success', message: 'Suscripción suspendida' });
       load();
     } catch (e: any) {
       showToast({ type: 'error', message: `Error: ${e.message}` });
@@ -270,6 +271,7 @@ function DoctorsTab() {
         body: JSON.stringify({ doctor_id }),
       });
       if (!r.ok) throw new Error((await r.json()).error);
+      showToast({ type: 'success', message: 'Suscripción reactivada' });
       load();
     } catch (e: any) {
       showToast({ type: 'error', message: `Error: ${e.message}` });
@@ -813,6 +815,7 @@ function PaymentsTab() {
         body: JSON.stringify({ payment_id: id, reason }),
       });
       if (!r.ok) throw new Error((await r.json()).error);
+      showToast({ type: 'success', message: 'Comprobante rechazado' });
       load();
     } catch (e: any) {
       showToast({ type: 'error', message: `Error: ${e.message}` });
@@ -973,7 +976,6 @@ function ConfigTab() {
   const [promotions, setPromotions] = useState<Promotion[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [msg, setMsg] = useState<string | null>(null);
 
   // Form fields para nueva promoción
   const [newPromo, setNewPromo] = useState({
@@ -1003,7 +1005,6 @@ function ConfigTab() {
 
   async function save(updates: Partial<AppSettings>) {
     setSaving(true);
-    setMsg(null);
     try {
       const r = await fetch('/api/admin/app-settings', {
         method: 'POST',
@@ -1013,10 +1014,9 @@ function ConfigTab() {
       const j = await r.json();
       if (!r.ok) throw new Error(j.error);
       setSettings(j.settings);
-      setMsg('✓ Guardado');
-      setTimeout(() => setMsg(null), 2000);
+      showToast({ type: 'success', message: 'Configuración guardada' });
     } catch (e: any) {
-      setMsg(`Error: ${e.message}`);
+      showToast({ type: 'error', message: e.message || 'Error al guardar la configuración' });
     } finally {
       setSaving(false);
     }
@@ -1043,10 +1043,11 @@ function ConfigTab() {
       });
       const j = await r.json();
       if (!r.ok) throw new Error(j.error);
+      showToast({ type: 'success', message: 'Promoción creada' });
       load();
       setNewPromo({ duration_months: 3, original_price_usd: 90, promo_price_usd: 75, label: '' });
     } catch (e: any) {
-      showToast({ type: 'error', message: `Error: ${e.message}` });
+      showToast({ type: 'error', message: e.message || 'Error al crear la promoción' });
     } finally {
       setSaving(false);
     }
@@ -1055,12 +1056,22 @@ function ConfigTab() {
   async function togglePromo(p: Promotion) {
     setSaving(true);
     try {
-      await fetch('/api/admin/promotions', {
+      const r = await fetch('/api/admin/promotions', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: p.id, is_active: !p.is_active }),
       });
+      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || 'Error al actualizar');
+      showToast({
+        type: 'success',
+        message: p.is_active ? 'Promoción desactivada' : 'Promoción activada',
+      });
       load();
+    } catch (e: unknown) {
+      showToast({
+        type: 'error',
+        message: e instanceof Error ? e.message : 'Error al actualizar la promoción',
+      });
     } finally {
       setSaving(false);
     }
@@ -1068,8 +1079,17 @@ function ConfigTab() {
 
   async function deletePromo(p: Promotion) {
     if (!confirm(`¿Eliminar promoción "${p.label}"?`)) return;
-    await fetch(`/api/admin/promotions?id=${p.id}`, { method: 'DELETE' });
-    load();
+    try {
+      const r = await fetch(`/api/admin/promotions?id=${p.id}`, { method: 'DELETE' });
+      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || 'Error al eliminar');
+      showToast({ type: 'success', message: 'Promoción eliminada' });
+      load();
+    } catch (e: unknown) {
+      showToast({
+        type: 'error',
+        message: e instanceof Error ? e.message : 'Error al eliminar la promoción',
+      });
+    }
   }
 
   if (loading || !settings)
@@ -1393,12 +1413,6 @@ function ConfigTab() {
           </div>
         )}
       </div>
-
-      {msg && (
-        <div className="lg:col-span-2 fixed top-6 left-1/2 -translate-x-1/2 px-4 py-2 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-lg text-sm font-semibold shadow-md">
-          {msg}
-        </div>
-      )}
     </div>
   );
 }

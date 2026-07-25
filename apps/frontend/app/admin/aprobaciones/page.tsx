@@ -123,6 +123,7 @@ export default function AprobacionesPage() {
       });
       const j = await r.json();
       if (!r.ok) throw new Error(j.error);
+      showToast({ type: 'success', message: 'Pago aprobado' });
       load();
       loadCounts();
     } catch (e: any) {
@@ -143,6 +144,7 @@ export default function AprobacionesPage() {
         body: JSON.stringify({ payment_id: id, reason }),
       });
       if (!r.ok) throw new Error((await r.json()).error);
+      showToast({ type: 'success', message: 'Comprobante rechazado' });
       load();
       loadCounts();
     } catch (e: any) {

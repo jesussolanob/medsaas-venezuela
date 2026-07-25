@@ -17,6 +17,7 @@ import {
   Save,
   Info,
 } from 'lucide-react';
+import { showToast } from '@/components/ui/Toaster';
 
 // ---------------------------------------------------------------------------
 // Configuración general — tipos y constantes
@@ -182,13 +183,18 @@ export default function AdminSettingsPage() {
       });
       const j = await r.json();
       if (!r.ok) {
-        setRatesMsg({ kind: 'err', text: j.error || 'Error al cambiar la fuente' });
+        const errText = j.error || 'Error al cambiar la fuente';
+        setRatesMsg({ kind: 'err', text: errText });
+        showToast({ type: 'error', message: errText });
       } else {
         setRatesMsg({ kind: 'ok', text: 'Fuente de tasa actualizada' });
+        showToast({ type: 'success', message: 'Fuente de tasa actualizada' });
         await loadRates();
       }
     } catch {
-      setRatesMsg({ kind: 'err', text: 'Error al cambiar la fuente' });
+      const errText = 'Error al cambiar la fuente';
+      setRatesMsg({ kind: 'err', text: errText });
+      showToast({ type: 'error', message: errText });
     } finally {
       setSavingSource(null);
     }
@@ -222,9 +228,13 @@ export default function AdminSettingsPage() {
       });
       const j = await r.json();
       if (!r.ok) {
-        setSettingsMsg({ kind: 'err', text: j.error ?? 'Error al guardar' });
+        const errText = j.error ?? 'Error al guardar';
+        setSettingsMsg({ kind: 'err', text: errText });
+        showToast({ type: 'error', message: errText });
       } else {
-        setSettingsMsg({ kind: 'ok', text: `Ajuste "${key}" guardado` });
+        const okText = `Ajuste "${key}" guardado`;
+        setSettingsMsg({ kind: 'ok', text: okText });
+        showToast({ type: 'success', message: okText });
         setEditingKey(null);
         // Optimistic update
         setAppSettings((prev) =>
@@ -234,7 +244,9 @@ export default function AdminSettingsPage() {
         );
       }
     } catch {
-      setSettingsMsg({ kind: 'err', text: 'Error al guardar' });
+      const errText = 'Error al guardar';
+      setSettingsMsg({ kind: 'err', text: errText });
+      showToast({ type: 'error', message: errText });
     } finally {
       setSavingSetting(null);
     }
@@ -257,16 +269,22 @@ export default function AdminSettingsPage() {
       });
       const j = await r.json();
       if (!r.ok) {
-        setSettingsMsg({ kind: 'err', text: j.error ?? 'Error al guardar' });
+        const errText = j.error ?? 'Error al guardar';
+        setSettingsMsg({ kind: 'err', text: errText });
+        showToast({ type: 'error', message: errText });
       } else {
-        setSettingsMsg({ kind: 'ok', text: `Ajuste "${trimmedKey}" creado` });
+        const okText = `Ajuste "${trimmedKey}" creado`;
+        setSettingsMsg({ kind: 'ok', text: okText });
+        showToast({ type: 'success', message: okText });
         setNewSettingKey('');
         setNewSettingValue('');
         setNewSettingOpen(false);
         await loadAppSettings();
       }
     } catch {
-      setSettingsMsg({ kind: 'err', text: 'Error al guardar' });
+      const errText = 'Error al guardar';
+      setSettingsMsg({ kind: 'err', text: errText });
+      showToast({ type: 'error', message: errText });
     } finally {
       setSavingNewSetting(false);
     }
@@ -291,15 +309,21 @@ export default function AdminSettingsPage() {
       });
       const j = await r.json();
       if (!r.ok) {
-        setAdminMsg({ kind: 'err', text: j.error || 'Error al crear admin' });
+        const errText = j.error || 'Error al crear admin';
+        setAdminMsg({ kind: 'err', text: errText });
+        showToast({ type: 'error', message: errText });
       } else {
-        setAdminMsg({ kind: 'ok', text: `Admin ${newAdmin.email} creado` });
+        const okText = `Admin creado`;
+        setAdminMsg({ kind: 'ok', text: okText });
+        showToast({ type: 'success', message: okText });
         setNewAdmin({ email: '', full_name: '', phone: '', password: '' });
         setNewAdminOpen(false);
         loadAdmins();
       }
     } catch (err: any) {
-      setAdminMsg({ kind: 'err', text: err?.message || 'Error' });
+      const errText = err?.message || 'Error al crear admin';
+      setAdminMsg({ kind: 'err', text: errText });
+      showToast({ type: 'error', message: errText });
     } finally {
       setSavingAdmin(false);
     }
@@ -307,13 +331,23 @@ export default function AdminSettingsPage() {
 
   async function revokeAdmin(id: string, email: string) {
     if (!confirm(`¿Revocar acceso de super_admin a ${email}? Será degradado a doctor.`)) return;
-    const r = await fetch(`/api/admin/admins?id=${id}`, { method: 'DELETE' });
-    const j = await r.json();
-    if (!r.ok) {
-      setAdminMsg({ kind: 'err', text: j.error || 'Error al revocar' });
-    } else {
-      setAdminMsg({ kind: 'ok', text: `Acceso revocado para ${email}` });
-      loadAdmins();
+    try {
+      const r = await fetch(`/api/admin/admins?id=${id}`, { method: 'DELETE' });
+      const j = await r.json();
+      if (!r.ok) {
+        const errText = j.error || 'Error al revocar';
+        setAdminMsg({ kind: 'err', text: errText });
+        showToast({ type: 'error', message: errText });
+      } else {
+        const okText = 'Acceso de admin revocado';
+        setAdminMsg({ kind: 'ok', text: okText });
+        showToast({ type: 'success', message: okText });
+        loadAdmins();
+      }
+    } catch (err: any) {
+      const errText = err?.message || 'Error al revocar';
+      setAdminMsg({ kind: 'err', text: errText });
+      showToast({ type: 'error', message: errText });
     }
   }
 

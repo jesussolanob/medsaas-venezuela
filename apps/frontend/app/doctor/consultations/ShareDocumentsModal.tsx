@@ -23,6 +23,7 @@ import {
   MessageCircle,
   ChevronDown,
 } from 'lucide-react';
+import { showToast } from '@/components/ui/Toaster';
 import { normalizePhoneVE } from '@/lib/phone-utils';
 import type { ContentBlock } from '@/components/pdf/MedicalDocumentPdf';
 import {
@@ -295,10 +296,12 @@ export default function ShareDocumentsModal({
       if (!res.ok || !('success' in json)) {
         const errMsg = 'error' in json ? json.error : 'Error al generar el enlace';
         setError(errMsg);
+        showToast({ type: 'error', message: errMsg });
         return;
       }
 
       setResult(json.data);
+      showToast({ type: 'success', message: 'Enlace de documentos generado' });
     } catch {
       setError('No se pudo conectar con el servidor. Intenta de nuevo.');
     } finally {
