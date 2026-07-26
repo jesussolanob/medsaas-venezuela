@@ -7,14 +7,12 @@ import { reportError } from '@/lib/report-error';
 import {
   Users,
   Calendar,
-  FileText,
   Bell,
   DollarSign,
   ArrowRight,
   Activity,
   CheckCircle,
   Clock,
-  AlertCircle,
   ClipboardList,
   ChevronLeft,
   ChevronRight as ChevronRightIcon,
@@ -25,7 +23,6 @@ import {
   Loader2,
   Plus,
   Lock,
-  ImagePlus,
 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -56,6 +53,7 @@ import { updatePaymentDetails } from '@/app/doctor/cobros/actions';
 import PaymentMethodModal from '@/app/doctor/consultations/PaymentMethodModal';
 import { getDoctorId } from '@/app/doctor/actions';
 import { showToast } from '@/components/ui/Toaster';
+import { SetupStepper } from '@/components/doctor/SetupStepper';
 import { getDoctorPlanFeatures } from '@/app/doctor/plan-features-actions';
 import { planUnlocks, EMPTY_PLAN_FEATURES, type PlanFeatures } from '@/lib/plan-features';
 // MIGRATED (Etapa 1): data fetching now goes through NestJS backend actions.
@@ -80,6 +78,10 @@ type Profile = {
   signatureUrl: string | null;
   /** M.P.P.S. registration number — null when not set. */
   licenseNumber: string | null;
+  /** Telefono de contacto — null si no lo ha cargado. */
+  phone: string | null;
+  /** Metodos de cobro activos. Vacio = aun no configuro ninguno. */
+  paymentMethods: string[];
 };
 
 type Appointment = {
@@ -137,11 +139,13 @@ export default function DoctorDashboard() {
   const [loading, setLoading] = useState(true);
   // Se incrementa tras cada mutacion del inicio para forzar el refetch del dashboard.
   const [refreshKey, setRefreshKey] = useState(0);
+  // null = desconocido (cargando o fallo el fetch); el paso no se marca ni listo ni
+  // pendiente hasta saberlo, para no acusar al especialista de algo que si hizo.
+  const [hasServices, setHasServices] = useState<boolean | null>(null);
   const [planFeatures, setPlanFeatures] = useState<PlanFeatures>(EMPTY_PLAN_FEATURES);
   // null = desconocido (cargando o fetch falló), true = tiene consultorios, false = sin consultorios
   const [hasOffices, setHasOffices] = useState<boolean | null>(null);
   // Controla si el doctor descartó el banner de plantillas en esta sesión.
-  const [dismissTemplatesBanner, setDismissTemplatesBanner] = useState(false);
   // Modal "Nueva consulta"
   const [showNewFlow, setShowNewFlow] = useState(false);
   // L3 (2026-04-29): estado del modal "Crear paciente" (quick action) +
@@ -266,6 +270,8 @@ export default function DoctorDashboard() {
             logoUrl: prof.logoUrl ?? null,
             signatureUrl: prof.signatureUrl ?? null,
             licenseNumber: prof.licenseNumber ?? null,
+            phone: prof.phone ?? null,
+            paymentMethods: prof.paymentMethods ?? [],
           });
         }
 
@@ -322,6 +328,20 @@ export default function DoctorDashboard() {
           }
         } catch {
           // Silencioso: la alerta no se muestra si el fetch de consultorios falla.
+        }
+
+        // Servicios activos — alimenta el paso 3 del stepper de configuracion.
+        try {
+          const servicesRes = await fetch('/api/doctor/services');
+          if (servicesRes.ok) {
+            const servicesJson = (await servicesRes.json()) as {
+              data?: Array<{ isActive?: boolean; is_active?: boolean }>;
+            };
+            const list = Array.isArray(servicesJson?.data) ? servicesJson.data : [];
+            setHasServices(list.some((s) => (s?.isActive ?? s?.is_active ?? true) === true));
+          }
+        } catch {
+          // Silencioso: hasServices queda en null y el paso no se marca pendiente.
         }
       } catch (error: unknown) {
         // Non-fatal — dashboard shows zeros on error; user can refresh.
@@ -708,95 +728,49 @@ export default function DoctorDashboard() {
             Doctors without a cedula are redirected to /doctor/onboarding before
             they ever reach this page. */}
 
-        {/* Tarjeta guía: el doctor aún no configuró sus plantillas de documentos */}
-        {profile !== null &&
-          !profile.logoUrl &&
-          !profile.signatureUrl &&
-          !dismissTemplatesBanner && (
-            <div
-              className="relative flex flex-col sm:flex-row items-start gap-4 p-5 sm:p-6"
-              style={{
-                background: 'linear-gradient(135deg, #f0fdf9 0%, #ecfdf5 50%, #f0f9ff 100%)',
-                border: '1px solid #99f6e4',
-                borderRadius: 'var(--dh-r-xl)',
-              }}
-            >
-              {/* Ícono */}
-              <div
-                className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0"
-                style={{ background: 'var(--dh-turquoise)', color: '#fff' }}
-                aria-hidden="true"
-              >
-                <ImagePlus className="w-5 h-5" />
-              </div>
-
-              {/* Texto */}
-              <div className="flex-1 min-w-0 pr-6 sm:pr-0">
-                <h3 className="text-sm font-bold" style={{ color: 'var(--dh-turquoise-700)' }}>
-                  Personaliza tus documentos médicos
-                </h3>
-                <p className="text-xs leading-relaxed mt-1" style={{ color: '#0f766e' }}>
-                  Sube tu <span className="font-semibold">logo</span>,{' '}
-                  <span className="font-semibold">firma</span> y matrícula profesional para que tus{' '}
-                  <span className="font-semibold">
-                    recetas, informes, indicaciones, paraclínicos y reposos
-                  </span>{' '}
-                  salgan con tu marca en el PDF.
-                </p>
-                <div className="mt-3">
-                  <Link
-                    href="/doctor/templates"
-                    className="inline-flex items-center gap-1.5 text-xs font-bold text-white px-4 py-2 rounded-lg transition-opacity hover:opacity-90"
-                    style={{ background: 'var(--dh-turquoise)' }}
-                  >
-                    <FileText className="w-3.5 h-3.5" />
-                    Configurar plantillas
-                  </Link>
-                </div>
-              </div>
-
-              {/* Botón descartar */}
-              <button
-                onClick={() => setDismissTemplatesBanner(true)}
-                className="absolute top-3 right-3 w-7 h-7 rounded-lg flex items-center justify-center transition-colors"
-                style={{ color: '#0f766e' }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = '#ccfbf1';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = 'transparent';
-                }}
-                aria-label="Descartar aviso de plantillas"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          )}
-
-        {/* Alerta: sin consultorios configurados */}
-        {hasOffices === false && (
-          <div className="rounded-xl border-2 border-teal-200 bg-teal-50 p-5 flex flex-col sm:flex-row items-start sm:items-center gap-4">
-            <div className="w-10 h-10 rounded-xl bg-teal-100 flex items-center justify-center shrink-0">
-              <AlertCircle className="w-5 h-5 text-teal-600" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <h3 className="text-sm font-bold text-teal-800">
-                Configura tu consultorio para empezar a recibir consultas
-              </h3>
-              <p className="text-xs text-teal-700 mt-1 leading-relaxed">
-                Sin un consultorio activo no se pueden generar horarios de disponibilidad ni recibir
-                citas en línea.
-              </p>
-            </div>
-            <Link
-              href="/doctor/offices"
-              className="shrink-0 px-4 py-2 bg-teal-500 text-white text-xs font-bold rounded-lg hover:bg-teal-600 transition-colors whitespace-nowrap"
-            >
-              Crear consultorio
-            </Link>
-          </div>
+        {/* Puesta en marcha: sustituye las dos tarjetas sueltas (plantillas /
+            consultorio) por un stepper con progreso. Se oculta solo al completarse. */}
+        {profile !== null && (
+          <SetupStepper
+            steps={[
+              {
+                id: 'datos',
+                label: 'Completa tu información',
+                hint: 'Título profesional, especialidad y teléfono de contacto.',
+                href: '/doctor/settings',
+                done: Boolean(profile.professional_title && profile.specialty && profile.phone),
+              },
+              {
+                id: 'consultorio',
+                label: 'Crea tu consultorio',
+                hint: 'Sin un consultorio activo no se generan horarios ni se reciben citas.',
+                href: '/doctor/offices',
+                done: hasOffices === true,
+              },
+              {
+                id: 'servicios',
+                label: 'Define tus servicios',
+                hint: 'Lo que ofreces y a qué precio; es lo que verá el paciente al agendar.',
+                href: '/doctor/services',
+                done: hasServices === true,
+              },
+              {
+                id: 'branding',
+                label: 'Personaliza tu marca',
+                hint: 'Tu logo y tu firma salen en récipes, informes y constancias.',
+                href: '/doctor/settings?tab=templates',
+                done: Boolean(profile.logoUrl && profile.signatureUrl),
+              },
+              {
+                id: 'pagos',
+                label: 'Registra tus métodos de pago',
+                hint: 'Sin ellos el paciente no sabe cómo pagarte al reservar.',
+                href: '/doctor/settings?tab=payments',
+                done: profile.paymentMethods.length > 0,
+              },
+            ]}
+          />
         )}
-
         {/* Hero welcome card */}
         <div
           className="g-bg p-6 sm:p-8 relative overflow-hidden text-white"
