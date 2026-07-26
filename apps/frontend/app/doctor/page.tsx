@@ -135,6 +135,8 @@ export default function DoctorDashboard() {
     patients_attended: 0,
   });
   const [loading, setLoading] = useState(true);
+  // Se incrementa tras cada mutacion del inicio para forzar el refetch del dashboard.
+  const [refreshKey, setRefreshKey] = useState(0);
   const [planFeatures, setPlanFeatures] = useState<PlanFeatures>(EMPTY_PLAN_FEATURES);
   // null = desconocido (cargando o fetch falló), true = tiene consultorios, false = sin consultorios
   const [hasOffices, setHasOffices] = useState<boolean | null>(null);
@@ -231,6 +233,10 @@ export default function DoctorDashboard() {
   // Supabase Realtime channel removed — re-fetch triggered by selectedMonth change.
   // ---------------------------------------------------------------------------
 
+  // Loader del inicio. Cada mutacion (registrar ingreso/gasto, aprobar cobro,
+  // confirmar cita, crear paciente) incrementa `refreshKey` para que el efecto
+  // vuelva a pedir los datos y las tarjetas no queden viejas. Mismo patron que
+  // /doctor/finances. `loading` solo pasa a false, asi que refrescar no parpadea.
   useEffect(() => {
     async function fetchData() {
       try {
@@ -326,7 +332,7 @@ export default function DoctorDashboard() {
     }
 
     void fetchData();
-  }, [selectedMonth]);
+  }, [selectedMonth, refreshKey]);
 
   const greeting = () => {
     const h = new Date().getHours();
@@ -412,6 +418,7 @@ export default function DoctorDashboard() {
       setShowPatientForm(false);
       setNewAppointmentPatientId(res.patient_id);
       setPreselectPatientId(res.patient_id);
+      setRefreshKey((k) => k + 1);
     } catch (err: unknown) {
       // Re-throw para que PatientForm muestre el error inline
       throw err;
@@ -440,6 +447,7 @@ export default function DoctorDashboard() {
       showToast({ type: 'success', message: 'Gasto registrado' });
       setShowExpenseModal(false);
       setExpenseForm({ concept: '', amount: '', category: 'other', dueDate: todayStr });
+      setRefreshKey((k) => k + 1);
     } catch (err: unknown) {
       showToast({
         type: 'error',
@@ -470,24 +478,19 @@ export default function DoctorDashboard() {
   }
 
   // Aprueba el pago de verdad (status → approved) y lo quita de la lista.
-  async function approvePaymentRow(paymentId: string, amountUsd = 0) {
+  async function approvePaymentRow(paymentId: string) {
     setApprovingPaymentId(paymentId);
     try {
       const result = await updatePaymentStatusAction(paymentId, 'approved');
       if (!result.success) throw new Error(result.error);
       showToast({ type: 'success', message: 'Pago aprobado correctamente' });
-      // Quita el pago aprobado de la lista local sin recargar todo.
+      // Quita el pago aprobado de la lista local para dar respuesta inmediata en el modal.
       setPendingPayments((prev) => prev.filter((p) => p.id !== paymentId));
-      // Refleja el cobro en las tarjetas del inicio SIN recargar: baja "Por ingresar"
-      // (pending_amount) y sube "Ingresos del mes" (total_revenue). Antes el cuadro
-      // amarillo "Por ingresar" no se actualizaba al aprobar desde el modal.
-      if (amountUsd > 0) {
-        setFinancialData((prev) => ({
-          ...prev,
-          pending_amount: Math.max(0, (prev.pending_amount ?? 0) - amountUsd),
-          total_revenue: (prev.total_revenue ?? 0) + amountUsd,
-        }));
-      }
+      // Y repide las cifras al servidor. Antes esto se parcheaba a mano restando el
+      // monto a pending_amount y sumandolo a total_revenue: funcionaba, pero era una
+      // copia local de una regla del backend y se desviaba en cuanto el servidor
+      // calculaba distinto (ej. el ingreso cae en otro mes que el seleccionado).
+      setRefreshKey((k) => k + 1);
     } catch (err: unknown) {
       showToast({
         type: 'error',
@@ -506,7 +509,7 @@ export default function DoctorDashboard() {
       setMethodModalPayment(payment);
       return;
     }
-    void approvePaymentRow(payment.id, payment.amount_usd ?? 0);
+    void approvePaymentRow(payment.id);
   }
 
   // L2 (2026-04-29): si la cita ya tiene consulta linkeada → abrir esa consulta;
@@ -536,8 +539,10 @@ export default function DoctorDashboard() {
         return;
       }
       showToast({ type: 'success', message: 'Cita confirmada exitosamente' });
-      // Optimistic: quitar la cita de la lista sin recargar todo.
+      // Optimista para la lista "Por confirmar" + refetch para que la cita del dia
+      // cambie su badge a "Confirmada" (vive en otro estado, todayAppointments).
       setScheduledAppointments((prev) => prev.filter((a) => a.id !== id));
+      setRefreshKey((k) => k + 1);
     } catch {
       showToast({ type: 'error', message: 'Error de conexión al confirmar la cita' });
     } finally {
@@ -597,6 +602,7 @@ export default function DoctorDashboard() {
         });
         setShowIncomeModal(false);
         showToast({ type: 'success', message: 'Ingreso registrado' });
+        setRefreshKey((k) => k + 1);
       }
     } catch (err: unknown) {
       reportError('doctor/page', 'handleSaveIncome', err);
@@ -1663,7 +1669,7 @@ export default function DoctorDashboard() {
           onConfirmed={() => {
             const p = methodModalPayment;
             setMethodModalPayment(null);
-            if (p) void approvePaymentRow(p.id, p.amount_usd ?? 0);
+            if (p) void approvePaymentRow(p.id);
           }}
         />
       )}
