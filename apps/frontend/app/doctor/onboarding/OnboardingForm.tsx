@@ -61,6 +61,9 @@ interface FieldErrors {
 
 const OTRO_VALUE = '__OTRO__';
 
+/** Entradas genericas del catalogo que duplican la opcion de texto libre. */
+const ES_OTRA_GENERICA = /^otr[ao]$/i;
+
 interface SpecialtyComboboxProps {
   specialties: Specialty[];
   value: string;
@@ -90,11 +93,16 @@ function SpecialtyCombobox({
     ? 'Otra especialidad'
     : (specialties.find((s) => s.name === value)?.name ?? '');
 
+  // El catalogo de BD trae una entrada llamada "Otra", que junto a la opcion de
+  // texto libre daba dos alternativas indistinguibles. Se descarta del catalogo:
+  // quien no encuentre su especialidad usa "Otra especialidad" y la escribe.
+  const catalogo = specialties.filter((s) => !ES_OTRA_GENERICA.test(s.name.trim()));
+
   // Filter specialties by query
   const filtered =
     query.trim() === ''
-      ? specialties
-      : specialties.filter((s) => s.name.toLowerCase().includes(query.toLowerCase().trim()));
+      ? catalogo
+      : catalogo.filter((s) => s.name.toLowerCase().includes(query.toLowerCase().trim()));
 
   // Always append OTRO at the end
   const listItems = [...filtered, { id: OTRO_VALUE, name: 'Otra especialidad' }];

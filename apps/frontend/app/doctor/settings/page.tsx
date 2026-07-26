@@ -96,6 +96,13 @@ type PaymentMethodData = {
 const OTRA_ESPECIALIDAD = '__otra__';
 
 /**
+ * El catalogo de BD trae una entrada llamada "Otra", que junto a la opcion de texto
+ * libre daba dos alternativas indistinguibles en el mismo selector. Se descarta:
+ * quien no encuentre su especialidad usa "Otra especialidad" y la escribe.
+ */
+const ES_OTRA_GENERICA = /^otr[ao]$/i;
+
+/**
  * Catálogo de especialidades desde la BD, vía BFF público.
  * Degrada a lista vacía: la UI cae entonces al campo de texto libre.
  */
@@ -106,7 +113,7 @@ async function loadSpecialtyCatalog(): Promise<string[]> {
     const json = (await res.json()) as { specialties?: { name?: string }[] };
     return (json.specialties ?? [])
       .map((s) => (s?.name ?? '').trim())
-      .filter((name): name is string => name.length > 0);
+      .filter((name): name is string => name.length > 0 && !ES_OTRA_GENERICA.test(name));
   } catch {
     return [];
   }
