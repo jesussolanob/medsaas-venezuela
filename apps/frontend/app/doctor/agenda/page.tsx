@@ -2348,7 +2348,8 @@ export default function AgendaPage() {
                             return;
                           }
                           setDetailAppt({ ...detailAppt, status: 'confirmed' });
-                          window.location.reload();
+                          showToast({ type: 'success', message: 'Cita confirmada' });
+                          await loadData();
                         }}
                         className="flex items-center gap-1 px-3 py-1.5 bg-teal-50 hover:bg-teal-100 text-teal-700 text-xs font-bold rounded-lg border border-teal-200"
                       >
@@ -2447,6 +2448,7 @@ export default function AgendaPage() {
                 accent: 'emerald',
                 btnLabel: 'Confirmar',
                 showReason: false,
+                successMsg: 'Cita marcada como atendida',
               },
               cancelled: {
                 title: 'Cancelar cita',
@@ -2454,6 +2456,7 @@ export default function AgendaPage() {
                 accent: 'red',
                 btnLabel: 'Cancelar cita',
                 showReason: true,
+                successMsg: 'Cita cancelada',
               },
               no_show: {
                 title: 'Paciente no asistió',
@@ -2461,6 +2464,7 @@ export default function AgendaPage() {
                 accent: 'orange',
                 btnLabel: 'Registrar no-asistencia',
                 showReason: false,
+                successMsg: 'No-asistencia registrada',
               },
             }[statusAction.type];
 
@@ -2538,7 +2542,8 @@ export default function AgendaPage() {
                           setStatusAction(null);
                           setStatusReason('');
                           setDetailAppt(null);
-                          window.location.reload();
+                          showToast({ type: 'success', message: cfg.successMsg });
+                          await loadData();
                         } catch (e: any) {
                           showToast({ type: 'error', message: e.message || 'Error al actualizar' });
                         } finally {
@@ -3286,8 +3291,11 @@ export default function AgendaPage() {
           onClose={() => setShowNewFlow(false)}
           onSuccess={() => {
             setShowNewFlow(false);
-            // Refrescar la agenda para que aparezca la nueva cita
-            window.location.reload();
+            // Refrescar la agenda para que aparezca la nueva cita.
+            // NO usar window.location.reload(): destruye el arbol de React y con el
+            // el toast que useAppointmentFlow acaba de emitir (setState de React se
+            // pinta en el siguiente tick, o sea ya dentro del documento descargandose).
+            void loadData();
           }}
           initialContext={{
             origin: 'agenda_btn',
