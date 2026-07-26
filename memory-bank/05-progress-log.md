@@ -14,6 +14,7 @@ llevaba al doctor entero y no quedaba ni el email (así se perdió `daniela.gil@
 **Hallazgo que definió la solución:** el gating del plan lee `profiles.plan`
 (`get-doctor-features-v2.use-case.ts:57`), NO `subscriptions` — y `demo.google@deltasalud.app` funciona en prod
 **sin** esa fila. La atomicidad protegía una fila no indispensable.
+
 - Ahora el perfil se commitea solo y `tryCreateSubscription` corre después, best-effort; si falla, el doctor queda
   registrado igual y se deja rastro accionable.
 - **Fallbacks de contacto (4):** `profiles` · log `[signup]` (attempt/created/failed + `subscription-missing`, con
@@ -33,6 +34,7 @@ Regla: **toda mutación debe confirmar su resultado con un toast**. Origen: guar
 confirmaba nada. De **35 handlers** sin confirmación de éxito quedan **8**, todos justificados (guardado en
 segundo plano de facturación, autoguardado de bloques/paraclínico, dos wrappers que no son UI, y tres donde el
 resultado ya es evidente: kanban del CRM, chat de mensajes, chat de ayuda).
+
 - ⚠️ **Lección de método:** una auditoría por ARCHIVO da falsos negativos — clasificó pantallas enteras como "OK"
   porque el archivo importaba `showToast` para otras acciones, mientras los handlers de guardado no lo llamaban.
   Hay que verificar **handler por handler**. Script de barrido reutilizable en el scratchpad de la sesión.
@@ -66,13 +68,14 @@ doctor demo**; `/admin` lo rebotaba a `/doctor`. Cerrar sesión y volver a entra
 **Causa raíz — precedencia de identidad invertida.** El login oculto de reviewer (encendido en prod para la
 revisión de Google) deja una cookie `reviewer_token` de **12h** que apunta al profile del doctor demo. Ambas capas
 la consultaban **ANTES** que la sesión de Auth0:
+
 - `proxy.ts` (middleware): el atajo de reviewer resolvía el RBAC como `'doctor'` y **nunca llamaba a
   `auth0.getSession()`** → `/admin` inalcanzable.
 - `lib/identity.server.ts`: `resolveIdentity()` retornaba la identidad del reviewer sin leer la sesión → todos los
   datos del BFF eran los del doctor demo.
 
 Convivían las DOS cookies (`reviewer_token` + `__session` de Auth0) — verificado en el navegador. El login de Auth0
-era correcto; simplemente nunca se leía. El botón *Cerrar sesión* sí borra `reviewer_token`, pero entrar de nuevo
+era correcto; simplemente nunca se leía. El botón _Cerrar sesión_ sí borra `reviewer_token`, pero entrar de nuevo
 por `/login` o pasar por `/auth/logout` la dejaba viva → el siguiente login volvía a ser secuestrado.
 
 **Fix (`b1d877d`, merge `d3eeec7`):** la sesión de Auth0 se evalúa **primero** en ambas capas; el atajo de reviewer
@@ -106,13 +109,14 @@ como única fuente de activación → caja y texto funcionan.
 
 **Verificación:** tsc frontend 0. Repro aislado en navegador (Playwright, dos variantes lado a lado): click en la
 caja → versión con `onClick` queda `false` (doble toggle confirmado empíricamente), versión sin `onClick` queda
-`true`; click en el texto sigue alternando. 
+`true`; click en el texto sigue alternando.
 
 **Regla general (aprendizaje):** con el patrón "input `sr-only peer` + div visual dentro de un `<label>`", el div
 NUNCA debe tener su propio handler de toggle — el label ya activa el input. Grep `sr-only peer`: este era el
 ÚNICO caso en el frontend.
 
 ⚠️ **Excepciones de proceso (autorizadas por el usuario por urgencia — había médicos probando):**
+
 - Fue **directo a `main`** (rama `hotfix/onboarding-terms-checkbox` desde `main`), sin pasar por staging. Tras
   desplegar se sincronizaron `staging` (ff) y `develop` para que no divergieran.
 - El merge a `main` requirió `--no-verify`: el hook pre-commit de rama protegida corre `nx affected --target=test`
@@ -134,6 +138,7 @@ que no funcionaba). Y el `reschedule-appointment.use-case` persistía el nuevo `
 el evento de Google** (el BFF `/api/doctor/reschedule` tenía el TODO "Fase 5: sync con Google Calendar diferido").
 
 **Fix (commit `feature/reschedule-google-sync`):**
+
 - **Frontend:** botón **"Reagendar"** en las acciones del detalle de la cita (`scheduled|confirmed`) que abre el
   modal existente (`setRescheduling(detailAppt)`). `apps/frontend/app/doctor/agenda/page.tsx`.
 - **Backend:** cierra el TODO. `GoogleCalendarService.updateEventTime` (`events.patch`, `sendUpdates:'all'`,
@@ -2655,3 +2660,45 @@ Commits `f03e9bd` + `d239eae` + `c142844` (deploys success, columna nueva vía m
 
 Datos de prueba en la BD migrada (borrables): paciente "Paciente Prueba QA" (V-30111222) + consulta
 DLT-202607-0027. Doctor de prueba lucas.rivas.55@gmail.com puesto en delta_plus por el usuario.
+
+## 2026-07-25 — Agenda sin `window.location.reload()` (QA con Playwright en staging)
+
+**Contexto:** QA en vivo del barrido de toasts (commits `cdfec11`/`65254e6`/`4e4e4f2`) sobre
+`staging.deltasalud.app` con Playwright. Cinco pantallas pasaron a la primera: pacientes (editar),
+servicios (visibilidad en booking, ida y vuelta), consultorios (activar/desactivar), configuración
+(guardar perfil). 0 errores de consola.
+
+**🐛 Hallazgo — el barrido no llegaba a la agenda.** Las tres acciones más usadas terminaban en
+`window.location.reload()`:
+
+1. **Crear cita**: `useAppointmentFlow.ts:669` SÍ emitía `Cita agendada correctamente`, pero
+   `showToast()` solo agenda un render de React mientras el `reload()` del `onSuccess` corre
+   sincrónicamente. **Medido en staging con un grabador en `sessionStorage`**: la navegación
+   arranca en `ts=144400` y el toast se pinta en `ts=144403` — 3 ms tarde, ya dentro del documento
+   que se está descargando. El usuario nunca lo veía.
+2. **Confirmar cita** (`agenda/page.tsx`): no tenía toast de éxito, solo el del error.
+3. **Modal de estado** (atendida / cancelada / no asistió): igual, solo toast en el `catch`.
+
+**Fix (`b2aeb9d`, rama `feature/agenda-toasts-sin-reload`):** los tres pasan al patrón que el mismo
+archivo ya usaba en reagendar (`:975`) y eliminar (`:1030`) — actualizar estado + `showToast` +
+`await loadData()`. El reload completo sobraba: `loadData()` ya repuebla citas, bloqueos y config.
+`successMsg` vive en el `cfg` del modal, junto al resto de su copy.
+
+**Regla:** nunca emitir un toast en la misma función que hace `window.location.reload()`. El toast
+vive en el estado de React y la recarga destruye el árbol. Si hace falta refrescar, `loadData()` o
+`router.refresh()` (conservan el árbol cliente); `location.reload()` es el martillo.
+
+**Verificado en vivo tras el deploy a staging** (`23c6ab7`, run 30183522798): crear cita → toast +
+la cita aparece en el calendario sin recargar; confirmar → `Cita confirmada` y el panel de detalle
+queda abierto (antes la recarga lo cerraba); cancelar → `Cita cancelada` **visible en pantalla**
+(`role=status` verde, `width>0`) a 2 s del clic, y la cita queda `Cancelada` tras recarga limpia.
+Log del grabador: 3 toasts, **cero entradas `NAV`** = ya no hay recargas. 0 errores de consola.
+
+**⏳ Pendiente (menor):** el modal Nuevo/Editar paciente no emite toast de **error** —
+`handlePatientSubmit` re-lanza y el formulario lo pinta inline (verificado con cédula duplicada:
+"Ya existe un paciente con la cédula 'V-88123401'", sin toast). `handleSaveEdit` y `handleAddPatient`
+del mismo archivo sí lo emiten. Inconsistencia, no fallo silencioso.
+
+**Datos de prueba en staging (borrables):** paciente `QA Toast Prueba` (V-88123401), cita 28/07 15:20
+(agendada) y 27/07 14:40 (cancelada); cita del 28/07 09:20 (Maria P.) y 29/07 10:00 quedaron
+confirmadas por el QA.
