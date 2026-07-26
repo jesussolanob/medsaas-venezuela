@@ -73,6 +73,8 @@ interface BackendProfile {
   logoUrl: string | null;
   /** Signature image URL stored in GCS/MinIO (set from /doctor/settings). */
   signatureUrl: string | null;
+  /** ISO timestamp cuando el especialista descartó el tour de bienvenida. null = mostrarlo. */
+  welcomeDismissedAt?: string | null;
   /**
    * Explicit server-side flag set to true once the doctor completes the
    * onboarding form. Preferred over the specialty-presence heuristic.

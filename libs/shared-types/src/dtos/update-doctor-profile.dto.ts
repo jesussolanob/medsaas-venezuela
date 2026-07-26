@@ -43,6 +43,11 @@ export const UpdateDoctorProfileDtoSchema = z
      * Se pide con fines estadísticos; nunca condiciona el acceso ni el gating.
      */
     gender: z.enum(['F', 'M', 'O', 'N']).nullable().optional(),
+    /**
+     * true = el especialista marcó "no volver a mostrar" en el modal de bienvenida.
+     * El servidor sella la fecha; el cliente no envía timestamps.
+     */
+    welcome_dismissed: z.boolean().optional(),
   })
   .strict();
 

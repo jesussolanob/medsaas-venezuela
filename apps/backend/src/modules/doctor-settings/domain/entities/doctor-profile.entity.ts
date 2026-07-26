@@ -35,6 +35,8 @@ export interface DoctorProfileCreateParams {
   /** F | M | O | N (prefers not to say). Statistical use only — never gates access.
    *  Optional: perfiles anteriores al campo se construyen sin el (=> null). */
   gender?: string | null;
+  /** ISO timestamp when the specialist dismissed the welcome tour. NULL = show it. */
+  welcomeDismissedAt?: string | null;
   /**
    * Explicit flag set by CompleteRegistrationUseCase when the doctor submits
    * the onboarding form. Replaces the fragile frontend heuristic that inferred
@@ -62,6 +64,8 @@ export interface DoctorProfileUpdateParams {
   birthDate?: string | null;
   /** F | M | O | N. Editable by the doctor. */
   gender?: string | null;
+  /** Set server-side when the doctor dismisses the welcome tour. */
+  welcomeDismissedAt?: string | null;
 }
 
 export class DoctorProfile {
@@ -93,6 +97,8 @@ export class DoctorProfile {
   readonly birthDate: string | null;
   /** F | M | O | N. Nullable and editable by the doctor. */
   readonly gender: string | null;
+  /** NULL mientras el especialista no pida ocultar el tour de bienvenida. */
+  readonly welcomeDismissedAt: string | null;
   /** True once the doctor has submitted the onboarding form. Set server-side — never derived from specialty. */
   readonly onboardingCompleted: boolean;
 
@@ -122,6 +128,7 @@ export class DoctorProfile {
     this.cedula = params.cedula;
     this.birthDate = params.birthDate;
     this.gender = params.gender ?? null;
+    this.welcomeDismissedAt = params.welcomeDismissedAt ?? null;
     this.onboardingCompleted = params.onboardingCompleted;
   }
 
@@ -175,6 +182,7 @@ export class DoctorProfile {
       cedula: this.cedula,
       birthDate: this.birthDate,
       gender: this.gender,
+      welcomeDismissedAt: this.welcomeDismissedAt,
       onboardingCompleted: this.onboardingCompleted,
     });
   }
