@@ -1704,7 +1704,7 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                 patientName: patient.full_name,
                 doctorName,
                 consultationDate: newConsultation.consultation_date,
-                reason: newConsultation.reason || 'Consulta médica',
+                reason: newConsultation.reason || 'Consulta',
                 comments: newConsultation.comments || '',
                 consultationCode: result.consultation?.consultation_code || '',
               }),
