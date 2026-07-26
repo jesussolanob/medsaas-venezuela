@@ -744,7 +744,7 @@ export default function CobrosPage() {
   function buildWhatsAppMessage(payment: Payment): string {
     const amountUsd = payment.plan_price ?? 0;
     const amountBs = bcvRate ? amountUsd * bcvRate : null;
-    const service = payment.plan_name || 'consulta médica';
+    const service = payment.plan_name || 'consulta';
     const code = payment.appointment_code ? ` (Ref. ${payment.appointment_code})` : '';
 
     const usdStr = new Intl.NumberFormat('en-US', {

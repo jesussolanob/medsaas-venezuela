@@ -551,7 +551,7 @@ export default function ServicesPage() {
                 <label className="block text-xs font-medium text-slate-600 mb-1.5">Tipo</label>
                 <div className="grid grid-cols-2 gap-2">
                   {[
-                    { value: 'plan', label: 'Plan de consulta', desc: 'Consulta médica' },
+                    { value: 'plan', label: 'Plan de consulta', desc: 'Consulta' },
                     { value: 'service', label: 'Servicio extra', desc: 'Limpieza, examen, etc.' },
                   ].map((opt) => (
                     <button
