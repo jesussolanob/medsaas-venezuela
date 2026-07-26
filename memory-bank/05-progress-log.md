@@ -2702,3 +2702,62 @@ del mismo archivo sí lo emiten. Inconsistencia, no fallo silencioso.
 **Datos de prueba en staging (borrables):** paciente `QA Toast Prueba` (V-88123401), cita 28/07 15:20
 (agendada) y 27/07 14:40 (cancelada); cita del 28/07 09:20 (Maria P.) y 29/07 10:00 quedaron
 confirmadas por el QA.
+
+## 2026-07-26 — Reactividad del inicio + lote de 7 pedidos (onboarding, perfil, terminología)
+
+**Revisión pedida (reactividad al ingresar algo inline).** Finanzas ya estaba bien:
+alta, edición y borrado de ingresos/gastos llaman `loadData(true)` + `setRefreshKey`.
+El hueco estaba en el **Inicio** y era estructural: `fetchData()` vivía DENTRO del
+`useEffect`, así que no existía refetch reutilizable. Registrar ingreso o gasto no
+refrescaba nada, y aprobar un cobro parcheaba las cifras con **aritmética local**
+(`pending_amount - monto`, `total_revenue + monto`) — una copia local de una regla del
+backend, que se desvía en cuanto el servidor calcula distinto. Se adopta el `refreshKey`
+de finanzas y se elimina la aritmética. Cubre ingreso, gasto, aprobar cobro, confirmar
+cita y crear paciente (commit `0afef3f`).
+
+> Nota: extraer el loader a `useCallback` es lo natural, pero `react-hooks/set-state-in-effect`
+> lo marca como error. El `refreshKey` evita el warning y deja UN solo patrón de refresco.
+
+**Los 7 pedidos:**
+
+1. **Stepper de puesta en marcha** (`feat/inicio-stepper`, `346dc05`) — sustituye las dos
+   tarjetas sueltas (plantillas / consultorio) por 5 pasos con barra de progreso:
+   información, consultorio, servicios, marca, métodos de pago. Solo el siguiente
+   pendiente se ve expandido. Desaparece al completarse. Si falla el fetch de servicios u
+   consultorios el paso queda `null` y NO se marca pendiente (no acusar al especialista de
+   algo que sí hizo). Componente `components/doctor/SetupStepper.tsx`.
+2. **Modal de bienvenida** (`feat/modal-bienvenida`, `5ce24ae`) — tour de los módulos
+   **filtrado por plan** (`planUnlocks`) + puntero al icono de ayuda. El check "no volver a
+   mostrar" se guarda en `profiles.welcome_dismissed_at` (mig `20260726000004`), NO en
+   localStorage. Decisión de producto: la columna queda NULL para todos los perfiles
+   existentes, así que **los especialistas actuales también lo ven una vez**.
+3. **Título profesional sin default** — arrancaba en `'Dr.'` en DOS sitios (estado inicial
+   y el mapper `profileToView`); las psicólogas quedaban como "Dr." sin elegirlo.
+4. **🐛 Especialidad invisible en Configuración** — el onboarding tiene combobox del
+   catálogo de BD **+ "Otra especialidad"** de texto libre; Configuración mantenía una
+   lista hardcodeada de 27, desincronizada. Una especialidad escrita a mano (p.ej.
+   "Cirugía Maxilofacial") no estaba entre las `<option>` y el `<select>` se veía **VACÍO**.
+   Ahora ambas leen `GET /api/specialties` (BFF público nuevo `/api/public/specialties`) y
+   Configuración también ofrece "Otra".
+5. **Terminología** — "consulta médica" → "consulta" en 7 textos de UI + plantillas de
+   correo en BD (mig `20260726000002`, alcanza 3 plantillas; también "Médico:" →
+   "Especialista:"). NO se tocan los textos legales de T&C/privacidad ni el prompt interno
+   de Gemini.
+6. **Género del especialista** — opcional (F/M/O/N) en onboarding y configuración, mig
+   `20260726000001`. Nada del sistema condiciona acceso ni precios por este campo.
+7. **Correo a administradores** — se quita la fila "ID del doctor" de
+   `doctor_pending_verification` (mig `20260726000003`, `regexp_replace` para no pisar los
+   3 restyles previos).
+
+**Aprendizajes:**
+
+- El DTO `update-doctor-profile` es `.strict()`: todo campo nuevo hay que declararlo o el
+  PUT devuelve 400 por clave no reconocida (mismo tropiezo que `relatedConsultationId`).
+- Los campos nuevos de entidad deben ser **opcionales con default** (`gender?`), si no
+  revientan 13 suites que construyen `DoctorProfile.create({...})` sin ellos.
+- **Migraciones con regex validadas contra la BD de staging ANTES de commitear**, con
+  cloud-sql-proxy + `SELECT` (usuario `delta`, no `postgres`). Confirmado que el patrón de
+  "ID del doctor" casa (html 2547→2481) y que el sweep alcanza 3 plantillas. Una migración
+  rota bloquea TODOS los despliegues, así que esto no es opcional.
+- Baseline de `develop`: **7 suites / 36 tests rojos preexistentes** y 1 error de lint en
+  `doctor/page.tsx` (`Date.now()` en render). Todo el lote cierra en ese mismo baseline.
