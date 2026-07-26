@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useBcvRate } from '@/lib/useBcvRate';
 import { formatUsd, formatBs, type PaymentRow } from '@/lib/finances';
 import { reportError } from '@/lib/report-error';
@@ -54,6 +54,7 @@ import PaymentMethodModal from '@/app/doctor/consultations/PaymentMethodModal';
 import { getDoctorId } from '@/app/doctor/actions';
 import { showToast } from '@/components/ui/Toaster';
 import { SetupStepper } from '@/components/doctor/SetupStepper';
+import { WelcomeModal } from '@/components/doctor/WelcomeModal';
 import { getDoctorPlanFeatures } from '@/app/doctor/plan-features-actions';
 import { planUnlocks, EMPTY_PLAN_FEATURES, type PlanFeatures } from '@/lib/plan-features';
 // MIGRATED (Etapa 1): data fetching now goes through NestJS backend actions.
@@ -142,6 +143,11 @@ export default function DoctorDashboard() {
   // null = desconocido (cargando o fallo el fetch); el paso no se marca ni listo ni
   // pendiente hasta saberlo, para no acusar al especialista de algo que si hizo.
   const [hasServices, setHasServices] = useState<boolean | null>(null);
+  // Modal de bienvenida: se abre si el perfil no tiene welcome_dismissed_at.
+  const [showWelcome, setShowWelcome] = useState(false);
+  // Se evalua UNA sola vez por sesion de pagina: el efecto tambien corre al cambiar
+  // de mes y tras cada mutacion, y el modal no debe reaparecer en esos casos.
+  const welcomeCheckedRef = useRef(false);
   const [planFeatures, setPlanFeatures] = useState<PlanFeatures>(EMPTY_PLAN_FEATURES);
   // null = desconocido (cargando o fetch falló), true = tiene consultorios, false = sin consultorios
   const [hasOffices, setHasOffices] = useState<boolean | null>(null);
@@ -273,6 +279,12 @@ export default function DoctorDashboard() {
             phone: prof.phone ?? null,
             paymentMethods: prof.paymentMethods ?? [],
           });
+          // Se muestra mientras el especialista no haya pedido ocultarlo. Solo en la
+          // carga inicial: un refetch tras una mutacion no debe reabrirlo.
+          if (!welcomeCheckedRef.current) {
+            welcomeCheckedRef.current = true;
+            if (!prof.welcomeDismissedAt) setShowWelcome(true);
+          }
         }
 
         // Map DashboardAppointment (camelCase) → local Appointment type (snake_case).
@@ -444,6 +456,23 @@ export default function DoctorDashboard() {
       throw err;
     } finally {
       setPatientFormSaving(false);
+    }
+  }
+
+  /**
+   * Persiste "no volver a mostrar" del modal de bienvenida en el perfil (no en
+   * localStorage) para que la decisión acompañe al especialista entre dispositivos.
+   * Si falla, se traga el error: el modal ya se cerró y como mucho vuelve a salir.
+   */
+  async function dismissWelcomeForever() {
+    try {
+      await fetch('/api/doctor/profile', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ welcome_dismissed: true }),
+      });
+    } catch (err: unknown) {
+      reportError('doctor/page', 'dismissWelcomeForever', err);
     }
   }
 
@@ -1738,6 +1767,15 @@ export default function DoctorDashboard() {
             </form>
           </div>
         </div>
+      )}
+
+      {/* Bienvenida: tour breve de los modulos segun el plan. */}
+      {showWelcome && (
+        <WelcomeModal
+          planFeatures={planFeatures}
+          onClose={() => setShowWelcome(false)}
+          onDismissForever={dismissWelcomeForever}
+        />
       )}
     </>
   );
