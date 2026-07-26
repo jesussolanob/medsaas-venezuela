@@ -32,6 +32,9 @@ export interface DoctorProfileCreateParams {
   cedula: string | null;
   /** Doctor's date of birth in ISO format (YYYY-MM-DD). Editable by the doctor. */
   birthDate: string | null;
+  /** F | M | O | N (prefers not to say). Statistical use only — never gates access.
+   *  Optional: perfiles anteriores al campo se construyen sin el (=> null). */
+  gender?: string | null;
   /**
    * Explicit flag set by CompleteRegistrationUseCase when the doctor submits
    * the onboarding form. Replaces the fragile frontend heuristic that inferred
@@ -57,6 +60,8 @@ export interface DoctorProfileUpdateParams {
   phone?: string | null;
   /** Doctor's date of birth (YYYY-MM-DD). Editable. cedula is intentionally excluded. */
   birthDate?: string | null;
+  /** F | M | O | N. Editable by the doctor. */
+  gender?: string | null;
 }
 
 export class DoctorProfile {
@@ -86,6 +91,8 @@ export class DoctorProfile {
   readonly cedula: string | null;
   /** Date of birth in YYYY-MM-DD format. Nullable and editable by the doctor. */
   readonly birthDate: string | null;
+  /** F | M | O | N. Nullable and editable by the doctor. */
+  readonly gender: string | null;
   /** True once the doctor has submitted the onboarding form. Set server-side — never derived from specialty. */
   readonly onboardingCompleted: boolean;
 
@@ -114,6 +121,7 @@ export class DoctorProfile {
     this.customRateLabel = params.customRateLabel;
     this.cedula = params.cedula;
     this.birthDate = params.birthDate;
+    this.gender = params.gender ?? null;
     this.onboardingCompleted = params.onboardingCompleted;
   }
 
@@ -166,6 +174,7 @@ export class DoctorProfile {
       customRateLabel: this.customRateLabel,
       cedula: this.cedula,
       birthDate: this.birthDate,
+      gender: this.gender,
       onboardingCompleted: this.onboardingCompleted,
     });
   }

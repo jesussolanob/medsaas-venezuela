@@ -130,6 +130,7 @@ export class DoctorController {
       phone: dto.phone,
       // birthDate is editable; cedula is intentionally excluded (read-only)
       birthDate: dto.birth_date,
+      gender: dto.gender,
     });
     return { success: true, data: result };
   }

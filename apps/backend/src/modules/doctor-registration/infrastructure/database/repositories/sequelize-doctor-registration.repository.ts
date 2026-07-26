@@ -40,6 +40,7 @@ export class SequelizeDoctorRegistrationRepository implements IDoctorRegistratio
       mppsNumber: params.mppsNumber,
       colegiadoNumber: params.colegiadoNumber,
       specialty: params.specialty,
+      ...(params.gender != null && { gender: params.gender }),
       verificationStatus: 'pending',
       verifiedAt: null,
       verifiedBy: null,

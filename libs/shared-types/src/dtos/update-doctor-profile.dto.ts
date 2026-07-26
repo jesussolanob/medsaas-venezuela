@@ -37,6 +37,12 @@ export const UpdateDoctorProfileDtoSchema = z
      * cedula is intentionally excluded: it is read-only after onboarding.
      */
     birth_date: isoDateString.nullable().optional(),
+    /**
+     * Género del especialista. F=femenino, M=masculino, O=otro,
+     * N=prefiere no decirlo. Pasar null para limpiarlo.
+     * Se pide con fines estadísticos; nunca condiciona el acceso ni el gating.
+     */
+    gender: z.enum(['F', 'M', 'O', 'N']).nullable().optional(),
   })
   .strict();
 

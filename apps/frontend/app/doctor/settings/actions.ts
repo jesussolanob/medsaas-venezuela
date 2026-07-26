@@ -69,6 +69,7 @@ interface BackendDoctorProfile {
   subscriptionStatus: string | null;
   cedula: string | null;
   birthDate: string | null;
+  gender: string | null;
 }
 
 /** Shape returned by GET/PUT /api/doctor/schedule (camelCase). */
@@ -104,6 +105,7 @@ export interface SettingsProfileView {
   phone: string;
   cedula: string | null;
   birth_date: string | null;
+  gender: string | null;
 }
 
 /** Schedule view consumed by the UI state. */
@@ -126,7 +128,9 @@ function profileToView(b: BackendDoctorProfile): SettingsProfileView {
     full_name: b.fullName ?? '',
     email: b.email ?? '',
     specialty: b.specialty ?? '',
-    professional_title: b.professionalTitle ?? 'Dr.',
+    // Sin fallback a 'Dr.': el titulo lo elige el especialista (habia psicologas
+    // que aparecian como "Dr." sin haberlo puesto).
+    professional_title: b.professionalTitle ?? '',
     allows_online: b.allowsOnline ?? true,
     office_address: b.officeAddress ?? '',
     city: b.city ?? '',
@@ -139,6 +143,7 @@ function profileToView(b: BackendDoctorProfile): SettingsProfileView {
     phone: b.phone ?? '',
     cedula: b.cedula ?? null,
     birth_date: b.birthDate ?? null,
+    gender: b.gender ?? null,
   };
 }
 
@@ -191,6 +196,8 @@ export async function saveSettingsProfile(input: {
   city?: string;
   phone?: string;
   birth_date?: string | null;
+  /** F | M | O | N. null limpia el valor. */
+  gender?: string | null;
 }): Promise<ActionResult> {
   const body: Record<string, unknown> = {
     specialty: input.specialty || null,
@@ -217,6 +224,10 @@ export async function saveSettingsProfile(input: {
 
   if (input.birth_date !== undefined) {
     body.birth_date = input.birth_date || null;
+  }
+
+  if (input.gender !== undefined) {
+    body.gender = input.gender || null;
   }
 
   const result = await backendPut<BackendDoctorProfile>('/api/doctor/profile', body);

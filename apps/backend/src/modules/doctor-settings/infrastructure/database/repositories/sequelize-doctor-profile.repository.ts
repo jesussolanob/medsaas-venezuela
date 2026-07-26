@@ -45,6 +45,7 @@ export class SequelizeDoctorProfileRepository implements IDoctorProfileRepositor
       ...(params.licenseNumber !== undefined && { licenseNumber: params.licenseNumber }),
       ...(params.phone !== undefined && { phone: params.phone }),
       ...(params.birthDate !== undefined && { birthDate: params.birthDate }),
+      ...(params.gender !== undefined && { gender: params.gender }),
     });
 
     return this.toDomain(row);
@@ -96,6 +97,7 @@ export class SequelizeDoctorProfileRepository implements IDoctorProfileRepositor
       customRateLabel: row.customRateLabel,
       cedula: row.cedula,
       birthDate,
+      gender: row.gender ?? null,
       onboardingCompleted: row.onboardingCompleted ?? false,
     });
   }

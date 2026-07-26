@@ -377,6 +377,8 @@ export default function OnboardingForm({
     const known = specialties.find((s) => s.name === initialSpecialty);
     return known ? '' : initialSpecialty;
   });
+  // Genero: opcional, con fines estadisticos. No condiciona nada del sistema.
+  const [gender, setGender] = useState('');
   const [mppsNumber, setMppsNumber] = useState('');
   const [colegiadoNumber, setColegiadoNumber] = useState('');
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
@@ -439,6 +441,7 @@ export default function OnboardingForm({
         full_name: fullName.trim(),
         cedula: cedulaFormatted,
         specialty: resolvedSpecialty || undefined,
+        gender: gender || null,
         mpps_number: mppsNumber.trim() || null,
         colegiado_number: colegiadoNumber.trim() || null,
         accepted_terms: true,
@@ -740,7 +743,8 @@ export default function OnboardingForm({
             className="block text-xs font-semibold mb-1.5"
             style={{ color: 'var(--dh-gray-700)' }}
           >
-            Especialidad médica <span className="text-red-400">*</span>
+            {/* "Especialidad" a secas: no todos los que se registran son médicos. */}
+            Especialidad <span className="text-red-400">*</span>
           </label>
           <SpecialtyCombobox
             specialties={specialties}
@@ -763,6 +767,31 @@ export default function OnboardingForm({
               {fieldErrors.specialty}
             </p>
           )}
+        </div>
+
+        {/* Género — opcional, con fines estadísticos */}
+        <div>
+          <label
+            htmlFor="field-gender"
+            className="block text-xs font-semibold mb-1.5"
+            style={{ color: 'var(--dh-gray-700)' }}
+          >
+            Género{' '}
+            <span className="font-normal" style={{ color: 'var(--dh-gray-400)' }}>
+              (opcional)
+            </span>
+          </label>
+          <select
+            id="field-gender"
+            value={gender}
+            onChange={(e) => setGender(e.target.value)}
+            className={inputNormal}
+          >
+            <option value="">Prefiero no decirlo</option>
+            <option value="F">Femenino</option>
+            <option value="M">Masculino</option>
+            <option value="O">Otro</option>
+          </select>
         </div>
 
         {/* MPPS — optional */}
