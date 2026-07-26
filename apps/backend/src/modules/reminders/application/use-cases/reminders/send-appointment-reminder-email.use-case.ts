@@ -129,7 +129,7 @@ export class SendAppointmentReminderEmailUseCase {
       minute: '2-digit',
     });
 
-    const service = appointment.planName ?? 'Consulta médica';
+    const service = appointment.planName ?? 'Consulta';
     const code = appointment.appointmentCode ?? appointment.id.slice(0, 8).toUpperCase();
     const patientName = appointment.patientName ?? 'Paciente';
 

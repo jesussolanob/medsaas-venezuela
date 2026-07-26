@@ -45,6 +45,10 @@ export class SequelizeDoctorProfileRepository implements IDoctorProfileRepositor
       ...(params.licenseNumber !== undefined && { licenseNumber: params.licenseNumber }),
       ...(params.phone !== undefined && { phone: params.phone }),
       ...(params.birthDate !== undefined && { birthDate: params.birthDate }),
+      ...(params.gender !== undefined && { gender: params.gender }),
+      ...(params.welcomeDismissedAt !== undefined && {
+        welcomeDismissedAt: params.welcomeDismissedAt,
+      }),
     });
 
     return this.toDomain(row);
@@ -96,6 +100,9 @@ export class SequelizeDoctorProfileRepository implements IDoctorProfileRepositor
       customRateLabel: row.customRateLabel,
       cedula: row.cedula,
       birthDate,
+      gender: row.gender ?? null,
+      welcomeDismissedAt:
+        row.welcomeDismissedAt != null ? new Date(row.welcomeDismissedAt).toISOString() : null,
       onboardingCompleted: row.onboardingCompleted ?? false,
     });
   }

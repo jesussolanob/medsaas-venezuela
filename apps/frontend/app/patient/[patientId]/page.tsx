@@ -81,7 +81,7 @@ export default async function PatientPage({ params }: { params: Promise<{ patien
               </div>
               <div>
                 <h1 className="text-4xl font-bold">Hola, {patient.full_name.split(' ')[0]}</h1>
-                <p className="text-white/80 text-lg mt-2">Panel de tus citas y consultas médicas</p>
+                <p className="text-white/80 text-lg mt-2">Panel de tus citas y consultas</p>
               </div>
             </div>
           </div>
@@ -164,7 +164,7 @@ export default async function PatientPage({ params }: { params: Promise<{ patien
                 <FileText className="w-5 h-5 text-amber-500" />
                 Historial de consultas
               </h2>
-              <p className="text-sm text-slate-500 mt-1">Todas tus consultas médicas realizadas</p>
+              <p className="text-sm text-slate-500 mt-1">Todas tus consultas realizadas</p>
             </div>
 
             {pastConsultations.length === 0 ? (

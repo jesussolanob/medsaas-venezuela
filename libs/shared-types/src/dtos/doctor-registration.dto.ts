@@ -35,6 +35,11 @@ export const DoctorRegistrationDtoSchema = z
      * Optional — omitting it does not change any existing acceptance record.
      */
     accepted_terms: z.boolean().optional(),
+    /**
+     * Género del especialista: F | M | O (otro) | N (prefiere no decirlo).
+     * Opcional — se pide con fines estadísticos y puede cambiarse en configuración.
+     */
+    gender: z.enum(['F', 'M', 'O', 'N']).nullable().optional(),
   })
   .strict();
 

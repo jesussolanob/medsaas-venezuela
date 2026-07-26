@@ -50,6 +50,9 @@ export class RegistrationProfileModel extends Model {
   @Column({ type: DataType.TEXT, allowNull: true })
   declare specialty: string | null;
 
+  @Column({ type: DataType.STRING(1), allowNull: true, field: 'gender' })
+  declare gender: string | null;
+
   @Default('pending')
   @Column({ type: DataType.TEXT, allowNull: false, field: 'verification_status' })
   declare verificationStatus: string;

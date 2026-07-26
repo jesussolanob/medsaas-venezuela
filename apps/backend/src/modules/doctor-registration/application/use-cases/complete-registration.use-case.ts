@@ -20,6 +20,8 @@ export interface CompleteRegistrationInput {
   mppsNumber?: string | null;
   colegiadoNumber?: string | null;
   specialty?: string | null;
+  /** F | M | O | N. Statistical only — never gates access. */
+  gender?: string | null;
   /** When true, persists terms acceptance (timestamp + version) on the profile. */
   acceptedTerms?: boolean;
 }
@@ -85,6 +87,7 @@ export class CompleteRegistrationUseCase {
       mppsNumber: input.mppsNumber ?? null,
       colegiadoNumber: input.colegiadoNumber ?? null,
       specialty: input.specialty ?? null,
+      gender: input.gender ?? null,
     });
 
     if (!updated) {

@@ -2660,3 +2660,104 @@ Commits `f03e9bd` + `d239eae` + `c142844` (deploys success, columna nueva vía m
 
 Datos de prueba en la BD migrada (borrables): paciente "Paciente Prueba QA" (V-30111222) + consulta
 DLT-202607-0027. Doctor de prueba lucas.rivas.55@gmail.com puesto en delta_plus por el usuario.
+
+## 2026-07-25 — Agenda sin `window.location.reload()` (QA con Playwright en staging)
+
+**Contexto:** QA en vivo del barrido de toasts (commits `cdfec11`/`65254e6`/`4e4e4f2`) sobre
+`staging.deltasalud.app` con Playwright. Cinco pantallas pasaron a la primera: pacientes (editar),
+servicios (visibilidad en booking, ida y vuelta), consultorios (activar/desactivar), configuración
+(guardar perfil). 0 errores de consola.
+
+**🐛 Hallazgo — el barrido no llegaba a la agenda.** Las tres acciones más usadas terminaban en
+`window.location.reload()`:
+
+1. **Crear cita**: `useAppointmentFlow.ts:669` SÍ emitía `Cita agendada correctamente`, pero
+   `showToast()` solo agenda un render de React mientras el `reload()` del `onSuccess` corre
+   sincrónicamente. **Medido en staging con un grabador en `sessionStorage`**: la navegación
+   arranca en `ts=144400` y el toast se pinta en `ts=144403` — 3 ms tarde, ya dentro del documento
+   que se está descargando. El usuario nunca lo veía.
+2. **Confirmar cita** (`agenda/page.tsx`): no tenía toast de éxito, solo el del error.
+3. **Modal de estado** (atendida / cancelada / no asistió): igual, solo toast en el `catch`.
+
+**Fix (`b2aeb9d`, rama `feature/agenda-toasts-sin-reload`):** los tres pasan al patrón que el mismo
+archivo ya usaba en reagendar (`:975`) y eliminar (`:1030`) — actualizar estado + `showToast` +
+`await loadData()`. El reload completo sobraba: `loadData()` ya repuebla citas, bloqueos y config.
+`successMsg` vive en el `cfg` del modal, junto al resto de su copy.
+
+**Regla:** nunca emitir un toast en la misma función que hace `window.location.reload()`. El toast
+vive en el estado de React y la recarga destruye el árbol. Si hace falta refrescar, `loadData()` o
+`router.refresh()` (conservan el árbol cliente); `location.reload()` es el martillo.
+
+**Verificado en vivo tras el deploy a staging** (`23c6ab7`, run 30183522798): crear cita → toast +
+la cita aparece en el calendario sin recargar; confirmar → `Cita confirmada` y el panel de detalle
+queda abierto (antes la recarga lo cerraba); cancelar → `Cita cancelada` **visible en pantalla**
+(`role=status` verde, `width>0`) a 2 s del clic, y la cita queda `Cancelada` tras recarga limpia.
+Log del grabador: 3 toasts, **cero entradas `NAV`** = ya no hay recargas. 0 errores de consola.
+
+**⏳ Pendiente (menor):** el modal Nuevo/Editar paciente no emite toast de **error** —
+`handlePatientSubmit` re-lanza y el formulario lo pinta inline (verificado con cédula duplicada:
+"Ya existe un paciente con la cédula 'V-88123401'", sin toast). `handleSaveEdit` y `handleAddPatient`
+del mismo archivo sí lo emiten. Inconsistencia, no fallo silencioso.
+
+**Datos de prueba en staging (borrables):** paciente `QA Toast Prueba` (V-88123401), cita 28/07 15:20
+(agendada) y 27/07 14:40 (cancelada); cita del 28/07 09:20 (Maria P.) y 29/07 10:00 quedaron
+confirmadas por el QA.
+
+## 2026-07-26 — Reactividad del inicio + lote de 7 pedidos (onboarding, perfil, terminología)
+
+**Revisión pedida (reactividad al ingresar algo inline).** Finanzas ya estaba bien:
+alta, edición y borrado de ingresos/gastos llaman `loadData(true)` + `setRefreshKey`.
+El hueco estaba en el **Inicio** y era estructural: `fetchData()` vivía DENTRO del
+`useEffect`, así que no existía refetch reutilizable. Registrar ingreso o gasto no
+refrescaba nada, y aprobar un cobro parcheaba las cifras con **aritmética local**
+(`pending_amount - monto`, `total_revenue + monto`) — una copia local de una regla del
+backend, que se desvía en cuanto el servidor calcula distinto. Se adopta el `refreshKey`
+de finanzas y se elimina la aritmética. Cubre ingreso, gasto, aprobar cobro, confirmar
+cita y crear paciente (commit `0afef3f`).
+
+> Nota: extraer el loader a `useCallback` es lo natural, pero `react-hooks/set-state-in-effect`
+> lo marca como error. El `refreshKey` evita el warning y deja UN solo patrón de refresco.
+
+**Los 7 pedidos:**
+
+1. **Stepper de puesta en marcha** (`feat/inicio-stepper`, `346dc05`) — sustituye las dos
+   tarjetas sueltas (plantillas / consultorio) por 5 pasos con barra de progreso:
+   información, consultorio, servicios, marca, métodos de pago. Solo el siguiente
+   pendiente se ve expandido. Desaparece al completarse. Si falla el fetch de servicios u
+   consultorios el paso queda `null` y NO se marca pendiente (no acusar al especialista de
+   algo que sí hizo). Componente `components/doctor/SetupStepper.tsx`.
+2. **Modal de bienvenida** (`feat/modal-bienvenida`, `5ce24ae`) — tour de los módulos
+   **filtrado por plan** (`planUnlocks`) + puntero al icono de ayuda. El check "no volver a
+   mostrar" se guarda en `profiles.welcome_dismissed_at` (mig `20260726000004`), NO en
+   localStorage. Decisión de producto: la columna queda NULL para todos los perfiles
+   existentes, así que **los especialistas actuales también lo ven una vez**.
+3. **Título profesional sin default** — arrancaba en `'Dr.'` en DOS sitios (estado inicial
+   y el mapper `profileToView`); las psicólogas quedaban como "Dr." sin elegirlo.
+4. **🐛 Especialidad invisible en Configuración** — el onboarding tiene combobox del
+   catálogo de BD **+ "Otra especialidad"** de texto libre; Configuración mantenía una
+   lista hardcodeada de 27, desincronizada. Una especialidad escrita a mano (p.ej.
+   "Cirugía Maxilofacial") no estaba entre las `<option>` y el `<select>` se veía **VACÍO**.
+   Ahora ambas leen `GET /api/specialties` (BFF público nuevo `/api/public/specialties`) y
+   Configuración también ofrece "Otra".
+5. **Terminología** — "consulta médica" → "consulta" en 7 textos de UI + plantillas de
+   correo en BD (mig `20260726000002`, alcanza 3 plantillas; también "Médico:" →
+   "Especialista:"). NO se tocan los textos legales de T&C/privacidad ni el prompt interno
+   de Gemini.
+6. **Género del especialista** — opcional (F/M/O/N) en onboarding y configuración, mig
+   `20260726000001`. Nada del sistema condiciona acceso ni precios por este campo.
+7. **Correo a administradores** — se quita la fila "ID del doctor" de
+   `doctor_pending_verification` (mig `20260726000003`, `regexp_replace` para no pisar los
+   3 restyles previos).
+
+**Aprendizajes:**
+
+- El DTO `update-doctor-profile` es `.strict()`: todo campo nuevo hay que declararlo o el
+  PUT devuelve 400 por clave no reconocida (mismo tropiezo que `relatedConsultationId`).
+- Los campos nuevos de entidad deben ser **opcionales con default** (`gender?`), si no
+  revientan 13 suites que construyen `DoctorProfile.create({...})` sin ellos.
+- **Migraciones con regex validadas contra la BD de staging ANTES de commitear**, con
+  cloud-sql-proxy + `SELECT` (usuario `delta`, no `postgres`). Confirmado que el patrón de
+  "ID del doctor" casa (html 2547→2481) y que el sweep alcanza 3 plantillas. Una migración
+  rota bloquea TODOS los despliegues, así que esto no es opcional.
+- Baseline de `develop`: **7 suites / 36 tests rojos preexistentes** y 1 error de lint en
+  `doctor/page.tsx` (`Date.now()` en render). Todo el lote cierra en ese mismo baseline.

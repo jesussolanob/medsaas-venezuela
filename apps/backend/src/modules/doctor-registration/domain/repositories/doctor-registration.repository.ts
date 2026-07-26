@@ -11,6 +11,7 @@ export interface RegistrationUpdateParams {
   mppsNumber: string | null;
   colegiadoNumber: string | null;
   specialty: string | null;
+  gender?: string | null;
 }
 
 export interface VerificationUpdateParams {
