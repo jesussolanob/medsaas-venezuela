@@ -2,6 +2,64 @@
 
 > Registro cronológico. Una entrada por fase/hito completado.
 
+## 2026-07-25 (tarde) — Alta del doctor resiliente + toasts en toda mutación + triage de Sentry ⏳ (EN STAGING, PENDIENTE QA VISUAL Y PROMOCIÓN A PROD)
+
+Todo esto vive en `develop`/`staging`; **`main` NO lo tiene**. El usuario pidió expresamente no promover a prod
+hasta hacer el QA visual en staging.
+
+### Alta del doctor resiliente (ADR pendiente de numerar — "Opción A")
+
+El alta creaba perfil + fila de `subscriptions` en UNA transacción: si el segundo INSERT fallaba, el rollback se
+llevaba al doctor entero y no quedaba ni el email (así se perdió `daniela.gil@ucla.edu.ve`, 4 intentos).
+**Hallazgo que definió la solución:** el gating del plan lee `profiles.plan`
+(`get-doctor-features-v2.use-case.ts:57`), NO `subscriptions` — y `demo.google@deltasalud.app` funciona en prod
+**sin** esa fila. La atomicidad protegía una fila no indispensable.
+
+- Ahora el perfil se commitea solo y `tryCreateSubscription` corre después, best-effort; si falla, el doctor queda
+  registrado igual y se deja rastro accionable.
+- **Fallbacks de contacto (4):** `profiles` · log `[signup]` (attempt/created/failed + `subscription-missing`, con
+  email) · Sentry (tag `signup_failure`, `setUser({email})`, gated por `SENTRY_ENABLED`) · Auth0 (externo).
+- ⚠️ **Todo el logging va SOLO en el camino de alta nueva.** `resolve-identity` se ejecuta **una vez por request**
+  (medido en prod: 143 llamadas/hora con 2-3 usuarios) — loguear ahí inunda Cloud Logging y falsea métricas.
+- **Se descartó** la tabla `signup_attempts` que se había construido primero (respaldo en la rama
+  `spike/signup-attempts-tabla-descartada`, commit `60d0966`, NO mergear).
+- **QA en staging (forzando el modo de falla real con una CHECK constraint NOT VALID sobre `subscriptions`):**
+  registro normal ✓ · registro con la suscripción rota → **HTTP 200 y perfil creado** ✓ · logs `[signup]` con el
+  email ✓ · 3 llamadas de usuario existente → **cero** logs nuevos ✓ · panel de suscripción sin la fila carga sin
+  errores ✓. Staging quedó limpio (constraint eliminada, perfiles de prueba borrados, suscripción del demo restaurada).
+
+### Toasts en toda mutación (regla de producto nueva del dueño)
+
+Regla: **toda mutación debe confirmar su resultado con un toast**. Origen: guardar la ficha de un paciente no
+confirmaba nada. De **35 handlers** sin confirmación de éxito quedan **8**, todos justificados (guardado en
+segundo plano de facturación, autoguardado de bloques/paraclínico, dos wrappers que no son UI, y tres donde el
+resultado ya es evidente: kanban del CRM, chat de mensajes, chat de ayuda).
+
+- ⚠️ **Lección de método:** una auditoría por ARCHIVO da falsos negativos — clasificó pantallas enteras como "OK"
+  porque el archivo importaba `showToast` para otras acciones, mientras los handlers de guardado no lo llamaban.
+  Hay que verificar **handler por handler**. Script de barrido reutilizable en el scratchpad de la sesión.
+- ⚠️ **Y la herramienta también miente:** la primera versión del script partía los handlers en cada `const x = (…)`
+  y contaba 44 falsos; además no reconocía wrappers locales `toast.success(...)` (agenda YA confirmaba bien).
+- Los toasts de error del envío masivo de recordatorios **sí** nombran al paciente: la regla de no-PII es sobre
+  **logs**; en la UI del propio especialista, saber cuál falló es lo accionable.
+
+### Sentry — triage de los issues abiertos
+
+De 10 issues: el 99% del volumen (6094 eventos) ya estaba tapado por el fix del 12/07, y los 500 de
+`resolve-identity` **murieron con el fix del enum `trialing`** (sin eventos desde el 21/07 22:01 UTC; el fix entró
+el 22/07 17:55 UTC) — no hay ningún bug de auth abierto. El resto son fallos de red transitorios (1-2 eventos).
+Correcciones: la supresión de version skew en `DoctorNotificationToast` **nunca funcionaba** (buscaba
+`'Server Action was not found'` pero el mensaje real trae el hash en el medio); `ignoreErrors` suma ruido de
+extensiones; `report-error.ts` agrega `setFingerprint([file, method])` para agrupar por sitio de llamada (antes
+agrupaba por stack y mezclaba fallos no relacionados bajo un título engañoso).
+
+### Deuda anotada
+
+- Portal del paciente (`app/patient/profile/page.tsx`): el formulario deja editar alergias, crónicas, tipo de
+  sangre y contacto de emergencia, pero sólo envía `address`/`city` y **igual confirma éxito**. Esos datos los
+  carga el ESPECIALISTA desde la ficha. Es una confirmación falsa **latente** (el portal no está en uso).
+- Los 8 suites de backend rotos de antes en `main` siguen obligando a `--no-verify` en cada merge.
+
 ## 2026-07-25 — 🔴 Hotfix de AUTH: la cookie de reviewer secuestraba la identidad de un usuario autenticado ✅ (DIRECTO A PROD)
 
 **Síntoma:** el usuario entraba con `lucas@deltasalud.app` (super_admin en BD) y la app le abría el **portal del
@@ -10,13 +68,14 @@ doctor demo**; `/admin` lo rebotaba a `/doctor`. Cerrar sesión y volver a entra
 **Causa raíz — precedencia de identidad invertida.** El login oculto de reviewer (encendido en prod para la
 revisión de Google) deja una cookie `reviewer_token` de **12h** que apunta al profile del doctor demo. Ambas capas
 la consultaban **ANTES** que la sesión de Auth0:
+
 - `proxy.ts` (middleware): el atajo de reviewer resolvía el RBAC como `'doctor'` y **nunca llamaba a
   `auth0.getSession()`** → `/admin` inalcanzable.
 - `lib/identity.server.ts`: `resolveIdentity()` retornaba la identidad del reviewer sin leer la sesión → todos los
   datos del BFF eran los del doctor demo.
 
 Convivían las DOS cookies (`reviewer_token` + `__session` de Auth0) — verificado en el navegador. El login de Auth0
-era correcto; simplemente nunca se leía. El botón *Cerrar sesión* sí borra `reviewer_token`, pero entrar de nuevo
+era correcto; simplemente nunca se leía. El botón _Cerrar sesión_ sí borra `reviewer_token`, pero entrar de nuevo
 por `/login` o pasar por `/auth/logout` la dejaba viva → el siguiente login volvía a ser secuestrado.
 
 **Fix (`b1d877d`, merge `d3eeec7`):** la sesión de Auth0 se evalúa **primero** en ambas capas; el atajo de reviewer
@@ -50,13 +109,14 @@ como única fuente de activación → caja y texto funcionan.
 
 **Verificación:** tsc frontend 0. Repro aislado en navegador (Playwright, dos variantes lado a lado): click en la
 caja → versión con `onClick` queda `false` (doble toggle confirmado empíricamente), versión sin `onClick` queda
-`true`; click en el texto sigue alternando. 
+`true`; click en el texto sigue alternando.
 
 **Regla general (aprendizaje):** con el patrón "input `sr-only peer` + div visual dentro de un `<label>`", el div
 NUNCA debe tener su propio handler de toggle — el label ya activa el input. Grep `sr-only peer`: este era el
 ÚNICO caso en el frontend.
 
 ⚠️ **Excepciones de proceso (autorizadas por el usuario por urgencia — había médicos probando):**
+
 - Fue **directo a `main`** (rama `hotfix/onboarding-terms-checkbox` desde `main`), sin pasar por staging. Tras
   desplegar se sincronizaron `staging` (ff) y `develop` para que no divergieran.
 - El merge a `main` requirió `--no-verify`: el hook pre-commit de rama protegida corre `nx affected --target=test`
@@ -78,6 +138,7 @@ que no funcionaba). Y el `reschedule-appointment.use-case` persistía el nuevo `
 el evento de Google** (el BFF `/api/doctor/reschedule` tenía el TODO "Fase 5: sync con Google Calendar diferido").
 
 **Fix (commit `feature/reschedule-google-sync`):**
+
 - **Frontend:** botón **"Reagendar"** en las acciones del detalle de la cita (`scheduled|confirmed`) que abre el
   modal existente (`setRescheduling(detailAppt)`). `apps/frontend/app/doctor/agenda/page.tsx`.
 - **Backend:** cierra el TODO. `GoogleCalendarService.updateEventTime` (`events.patch`, `sendUpdates:'all'`,
