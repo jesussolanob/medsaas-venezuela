@@ -444,3 +444,35 @@ pending-consultations/**`, `app/api/public/pending-consultations/[token]/**`, `a
   `plan_id`+`additional_sessions`. `NewAppointmentFlow`: modal de diferir (bulk-create). Servicios: campo "Validez (días)".
 - **Terminología:** "médico" sustantivo→"especialista" en UI/guías/correos (conserva adjetivos + Dr./Dra.). Mig
   `20260723000001` actualiza plantillas de email en BD.
+
+### Componentes/fixes nuevos (2026-07-25/26 — reactividad, onboarding y perfil)
+
+**`components/doctor/SetupStepper.tsx`** — puesta en marcha del especialista en el
+inicio. 5 pasos con barra de progreso (información · consultorio · servicios · marca ·
+métodos de pago); solo el siguiente pendiente se expande con su explicación y botón
+"Continuar"; el bloque **desaparece** al completar los 5. Sustituye las dos tarjetas
+sueltas que sugerían plantillas y consultorio.
+
+> Estados desconocidos: si falla el fetch de consultorios o servicios el paso queda
+> `null` y NO se marca pendiente. Preferible no mostrarlo a acusar al especialista de
+> algo que sí hizo.
+
+**`components/doctor/WelcomeModal.tsx`** — tour breve de los módulos al entrar, con
+puntero al icono de ayuda (IA). El contenido se filtra por plan con `planUnlocks()`: a
+un Delta Free no se le prometen Finanzas ni IA. El check "no volver a mostrar" persiste
+en `profiles.welcome_dismissed_at` (**no** en localStorage) para que acompañe al
+especialista entre dispositivos. Se evalúa **una sola vez por sesión de página** (ref):
+el efecto del inicio también corre al cambiar de mes y tras cada mutación.
+
+**`app/api/public/specialties/route.ts`** — BFF público del catálogo de especialidades.
+Existía porque el onboarding (Server Component) leía el catálogo con `backendGet`, pero
+`/doctor/settings` es cliente y no puede usar el api-client de servidor: por eso mantenía
+su propia lista hardcodeada, que se desincronizó.
+
+**Selector de especialidad — regla:** el catálogo de BD trae una entrada llamada
+**"Otra"** que duplicaba la opción de texto libre. Ambas pantallas la descartan
+(`/^otr[ao]$/i`) y dejan solo "Otra especialidad", que abre el campo libre.
+
+**Inicio (`app/doctor/page.tsx`) — patrón de refresco:** `refreshKey` incrementado por
+cada mutación, igual que `/doctor/finances`. NO extraer el loader a `useCallback`:
+`react-hooks/set-state-in-effect` lo marca como error.

@@ -588,3 +588,38 @@ POST /api/ai/text
   (idempotente; terminal/confirmed devuelven estado actual sin error). Token inválido → 404.
 - BFF: `/api/public/appointments/confirm-info` y `/confirm` (thin-proxy, sin headers de auth); página
   `/cita/confirmar/[token]`. Token = HMAC-SHA256 namespaced (`appt-confirm:v1:` + AUTH_RESOLVE_SECRET).
+
+## Cambios de contrato (2026-07-25/26)
+
+### `GET /api/public/specialties` (BFF, público, sin auth)
+
+Proxy de `GET /api/specialties` del backend para **Client Components**. Responde
+`{ specialties: [{ id, name }] }`; degrada a `[]` si el backend falla (la UI cae al campo
+de texto libre). `Cache-Control: public, max-age=300`.
+
+### `PUT /api/doctor/profile` — campos nuevos
+
+El DTO `UpdateDoctorProfileDtoSchema` es **`.strict()`**: todo campo nuevo debe declararse
+ahí o el PUT responde **400 por clave no reconocida**.
+
+- `gender`: `'F' | 'M' | 'O' | 'N'` nullable opcional. Fines estadísticos; NO condiciona
+  acceso, gating ni precios. Columna `profiles.gender` (mig `20260726000001`).
+- `welcome_dismissed`: `boolean` opcional. El cliente solo manda la **intención**; el
+  servidor sella `profiles.welcome_dismissed_at` con `NOW()` (mig `20260726000004`).
+
+`GET /api/doctor/profile` devuelve además `gender` y `welcomeDismissedAt` (ISO o null).
+
+### `POST /api/doctor/registration` — campo nuevo
+
+- `gender`: `'F' | 'M' | 'O' | 'N'` nullable opcional (mismo DTO `.strict()`).
+
+### Plantillas de correo (BD) — migraciones de contenido
+
+- `20260726000002`: terminología "consulta médica" → "consulta" y "Médico:" →
+  "Especialista:" sobre `subject/html/text`. Alcanza `reminder_manual`,
+  `reminder_confirm_24h`, `reminder_1h`.
+- `20260726000003`: quita la fila "ID del doctor" de `doctor_pending_verification`.
+
+> Ambas usan `REPLACE`/`regexp_replace` sobre las columnas en vez de reinsertar la
+> plantilla, para no pisar los restyles previos. **Validadas con `SELECT` contra la BD de
+> staging ANTES de commitear** — una migración rota bloquea TODOS los despliegues.
