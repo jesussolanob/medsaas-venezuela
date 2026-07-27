@@ -164,15 +164,25 @@ function installBackendAuthInterceptor(): void {
       // Etapa 2: forward the end-user's Auth0 ID token so the backend's
       // Auth0Guard can validate it and resolve the caller's profile. Absent for
       // unauthenticated requests — those proceed without it.
+      let userToken: string | null = null;
       if (needsUserToken) {
-        const userToken = await userAuth0Token();
+        userToken = await userAuth0Token();
         if (userToken) headers.set('x-auth0-token', userToken);
       }
-      // Reviewer access: forward the HMAC token when the cookie is present.
-      // The backend validates it via AppAuthGuard (x-reviewer-token) and maps it
-      // to a demo doctor profile. Inert when REVIEWER_ACCESS_ENABLED is off.
-      const rvToken = await reviewerToken();
-      if (rvToken) headers.set('x-reviewer-token', rvToken);
+      // Reviewer access: forward the HMAC token when the cookie is present, but
+      // ONLY when there is no real Auth0 session.
+      //
+      // CRITICAL: AppAuthGuard checks the reviewer path BEFORE the Auth0 path, so
+      // sending both headers would serve the demo doctor profile to a genuinely
+      // authenticated user. The reviewer_token cookie lives 12h, so this happens
+      // whenever someone uses the demo login and then signs in for real in the
+      // same browser. identity.server.ts already gives Auth0 precedence when
+      // resolving the identity — this keeps the forwarded headers consistent with
+      // that decision. The backend enforces the same precedence independently.
+      if (!userToken) {
+        const rvToken = await reviewerToken();
+        if (rvToken) headers.set('x-reviewer-token', rvToken);
+      }
       return originalFetch(input, { ...init, headers });
     }
     return originalFetch(input, init);

@@ -79,7 +79,14 @@ export class AppAuthGuard implements CanActivate {
     const reviewerEnabled = this.config.get<string>('REVIEWER_ACCESS_ENABLED') === 'true';
     const reviewerHeader = request.headers['x-reviewer-token'];
 
-    if (typeof reviewerHeader === 'string' && reviewerHeader.length > 0) {
+    // A real Auth0 token ALWAYS wins over a reviewer token. Without this, a caller
+    // holding both (e.g. a leftover 12h reviewer cookie plus a genuine session)
+    // would be resolved as the demo doctor instead of themselves. The frontend
+    // already refrains from sending both, but the guard must not depend on the
+    // caller behaving correctly.
+    const hasAuth0Token = typeof request.headers['x-auth0-token'] === 'string';
+
+    if (typeof reviewerHeader === 'string' && reviewerHeader.length > 0 && !hasAuth0Token) {
       if (!reviewerEnabled) {
         // Flag is off — ignore the header entirely and fall through to normal dispatch.
         // This means reviewer tokens are silently rejected when the feature is disabled
