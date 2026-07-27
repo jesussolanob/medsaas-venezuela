@@ -135,6 +135,7 @@ function makeAppointmentRepo(occupied: Appointment[] = []): jest.Mocked<IAppoint
     updateConsultationId: jest.fn().mockResolvedValue(undefined),
     deleteById: jest.fn().mockResolvedValue(undefined),
     findFirstCompletedByPaymentId: jest.fn().mockResolvedValue(null),
+    findUpcomingWithoutCalendarEvent: jest.fn().mockResolvedValue([]),
   } as jest.Mocked<IAppointmentRepository>;
 }
 

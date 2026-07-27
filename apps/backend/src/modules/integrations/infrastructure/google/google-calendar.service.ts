@@ -37,6 +37,22 @@ export interface CreateEventInput {
 }
 
 /**
+ * Extended input for createEvent — supports both online (Meet) and in-person events.
+ */
+export interface CreateEventWithOptionsInput extends CreateEventInput {
+  /**
+   * When true (default), creates a Google Meet conferencing link.
+   * When false, creates a plain calendar event with an optional location.
+   */
+  withMeet: boolean;
+  /**
+   * Physical location for in-person events.
+   * Used only when withMeet is false — ignored for online events.
+   */
+  location?: string;
+}
+
+/**
  * GoogleCalendarService — infrastructure adapter for Google Calendar + Meet API.
  *
  * ENV-GATED: if GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET are not set,
@@ -144,35 +160,79 @@ export class GoogleCalendarService implements OnModuleInit {
    * Creates a Google Calendar event with a Meet conferencing link and invites
    * the patient as an attendee.
    *
-   * Returns the Meet link and Google Calendar event ID.
+   * Delegates to createEvent with withMeet: true.
+   * Signature and behaviour are unchanged — existing callers are unaffected.
    */
   async createEventWithMeet(input: CreateEventInput): Promise<CalendarEventResult> {
+    return this.createEvent({ ...input, withMeet: true });
+  }
+
+  /**
+   * Creates a Google Calendar event with optional Meet conferencing.
+   *
+   * - withMeet: true  → includes conferenceData (Google Meet link).
+   * - withMeet: false → plain calendar event; location is used for in-person office address.
+   *
+   * Reminders (popup + email) are always included.
+   * Attendees are added only when attendeeEmail is present.
+   */
+  async createEvent(input: CreateEventWithOptionsInput): Promise<CalendarEventResult> {
     this.assertConfigured();
     const oauth2Client = this.buildOAuth2Client();
     oauth2Client.setCredentials({ access_token: input.accessToken });
 
     const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
-    const requestId = `delta-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
     // Only include attendees when the patient email is present.
     // Google Calendar rejects events with empty or missing attendee email values.
     const attendees = input.attendeeEmail ? [{ email: input.attendeeEmail }] : undefined;
 
+    if (input.withMeet) {
+      const requestId = `delta-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+      const { data } = await calendar.events.insert({
+        calendarId: 'primary',
+        conferenceDataVersion: 1,
+        requestBody: {
+          summary: input.summary,
+          description: input.description,
+          start: { dateTime: input.startISO, timeZone: 'UTC' },
+          end: { dateTime: input.endISO, timeZone: 'UTC' },
+          ...(attendees && { attendees }),
+          conferenceData: {
+            createRequest: {
+              requestId,
+              conferenceSolutionKey: { type: 'hangoutsMeet' },
+            },
+          },
+          reminders: {
+            useDefault: false,
+            overrides: [
+              { method: 'popup', minutes: REMINDER_MINUTES_BEFORE },
+              { method: 'email', minutes: REMINDER_MINUTES_BEFORE },
+            ],
+          },
+        },
+      });
+
+      const meetLink =
+        data.conferenceData?.entryPoints?.find((ep) => ep.entryPointType === 'video')?.uri ??
+        data.hangoutLink ??
+        '';
+
+      return { meetLink, eventId: data.id ?? '' };
+    }
+
+    // In-person: plain event without Meet conferencing
     const { data } = await calendar.events.insert({
       calendarId: 'primary',
-      conferenceDataVersion: 1,
       requestBody: {
         summary: input.summary,
         description: input.description,
         start: { dateTime: input.startISO, timeZone: 'UTC' },
         end: { dateTime: input.endISO, timeZone: 'UTC' },
         ...(attendees && { attendees }),
-        conferenceData: {
-          createRequest: {
-            requestId,
-            conferenceSolutionKey: { type: 'hangoutsMeet' },
-          },
-        },
+        ...(input.location && { location: input.location }),
         reminders: {
           useDefault: false,
           overrides: [
@@ -183,15 +243,7 @@ export class GoogleCalendarService implements OnModuleInit {
       },
     });
 
-    const meetLink =
-      data.conferenceData?.entryPoints?.find((ep) => ep.entryPointType === 'video')?.uri ??
-      data.hangoutLink ??
-      '';
-
-    return {
-      meetLink,
-      eventId: data.id ?? '',
-    };
+    return { meetLink: '', eventId: data.id ?? '' };
   }
 
   /**

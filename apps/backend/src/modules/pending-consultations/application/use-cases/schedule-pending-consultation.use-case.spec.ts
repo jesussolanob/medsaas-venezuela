@@ -75,6 +75,7 @@ describe('SchedulePendingConsultationUseCase', () => {
       updateConsultationId: jest.fn(),
       deleteById: jest.fn(),
       findFirstCompletedByPaymentId: jest.fn().mockResolvedValue(null),
+      findUpcomingWithoutCalendarEvent: jest.fn().mockResolvedValue([]),
     };
 
     mockSequelize = makeSequelizeMock();

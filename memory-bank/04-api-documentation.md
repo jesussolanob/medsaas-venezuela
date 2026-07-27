@@ -72,14 +72,15 @@ Módulo `pending-consultations`. Envelope `{success,data}`. Doctor scoped por `u
 
 ### Appointments (módulo ✅)
 
-| Endpoint                       | Método | Notas                                                                                                                                                      |
-| ------------------------------ | ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/api/appointments`            | GET    | Lista paginada del doctor (filtros date_from/to, status, page, limit). PII enmascarada.                                                                    |
-| `/api/appointments/:id`        | GET    | Detalle (ownership).                                                                                                                                       |
-| `/api/appointments`            | POST   | Crear. Optimistic lock de paquetes; duplicado ±15min → AppointmentDuplicateError; slot ocupado → AppointmentConflictError.                                 |
-| `/api/appointments/:id/status` | PUT    | Transición de estado (scheduled→confirmed→completed/no_show/cancelled) + audit en `appointment_changes_log`. Inválida → AppointmentInvalidTransitionError. Al `cancelled` cancela el evento de Google Calendar (best-effort). |
-| `/api/appointments/:id/reschedule` | PUT | Reagenda (scheduled\|confirmed). Valida ownership + solape (doctor y paciente) + audit. **Mueve el evento de Google Calendar** a la nueva hora (best-effort, `UpdateCalendarEventUseCase` → `events.patch` con `sendUpdates:'all'`; conserva Meet/invitados; notifica al paciente). BFF: `POST /api/doctor/reschedule` `{appointmentId,newDate}`. UI: botón **"Reagendar"** en el detalle de la cita (agenda). Verificado en prod 2026-07-24 (10:00→15:00 movió el evento en el calendar del doctor y del paciente). |
-| _(diferido)_                   |        | `/slots` (usa horarios genéricos por ahora).                                                                                                              |
+| Endpoint                           | Método | Notas                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| ---------------------------------- | ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/api/appointments`                | GET    | Lista paginada del doctor (filtros date_from/to, status, page, limit). PII enmascarada.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `/api/appointments/:id`            | GET    | Detalle (ownership).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `/api/appointments`                | POST   | Crear. Optimistic lock de paquetes; duplicado ±15min → AppointmentDuplicateError; slot ocupado → AppointmentConflictError.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| `/api/appointments/:id/status`     | PUT    | Transición de estado (scheduled→confirmed→completed/no_show/cancelled) + audit en `appointment_changes_log`. Inválida → AppointmentInvalidTransitionError. Al `cancelled` cancela el evento de Google Calendar (best-effort).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `/api/appointments/:id/reschedule` | PUT    | Reagenda (scheduled\|confirmed). Valida ownership + solape (doctor y paciente) + audit. **Mueve el evento de Google Calendar** a la nueva hora (best-effort, `UpdateCalendarEventUseCase` → `events.patch` con `sendUpdates:'all'`; conserva Meet/invitados; notifica al paciente). BFF: `POST /api/doctor/reschedule` `{appointmentId,newDate}`. UI: botón **"Reagendar"** en el detalle de la cita (agenda). Verificado en prod 2026-07-24 (10:00→15:00 movió el evento en el calendar del doctor y del paciente).                                                                                                                                                                                                                                                                                                  |
+| `/api/appointments/calendar-sync`  | POST   | **(2026-07-27)** Backfill de Google Calendar: manda al calendario del especialista las citas PRÓXIMAS (`scheduled_at >= now`, status `scheduled\|confirmed`) que aún no tienen `google_calendar_event_id` — máx. 100 por corrida, **secuencial** (rate limit de Google). `doctorId` de `user.sub`. Sin Google conectado → `CalendarNotConnectedError` **409** ("Conecta tu Google Calendar desde Configuración…"). Devuelve `{total, synced, failed}`. **NO manda correos, .ics ni `attendeeEmail`** (evita que Google reenvíe invitaciones por citas viejas) — a diferencia del alta de cita, que sí invita al paciente. Idempotente por diseño (`WHERE google_calendar_event_id IS NULL`). BFF: `POST /api/doctor/calendar-sync` (arma el mensaje en español). UI: botón **"Sincronizar calendario"** en la agenda. |
+| _(diferido)_                       |        | `/slots` (usa horarios genéricos por ahora).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 
 ### Patients (módulo ✅ — PII cifrada AES-256-GCM)
 
@@ -588,3 +589,38 @@ POST /api/ai/text
   (idempotente; terminal/confirmed devuelven estado actual sin error). Token inválido → 404.
 - BFF: `/api/public/appointments/confirm-info` y `/confirm` (thin-proxy, sin headers de auth); página
   `/cita/confirmar/[token]`. Token = HMAC-SHA256 namespaced (`appt-confirm:v1:` + AUTH_RESOLVE_SECRET).
+
+## Cambios de contrato (2026-07-25/26)
+
+### `GET /api/public/specialties` (BFF, público, sin auth)
+
+Proxy de `GET /api/specialties` del backend para **Client Components**. Responde
+`{ specialties: [{ id, name }] }`; degrada a `[]` si el backend falla (la UI cae al campo
+de texto libre). `Cache-Control: public, max-age=300`.
+
+### `PUT /api/doctor/profile` — campos nuevos
+
+El DTO `UpdateDoctorProfileDtoSchema` es **`.strict()`**: todo campo nuevo debe declararse
+ahí o el PUT responde **400 por clave no reconocida**.
+
+- `gender`: `'F' | 'M' | 'O' | 'N'` nullable opcional. Fines estadísticos; NO condiciona
+  acceso, gating ni precios. Columna `profiles.gender` (mig `20260726000001`).
+- `welcome_dismissed`: `boolean` opcional. El cliente solo manda la **intención**; el
+  servidor sella `profiles.welcome_dismissed_at` con `NOW()` (mig `20260726000004`).
+
+`GET /api/doctor/profile` devuelve además `gender` y `welcomeDismissedAt` (ISO o null).
+
+### `POST /api/doctor/registration` — campo nuevo
+
+- `gender`: `'F' | 'M' | 'O' | 'N'` nullable opcional (mismo DTO `.strict()`).
+
+### Plantillas de correo (BD) — migraciones de contenido
+
+- `20260726000002`: terminología "consulta médica" → "consulta" y "Médico:" →
+  "Especialista:" sobre `subject/html/text`. Alcanza `reminder_manual`,
+  `reminder_confirm_24h`, `reminder_1h`.
+- `20260726000003`: quita la fila "ID del doctor" de `doctor_pending_verification`.
+
+> Ambas usan `REPLACE`/`regexp_replace` sobre las columnas en vez de reinsertar la
+> plantilla, para no pisar los restyles previos. **Validadas con `SELECT` contra la BD de
+> staging ANTES de commitear** — una migración rota bloquea TODOS los despliegues.
