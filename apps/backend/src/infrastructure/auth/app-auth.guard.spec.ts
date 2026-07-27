@@ -388,6 +388,49 @@ describe('AppAuthGuard', () => {
     expect(port.isActive).toHaveBeenCalledWith(DEMO_SUB);
   });
 
+  it('gives a real Auth0 token precedence over a reviewer token when both are sent', async () => {
+    // Regression: the reviewer path used to be checked first unconditionally, so a
+    // leftover 12h reviewer_token cookie on a genuinely authenticated user resolved
+    // the request as the demo doctor instead of the real account.
+    const port = makeAccountStatusPort(true);
+    const reviewerSvc = makeReviewerTokenService({
+      sub: 'demo-doctor-profile-uuid',
+      exp: 9999999999,
+    });
+
+    const requestObj: { headers: Record<string, string>; user?: { sub: string; role: string } } = {
+      headers: {
+        'x-reviewer-token': 'valid-reviewer-token',
+        'x-auth0-token': 'a-real-auth0-id-token',
+      },
+    };
+    const ctx = {
+      switchToHttp: () => ({ getRequest: () => requestObj }),
+    } as unknown as ExecutionContext;
+
+    auth0Guard.canActivate.mockImplementation(async () => {
+      requestObj.user = { sub: 'real-doctor-uuid', role: 'doctor' };
+      return true;
+    });
+
+    const guard = makeGuard(
+      makeConfigService('auth0', true), // reviewer flag ON — must still lose to Auth0
+      devAuthGuard,
+      auth0Guard,
+      port,
+      reviewerSvc,
+    );
+
+    const result = await guard.canActivate(ctx);
+
+    expect(result).toBe(true);
+    expect(auth0Guard.canActivate).toHaveBeenCalled();
+    // The reviewer token must never be consulted, and the identity stays the real one.
+    expect(reviewerSvc.verify).not.toHaveBeenCalled();
+    expect(requestObj.user).toEqual({ sub: 'real-doctor-uuid', role: 'doctor' });
+    expect(port.isActive).toHaveBeenCalledWith('real-doctor-uuid');
+  });
+
   it('reviewer user is blocked when demo profile has is_active=false', async () => {
     const port = makeAccountStatusPort(false);
     const DEMO_SUB = 'demo-doctor-profile-uuid';
