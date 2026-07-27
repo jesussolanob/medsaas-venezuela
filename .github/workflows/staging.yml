@@ -109,7 +109,7 @@ jobs:
             --no-allow-unauthenticated \
             --add-cloudsql-instances="$SQL_CONN" \
             --set-secrets=DATABASE_URL=DATABASE_URL_STAGING:latest,ENCRYPTION_KEY=ENCRYPTION_KEY:latest,ENCRYPTION_HMAC_SECRET=ENCRYPTION_HMAC_SECRET:latest,AUTH_RESOLVE_SECRET=AUTH_RESOLVE_SECRET:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,GOOGLE_CLIENT_SECRET=GOOGLE_CLIENT_SECRET:latest,RESEND_API_KEY=RESEND_API_KEY:latest,CRON_SECRET=CRON_SECRET:latest,REVIEWER_PASSWORD=REVIEWER_PASSWORD:latest,REVIEWER_SESSION_SECRET=REVIEWER_SESSION_SECRET:latest \
-            --set-env-vars=NODE_ENV=production,AUTH_MODE=auth0,AUTH0_DOMAIN=${{ vars.AUTH0_DOMAIN }},AUTH0_CLIENT_ID=${{ vars.AUTH0_CLIENT_ID }},AUTH0_ROLE_NAMESPACE=${{ vars.AUTH0_ROLE_NAMESPACE }},REDIS_DISABLED=true,DB_POOL_MAX=5,DB_POOL_MIN=0,STORAGE_DRIVER=gcs,GCS_BUCKET=$GCS_BUCKET,GCS_PROJECT_ID=$PROJECT_ID,EMAIL_DRIVER=noop,EMAIL_FROM=noreply@deltasalud.app,SANDBOX=false,GOOGLE_CLIENT_ID=${{ vars.GOOGLE_CLIENT_ID }},SENTRY_ENABLED=false,REVIEWER_ACCESS_ENABLED=true,REVIEWER_EMAIL=demo.google@deltasalud.app,REVIEWER_PROFILE_ID=b938843b-8a93-4281-af29-cc6968fffc7f \
+            --set-env-vars=NODE_ENV=production,AUTH_MODE=auth0,AUTH0_DOMAIN=${{ vars.AUTH0_DOMAIN }},AUTH0_CLIENT_ID=${{ vars.AUTH0_CLIENT_ID }},AUTH0_ROLE_NAMESPACE=${{ vars.AUTH0_ROLE_NAMESPACE }},REDIS_DISABLED=true,DB_POOL_MAX=5,DB_POOL_MIN=0,STORAGE_DRIVER=gcs,GCS_BUCKET=$GCS_BUCKET,GCS_PROJECT_ID=$PROJECT_ID,EMAIL_DRIVER=noop,EMAIL_FROM=noreply@deltasalud.app,SANDBOX=false,GOOGLE_CLIENT_ID=${{ vars.GOOGLE_CLIENT_ID }},SENTRY_ENABLED=false,REVIEWER_ACCESS_ENABLED=${{ vars.REVIEWER_ACCESS_ENABLED }},REVIEWER_EMAIL=demo.google@deltasalud.app,REVIEWER_PROFILE_ID=b938843b-8a93-4281-af29-cc6968fffc7f \
             --memory=512Mi --cpu=1 --min-instances=0 --max-instances=1 --port=8080
 
       - name: Resolve backend URL + grant frontend invoker
@@ -130,7 +130,7 @@ jobs:
             --region="$REGION" --service-account="$FRONTEND_SA" \
             --allow-unauthenticated \
             --set-secrets=AUTH0_SECRET=AUTH0_SECRET:latest,AUTH0_CLIENT_SECRET=AUTH0_CLIENT_SECRET:latest,GOOGLE_CLIENT_SECRET=GOOGLE_CLIENT_SECRET:latest,AUTH_RESOLVE_SECRET=AUTH_RESOLVE_SECRET:latest \
-            --set-env-vars=NODE_ENV=production,AUTH_MODE=auth0,AUTH0_DOMAIN=${{ vars.AUTH0_DOMAIN }},AUTH0_ISSUER_BASE_URL=https://${{ vars.AUTH0_DOMAIN }}/,AUTH0_CLIENT_ID=${{ vars.AUTH0_CLIENT_ID }},AUTH0_ROLE_NAMESPACE=${{ vars.AUTH0_ROLE_NAMESPACE }},GOOGLE_CLIENT_ID=${{ vars.GOOGLE_CLIENT_ID }},BACKEND_INTERNAL_URL=$BURL,BACKEND_IAM_AUDIENCE=$BURL,REVIEWER_ACCESS_ENABLED=true \
+            --set-env-vars=NODE_ENV=production,AUTH_MODE=auth0,AUTH0_DOMAIN=${{ vars.AUTH0_DOMAIN }},AUTH0_ISSUER_BASE_URL=https://${{ vars.AUTH0_DOMAIN }}/,AUTH0_CLIENT_ID=${{ vars.AUTH0_CLIENT_ID }},AUTH0_ROLE_NAMESPACE=${{ vars.AUTH0_ROLE_NAMESPACE }},GOOGLE_CLIENT_ID=${{ vars.GOOGLE_CLIENT_ID }},BACKEND_INTERNAL_URL=$BURL,BACKEND_IAM_AUDIENCE=$BURL,REVIEWER_ACCESS_ENABLED=${{ vars.REVIEWER_ACCESS_ENABLED }} \
             --memory=512Mi --cpu=1 --min-instances=0 --max-instances=1 --port=8080
           # Self-referencing runtime vars fixed to the staging public URL.
           gcloud run services update delta-frontend-staging --region="$REGION" \
