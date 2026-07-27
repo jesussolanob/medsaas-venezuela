@@ -710,7 +710,8 @@ export default function AgendaPage() {
   // Supabase Realtime (postgres_changes en appointments/consultations/payments)
   // fue removido porque los datos ahora vienen del backend NestJS vía HTTP.
   // No existe un equivalente WebSocket en Etapa 1. El doctor puede hacer refresh
-  // manual con el botón "Sync Calendar" o recargar la página para ver cambios recientes.
+  // manual recargando la página para ver cambios recientes. (El botón "Sincronizar
+  // calendario" NO es un refresh: envía las citas a Google Calendar.)
   // En FASE 5 se puede reimplementar via SSE o WebSocket en el backend.
 
   // ── Save availability to DB ──────────────────────────────────────────────
@@ -1305,7 +1306,7 @@ export default function AgendaPage() {
             <button
               onClick={handleCalendarSync}
               disabled={syncing}
-              title="Sincronizar con Google Calendar"
+              title="Enviar tus citas a Google Calendar"
               className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold transition-all border ${
                 syncing
                   ? 'bg-blue-50 border-blue-200 text-blue-500 cursor-wait'
@@ -1314,7 +1315,7 @@ export default function AgendaPage() {
             >
               <RefreshCw className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} />
               <span className="hidden sm:inline">
-                {syncing ? 'Sincronizando...' : 'Sync Calendar'}
+                {syncing ? 'Sincronizando…' : 'Sincronizar calendario'}
               </span>
             </button>
             <button

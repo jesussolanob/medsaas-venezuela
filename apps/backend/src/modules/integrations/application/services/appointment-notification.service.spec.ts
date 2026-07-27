@@ -112,17 +112,54 @@ describe('AppointmentNotificationService', () => {
 
   describe('in_person appointment', () => {
     it('returns null meetLink and in_person channel', async () => {
+      createCalendarEvent.execute.mockResolvedValue({ meetLink: '', eventId: 'in-person-evt-1' });
+
       const result = await service.notify(makeInput({ appointmentMode: 'in_person' }));
 
       expect(result.meetLink).toBeNull();
       expect(result.channel).toBe('in_person');
-      expect(createCalendarEvent.execute).not.toHaveBeenCalled();
     });
 
-    it('returns null googleCalendarEventId for in_person appointments', async () => {
+    it('creates a Google Calendar event (best-effort) and returns its eventId', async () => {
+      createCalendarEvent.execute.mockResolvedValue({ meetLink: '', eventId: 'in-person-evt-42' });
+
+      const result = await service.notify(makeInput({ appointmentMode: 'in_person' }));
+
+      expect(result.googleCalendarEventId).toBe('in-person-evt-42');
+      expect(createCalendarEvent.execute).toHaveBeenCalledWith(
+        expect.objectContaining({ withMeet: false }),
+      );
+    });
+
+    it('returns null googleCalendarEventId when Google is not connected (GoogleNotConnectedError)', async () => {
+      createCalendarEvent.execute.mockRejectedValue(new GoogleNotConnectedError('doc-1'));
+
       const result = await service.notify(makeInput({ appointmentMode: 'in_person' }));
 
       expect(result.googleCalendarEventId).toBeNull();
+      expect(result.channel).toBe('in_person');
+    });
+
+    it('continues and returns in_person channel even when calendar event creation fails', async () => {
+      createCalendarEvent.execute.mockRejectedValue(new Error('API error'));
+
+      const result = await service.notify(makeInput({ appointmentMode: 'in_person' }));
+
+      expect(result.channel).toBe('in_person');
+      expect(result.meetLink).toBeNull();
+      expect(result.googleCalendarEventId).toBeNull();
+    });
+
+    it('passes officeAddress as location to the calendar event', async () => {
+      createCalendarEvent.execute.mockResolvedValue({ meetLink: '', eventId: 'evt-loc' });
+
+      await service.notify(
+        makeInput({ appointmentMode: 'in_person', officeAddress: 'Av. Principal 123' }),
+      );
+
+      expect(createCalendarEvent.execute).toHaveBeenCalledWith(
+        expect.objectContaining({ location: 'Av. Principal 123' }),
+      );
     });
   });
 });

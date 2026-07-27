@@ -34,6 +34,10 @@ import { GetDoctorAgendaUseCase } from '../../application/use-cases/appointments
 import { GetAppointmentByIdUseCase } from '../../application/use-cases/appointments/get-appointment-by-id.use-case';
 import { RescheduleAppointmentUseCase } from '../../application/use-cases/appointments/reschedule-appointment.use-case';
 import { DeleteAppointmentUseCase } from '../../application/use-cases/appointments/delete-appointment.use-case';
+import {
+  SyncDoctorCalendarUseCase,
+  type SyncDoctorCalendarResult,
+} from '../../application/use-cases/appointments/sync-doctor-calendar.use-case';
 import { maskAppointmentPii, toPlainAppointment } from '../mappers/appointment.mapper';
 
 interface SuccessResponse<T> {
@@ -64,6 +68,7 @@ export class AppointmentsController {
     private readonly getById: GetAppointmentByIdUseCase,
     private readonly reschedule: RescheduleAppointmentUseCase,
     private readonly deleteAppointment: DeleteAppointmentUseCase,
+    private readonly syncDoctorCalendar: SyncDoctorCalendarUseCase,
   ) {}
 
   /** GET /api/appointments — paginated list with PII masking applied by the mapper. */
@@ -189,5 +194,20 @@ export class AppointmentsController {
     @CurrentUser() user: CurrentUserPayload,
   ): Promise<void> {
     await this.deleteAppointment.execute({ appointmentId: id, actorId: user.sub });
+  }
+
+  /**
+   * POST /api/appointments/calendar-sync — backfill Google Calendar events for
+   * upcoming appointments that do not have one yet.
+   *
+   * SECURITY: doctorId is always taken from the authenticated user (anti-IDOR).
+   * Throws CalendarNotConnectedError (409) when Google Calendar is not connected.
+   */
+  @Post('calendar-sync')
+  async calendarSync(
+    @CurrentUser() user: CurrentUserPayload,
+  ): Promise<SuccessResponse<SyncDoctorCalendarResult>> {
+    const data = await this.syncDoctorCalendar.execute(user.sub);
+    return { success: true, data };
   }
 }

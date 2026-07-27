@@ -214,12 +214,42 @@ export class AppointmentNotificationService {
     input: AppointmentNotificationInput,
     endISO: string,
   ): Promise<AppointmentNotificationResult> {
+    // Best-effort: create a Google Calendar event for the doctor's own calendar.
+    // If Google is not connected or the API call fails, continue without a calendar event.
+    let googleCalendarEventId: string | null = null;
+    try {
+      // DELIBERATE: attendeeEmail IS passed here so the patient appears as a
+      // guest in the doctor's calendar event (same behaviour as online citas).
+      // The backfill (SyncDoctorCalendarUseCase) is the ONLY path that omits
+      // attendeeEmail — to avoid re-sending Google invitations to patients for
+      // appointments that already exist. Do not remove attendeeEmail here.
+      const result = await this.createCalendarEvent.execute({
+        doctorId: input.doctorId,
+        summary: `Cita médica — ${input.doctorName}`,
+        // Do not include patient name or any PII in the description.
+        description: `Cita registrada en Delta Salud — ID: ${input.appointmentId}`,
+        startISO: input.scheduledAtISO,
+        endISO,
+        attendeeEmail: input.patientEmail,
+        withMeet: false,
+        location: input.officeAddress ?? input.officeName,
+      });
+      googleCalendarEventId = result.eventId || null;
+    } catch (err) {
+      // Non-fatal: GoogleNotConnectedError or any other error.
+      // Log without PII and proceed — email + .ics are sent regardless.
+      this.logger.log(
+        `[notify] in-person calendar event skipped for appointment ${input.appointmentId}: ` +
+          `${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+
     await this.sendNotification(input, {
       endISO,
       meetLink: null,
       channel: 'in_person',
     });
-    return { meetLink: null, googleCalendarEventId: null, channel: 'in_person' };
+    return { meetLink: null, googleCalendarEventId, channel: 'in_person' };
   }
 
   private async sendNotification(
