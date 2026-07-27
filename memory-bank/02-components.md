@@ -424,6 +424,37 @@ la caja = doble toggle (div + label→input `onChange`) = no pasaba nada; el tex
 patrón el div visual NUNCA lleva handler propio** — el `<label>` es la única fuente de activación. Era el único
 caso de `sr-only peer` en el frontend. Detalle en 05-progress-log (2026-07-25).
 
+### Sincronizar calendario — el botón de la agenda + citas presenciales en Google (2026-07-27)
+
+El botón **"Sync Calendar"** de `/doctor/agenda` respondía "Sincronización con Google Calendar disponible
+próximamente": su BFF `app/api/doctor/calendar-sync/route.ts` era un **stub 501** de la migración, nunca
+cableado. Ahora es un thin-proxy real a `POST /api/appointments/calendar-sync` y el botón dice
+**"Sincronizar calendario"** (estaba en inglés, único resto en esa pantalla).
+
+**Hueco de fondo que se destapó:** solo las citas **online** llegaban a Google Calendar. `handleInPerson`
+(`integrations/application/services/appointment-notification.service.ts`) mandaba email + `.ics` y NUNCA
+tocaba el calendario, porque la integración se construyó alrededor del **Meet**, no del evento. Decisión del
+dueño: **toda cita — online y presencial — debe quedar en el calendario**.
+
+- `GoogleCalendarService.createEvent({ withMeet, location })` — evento **con o sin Meet**. Sin Meet no manda
+  `conferenceData` ni `conferenceDataVersion` y sí manda `location`. `createEventWithMeet` queda delegando
+  (cero cambios para las online). `CreateCalendarEventInput` gana `withMeet?`/`location?`.
+- `handleInPerson` crea el evento **best-effort** con la dirección del consultorio: si Google no está
+  conectado o la API falla, la cita se agenda igual y el correo/.ics salen igual.
+- **El paciente SÍ va como asistente** en las presenciales, igual que en las online (deliberado: la cita
+  queda en el calendario de ambos). El **único** camino que NO agrega asistente es el backfill.
+- `SyncDoctorCalendarUseCase` (`modules/appointments/.../sync-doctor-calendar.use-case.ts`) = backfill de
+  hasta 100 citas próximas sin `google_calendar_event_id`, **secuencial** (rate limit de Google), con
+  `findUpcomingWithoutCalendarEvent` nuevo en el repo. Idempotente por el `WHERE ... IS NULL`.
+- `CalendarNotConnectedError` (409) → "Conecta tu Google Calendar desde Configuración para sincronizar tus citas".
+
+> **Contador honesto:** `synced` solo suma cuando el `eventId` se persistió. Si Google responde sin `eventId`
+> la cita cuenta como `failed` — si no, se reportaría sincronizada y volvería a aparecer en cada corrida.
+
+> **DRY del repo:** `sequelize-appointment.repository.ts` tenía el mapeo fila→`Appointment` duplicado (~35
+> líneas) entre `list()` y la query nueva → extraído a `rawRowToDomain(row)` + `RawAppointmentRow` a nivel
+> de módulo (los campos enriquecidos `consultation_payment_status`/`consultation_code` son opcionales).
+
 ### Preconsultas "Consultas por agendar" + terminología especialista (2026-07-23 — ver ADR-025)
 
 - **Backend módulo NUEVO `modules/pending-consultations/`** (DDD): entidad `PendingConsultation` (`isSchedulable()`,

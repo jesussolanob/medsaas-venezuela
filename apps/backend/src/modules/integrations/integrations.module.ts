@@ -75,6 +75,9 @@ import { EmailModule } from '../email/email.module';
     CreateCalendarEventUseCase,
     CancelCalendarEventUseCase,
     UpdateCalendarEventUseCase,
+    // Exported so AppointmentsModule can inject it in SyncDoctorCalendarUseCase
+    // to check whether the doctor has connected their Google Calendar.
+    GetIntegrationStatusUseCase,
     AppointmentNotificationService,
     APPOINTMENT_NOTIFICATION_SERVICE,
   ],

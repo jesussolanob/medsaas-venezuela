@@ -2,6 +2,44 @@
 
 > Registro cronológico. Una entrada por fase/hito completado.
 
+## 2026-07-27 — Sincronizar calendario: el botón de la agenda + las citas presenciales por fin llegan a Google ⏳ (SIN DESPLEGAR)
+
+Observación del dueño con captura: Google ya verificó la app y conectar el calendario funciona en
+Configuración, pero el botón **"Sync Calendar"** de la agenda estaba en inglés y respondía "disponible
+próximamente".
+
+**Dos problemas distintos detrás del mismo botón:**
+
+1. El BFF `app/api/doctor/calendar-sync/route.ts` era un **stub 501** heredado de la migración — nunca se
+   cableó, aunque el backend de Google llevaba meses funcionando.
+2. **Hueco real:** solo las citas **online** creaban evento en Google. `handleInPerson` mandaba correo +
+   `.ics` y no tocaba el calendario. La integración se había construido alrededor del **Meet**, no del
+   evento, así que "presencial" implicaba "sin calendario". Instrucción explícita del dueño: online y
+   presencial, ambas al calendario.
+
+**Qué se hizo:** `GoogleCalendarService.createEvent({ withMeet, location })` (evento con o sin Meet;
+`createEventWithMeet` delega, cero regresión en las online) · `handleInPerson` crea el evento best-effort con
+la dirección del consultorio · `SyncDoctorCalendarUseCase` + `POST /api/appointments/calendar-sync` = backfill
+de hasta 100 citas próximas sin evento (secuencial por el rate limit de Google, idempotente por
+`WHERE google_calendar_event_id IS NULL`) · `CalendarNotConnectedError` 409 en español · botón
+**"Sincronizar calendario"**. Sin migración (no hay cambio de esquema).
+
+- **El backfill NO manda `attendeeEmail` ni correos** — no queremos que Google reenvíe invitaciones a
+  pacientes por citas viejas. El alta de cita SÍ invita al paciente (online y ahora presencial también).
+- ⚠️ **Lección de verificación:** el implementer reportó "suites afectadas 7/7 verdes" y el spec del use case
+  central **no existía**; en la ronda siguiente reportó "las tres correcciones" cuando eran cuatro (faltó
+  `officeRepo.findByIdForDoctor`, que aplicó el lead). Contar los archivos en disco, no leer el reporte.
+- Del code-review (0 CRITICAL/0 HIGH) se descartó un hallazgo: mover `UpcomingRow` a nivel de módulo "por
+  consistencia" — la query de al lado también declara su row interface dentro del método.
+- **Verificación:** `nx build backend` ✅ · eslint sobre los archivos cambiados ✅ (el `nx lint backend`
+  completo **OOMea** en esta máquina — usar `NODE_OPTIONS=--max-old-space-size=6144` sobre los archivos
+  tocados) · tests dirigidos **34 suites / 179 tests** ✅ · `tsc` frontend ✅. Los 6 fallos de
+  `sequelize-appointment.repository.spec.ts` son `SequelizeConnectionRefusedError` (necesita Postgres; no se
+  levanta Docker en esta máquina), no del cambio.
+- **PENDIENTE: QA visual.** Requiere una cuenta con Google conectado. Probar: agendar una **presencial** →
+  aparece en el calendario del especialista y del paciente; botón Sincronizar con citas viejas → cuenta
+  correcta y no duplica al correrlo dos veces; sin Google conectado → mensaje que manda a Configuración.
+
 ## 2026-07-25 (tarde) — Alta del doctor resiliente + toasts en toda mutación + triage de Sentry ⏳ (EN STAGING, PENDIENTE QA VISUAL Y PROMOCIÓN A PROD)
 
 Todo esto vive en `develop`/`staging`; **`main` NO lo tiene**. El usuario pidió expresamente no promover a prod

@@ -90,6 +90,7 @@ function makeRepo(
       ),
     deleteById: jest.fn().mockResolvedValue(undefined),
     findFirstCompletedByPaymentId: jest.fn().mockResolvedValue(null),
+    findUpcomingWithoutCalendarEvent: jest.fn().mockResolvedValue([]),
     ...overrides,
   } as jest.Mocked<IAppointmentRepository>;
 }

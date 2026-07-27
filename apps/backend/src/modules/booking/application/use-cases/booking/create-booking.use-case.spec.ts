@@ -129,6 +129,7 @@ describe('CreateBookingUseCase', () => {
       updateConsultationId: jest.fn().mockResolvedValue(undefined),
       deleteById: jest.fn().mockResolvedValue(undefined),
       findFirstCompletedByPaymentId: jest.fn().mockResolvedValue(null),
+      findUpcomingWithoutCalendarEvent: jest.fn().mockResolvedValue([]),
     };
 
     mockPatientRepo = {
