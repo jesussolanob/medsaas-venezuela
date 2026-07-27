@@ -36,9 +36,22 @@ de hasta 100 citas próximas sin evento (secuencial por el rate limit de Google,
   tocados) · tests dirigidos **34 suites / 179 tests** ✅ · `tsc` frontend ✅. Los 6 fallos de
   `sequelize-appointment.repository.spec.ts` son `SequelizeConnectionRefusedError` (necesita Postgres; no se
   levanta Docker en esta máquina), no del cambio.
-- **PENDIENTE: QA visual.** Requiere una cuenta con Google conectado. Probar: agendar una **presencial** →
-  aparece en el calendario del especialista y del paciente; botón Sincronizar con citas viejas → cuenta
-  correcta y no duplica al correrlo dos veces; sin Google conectado → mensaje que manda a Configuración.
+- **QA VISUAL EN STAGING ✅ (2026-07-27, Playwright + Google Calendar real del especialista).** Botón en
+  español ✅ · sin Google conectado → **409** "Conecta tu Google Calendar desde Configuración…" ✅ ·
+  sincronizar → **"3 citas enviadas a Google Calendar"** ✅ · segunda corrida → **"Tus citas ya están en
+  Google Calendar"** (`total:0`) ✅ · endpoint sin sesión → 401 (antes 501) ✅.
+  **Cita PRESENCIAL nueva → evento automático ✅**: tras agendarla, el backfill devuelve `total:0`, o sea que
+  ya tenía su `google_calendar_event_id` (antes de este cambio era imposible).
+  **Ground truth en el Google Calendar real:** 4 eventos, **4 distintos, cada uno UNA sola vez** (cero
+  duplicados pese a varias corridas), todos con `Ubicación: Terrazas` (dirección del consultorio) y **sin
+  Meet** por ser presenciales. Las citas pasadas (14 y 20 jul) NO se sincronizaron — correcto, el backfill
+  solo toma futuras.
+  > Truco de verificación: contar los nodos del calendario **sin deduplicar**. Un `Set` sobre los eventos
+  > colapsa los repetidos y haría pasar la prueba de duplicados aunque estuviera rota.
+- Se corrigió el texto de Configuración → Integraciones, que seguía diciendo que solo las citas online van
+  al calendario.
+- **Staging quedó con una cita de prueba** el 30/07 11:20 (paciente `qa.toast.staging@example.com`) y su
+  evento en el Google Calendar REAL del especialista.
 
 ## 2026-07-25 (tarde) — Alta del doctor resiliente + toasts en toda mutación + triage de Sentry ⏳ (EN STAGING, PENDIENTE QA VISUAL Y PROMOCIÓN A PROD)
 

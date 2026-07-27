@@ -2149,7 +2149,7 @@ function SettingsPageInner() {
                   <div>
                     <p className="font-semibold text-slate-900">Google Calendar</p>
                     <p className="text-xs text-slate-500">
-                      Genera meet links y sincroniza citas automáticamente
+                      Sincroniza todas tus citas y genera los links de Meet
                     </p>
                   </div>
                 </div>
@@ -2227,8 +2227,9 @@ function SettingsPageInner() {
                   <div className="space-y-3">
                     <div className="bg-blue-50 border border-blue-200 rounded-xl p-3">
                       <p className="text-xs text-blue-700">
-                        Al conectar Google, las citas online generarán un link de Google Meet
-                        automáticamente y se agregarán a tu Google Calendar.
+                        Al conectar Google, todas tus citas se agregarán a tu Google Calendar: las
+                        online con un link de Google Meet, y las presenciales con la dirección del
+                        consultorio.
                       </p>
                     </div>
                     <button
