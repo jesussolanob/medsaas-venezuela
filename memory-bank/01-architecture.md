@@ -273,6 +273,38 @@ consultations}` (+ Consultorios/Plantillas sin moduleKey); deshabilitados agenda
     `pending_consultation_reminder` mig `20260723000003`) + **expiración** automática, ambos wired al cron existente
     `/api/cron/appointment-reminders` (sin nuevo Cloud Scheduler). Anti-IDOR: doctor de `user.sub`, ownership de paciente+plan en
     el bulk; token → 404 anti-enumeración, sin PII ni IDs en mensajes de error. Deuda Etapa 2: rate-limiting de los públicos.
+- **ADR-026 (2026-07-27):** **TODA cita va al Google Calendar del especialista — el evento, no el Meet, es lo
+  que importa.** Hasta hoy la integración se había construido alrededor del **Meet**: `handleOnline` creaba el
+  evento y `handleInPerson` solo mandaba correo + `.ics`, así que **las citas presenciales nunca llegaban al
+  calendario** (un especialista que solo atiende presencial no obtenía NADA al conectar Google). Decisión del
+  dueño: online y presencial, ambas al calendario.
+  - `GoogleCalendarService.createEvent({ withMeet, location })` — evento con o sin Meet. Sin Meet no manda
+    `conferenceData`/`conferenceDataVersion` y sí manda `location`. `createEventWithMeet` delega (cero cambios
+    para las online). `CreateCalendarEventInput` gana `withMeet?`/`location?`.
+  - `handleInPerson` crea el evento **best-effort** con la dirección del consultorio: si Google no está
+    conectado o la API falla, la cita se agenda igual y el correo/.ics salen igual. **El paciente va como
+    invitado** también en las presenciales (la cita queda en el calendario de ambos).
+  - **Backfill** `SyncDoctorCalendarUseCase` + `POST /api/appointments/calendar-sync` (botón "Sincronizar
+    calendario" de la agenda, cuyo BFF era un **stub 501** heredado de la migración): hasta 100 citas
+    próximas sin `google_calendar_event_id`, **secuencial** (rate limit de Google), idempotente por el
+    `WHERE ... IS NULL`. Es el **ÚNICO** camino que NO manda `attendeeEmail` ni correos — no queremos que
+    Google reenvíe invitaciones a pacientes por citas viejas. `synced` solo suma cuando el `eventId` se
+    persistió (si no, la cita reaparecería en cada corrida reportada como sincronizada).
+  - Sin Google conectado → `CalendarNotConnectedError` **409** en español. Sin migración.
+  - **Validado en staging contra el Google Calendar real** (2026-07-27): 4 eventos, cada uno UNA vez, con
+    `Ubicación` del consultorio y sin Meet; presencial nueva → evento automático. Ver 05-progress-log.
+- **ADR-027 (2026-07-27):** **Un token real de Auth0 SIEMPRE gana sobre el token de reviewer.** `AppAuthGuard`
+  evalúa el camino de reviewer ANTES del dispatch normal, e `instrumentation.ts` reenviaba **los dos headers**
+  cuando existían ambos; como la cookie `reviewer_token` vive 12h, quien usara el login demo y después entrara
+  con una cuenta real en el mismo navegador quedaba resuelto como **el doctor demo**. `identity.server.ts` y
+  `proxy.ts` ya daban precedencia a Auth0, pero el reenvío de headers no: la corrección estaba a medias.
+  Ahora el frontend NO manda `x-reviewer-token` si hay token de Auth0, **y** el guard lo ignora cuando llega un
+  `x-auth0-token` (no depende de que el cliente se porte bien). Auditoría del acceso demo: **0 CRITICAL/0 HIGH**
+  — el `sub` sale fijo de `REVIEWER_PROFILE_ID` (nunca del input), el rol está fijado a `doctor`, el ban por
+  `is_active` aplica, y con la bandera apagada el camino de Auth0 queda idéntico al de antes del parche.
+  **Google aprobó la verificación el 2026-07-27 → `REVIEWER_ACCESS_ENABLED=false` en prod** (redeploy por
+  `workflow_dispatch` sobre `main`, sin promover código). `staging.yml` tenía la bandera **hardcodeada en
+  `true`**; ahora lee la variable del repo, igual que prod. ⚠️ Prod y staging **comparten** esa variable.
 - **Terminología (2026-07-23):** "médico" (SUSTANTIVO que nombra al usuario) → **"especialista"** en UI/correos/guías;
   se conservan adjetivos ("informe/reposo/insumos/datos médicos") y honoríficos Dr./Dra. Plantillas de email sembradas se
   actualizan en BD vía mig `20260723000001` (REPLACE de frases sustantivas; `REPLACE` no toca adjetivos).
