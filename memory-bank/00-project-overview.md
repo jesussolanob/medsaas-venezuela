@@ -126,7 +126,9 @@ BD local: `postgres://delta:delta_dev_password@localhost:5432/deltamedical`
 - Super Admin (legacy Supabase): jesussolano4@gmail.com
 - Doctor de prueba (legacy): ing.jesussolanob@gmail.com
 - GitHub: jesussolanob · Repo: github.com/jesussolanob/medsaas-venezuela
-- Rama de trabajo actual: `feature/migracion-backend` (local, sin push)
+- Ramas: **`main`** = prod (dispara `deploy.yml`) · **`staging`** = pre-prod (dispara `staging.yml`) ·
+  **`develop`** = integración (**no dispara ningún deploy**) · `feature/*` desde `develop`.
+  `feature/migracion-backend` quedó obsoleta. Última promoción a prod: **2026-07-31** (`eac4a1c`).
 
 ## Idioma
 
