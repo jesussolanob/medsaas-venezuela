@@ -2,6 +2,63 @@
 
 > Registro cronológico. Una entrada por fase/hito completado.
 
+## 2026-07-30 — Pie del menú compacto + la suite de tests vuelve a verde ⏳ (EN STAGING, SIN QA)
+
+Dos cosas independientes, cada una en su rama, ambas ya en `develop` y `staging`. **`main` sigue
+sin recibir nada** (la deuda de promoción a prod del 26/07 continúa abierta).
+
+### 1. Términos, privacidad y cerrar sesión: 3 filas → 1 fila de iconos (`feature/menu-footer-compacto`, `88f498c`)
+
+Observación de un tercero validada por el dueño: en pantallas cortas el menú del especialista
+empujaba sus propios módulos fuera de vista. El pie tenía **tres filas completas** para enlaces
+que casi nunca se tocan.
+
+Ahora son **tres botones-icono en una sola fila** anclada al pie, con línea separadora arriba y
+**tooltip** al pasar el mouse **o al enfocar con el teclado**. Libera ~110px de alto.
+Componente nuevo `components/doctor/SidebarUtilityBar.tsx` (el layout bajó 61 líneas).
+
+- **El nombre accesible sale de `aria-label`, no del tooltip** — lector de pantalla y teclado no
+  dependen del hover. Sin `title` nativo, si no el navegador pinta un segundo tooltip encima.
+- **`Configuración` se dejó como fila completa** aunque el dueño solo nombró "sugerencias y plan":
+  es un módulo de verdad, no un enlace legal, y como icono pierde descubribilidad. Confirmar en QA.
+- Solo aplica al menú del **especialista**: los de admin y paciente no tienen Términos ni
+  Privacidad, solo Cerrar sesión.
+- Verificado: `tsc` frontend ✅ · eslint del componente nuevo ✅ · prettier ✅. Los 3 errores
+  `react-hooks/set-state-in-effect` que quedan en `doctor/layout.tsx` (líneas 242/255/320) son
+  **preexistentes**, en efectos que no se tocaron.
+
+### 2. Suite del backend en verde sin Postgres (`feature/sanear-suite-tests`, `c46009a`)
+
+Deuda anotada al cerrar el 26/07: `develop` arrastraba **7 suites rojas / 36 tests**, así que el
+hook de pre-commit fallaba y **todo commit al backend necesitaba `--no-verify`** — es decir, el
+hook no estaba protegiendo nada.
+
+Baseline medido: **387 suites, 7 rojas**. Dos fallos eran **reales**, no ambientales:
+
+1. `send-invoice-email.use-case.spec.ts` esperaba `'Suscripción mensual Delta Medical'`; el código
+   dice `'Delta Salud'` desde el rebranding. La prueba quedó atrás.
+2. `ai-transcription.controller.spec.ts` **no compilaba**: `parse_prescription` amplió el retorno de
+   `POST /api/ai/text` a la unión `AiTextOutputDto | ParsePrescriptionOutputDto` y el spec leía
+   `.result` sin estrechar. Se añadió `asTextOutput()`, que **lanza** si llega la rama equivocada
+   (en vez de un cast, que habría escondido un retorno incorrecto del controller).
+
+Las otras 5 exigen un Postgres vivo. Pasan a **`*.integration.spec.ts`**, quedan fuera del run por
+defecto (`testPathIgnorePatterns` en `jest.config.cts`) y corren con el target nuevo
+**`pnpm nx run backend:test-integration`** (`--runInBand`).
+
+- Resultado: **382 suites / 3640 tests, 0 fallos**, y el comando exacto del hook
+  (`nx affected --target=test --base=HEAD~1`) pasa. Se acabó el `--no-verify`.
+- Se corrigió el encabezado de las 5: documentaban `--testPathPattern=...`, que tras el cambio
+  **no seleccionaría nada** (el ignore gana). Ahora apuntan al target nuevo.
+- ⚠️ **Regla nueva:** un test que necesite BD debe llamarse `*.integration.spec.ts`, o vuelve a
+  romper el hook de todo el equipo. Documentado en `07-correr-local.md`.
+- `git merge --no-ff` **no** dispara `pre-commit` (git usa `pre-merge-commit`), así que el hook se
+  verificó corriendo su comando a mano — no basta con que el merge pase.
+
+**Aprendizaje transversal:** el `git add` de dos archivos se llevó por delante un borrado de PNG que
+llevaba días en el índice. Commitear con pathspec explícito (`git commit -- <archivos>`) cuando el
+working tree viene sucio de antes.
+
 ## 2026-07-27 — Sincronizar calendario: el botón de la agenda + las citas presenciales por fin llegan a Google ⏳ (SIN DESPLEGAR)
 
 Observación del dueño con captura: Google ya verificó la app y conectar el calendario funciona en
