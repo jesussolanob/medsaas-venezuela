@@ -66,6 +66,13 @@
         "passWithNoTests": true
       }
     },
+    "test-integration": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "../../node_modules/.bin/jest --config jest.config.cts --runInBand --passWithNoTests --testPathIgnorePatterns=/node_modules/ --testMatch=\"**/*.integration.spec.ts\"",
+        "cwd": "apps/backend"
+      }
+    },
     "lint": {
       "executor": "nx:run-commands",
       "options": {
