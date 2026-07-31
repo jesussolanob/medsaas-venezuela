@@ -476,6 +476,21 @@ pending-consultations/**`, `app/api/public/pending-consultations/[token]/**`, `a
 - **Terminología:** "médico" sustantivo→"especialista" en UI/guías/correos (conserva adjetivos + Dr./Dra.). Mig
   `20260723000001` actualiza plantillas de email en BD.
 
+### Componentes nuevos (2026-07-30)
+
+**`components/doctor/SidebarUtilityBar.tsx`** — pie del menú del especialista. Agrupa
+Términos y Condiciones, Política de Privacidad y Cerrar sesión en **una sola fila de
+iconos** anclada abajo (antes: tres filas completas, que en pantallas cortas empujaban
+los módulos fuera de vista). Libera ~110px de alto.
+
+> **Regla de accesibilidad:** el nombre accesible sale de `aria-label`; el tooltip es
+> `aria-hidden` y aparece con `group-hover` **y** `group-focus-visible`, así el teclado
+> no queda fuera. **No** poner `title`: el navegador pintaría un segundo tooltip encima.
+> `Cerrar sesión` conserva su hover rojo (`--dh-error`); los otros dos, el gris de siempre.
+
+`Configuración` y `Sugerencias` se quedan como filas completas: son módulos, no enlaces
+legales, y como icono pierden descubribilidad.
+
 ### Componentes/fixes nuevos (2026-07-25/26 — reactividad, onboarding y perfil)
 
 **`components/doctor/SetupStepper.tsx`** — puesta en marcha del especialista en el
