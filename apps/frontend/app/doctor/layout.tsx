@@ -16,7 +16,6 @@ import {
   ClipboardList,
   Users,
   Settings,
-  LogOut,
   Menu,
   MessageSquarePlus,
   Building2,
@@ -35,9 +34,7 @@ import {
   CheckCircle,
   Lock,
   FileUp,
-  FileText,
   CalendarClock,
-  Shield,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { logoutAction } from './logout-action';
@@ -56,6 +53,7 @@ import { checkOnboardingComplete } from './actions';
 import TelemetryProvider from '@/components/telemetry/TelemetryProvider';
 import TermsModal from '@/components/legal/TermsModal';
 import TrialExpiryBanner from '@/components/doctor/TrialExpiryBanner';
+import { SidebarUtilityBar } from '@/components/doctor/SidebarUtilityBar';
 
 type NavItem = { name: string; href: string; icon: React.ElementType; moduleKey?: string };
 type NavSection = { key: string; label: string; icon: React.ElementType; items: NavItem[] };
@@ -769,56 +767,13 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
               </Link>
             )}
 
-            <button
-              onClick={() => setTermsModalOpen(true)}
-              className="flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm w-full transition-all"
-              style={{ color: 'var(--dh-gray-400)' }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.color = 'var(--dh-gray-600)';
-                e.currentTarget.style.background = 'var(--dh-gray-50)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.color = 'var(--dh-gray-400)';
-                e.currentTarget.style.background = 'transparent';
-              }}
-            >
-              <FileText className="w-4 h-4" />
-              Términos y Condiciones
-            </button>
-
-            <button
-              onClick={() => setPrivacyModalOpen(true)}
-              className="flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm w-full transition-all"
-              style={{ color: 'var(--dh-gray-400)' }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.color = 'var(--dh-gray-600)';
-                e.currentTarget.style.background = 'var(--dh-gray-50)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.color = 'var(--dh-gray-400)';
-                e.currentTarget.style.background = 'transparent';
-              }}
-            >
-              <Shield className="w-4 h-4" />
-              Política de Privacidad
-            </button>
-
-            <button
-              onClick={handleLogout}
-              className="flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm w-full transition-all"
-              style={{ color: 'var(--dh-gray-400)' }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.color = 'var(--dh-error)';
-                e.currentTarget.style.background = '#FEF2F2';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.color = 'var(--dh-gray-400)';
-                e.currentTarget.style.background = 'transparent';
-              }}
-            >
-              <LogOut className="w-4 h-4" />
-              Cerrar sesión
-            </button>
+            {/* Términos, privacidad y cerrar sesión: una sola fila de iconos con
+                tooltip, anclada al pie del menú (ahorra ~110px de alto). */}
+            <SidebarUtilityBar
+              onOpenTerms={() => setTermsModalOpen(true)}
+              onOpenPrivacy={() => setPrivacyModalOpen(true)}
+              onLogout={handleLogout}
+            />
           </div>
         </aside>
         <TermsModal open={termsModalOpen} onClose={() => setTermsModalOpen(false)} />
