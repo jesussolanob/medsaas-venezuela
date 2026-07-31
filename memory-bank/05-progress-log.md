@@ -2,10 +2,18 @@
 
 > Registro cronológico. Una entrada por fase/hito completado.
 
-## 2026-07-30 — Pie del menú compacto + la suite de tests vuelve a verde ⏳ (EN STAGING, SIN QA)
+## 2026-07-30 — Pie del menú compacto + la suite de tests vuelve a verde ✅ (VALIDADO EN STAGING)
 
 Dos cosas independientes, cada una en su rama, ambas ya en `develop` y `staging`. **`main` sigue
-sin recibir nada** (la deuda de promoción a prod del 26/07 continúa abierta).
+sin recibir nada**: al cerrar la sesión `staging` iba **67 commits por delante de `main`** — el modal
+de bienvenida, el lote de 7, las preconsultas y el calendario siguen fuera de prod. La deuda de
+promoción del 26/07 continúa abierta.
+
+**QA visual del dueño: aprobado** ("quedó perfecto") sobre `staging.deltasalud.app`. El lead **no
+pudo** hacer ese QA: el acceso demo de reviewer quedó apagado el 27/07
+(`REVIEWER_ACCESS_ENABLED=false`, y esa variable de GitHub **la comparten prod y staging**), así que
+entrar a staging exige login real por Auth0. Para QA autónomo en staging habría que crear una
+variable separada de la de prod.
 
 ### 1. Términos, privacidad y cerrar sesión: 3 filas → 1 fila de iconos (`feature/menu-footer-compacto`, `88f498c`)
 
@@ -20,7 +28,8 @@ Componente nuevo `components/doctor/SidebarUtilityBar.tsx` (el layout bajó 61 l
 - **El nombre accesible sale de `aria-label`, no del tooltip** — lector de pantalla y teclado no
   dependen del hover. Sin `title` nativo, si no el navegador pinta un segundo tooltip encima.
 - **`Configuración` se dejó como fila completa** aunque el dueño solo nombró "sugerencias y plan":
-  es un módulo de verdad, no un enlace legal, y como icono pierde descubribilidad. Confirmar en QA.
+  es un módulo de verdad, no un enlace legal, y como icono pierde descubribilidad. **Confirmado en
+  el QA del dueño** — se queda así.
 - Solo aplica al menú del **especialista**: los de admin y paciente no tienen Términos ni
   Privacidad, solo Cerrar sesión.
 - Verificado: `tsc` frontend ✅ · eslint del componente nuevo ✅ · prettier ✅. Los 3 errores
