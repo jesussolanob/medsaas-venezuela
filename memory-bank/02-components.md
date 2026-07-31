@@ -489,7 +489,7 @@ los módulos fuera de vista). Libera ~110px de alto.
 > `Cerrar sesión` conserva su hover rojo (`--dh-error`); los otros dos, el gris de siempre.
 
 `Configuración` y `Sugerencias` se quedan como filas completas: son módulos, no enlaces
-legales, y como icono pierden descubribilidad.
+legales, y como icono pierden descubribilidad. Validado en el QA del dueño (2026-07-30).
 
 ### Componentes/fixes nuevos (2026-07-25/26 — reactividad, onboarding y perfil)
 
