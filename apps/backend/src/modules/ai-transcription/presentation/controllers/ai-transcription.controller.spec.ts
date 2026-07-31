@@ -6,6 +6,10 @@ import { TranscriptionFeatureDeniedError } from '../../domain/errors/transcripti
 import { TranscriptionAudioInvalidError } from '../../domain/errors/transcription-audio-invalid.error';
 import { TranscriptionProviderError } from '../../domain/errors/transcription-provider-error';
 import { AiFeatureDeniedError } from '../../domain/errors/ai-feature-denied.error';
+import type {
+  AiTextOutputDto,
+  ParsePrescriptionOutputDto,
+} from '../../application/dtos/ai-text.dto';
 import type { CurrentUserPayload } from '../../../../presentation/decorators/current-user.decorator';
 import { AppAuthGuard } from '../../../../infrastructure/auth/app-auth.guard';
 import { RolesGuard } from '../../../../presentation/guards/roles.guard';
@@ -29,6 +33,21 @@ const mockAdmin: CurrentUserPayload = {
   role: 'super_admin',
   email: 'admin@dev.local',
 };
+
+/**
+ * Narrows the POST /api/ai/text payload to the plain-text branch.
+ *
+ * The endpoint returns a union: `{ result }` for improve_block /
+ * summarize_report / patient_history, and `{ medications }` for
+ * parse_prescription. Throwing here instead of casting keeps the assertion
+ * honest if the controller ever returns the wrong branch.
+ */
+function asTextOutput(data: AiTextOutputDto | ParsePrescriptionOutputDto): AiTextOutputDto {
+  if (!('result' in data)) {
+    throw new Error(`Expected an AiTextOutputDto, received: ${JSON.stringify(data)}`);
+  }
+  return data;
+}
 
 /** Minimal Multer.File-like object for testing. */
 interface MulterFileLike {
@@ -367,7 +386,7 @@ describe('AiTranscriptionController', () => {
       const result = await controller.generateText(body, mockDoctor);
 
       expect(result.success).toBe(true);
-      expect(result.data.result).toBe('Texto mejorado.');
+      expect(asTextOutput(result.data).result).toBe('Texto mejorado.');
     });
 
     it('passes doctorId from authenticated user (never from body)', async () => {

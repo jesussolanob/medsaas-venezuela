@@ -13,9 +13,7 @@ import type { MailerService } from '../../../../email/application/services/maile
 // Helpers
 // ---------------------------------------------------------------------------
 
-function makeInvoice(
-  overrides: Partial<Parameters<typeof Invoice.create>[0]> = {},
-): Invoice {
+function makeInvoice(overrides: Partial<Parameters<typeof Invoice.create>[0]> = {}): Invoice {
   return Invoice.create({
     id: 'inv-1',
     doctorId: 'doc-1',
@@ -236,7 +234,7 @@ describe('SendInvoiceEmailUseCase (MailerService refactor)', () => {
     await useCase.execute({ invoiceId: 'inv-1' });
 
     const [, , data] = mailerService.sendTemplate.mock.calls[0]!;
-    expect(data.description).toBe('Suscripción mensual Delta Medical');
+    expect(data.description).toBe('Suscripción mensual Delta Salud');
   });
 
   it('sends without throwing when invoice has no issuedAt', async () => {
