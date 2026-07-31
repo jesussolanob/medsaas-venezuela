@@ -90,36 +90,40 @@ type PaymentMethodData = {
   fields: { key: string; label: string; placeholder?: string; type?: string }[];
 };
 
-const ESPECIALIDADES = [
-  'Medicina General',
-  'Cardiología',
-  'Dermatología',
-  'Endocrinología',
-  'Gastroenterología',
-  'Ginecología',
-  'Hematología',
-  'Infectología',
-  'Medicina Interna',
-  'Nefrología',
-  'Neumología',
-  'Neurología',
-  'Odontología',
-  'Oftalmología',
-  'Oncología',
-  'Ortopedia y Traumatología',
-  'Otorrinolaringología',
-  'Pediatría',
-  'Psicología',
-  'Psiquiatría',
-  'Reumatología',
-  'Fisioterapia',
-  'Urología',
-  'Cirugía General',
-  'Cirugía Plástica',
-  'Medicina de Emergencia',
-  'Radiología',
-  'Nutrición',
-  'Otra',
+// Valor centinela del <select> de especialidad: abre el campo de texto libre.
+// El catalogo real se carga de la BD (loadSpecialtyCatalog); antes vivia aqui
+// una lista hardcodeada de 27 especialidades desincronizada del catalogo.
+const OTRA_ESPECIALIDAD = '__otra__';
+
+/**
+ * El catalogo de BD trae una entrada llamada "Otra", que junto a la opcion de texto
+ * libre daba dos alternativas indistinguibles en el mismo selector. Se descarta:
+ * quien no encuentre su especialidad usa "Otra especialidad" y la escribe.
+ */
+const ES_OTRA_GENERICA = /^otr[ao]$/i;
+
+/**
+ * Catálogo de especialidades desde la BD, vía BFF público.
+ * Degrada a lista vacía: la UI cae entonces al campo de texto libre.
+ */
+async function loadSpecialtyCatalog(): Promise<string[]> {
+  try {
+    const res = await fetch('/api/public/specialties');
+    if (!res.ok) return [];
+    const json = (await res.json()) as { specialties?: { name?: string }[] };
+    return (json.specialties ?? [])
+      .map((s) => (s?.name ?? '').trim())
+      .filter((name): name is string => name.length > 0 && !ES_OTRA_GENERICA.test(name));
+  } catch {
+    return [];
+  }
+}
+
+const GENDERS = [
+  { value: 'F', label: 'Femenino' },
+  { value: 'M', label: 'Masculino' },
+  { value: 'O', label: 'Otro' },
+  { value: 'N', label: 'Prefiero no decirlo' },
 ];
 
 const PROFESSIONAL_TITLES = [
@@ -262,10 +266,18 @@ function SettingsPageInner() {
     email: '',
     phone: '',
     specialty: '',
-    professional_title: 'Dr.',
+    // Sin titulo por defecto: arrancaba en 'Dr.' y las psicologas/licenciadas que se
+    // registraban quedaban con "Dr." sin haberlo elegido. Que lo ponga el especialista.
+    professional_title: '',
+    gender: '',
     allows_online: true,
     birth_date: '' as string,
   });
+  // Catalogo de especialidades desde la BD (mismo origen que el onboarding).
+  const [specialtyCatalog, setSpecialtyCatalog] = useState<string[]>([]);
+  // true cuando la especialidad guardada no esta en el catalogo (se escribio a mano
+  // en el onboarding via "Otra especialidad") o el especialista elige "Otra".
+  const [customSpecialty, setCustomSpecialty] = useState(false);
   const [cedula, setCedula] = useState<string | null>(null);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
@@ -385,10 +397,13 @@ function SettingsPageInner() {
     async function load() {
       // Profile — fetched from NestJS backend. doctorId is resolved from dev-auth
       // in the server action; we still keep it in state for the booking link.
-      const [profileData, googleStatusData] = await Promise.all([
+      const [profileData, googleStatusData, catalog] = await Promise.all([
         loadSettingsProfile(),
         loadGoogleStatus(),
+        loadSpecialtyCatalog(),
       ]);
+
+      setSpecialtyCatalog(catalog);
 
       if (profileData) {
         setDoctorId(profileData.id);
@@ -398,9 +413,17 @@ function SettingsPageInner() {
           phone: profileData.phone,
           specialty: profileData.specialty,
           professional_title: profileData.professional_title,
+          gender: profileData.gender ?? '',
           allows_online: profileData.allows_online,
           birth_date: profileData.birth_date ?? '',
         });
+        // Si la especialidad guardada no esta en el catalogo, se escribio a mano en el
+        // onboarding ("Otra especialidad"): hay que mostrarla como texto libre, no
+        // perderla en un <select> que no la tiene.
+        const saved = (profileData.specialty ?? '').trim();
+        if (saved && catalog.length > 0 && !catalog.includes(saved)) {
+          setCustomSpecialty(true);
+        }
         setAvatarUrl(profileData.avatar_url);
         // Backend now returns logo_url, signature_url, license_number.
         setLogoUrl(profileData.logo_url ?? null);
@@ -440,6 +463,7 @@ function SettingsPageInner() {
       full_name: profile.full_name,
       specialty: profile.specialty,
       professional_title: profile.professional_title,
+      gender: profile.gender || null,
       allows_online: profile.allows_online,
       phone: profile.phone,
       birth_date: profile.birth_date || null,
@@ -533,8 +557,10 @@ function SettingsPageInner() {
     if (!result.ok) {
       // Surface the error inline instead of swallowing it.
       setSignatureError(result.error ?? 'Error al eliminar la firma');
+      showToast({ type: 'error', message: 'No se pudo eliminar la firma' });
     } else {
       setSignatureUrl(null);
+      showToast({ type: 'success', message: 'Firma eliminada' });
     }
     setConfirmRemoveSignature(false);
   }
@@ -624,6 +650,7 @@ function SettingsPageInner() {
 
     setPaymentSaved(true);
     setTimeout(() => setPaymentSaved(false), 2500);
+    showToast({ type: 'success', message: 'Métodos de pago guardados' });
   }
 
   /* ---------------- INSURANCE ---------------- */
@@ -757,6 +784,7 @@ function SettingsPageInner() {
     // Simulate async so the UI spinner shows consistently.
     await new Promise<void>((resolve) => setTimeout(resolve, 300));
     setIntegrationsLoading(false);
+    showToast({ type: 'success', message: 'Configuración guardada' });
     setSaved(true);
     setTimeout(() => setSaved(false), 2500);
   }
@@ -1042,6 +1070,8 @@ function SettingsPageInner() {
                         }
                         className={fi}
                       >
+                        {/* Sin titulo por defecto: que lo elija el especialista. */}
+                        <option value="">Sin título</option>
                         {PROFESSIONAL_TITLES.map((t) => (
                           <option key={t.value} value={t.value}>
                             {t.label}
@@ -1117,22 +1147,73 @@ function SettingsPageInner() {
                     </div>
                   </div>
 
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                      Especialidad
-                    </label>
-                    <select
-                      value={profile.specialty}
-                      onChange={(e) => setProfile((p) => ({ ...p, specialty: e.target.value }))}
-                      className={fi}
-                    >
-                      <option value="">Seleccionar especialidad…</option>
-                      {ESPECIALIDADES.map((esp) => (
-                        <option key={esp} value={esp}>
-                          {esp}
-                        </option>
-                      ))}
-                    </select>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                        Especialidad
+                      </label>
+                      {customSpecialty ? (
+                        <>
+                          <input
+                            type="text"
+                            value={profile.specialty}
+                            onChange={(e) =>
+                              setProfile((p) => ({ ...p, specialty: e.target.value }))
+                            }
+                            placeholder="Escribe tu especialidad…"
+                            className={fi}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setCustomSpecialty(false);
+                              setProfile((p) => ({ ...p, specialty: '' }));
+                            }}
+                            className="text-[11px] text-teal-600 hover:text-teal-700 mt-1.5"
+                          >
+                            Elegir de la lista
+                          </button>
+                        </>
+                      ) : (
+                        <select
+                          value={profile.specialty}
+                          onChange={(e) => {
+                            if (e.target.value === OTRA_ESPECIALIDAD) {
+                              setCustomSpecialty(true);
+                              setProfile((p) => ({ ...p, specialty: '' }));
+                              return;
+                            }
+                            setProfile((p) => ({ ...p, specialty: e.target.value }));
+                          }}
+                          className={fi}
+                        >
+                          <option value="">Seleccionar especialidad…</option>
+                          {specialtyCatalog.map((esp) => (
+                            <option key={esp} value={esp}>
+                              {esp}
+                            </option>
+                          ))}
+                          <option value={OTRA_ESPECIALIDAD}>Otra especialidad…</option>
+                        </select>
+                      )}
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                        Género
+                      </label>
+                      <select
+                        value={profile.gender}
+                        onChange={(e) => setProfile((p) => ({ ...p, gender: e.target.value }))}
+                        className={fi}
+                      >
+                        <option value="">Seleccionar…</option>
+                        {GENDERS.map((g) => (
+                          <option key={g.value} value={g.value}>
+                            {g.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
                   {/* Online consultations toggle */}
                   <div className="pt-2 border-t border-slate-100">
@@ -1439,7 +1520,12 @@ function SettingsPageInner() {
                     .replace('{paciente}', 'María García')
                     .replace('{fecha}', new Date().toLocaleDateString('es-VE'))
                     .replace('{documentos}', 'informe médico, receta')
-                    .replace('{doctor}', profile.professional_title + ' ' + profile.full_name)
+                    .replace(
+                      '{doctor}',
+                      // El titulo puede estar vacio (ya no hay 'Dr.' por defecto):
+                      // sin filtrar quedaria un espacio inicial en el mensaje.
+                      [profile.professional_title, profile.full_name].filter(Boolean).join(' '),
+                    )
                     .replace('{codigo}', 'CON-001')}
                 </p>
               </div>
@@ -2063,7 +2149,7 @@ function SettingsPageInner() {
                   <div>
                     <p className="font-semibold text-slate-900">Google Calendar</p>
                     <p className="text-xs text-slate-500">
-                      Genera meet links y sincroniza citas automáticamente
+                      Sincroniza todas tus citas y genera los links de Meet
                     </p>
                   </div>
                 </div>
@@ -2141,8 +2227,9 @@ function SettingsPageInner() {
                   <div className="space-y-3">
                     <div className="bg-blue-50 border border-blue-200 rounded-xl p-3">
                       <p className="text-xs text-blue-700">
-                        Al conectar Google, las citas online generarán un link de Google Meet
-                        automáticamente y se agregarán a tu Google Calendar.
+                        Al conectar Google, todas tus citas se agregarán a tu Google Calendar: las
+                        online con un link de Google Meet, y las presenciales con la dirección del
+                        consultorio.
                       </p>
                     </div>
                     <button

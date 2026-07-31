@@ -1172,5 +1172,24 @@ o "Continuar con Google"). Verificar efectos en la pantalla siguiente / en Resen
 
 ---
 
+## D-2026-07-24) Reagendar cita + sincronización con Google Calendar
+
+> Requiere: doctor con **Google Calendar conectado** (Config → Integraciones) para los casos de sync.
+> Los casos RESCH-01..03 (UI/persistencia) no requieren Google conectado.
+
+| Caso     | Precondición / pasos                                                                              | Esperado UI                                                                                  | Verificación técnica                                                                                                          |
+| -------- | ------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| RESCH-01 | Agenda → abrir detalle de una cita `agendada` o `confirmada`                                      | Aparece botón **"Reagendar"** (ámbar) en "Acciones de la cita"                               | Solo en `scheduled\|confirmed` y con appointment real (no consulta-sin-cita)                                                  |
+| RESCH-02 | RESCH-01 → "Reagendar" → seleccionar nuevo día + hora → **Confirmar**                             | Modal "Reagendar cita" (muestra "Actual: …"); la cita se mueve al nuevo horario en la agenda | `POST /api/doctor/reschedule` → `PUT /api/appointments/:id/reschedule`; `scheduled_at` nuevo; audit `appointment_changes_log` |
+| RESCH-03 | Reagendar a un slot ya ocupado (mismo doctor) o que solapa al paciente en otro doctor             | Error "Ya hay otra cita en ese horario"                                                      | `AppointmentConflictError` / `AppointmentDuplicateError`                                                                      |
+| RESCH-04 | **(Google)** Cita online creada (evento en Google Calendar) → reagendar a otra hora               | La cita se mueve en el portal                                                                | El **evento de Google del doctor** se mueve a la nueva hora (mismo evento, `events.patch`; conserva Meet/invitados)           |
+| RESCH-05 | **(Google)** RESCH-04 → revisar el Google Calendar del **paciente** invitado                      | El evento del paciente refleja la nueva hora (invitación actualizada)                        | `sendUpdates:'all'` notifica al invitado; NO se crea evento duplicado                                                         |
+| RESCH-06 | **(Google, tolerancia a fallos)** reagendar con Google desconectado o token vencido irrecuperable | La cita se reagenda igual (no bloquea)                                                       | `UpdateCalendarEventUseCase` best-effort; `GoogleNotConnectedError` se traga con `logger.warn`, reschedule persiste           |
+
+**Verificado en vivo (prod, 2026-07-24):** RESCH-01/02/04/05 — cita 10:00→15:00 movió el evento a 3pm en el
+calendar del doctor **y** del paciente.
+
+---
+
 > Mantener este guion vivo: cuando aparezca un bug de prod, agregar una fila a la
 > **Sección D** y un caso al módulo correspondiente para que el qa-agent lo cubra siempre.

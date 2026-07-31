@@ -130,6 +130,9 @@ export class DoctorController {
       phone: dto.phone,
       // birthDate is editable; cedula is intentionally excluded (read-only)
       birthDate: dto.birth_date,
+      gender: dto.gender,
+      // El cliente solo manda la intencion; la marca de tiempo la pone el servidor.
+      welcomeDismissedAt: dto.welcome_dismissed === true ? new Date().toISOString() : undefined,
     });
     return { success: true, data: result };
   }

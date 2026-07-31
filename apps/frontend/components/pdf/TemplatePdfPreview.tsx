@@ -216,7 +216,7 @@ const SAMPLE_REST_BLOCKS: ContentBlock[] = [
 // ---------------------------------------------------------------------------
 
 const SAMPLE_RECIBO_BLOCKS: ContentBlock[] = [
-  { key: 'concepto', label: 'Concepto', value: 'Consulta médica — Plan Estándar' },
+  { key: 'concepto', label: 'Concepto', value: 'Consulta — Plan Estándar' },
   {
     key: 'monto',
     label: 'Monto',

@@ -154,6 +154,8 @@ export default function ServicesPage() {
 
     if (!result.success) {
       showToast({ type: 'error', message: result.error ?? 'Error al guardar el servicio' });
+    } else {
+      showToast({ type: 'success', message: editing ? 'Servicio actualizado' : 'Servicio creado' });
     }
 
     setSaving(false);
@@ -166,18 +168,33 @@ export default function ServicesPage() {
   }
 
   async function performDeleteService(id: string) {
-    await deleteDoctorService(id);
+    try {
+      await deleteDoctorService(id);
+      showToast({ type: 'success', message: 'Servicio eliminado' });
+    } catch {
+      showToast({ type: 'error', message: 'Error al eliminar el servicio' });
+    }
     setConfirmDelete(null);
     fetchServices();
   }
 
   async function toggleBooking(item: DoctorService) {
     await toggleDoctorService(item.id, 'show_in_booking', !item.show_in_booking);
+    showToast({
+      type: 'success',
+      message: item.show_in_booking
+        ? 'Servicio ocultado del booking'
+        : 'Servicio habilitado en el booking',
+    });
     fetchServices();
   }
 
   async function toggleActive(item: DoctorService) {
     await toggleDoctorService(item.id, 'is_active', !item.is_active);
+    showToast({
+      type: 'success',
+      message: item.is_active ? 'Servicio desactivado' : 'Servicio activado',
+    });
     fetchServices();
   }
 
@@ -534,7 +551,7 @@ export default function ServicesPage() {
                 <label className="block text-xs font-medium text-slate-600 mb-1.5">Tipo</label>
                 <div className="grid grid-cols-2 gap-2">
                   {[
-                    { value: 'plan', label: 'Plan de consulta', desc: 'Consulta médica' },
+                    { value: 'plan', label: 'Plan de consulta', desc: 'Consulta' },
                     { value: 'service', label: 'Servicio extra', desc: 'Limpieza, examen, etc.' },
                   ].map((opt) => (
                     <button

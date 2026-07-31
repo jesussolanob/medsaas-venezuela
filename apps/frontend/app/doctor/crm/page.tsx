@@ -22,6 +22,7 @@ import {
 // L6 (2026-04-29): normaliza telefonos para wa.me / tel:
 import { normalizePhoneVE } from '@/lib/phone-utils';
 import { reportError } from '@/lib/report-error';
+import { showToast } from '@/components/ui/Toaster';
 
 type LeadStage = 'new' | 'contacted' | 'qualified' | 'appointment' | 'converted' | 'lost';
 type LeadChannel = 'whatsapp' | 'instagram' | 'facebook' | 'web' | 'llamada' | 'referido';
@@ -256,9 +257,11 @@ export default function CRMPage() {
 
       if (data) {
         setLeads((prev) => [data as Lead, ...prev]);
+        showToast({ type: 'success', message: 'Contacto agregado al CRM' });
       }
     } catch (e) {
       reportError('doctor/crm', 'handleAddLead', e);
+      showToast({ type: 'error', message: 'Error al agregar el contacto' });
     }
 
     setNewLeadData({ name: '', phone: '', channel: 'whatsapp', message: '' });

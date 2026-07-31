@@ -111,6 +111,12 @@ export class DoctorProfileModel extends Model {
   @Column({ type: DataType.DATEONLY, allowNull: true, field: 'birth_date' })
   declare birthDate: string | null;
 
+  @Column({ type: DataType.STRING(1), allowNull: true, field: 'gender' })
+  declare gender: string | null;
+
+  @Column({ type: DataType.DATE, allowNull: true, field: 'welcome_dismissed_at' })
+  declare welcomeDismissedAt: Date | null;
+
   /**
    * Explicit onboarding completion flag. Added in migration 20260617000004.
    * Set to true by CompleteRegistrationUseCase when the doctor submits the

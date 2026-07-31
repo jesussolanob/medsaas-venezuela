@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/sequelize';
 import { Op, QueryTypes } from 'sequelize';
 import type { Transaction, WhereOptions } from 'sequelize';
-import type { AppointmentStatus } from '@delta/shared-types';
+import type { AppointmentStatus, AppointmentMode } from '@delta/shared-types';
 import { Appointment } from '../../../domain/entities/appointment.entity';
 import type {
   IAppointmentRepository,
@@ -21,6 +21,50 @@ import { AppointmentChangesLogModel } from '../models/appointment-changes-log.mo
 import { Sequelize } from 'sequelize-typescript';
 
 const ACTIVE_STATUSES = ['scheduled', 'confirmed', 'pending', 'accepted'];
+
+/**
+ * Common raw-SQL row shape returned by appointment queries.
+ * The enriched list query also provides the optional joined fields;
+ * the upcoming-without-event query omits them (they arrive as undefined
+ * and are defaulted to null in rawRowToDomain).
+ */
+interface RawAppointmentRow {
+  id: string;
+  doctor_id: string;
+  patient_id: string | null;
+  auth_user_id: string | null;
+  consultation_id: string | null;
+  patient_name: string | null;
+  patient_phone: string | null;
+  patient_email: string | null;
+  patient_cedula: string | null;
+  scheduled_at: string;
+  status: string;
+  appointment_mode: string;
+  source: string | null;
+  plan_name: string | null;
+  plan_price: string | null;
+  payment_method: string | null;
+  payment_reference: string | null;
+  payment_receipt_url: string | null;
+  insurance_name: string | null;
+  bcv_rate: string | null;
+  amount_bs: string | null;
+  package_id: string | null;
+  session_number: number | null;
+  chief_complaint: string | null;
+  appointment_code: string | null;
+  payment_id: string | null;
+  meet_link: string | null;
+  office_id: string | null;
+  google_calendar_event_id: string | null;
+  duration_minutes: number | null;
+  created_at: string;
+  updated_at: string;
+  // Present only in the enriched paginated list query (LEFT JOIN consultations)
+  consultation_payment_status?: string | null;
+  consultation_code?: string | null;
+}
 
 interface PackageRow {
   id: string;
@@ -75,44 +119,7 @@ export class SequelizeAppointmentRepository implements IAppointmentRepository {
     const total = parseInt(countRows[0]?.cnt ?? '0', 10);
 
     // LIST with LEFT JOIN to consultations to expose consultation payment_status
-    interface AppointmentEnrichedRow {
-      id: string;
-      doctor_id: string;
-      patient_id: string | null;
-      auth_user_id: string | null;
-      consultation_id: string | null;
-      patient_name: string | null;
-      patient_phone: string | null;
-      patient_email: string | null;
-      patient_cedula: string | null;
-      scheduled_at: string;
-      status: string;
-      appointment_mode: string;
-      source: string | null;
-      plan_name: string | null;
-      plan_price: string | null;
-      payment_method: string | null;
-      payment_reference: string | null;
-      payment_receipt_url: string | null;
-      insurance_name: string | null;
-      bcv_rate: string | null;
-      amount_bs: string | null;
-      package_id: string | null;
-      session_number: number | null;
-      chief_complaint: string | null;
-      appointment_code: string | null;
-      payment_id: string | null;
-      meet_link: string | null;
-      office_id: string | null;
-      google_calendar_event_id: string | null;
-      duration_minutes: number | null;
-      created_at: string;
-      updated_at: string;
-      consultation_payment_status: string | null;
-      consultation_code: string | null;
-    }
-
-    const rows = await this.sequelize.query<AppointmentEnrichedRow>(
+    const rows = await this.sequelize.query<RawAppointmentRow>(
       `SELECT
          a.id, a.doctor_id, a.patient_id, a.auth_user_id, a.consultation_id,
          a.patient_name, a.patient_phone, a.patient_email, a.patient_cedula,
@@ -135,44 +142,7 @@ export class SequelizeAppointmentRepository implements IAppointmentRepository {
     );
 
     return {
-      items: rows.map((r) =>
-        Appointment.create({
-          id: r.id,
-          doctorId: r.doctor_id,
-          patientId: r.patient_id,
-          authUserId: r.auth_user_id,
-          consultationId: r.consultation_id,
-          patientName: r.patient_name,
-          patientPhone: r.patient_phone,
-          patientEmail: r.patient_email,
-          patientCedula: r.patient_cedula,
-          scheduledAt: new Date(r.scheduled_at),
-          status: r.status as import('@delta/shared-types').AppointmentStatus,
-          appointmentMode: r.appointment_mode as import('@delta/shared-types').AppointmentMode,
-          source: r.source,
-          planName: r.plan_name,
-          planPrice: r.plan_price !== null ? Number(r.plan_price) : null,
-          paymentMethod: r.payment_method,
-          paymentReference: r.payment_reference,
-          paymentReceiptUrl: r.payment_receipt_url,
-          insuranceName: r.insurance_name,
-          bcvRate: r.bcv_rate !== null ? Number(r.bcv_rate) : null,
-          amountBs: r.amount_bs !== null ? Number(r.amount_bs) : null,
-          packageId: r.package_id,
-          sessionNumber: r.session_number,
-          chiefComplaint: r.chief_complaint,
-          appointmentCode: r.appointment_code,
-          paymentId: r.payment_id,
-          meetLink: r.meet_link,
-          officeId: r.office_id,
-          googleCalendarEventId: r.google_calendar_event_id,
-          durationMinutes: r.duration_minutes,
-          createdAt: new Date(r.created_at),
-          updatedAt: new Date(r.updated_at),
-          paymentStatus: r.consultation_payment_status ?? null,
-          consultationCode: r.consultation_code ?? null,
-        }),
-      ),
+      items: rows.map((r) => this.rawRowToDomain(r)),
       total,
       page: filters.page,
       limit: filters.limit,
@@ -422,6 +392,76 @@ export class SequelizeAppointmentRepository implements IAppointmentRepository {
     });
     if (!row) return null;
     return this.toDomain(row);
+  }
+
+  async findUpcomingWithoutCalendarEvent(
+    doctorId: string,
+    from: Date,
+    limit: number,
+  ): Promise<Appointment[]> {
+    const rows = await this.sequelize.query<RawAppointmentRow>(
+      `SELECT
+         id, doctor_id, patient_id, auth_user_id, consultation_id,
+         patient_name, patient_phone, patient_email, patient_cedula,
+         scheduled_at, status, appointment_mode, source,
+         plan_name, plan_price, payment_method, payment_reference, payment_receipt_url,
+         insurance_name, bcv_rate, amount_bs, package_id, session_number,
+         chief_complaint, appointment_code, payment_id, meet_link, office_id,
+         google_calendar_event_id, duration_minutes, created_at, updated_at
+       FROM appointments
+       WHERE doctor_id = :doctorId
+         AND google_calendar_event_id IS NULL
+         AND scheduled_at >= :from
+         AND status IN ('scheduled', 'confirmed')
+       ORDER BY scheduled_at ASC
+       LIMIT :limit`,
+      {
+        replacements: { doctorId, from, limit },
+        type: QueryTypes.SELECT,
+      },
+    );
+
+    return rows.map((r) => this.rawRowToDomain(r));
+  }
+
+  /** Maps a raw SQL row (snake_case) to a domain Appointment. */
+  private rawRowToDomain(r: RawAppointmentRow): Appointment {
+    return Appointment.create({
+      id: r.id,
+      doctorId: r.doctor_id,
+      patientId: r.patient_id,
+      authUserId: r.auth_user_id,
+      consultationId: r.consultation_id,
+      patientName: r.patient_name,
+      patientPhone: r.patient_phone,
+      patientEmail: r.patient_email,
+      patientCedula: r.patient_cedula,
+      scheduledAt: new Date(r.scheduled_at),
+      status: r.status as AppointmentStatus,
+      appointmentMode: r.appointment_mode as AppointmentMode,
+      source: r.source,
+      planName: r.plan_name,
+      planPrice: r.plan_price !== null ? Number(r.plan_price) : null,
+      paymentMethod: r.payment_method,
+      paymentReference: r.payment_reference,
+      paymentReceiptUrl: r.payment_receipt_url,
+      insuranceName: r.insurance_name,
+      bcvRate: r.bcv_rate !== null ? Number(r.bcv_rate) : null,
+      amountBs: r.amount_bs !== null ? Number(r.amount_bs) : null,
+      packageId: r.package_id,
+      sessionNumber: r.session_number,
+      chiefComplaint: r.chief_complaint,
+      appointmentCode: r.appointment_code,
+      paymentId: r.payment_id,
+      meetLink: r.meet_link,
+      officeId: r.office_id,
+      googleCalendarEventId: r.google_calendar_event_id,
+      durationMinutes: r.duration_minutes,
+      createdAt: new Date(r.created_at),
+      updatedAt: new Date(r.updated_at),
+      paymentStatus: r.consultation_payment_status ?? null,
+      consultationCode: r.consultation_code ?? null,
+    });
   }
 
   private toDomain(row: AppointmentModel): Appointment {

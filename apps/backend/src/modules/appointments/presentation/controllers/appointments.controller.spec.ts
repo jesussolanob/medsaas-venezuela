@@ -6,6 +6,7 @@ import { GetDoctorAgendaUseCase } from '../../application/use-cases/appointments
 import { GetAppointmentByIdUseCase } from '../../application/use-cases/appointments/get-appointment-by-id.use-case';
 import { RescheduleAppointmentUseCase } from '../../application/use-cases/appointments/reschedule-appointment.use-case';
 import { DeleteAppointmentUseCase } from '../../application/use-cases/appointments/delete-appointment.use-case';
+import { SyncDoctorCalendarUseCase } from '../../application/use-cases/appointments/sync-doctor-calendar.use-case';
 import {
   Appointment,
   type AppointmentCreateParams,
@@ -65,6 +66,7 @@ describe('AppointmentsController', () => {
   const mockGetByIdUseCase = { execute: jest.fn() };
   const mockRescheduleUseCase = { execute: jest.fn() };
   const mockDeleteUseCase = { execute: jest.fn() };
+  const mockSyncCalendarUseCase = { execute: jest.fn() };
 
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -78,6 +80,7 @@ describe('AppointmentsController', () => {
         { provide: GetAppointmentByIdUseCase, useValue: mockGetByIdUseCase },
         { provide: RescheduleAppointmentUseCase, useValue: mockRescheduleUseCase },
         { provide: DeleteAppointmentUseCase, useValue: mockDeleteUseCase },
+        { provide: SyncDoctorCalendarUseCase, useValue: mockSyncCalendarUseCase },
       ],
     })
       .overrideGuard(AppAuthGuard)
@@ -317,6 +320,30 @@ describe('AppointmentsController', () => {
 
       expect(mockUpdateStatusUseCase.execute).toHaveBeenCalledWith(
         expect.objectContaining({ reason: null }),
+      );
+    });
+  });
+
+  describe('POST /api/appointments/calendar-sync (calendarSync)', () => {
+    it('delegates to SyncDoctorCalendarUseCase with the authenticated doctorId', async () => {
+      const syncResult = { total: 5, synced: 4, failed: 1 };
+      mockSyncCalendarUseCase.execute.mockResolvedValue(syncResult);
+
+      const response = await controller.calendarSync(mockUser);
+
+      expect(response.success).toBe(true);
+      expect(response.data).toEqual(syncResult);
+      // doctorId must come from the authenticated user, not from any request body
+      expect(mockSyncCalendarUseCase.execute).toHaveBeenCalledWith(DOCTOR_ID);
+    });
+
+    it('propagates CalendarNotConnectedError (409) when Google is not linked', async () => {
+      const { CalendarNotConnectedError } =
+        await import('../../domain/errors/calendar-not-connected.error');
+      mockSyncCalendarUseCase.execute.mockRejectedValue(new CalendarNotConnectedError());
+
+      await expect(controller.calendarSync(mockUser)).rejects.toBeInstanceOf(
+        CalendarNotConnectedError,
       );
     });
   });

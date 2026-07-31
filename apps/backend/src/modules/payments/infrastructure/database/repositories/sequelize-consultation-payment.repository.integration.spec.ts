@@ -8,9 +8,10 @@
  * and consultations (consultation_id). This test seeds all prerequisites and cleans up
  * in afterAll.
  *
- * Run only these tests with:
+ * Excluded from the default `nx test backend` run. Run them with:
  *   export PATH="/opt/homebrew/bin:$HOME/.local/share/pnpm/bin:$PATH"
- *   pnpm nx test backend --testPathPattern="sequelize-consultation-payment.repository.spec"
+ *   docker compose -f docker/docker-compose.yml up -d postgres
+ *   pnpm nx run backend:test-integration
  */
 import { Sequelize } from 'sequelize-typescript';
 import { QueryTypes } from 'sequelize';

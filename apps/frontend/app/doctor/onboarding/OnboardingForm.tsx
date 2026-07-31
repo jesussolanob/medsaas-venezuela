@@ -61,6 +61,9 @@ interface FieldErrors {
 
 const OTRO_VALUE = '__OTRO__';
 
+/** Entradas genericas del catalogo que duplican la opcion de texto libre. */
+const ES_OTRA_GENERICA = /^otr[ao]$/i;
+
 interface SpecialtyComboboxProps {
   specialties: Specialty[];
   value: string;
@@ -90,11 +93,16 @@ function SpecialtyCombobox({
     ? 'Otra especialidad'
     : (specialties.find((s) => s.name === value)?.name ?? '');
 
+  // El catalogo de BD trae una entrada llamada "Otra", que junto a la opcion de
+  // texto libre daba dos alternativas indistinguibles. Se descarta del catalogo:
+  // quien no encuentre su especialidad usa "Otra especialidad" y la escribe.
+  const catalogo = specialties.filter((s) => !ES_OTRA_GENERICA.test(s.name.trim()));
+
   // Filter specialties by query
   const filtered =
     query.trim() === ''
-      ? specialties
-      : specialties.filter((s) => s.name.toLowerCase().includes(query.toLowerCase().trim()));
+      ? catalogo
+      : catalogo.filter((s) => s.name.toLowerCase().includes(query.toLowerCase().trim()));
 
   // Always append OTRO at the end
   const listItems = [...filtered, { id: OTRO_VALUE, name: 'Otra especialidad' }];
@@ -377,6 +385,8 @@ export default function OnboardingForm({
     const known = specialties.find((s) => s.name === initialSpecialty);
     return known ? '' : initialSpecialty;
   });
+  // Genero: opcional, con fines estadisticos. No condiciona nada del sistema.
+  const [gender, setGender] = useState('');
   const [mppsNumber, setMppsNumber] = useState('');
   const [colegiadoNumber, setColegiadoNumber] = useState('');
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
@@ -439,6 +449,7 @@ export default function OnboardingForm({
         full_name: fullName.trim(),
         cedula: cedulaFormatted,
         specialty: resolvedSpecialty || undefined,
+        gender: gender || null,
         mpps_number: mppsNumber.trim() || null,
         colegiado_number: colegiadoNumber.trim() || null,
         accepted_terms: true,
@@ -740,7 +751,8 @@ export default function OnboardingForm({
             className="block text-xs font-semibold mb-1.5"
             style={{ color: 'var(--dh-gray-700)' }}
           >
-            Especialidad médica <span className="text-red-400">*</span>
+            {/* "Especialidad" a secas: no todos los que se registran son médicos. */}
+            Especialidad <span className="text-red-400">*</span>
           </label>
           <SpecialtyCombobox
             specialties={specialties}
@@ -763,6 +775,31 @@ export default function OnboardingForm({
               {fieldErrors.specialty}
             </p>
           )}
+        </div>
+
+        {/* Género — opcional, con fines estadísticos */}
+        <div>
+          <label
+            htmlFor="field-gender"
+            className="block text-xs font-semibold mb-1.5"
+            style={{ color: 'var(--dh-gray-700)' }}
+          >
+            Género{' '}
+            <span className="font-normal" style={{ color: 'var(--dh-gray-400)' }}>
+              (opcional)
+            </span>
+          </label>
+          <select
+            id="field-gender"
+            value={gender}
+            onChange={(e) => setGender(e.target.value)}
+            className={inputNormal}
+          >
+            <option value="">Prefiero no decirlo</option>
+            <option value="F">Femenino</option>
+            <option value="M">Masculino</option>
+            <option value="O">Otro</option>
+          </select>
         </div>
 
         {/* MPPS — optional */}

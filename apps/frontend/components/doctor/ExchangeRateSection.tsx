@@ -26,6 +26,7 @@ import {
   AlertCircle,
 } from 'lucide-react';
 import { loadExchangeRate, saveExchangeRate } from '@/app/doctor/settings/actions';
+import { showToast } from '@/components/ui/Toaster';
 
 type ExchangeMode = 'usd_bcv' | 'eur_bcv' | 'custom';
 
@@ -98,9 +99,11 @@ export default function ExchangeRateSection() {
         custom_rate_label: mode === 'custom' ? customLabel || null : null,
       });
       if (!result.ok) throw new Error(result.error ?? 'Error al guardar');
+      showToast({ type: 'success', message: 'Tasa de cambio guardada' });
       setMsg({ kind: 'ok', text: 'Tasa de cambio guardada' });
     } catch (e: unknown) {
       const text = e instanceof Error ? e.message : 'Error al guardar';
+      showToast({ type: 'error', message: text });
       setMsg({ kind: 'err', text });
     } finally {
       setSaving(false);

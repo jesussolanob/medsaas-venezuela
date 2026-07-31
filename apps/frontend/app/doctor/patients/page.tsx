@@ -513,6 +513,7 @@ export default function PatientsPage() {
       });
       if (!res.success) {
         setEditError(res.error);
+        showToast({ type: 'error', message: res.error || 'No se pudo guardar el paciente' });
         setSavingEdit(false);
         return;
       }
@@ -521,8 +522,10 @@ export default function PatientsPage() {
       setSelected(updated as Patient);
       setPatients((prev) => prev.map((p) => (p.id === selected.id ? (updated as Patient) : p)));
       setEditing(false);
+      showToast({ type: 'success', message: 'Paciente actualizado' });
     } catch (err: any) {
       setEditError(err?.message || 'Error al guardar');
+      showToast({ type: 'error', message: 'No se pudo guardar el paciente' });
     }
     setSavingEdit(false);
   }
@@ -688,6 +691,7 @@ export default function PatientsPage() {
         if (selected?.id === formData.id) setSelected({ ...selected, ...formData } as Patient);
         setPatientFormOpen(false);
         setPatientFormInitial(null);
+        showToast({ type: 'success', message: 'Paciente actualizado' });
       } else {
         // CREATE — INSERT
         const res = await addPatient(doctorId, {
@@ -714,6 +718,7 @@ export default function PatientsPage() {
         loadPagedPatients.current?.(page, pageSize);
         setPatientFormOpen(false);
         setPatientFormInitial(null);
+        showToast({ type: 'success', message: 'Paciente creado' });
         setPostCreateModal({ patientId: res.patient_id, patientName: formData.full_name });
       }
     } catch (err: any) {
@@ -755,9 +760,11 @@ export default function PatientsPage() {
       });
       if (!res.success) {
         setPatError(res.error);
+        showToast({ type: 'error', message: res.error || 'No se pudo crear el paciente' });
         return;
       }
       setShowAddModal(false);
+      showToast({ type: 'success', message: 'Paciente creado' });
       setNewPat({
         full_name: '',
         age: '',
@@ -825,6 +832,7 @@ export default function PatientsPage() {
       const result = await res.json();
       if (!res.ok) throw new Error(result.error || 'Error al crear consulta');
 
+      showToast({ type: 'success', message: 'Consulta creada' });
       setConsultSuccess(`Consulta creada: ${result.code}`);
       setNewConsult({
         chief_complaint: '',

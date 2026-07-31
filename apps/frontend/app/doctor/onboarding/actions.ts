@@ -26,6 +26,8 @@ export interface RegistrationInput {
   full_name: string;
   cedula: string;
   specialty?: string;
+  /** F | M | O. null/undefined = prefiere no decirlo. */
+  gender?: string | null;
   mpps_number?: string | null;
   colegiado_number?: string | null;
   /** Flag de aceptación de Términos y Condiciones. El backend lo acepta opcionalmente. */
@@ -60,6 +62,9 @@ export async function submitDoctorRegistration(
 
   if (input.specialty?.trim()) {
     body.specialty = input.specialty.trim();
+  }
+  if (input.gender) {
+    body.gender = input.gender;
   }
   if (input.mpps_number?.trim()) {
     body.mpps_number = input.mpps_number.trim();

@@ -25,6 +25,16 @@ export interface CreateCalendarEventInput {
    * When absent, the event is created without attendees (no empty attendee injected).
    */
   attendeeEmail?: string;
+  /**
+   * When true (default), creates a Google Meet link.
+   * When false, creates a plain calendar event (for in-person appointments).
+   */
+  withMeet?: boolean;
+  /**
+   * Physical location for in-person events (office address or name).
+   * Forwarded to the Google Calendar event location field when withMeet is false.
+   */
+  location?: string;
 }
 
 export interface CalendarEventResult {

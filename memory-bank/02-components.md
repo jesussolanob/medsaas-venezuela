@@ -95,7 +95,10 @@ Estado (orden histórico de módulos):
 - 02 patients → ✅ DDD completo. PII cifrada (full_name/cedula/phone/email) + search hashes;
   /reveal auditado; búsqueda híbrida; soft delete (paranoid). `modules/patients/`.
 - 03 appointments → ✅ DDD. Transiciones de estado + `appointment_changes_log`; optimistic
-  lock de paquetes. `modules/appointments/`. Diferido: slots/reschedule (falta doctor_schedule).
+  lock de paquetes. `modules/appointments/`. **Reschedule ✅** (`PUT /:id/reschedule`, botón "Reagendar" en
+  la agenda) que además **mueve el evento de Google Calendar** (`UpdateCalendarEventUseCase` →
+  `GoogleCalendarService.updateEventTime`/`events.patch`, `@Optional` best-effort). Diferido: slots (usa
+  horarios genéricos).
 - 04 consultations → ✅ DDD. Campos clínicos cifrados; `ConsultationCode` VO (DLT-YYYYMM-XXXX,
   retry ante colisión); aprobación de pago. `modules/consultations/`.
 - 05 ehr-prescriptions → ✅ DDD. EHR (diagnosis/treatment_plan cifrados) + prescriptions
@@ -413,6 +416,45 @@ Widget de ayuda con IA, disponible para los 3 perfiles. Patrón: panel global + 
 - **Migración `20260722000001`:** `ALTER TYPE subscription_status ADD VALUE IF NOT EXISTS 'trialing'` — el enum PG
   no tenía `trialing` (que el código asigna al trial de onboarding) → rompía TODO registro nuevo en prod. Fix idempotente.
 
+### Fix checkbox del onboarding (2026-07-25)
+
+`app/doctor/onboarding/OnboardingForm.tsx` — el check de Términos usa el patrón **input `sr-only peer` + cuadro
+visual (`div aria-hidden`) dentro del `<label>`**. El cuadro tenía además su propio `onClick` de toggle → click en
+la caja = doble toggle (div + label→input `onChange`) = no pasaba nada; el texto sí funcionaba. **Regla: en este
+patrón el div visual NUNCA lleva handler propio** — el `<label>` es la única fuente de activación. Era el único
+caso de `sr-only peer` en el frontend. Detalle en 05-progress-log (2026-07-25).
+
+### Sincronizar calendario — el botón de la agenda + citas presenciales en Google (2026-07-27)
+
+El botón **"Sync Calendar"** de `/doctor/agenda` respondía "Sincronización con Google Calendar disponible
+próximamente": su BFF `app/api/doctor/calendar-sync/route.ts` era un **stub 501** de la migración, nunca
+cableado. Ahora es un thin-proxy real a `POST /api/appointments/calendar-sync` y el botón dice
+**"Sincronizar calendario"** (estaba en inglés, único resto en esa pantalla).
+
+**Hueco de fondo que se destapó:** solo las citas **online** llegaban a Google Calendar. `handleInPerson`
+(`integrations/application/services/appointment-notification.service.ts`) mandaba email + `.ics` y NUNCA
+tocaba el calendario, porque la integración se construyó alrededor del **Meet**, no del evento. Decisión del
+dueño: **toda cita — online y presencial — debe quedar en el calendario**.
+
+- `GoogleCalendarService.createEvent({ withMeet, location })` — evento **con o sin Meet**. Sin Meet no manda
+  `conferenceData` ni `conferenceDataVersion` y sí manda `location`. `createEventWithMeet` queda delegando
+  (cero cambios para las online). `CreateCalendarEventInput` gana `withMeet?`/`location?`.
+- `handleInPerson` crea el evento **best-effort** con la dirección del consultorio: si Google no está
+  conectado o la API falla, la cita se agenda igual y el correo/.ics salen igual.
+- **El paciente SÍ va como asistente** en las presenciales, igual que en las online (deliberado: la cita
+  queda en el calendario de ambos). El **único** camino que NO agrega asistente es el backfill.
+- `SyncDoctorCalendarUseCase` (`modules/appointments/.../sync-doctor-calendar.use-case.ts`) = backfill de
+  hasta 100 citas próximas sin `google_calendar_event_id`, **secuencial** (rate limit de Google), con
+  `findUpcomingWithoutCalendarEvent` nuevo en el repo. Idempotente por el `WHERE ... IS NULL`.
+- `CalendarNotConnectedError` (409) → "Conecta tu Google Calendar desde Configuración para sincronizar tus citas".
+
+> **Contador honesto:** `synced` solo suma cuando el `eventId` se persistió. Si Google responde sin `eventId`
+> la cita cuenta como `failed` — si no, se reportaría sincronizada y volvería a aparecer en cada corrida.
+
+> **DRY del repo:** `sequelize-appointment.repository.ts` tenía el mapeo fila→`Appointment` duplicado (~35
+> líneas) entre `list()` y la query nueva → extraído a `rawRowToDomain(row)` + `RawAppointmentRow` a nivel
+> de módulo (los campos enriquecidos `consultation_payment_status`/`consultation_code` son opcionales).
+
 ### Preconsultas "Consultas por agendar" + terminología especialista (2026-07-23 — ver ADR-025)
 
 - **Backend módulo NUEVO `modules/pending-consultations/`** (DDD): entidad `PendingConsultation` (`isSchedulable()`,
@@ -433,3 +475,50 @@ pending-consultations/**`, `app/api/public/pending-consultations/[token]/**`, `a
   `plan_id`+`additional_sessions`. `NewAppointmentFlow`: modal de diferir (bulk-create). Servicios: campo "Validez (días)".
 - **Terminología:** "médico" sustantivo→"especialista" en UI/guías/correos (conserva adjetivos + Dr./Dra.). Mig
   `20260723000001` actualiza plantillas de email en BD.
+
+### Componentes nuevos (2026-07-30)
+
+**`components/doctor/SidebarUtilityBar.tsx`** — pie del menú del especialista. Agrupa
+Términos y Condiciones, Política de Privacidad y Cerrar sesión en **una sola fila de
+iconos** anclada abajo (antes: tres filas completas, que en pantallas cortas empujaban
+los módulos fuera de vista). Libera ~110px de alto.
+
+> **Regla de accesibilidad:** el nombre accesible sale de `aria-label`; el tooltip es
+> `aria-hidden` y aparece con `group-hover` **y** `group-focus-visible`, así el teclado
+> no queda fuera. **No** poner `title`: el navegador pintaría un segundo tooltip encima.
+> `Cerrar sesión` conserva su hover rojo (`--dh-error`); los otros dos, el gris de siempre.
+
+`Configuración` y `Sugerencias` se quedan como filas completas: son módulos, no enlaces
+legales, y como icono pierden descubribilidad. Validado en el QA del dueño (2026-07-30).
+
+### Componentes/fixes nuevos (2026-07-25/26 — reactividad, onboarding y perfil)
+
+**`components/doctor/SetupStepper.tsx`** — puesta en marcha del especialista en el
+inicio. 5 pasos con barra de progreso (información · consultorio · servicios · marca ·
+métodos de pago); solo el siguiente pendiente se expande con su explicación y botón
+"Continuar"; el bloque **desaparece** al completar los 5. Sustituye las dos tarjetas
+sueltas que sugerían plantillas y consultorio.
+
+> Estados desconocidos: si falla el fetch de consultorios o servicios el paso queda
+> `null` y NO se marca pendiente. Preferible no mostrarlo a acusar al especialista de
+> algo que sí hizo.
+
+**`components/doctor/WelcomeModal.tsx`** — tour breve de los módulos al entrar, con
+puntero al icono de ayuda (IA). El contenido se filtra por plan con `planUnlocks()`: a
+un Delta Free no se le prometen Finanzas ni IA. El check "no volver a mostrar" persiste
+en `profiles.welcome_dismissed_at` (**no** en localStorage) para que acompañe al
+especialista entre dispositivos. Se evalúa **una sola vez por sesión de página** (ref):
+el efecto del inicio también corre al cambiar de mes y tras cada mutación.
+
+**`app/api/public/specialties/route.ts`** — BFF público del catálogo de especialidades.
+Existía porque el onboarding (Server Component) leía el catálogo con `backendGet`, pero
+`/doctor/settings` es cliente y no puede usar el api-client de servidor: por eso mantenía
+su propia lista hardcodeada, que se desincronizó.
+
+**Selector de especialidad — regla:** el catálogo de BD trae una entrada llamada
+**"Otra"** que duplicaba la opción de texto libre. Ambas pantallas la descartan
+(`/^otr[ao]$/i`) y dejan solo "Otra especialidad", que abre el campo libre.
+
+**Inicio (`app/doctor/page.tsx`) — patrón de refresco:** `refreshKey` incrementado por
+cada mutación, igual que `/doctor/finances`. NO extraer el loader a `useCallback`:
+`react-hooks/set-state-in-effect` lo marca como error.

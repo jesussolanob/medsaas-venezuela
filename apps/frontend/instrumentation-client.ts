@@ -20,6 +20,9 @@ if (dsn) {
     //   rehashean por build). Ya migramos las acciones ruidosas a route handlers.
     // - Fallos de red genéricos (usuario offline, navegó fuera, fetch abortado).
     // - Respuestas 204 sin cuerpo.
+    // - Extensiones del navegador que mutan el DOM (traductor) o inyectan wallets
+    //   (MetaMask): rompen la reconciliación de React o fallan solas; no son
+    //   nuestras y no las podemos arreglar desde la app.
     ignoreErrors: [
       /Server Action .* was not found on the server/i,
       'was not found on the server',
@@ -29,6 +32,9 @@ if (dsn) {
       'AbortError',
       'The operation was aborted',
       'Invalid response status code 204',
+      "Failed to execute 'insertBefore' on 'Node'",
+      "Failed to execute 'removeChild' on 'Node'",
+      'Failed to connect to MetaMask',
     ],
     // Replay is opt-in. Enable in production by uncommenting:
     // replaysSessionSampleRate: 0.1,

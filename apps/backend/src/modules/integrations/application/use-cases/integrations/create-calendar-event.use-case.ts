@@ -63,6 +63,23 @@ export class CreateCalendarEventUseCase {
       }
     }
 
+    // Route through createEvent so withMeet and location are forwarded.
+    // For in-person appointments (withMeet: false), a plain calendar event is created.
+    // For online appointments (withMeet: true, the default), createEventWithMeet is used
+    // to preserve backward compatibility with existing call sites and tests.
+    if (input.withMeet === false) {
+      return this.googleService.createEvent({
+        accessToken: activeIntegration.accessToken,
+        summary: input.summary,
+        description: input.description,
+        startISO: input.startISO,
+        endISO: input.endISO,
+        attendeeEmail: input.attendeeEmail,
+        withMeet: false,
+        location: input.location,
+      });
+    }
+
     return this.googleService.createEventWithMeet({
       accessToken: activeIntegration.accessToken,
       summary: input.summary,

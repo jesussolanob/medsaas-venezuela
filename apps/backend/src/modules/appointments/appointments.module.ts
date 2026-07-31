@@ -14,6 +14,7 @@ import { RescheduleAppointmentUseCase } from './application/use-cases/appointmen
 import { DeleteAppointmentUseCase } from './application/use-cases/appointments/delete-appointment.use-case';
 import { ConfirmAppointmentByTokenUseCase } from './application/use-cases/appointments/confirm-appointment-by-token.use-case';
 import { GetAppointmentConfirmInfoUseCase } from './application/use-cases/appointments/get-appointment-confirm-info.use-case';
+import { SyncDoctorCalendarUseCase } from './application/use-cases/appointments/sync-doctor-calendar.use-case';
 
 import { AppointmentsController } from './presentation/controllers/appointments.controller';
 import { PublicAppointmentsController } from './presentation/controllers/public-appointments.controller';
@@ -65,6 +66,7 @@ import { DoctorSettingsModule } from '../doctor-settings/doctor-settings.module'
     DeleteAppointmentUseCase,
     ConfirmAppointmentByTokenUseCase,
     GetAppointmentConfirmInfoUseCase,
+    SyncDoctorCalendarUseCase,
   ],
   exports: [APPOINTMENT_REPOSITORY, AppointmentConfirmTokenService],
 })

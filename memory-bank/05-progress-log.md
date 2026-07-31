@@ -2,6 +2,275 @@
 
 > Registro cronológico. Una entrada por fase/hito completado.
 
+## 2026-07-30 — Pie del menú compacto + la suite de tests vuelve a verde ✅ (VALIDADO EN STAGING)
+
+Dos cosas independientes, cada una en su rama, ambas ya en `develop` y `staging`. **`main` sigue
+sin recibir nada**: al cerrar la sesión `staging` iba **67 commits por delante de `main`** — el modal
+de bienvenida, el lote de 7, las preconsultas y el calendario siguen fuera de prod. La deuda de
+promoción del 26/07 continúa abierta.
+
+**QA visual del dueño: aprobado** ("quedó perfecto") sobre `staging.deltasalud.app`. El lead **no
+pudo** hacer ese QA: el acceso demo de reviewer quedó apagado el 27/07
+(`REVIEWER_ACCESS_ENABLED=false`, y esa variable de GitHub **la comparten prod y staging**), así que
+entrar a staging exige login real por Auth0. Para QA autónomo en staging habría que crear una
+variable separada de la de prod.
+
+### 1. Términos, privacidad y cerrar sesión: 3 filas → 1 fila de iconos (`feature/menu-footer-compacto`, `88f498c`)
+
+Observación de un tercero validada por el dueño: en pantallas cortas el menú del especialista
+empujaba sus propios módulos fuera de vista. El pie tenía **tres filas completas** para enlaces
+que casi nunca se tocan.
+
+Ahora son **tres botones-icono en una sola fila** anclada al pie, con línea separadora arriba y
+**tooltip** al pasar el mouse **o al enfocar con el teclado**. Libera ~110px de alto.
+Componente nuevo `components/doctor/SidebarUtilityBar.tsx` (el layout bajó 61 líneas).
+
+- **El nombre accesible sale de `aria-label`, no del tooltip** — lector de pantalla y teclado no
+  dependen del hover. Sin `title` nativo, si no el navegador pinta un segundo tooltip encima.
+- **`Configuración` se dejó como fila completa** aunque el dueño solo nombró "sugerencias y plan":
+  es un módulo de verdad, no un enlace legal, y como icono pierde descubribilidad. **Confirmado en
+  el QA del dueño** — se queda así.
+- Solo aplica al menú del **especialista**: los de admin y paciente no tienen Términos ni
+  Privacidad, solo Cerrar sesión.
+- Verificado: `tsc` frontend ✅ · eslint del componente nuevo ✅ · prettier ✅. Los 3 errores
+  `react-hooks/set-state-in-effect` que quedan en `doctor/layout.tsx` (líneas 242/255/320) son
+  **preexistentes**, en efectos que no se tocaron.
+
+### 2. Suite del backend en verde sin Postgres (`feature/sanear-suite-tests`, `c46009a`)
+
+Deuda anotada al cerrar el 26/07: `develop` arrastraba **7 suites rojas / 36 tests**, así que el
+hook de pre-commit fallaba y **todo commit al backend necesitaba `--no-verify`** — es decir, el
+hook no estaba protegiendo nada.
+
+Baseline medido: **387 suites, 7 rojas**. Dos fallos eran **reales**, no ambientales:
+
+1. `send-invoice-email.use-case.spec.ts` esperaba `'Suscripción mensual Delta Medical'`; el código
+   dice `'Delta Salud'` desde el rebranding. La prueba quedó atrás.
+2. `ai-transcription.controller.spec.ts` **no compilaba**: `parse_prescription` amplió el retorno de
+   `POST /api/ai/text` a la unión `AiTextOutputDto | ParsePrescriptionOutputDto` y el spec leía
+   `.result` sin estrechar. Se añadió `asTextOutput()`, que **lanza** si llega la rama equivocada
+   (en vez de un cast, que habría escondido un retorno incorrecto del controller).
+
+Las otras 5 exigen un Postgres vivo. Pasan a **`*.integration.spec.ts`**, quedan fuera del run por
+defecto (`testPathIgnorePatterns` en `jest.config.cts`) y corren con el target nuevo
+**`pnpm nx run backend:test-integration`** (`--runInBand`).
+
+- Resultado: **382 suites / 3640 tests, 0 fallos**, y el comando exacto del hook
+  (`nx affected --target=test --base=HEAD~1`) pasa. Se acabó el `--no-verify`.
+- Se corrigió el encabezado de las 5: documentaban `--testPathPattern=...`, que tras el cambio
+  **no seleccionaría nada** (el ignore gana). Ahora apuntan al target nuevo.
+- ⚠️ **Regla nueva:** un test que necesite BD debe llamarse `*.integration.spec.ts`, o vuelve a
+  romper el hook de todo el equipo. Documentado en `07-correr-local.md`.
+- `git merge --no-ff` **no** dispara `pre-commit` (git usa `pre-merge-commit`), así que el hook se
+  verificó corriendo su comando a mano — no basta con que el merge pase.
+
+**Aprendizaje transversal:** el `git add` de dos archivos se llevó por delante un borrado de PNG que
+llevaba días en el índice. Commitear con pathspec explícito (`git commit -- <archivos>`) cuando el
+working tree viene sucio de antes.
+
+## 2026-07-27 — Sincronizar calendario: el botón de la agenda + las citas presenciales por fin llegan a Google ⏳ (SIN DESPLEGAR)
+
+Observación del dueño con captura: Google ya verificó la app y conectar el calendario funciona en
+Configuración, pero el botón **"Sync Calendar"** de la agenda estaba en inglés y respondía "disponible
+próximamente".
+
+**Dos problemas distintos detrás del mismo botón:**
+
+1. El BFF `app/api/doctor/calendar-sync/route.ts` era un **stub 501** heredado de la migración — nunca se
+   cableó, aunque el backend de Google llevaba meses funcionando.
+2. **Hueco real:** solo las citas **online** creaban evento en Google. `handleInPerson` mandaba correo +
+   `.ics` y no tocaba el calendario. La integración se había construido alrededor del **Meet**, no del
+   evento, así que "presencial" implicaba "sin calendario". Instrucción explícita del dueño: online y
+   presencial, ambas al calendario.
+
+**Qué se hizo:** `GoogleCalendarService.createEvent({ withMeet, location })` (evento con o sin Meet;
+`createEventWithMeet` delega, cero regresión en las online) · `handleInPerson` crea el evento best-effort con
+la dirección del consultorio · `SyncDoctorCalendarUseCase` + `POST /api/appointments/calendar-sync` = backfill
+de hasta 100 citas próximas sin evento (secuencial por el rate limit de Google, idempotente por
+`WHERE google_calendar_event_id IS NULL`) · `CalendarNotConnectedError` 409 en español · botón
+**"Sincronizar calendario"**. Sin migración (no hay cambio de esquema).
+
+- **El backfill NO manda `attendeeEmail` ni correos** — no queremos que Google reenvíe invitaciones a
+  pacientes por citas viejas. El alta de cita SÍ invita al paciente (online y ahora presencial también).
+- ⚠️ **Lección de verificación:** el implementer reportó "suites afectadas 7/7 verdes" y el spec del use case
+  central **no existía**; en la ronda siguiente reportó "las tres correcciones" cuando eran cuatro (faltó
+  `officeRepo.findByIdForDoctor`, que aplicó el lead). Contar los archivos en disco, no leer el reporte.
+- Del code-review (0 CRITICAL/0 HIGH) se descartó un hallazgo: mover `UpcomingRow` a nivel de módulo "por
+  consistencia" — la query de al lado también declara su row interface dentro del método.
+- **Verificación:** `nx build backend` ✅ · eslint sobre los archivos cambiados ✅ (el `nx lint backend`
+  completo **OOMea** en esta máquina — usar `NODE_OPTIONS=--max-old-space-size=6144` sobre los archivos
+  tocados) · tests dirigidos **34 suites / 179 tests** ✅ · `tsc` frontend ✅. Los 6 fallos de
+  `sequelize-appointment.repository.spec.ts` son `SequelizeConnectionRefusedError` (necesita Postgres; no se
+  levanta Docker en esta máquina), no del cambio.
+- **QA VISUAL EN STAGING ✅ (2026-07-27, Playwright + Google Calendar real del especialista).** Botón en
+  español ✅ · sin Google conectado → **409** "Conecta tu Google Calendar desde Configuración…" ✅ ·
+  sincronizar → **"3 citas enviadas a Google Calendar"** ✅ · segunda corrida → **"Tus citas ya están en
+  Google Calendar"** (`total:0`) ✅ · endpoint sin sesión → 401 (antes 501) ✅.
+  **Cita PRESENCIAL nueva → evento automático ✅**: tras agendarla, el backfill devuelve `total:0`, o sea que
+  ya tenía su `google_calendar_event_id` (antes de este cambio era imposible).
+  **Ground truth en el Google Calendar real:** 4 eventos, **4 distintos, cada uno UNA sola vez** (cero
+  duplicados pese a varias corridas), todos con `Ubicación: Terrazas` (dirección del consultorio) y **sin
+  Meet** por ser presenciales. Las citas pasadas (14 y 20 jul) NO se sincronizaron — correcto, el backfill
+  solo toma futuras.
+  > Truco de verificación: contar los nodos del calendario **sin deduplicar**. Un `Set` sobre los eventos
+  > colapsa los repetidos y haría pasar la prueba de duplicados aunque estuviera rota.
+- Se corrigió el texto de Configuración → Integraciones, que seguía diciendo que solo las citas online van
+  al calendario.
+- **Staging quedó con una cita de prueba** el 30/07 11:20 (paciente `qa.toast.staging@example.com`) y su
+  evento en el Google Calendar REAL del especialista.
+
+## 2026-07-25 (tarde) — Alta del doctor resiliente + toasts en toda mutación + triage de Sentry ⏳ (EN STAGING, PENDIENTE QA VISUAL Y PROMOCIÓN A PROD)
+
+Todo esto vive en `develop`/`staging`; **`main` NO lo tiene**. El usuario pidió expresamente no promover a prod
+hasta hacer el QA visual en staging.
+
+### Alta del doctor resiliente (ADR pendiente de numerar — "Opción A")
+
+El alta creaba perfil + fila de `subscriptions` en UNA transacción: si el segundo INSERT fallaba, el rollback se
+llevaba al doctor entero y no quedaba ni el email (así se perdió `daniela.gil@ucla.edu.ve`, 4 intentos).
+**Hallazgo que definió la solución:** el gating del plan lee `profiles.plan`
+(`get-doctor-features-v2.use-case.ts:57`), NO `subscriptions` — y `demo.google@deltasalud.app` funciona en prod
+**sin** esa fila. La atomicidad protegía una fila no indispensable.
+
+- Ahora el perfil se commitea solo y `tryCreateSubscription` corre después, best-effort; si falla, el doctor queda
+  registrado igual y se deja rastro accionable.
+- **Fallbacks de contacto (4):** `profiles` · log `[signup]` (attempt/created/failed + `subscription-missing`, con
+  email) · Sentry (tag `signup_failure`, `setUser({email})`, gated por `SENTRY_ENABLED`) · Auth0 (externo).
+- ⚠️ **Todo el logging va SOLO en el camino de alta nueva.** `resolve-identity` se ejecuta **una vez por request**
+  (medido en prod: 143 llamadas/hora con 2-3 usuarios) — loguear ahí inunda Cloud Logging y falsea métricas.
+- **Se descartó** la tabla `signup_attempts` que se había construido primero (respaldo en la rama
+  `spike/signup-attempts-tabla-descartada`, commit `60d0966`, NO mergear).
+- **QA en staging (forzando el modo de falla real con una CHECK constraint NOT VALID sobre `subscriptions`):**
+  registro normal ✓ · registro con la suscripción rota → **HTTP 200 y perfil creado** ✓ · logs `[signup]` con el
+  email ✓ · 3 llamadas de usuario existente → **cero** logs nuevos ✓ · panel de suscripción sin la fila carga sin
+  errores ✓. Staging quedó limpio (constraint eliminada, perfiles de prueba borrados, suscripción del demo restaurada).
+
+### Toasts en toda mutación (regla de producto nueva del dueño)
+
+Regla: **toda mutación debe confirmar su resultado con un toast**. Origen: guardar la ficha de un paciente no
+confirmaba nada. De **35 handlers** sin confirmación de éxito quedan **8**, todos justificados (guardado en
+segundo plano de facturación, autoguardado de bloques/paraclínico, dos wrappers que no son UI, y tres donde el
+resultado ya es evidente: kanban del CRM, chat de mensajes, chat de ayuda).
+
+- ⚠️ **Lección de método:** una auditoría por ARCHIVO da falsos negativos — clasificó pantallas enteras como "OK"
+  porque el archivo importaba `showToast` para otras acciones, mientras los handlers de guardado no lo llamaban.
+  Hay que verificar **handler por handler**. Script de barrido reutilizable en el scratchpad de la sesión.
+- ⚠️ **Y la herramienta también miente:** la primera versión del script partía los handlers en cada `const x = (…)`
+  y contaba 44 falsos; además no reconocía wrappers locales `toast.success(...)` (agenda YA confirmaba bien).
+- Los toasts de error del envío masivo de recordatorios **sí** nombran al paciente: la regla de no-PII es sobre
+  **logs**; en la UI del propio especialista, saber cuál falló es lo accionable.
+
+### Sentry — triage de los issues abiertos
+
+De 10 issues: el 99% del volumen (6094 eventos) ya estaba tapado por el fix del 12/07, y los 500 de
+`resolve-identity` **murieron con el fix del enum `trialing`** (sin eventos desde el 21/07 22:01 UTC; el fix entró
+el 22/07 17:55 UTC) — no hay ningún bug de auth abierto. El resto son fallos de red transitorios (1-2 eventos).
+Correcciones: la supresión de version skew en `DoctorNotificationToast` **nunca funcionaba** (buscaba
+`'Server Action was not found'` pero el mensaje real trae el hash en el medio); `ignoreErrors` suma ruido de
+extensiones; `report-error.ts` agrega `setFingerprint([file, method])` para agrupar por sitio de llamada (antes
+agrupaba por stack y mezclaba fallos no relacionados bajo un título engañoso).
+
+### Deuda anotada
+
+- Portal del paciente (`app/patient/profile/page.tsx`): el formulario deja editar alergias, crónicas, tipo de
+  sangre y contacto de emergencia, pero sólo envía `address`/`city` y **igual confirma éxito**. Esos datos los
+  carga el ESPECIALISTA desde la ficha. Es una confirmación falsa **latente** (el portal no está en uso).
+- Los 8 suites de backend rotos de antes en `main` siguen obligando a `--no-verify` en cada merge.
+
+## 2026-07-25 — 🔴 Hotfix de AUTH: la cookie de reviewer secuestraba la identidad de un usuario autenticado ✅ (DIRECTO A PROD)
+
+**Síntoma:** el usuario entraba con `lucas@deltasalud.app` (super_admin en BD) y la app le abría el **portal del
+doctor demo**; `/admin` lo rebotaba a `/doctor`. Cerrar sesión y volver a entrar no lo curaba.
+
+**Causa raíz — precedencia de identidad invertida.** El login oculto de reviewer (encendido en prod para la
+revisión de Google) deja una cookie `reviewer_token` de **12h** que apunta al profile del doctor demo. Ambas capas
+la consultaban **ANTES** que la sesión de Auth0:
+
+- `proxy.ts` (middleware): el atajo de reviewer resolvía el RBAC como `'doctor'` y **nunca llamaba a
+  `auth0.getSession()`** → `/admin` inalcanzable.
+- `lib/identity.server.ts`: `resolveIdentity()` retornaba la identidad del reviewer sin leer la sesión → todos los
+  datos del BFF eran los del doctor demo.
+
+Convivían las DOS cookies (`reviewer_token` + `__session` de Auth0) — verificado en el navegador. El login de Auth0
+era correcto; simplemente nunca se leía. El botón _Cerrar sesión_ sí borra `reviewer_token`, pero entrar de nuevo
+por `/login` o pasar por `/auth/logout` la dejaba viva → el siguiente login volvía a ser secuestrado.
+
+**Fix (`b1d877d`, merge `d3eeec7`):** la sesión de Auth0 se evalúa **primero** en ambas capas; el atajo de reviewer
+queda como **fallback solo cuando NO hay sesión** (el caso real del reviewer, que no tiene ninguna). Además, si hay
+sesión de Auth0 y sobrevive un `reviewer_token`, el middleware lo **borra en la respuesta** (auto-limpieza).
+
+**Alcance real (para no sobredimensionar):** la cookie solo se emite a quien conoce el secreto del login de
+reviewer → NO era fuga de datos entre médicos. Lo inaceptable era que una cookie de demo pisara una sesión
+autenticada real.
+
+**Regla general:** cualquier atajo de identidad (demo/impersonación/bypass) va SIEMPRE **después** de la sesión
+real y solo como fallback; y debe auto-limpiarse cuando aparece una sesión real. Al apagar el acceso de reviewer
+(runbook en la memoria `reviewer-access-runbook`) este riesgo desaparece del todo.
+
+⚠️ Desplegado **directo a `main`** por decisión explícita del usuario (había médicos probando); `staging`/`develop`
+sincronizados después.
+
+## 2026-07-25 — Hotfix: el check de Términos del onboarding no respondía al click en la caja ✅ (HOTFIX DIRECTO A PROD)
+
+**Síntoma (reportado por el usuario, con médicos probando en prod):** en `/doctor/onboarding`, el checkbox de
+Términos y Condiciones **no se marcaba al clickear el cuadro**; sí funcionaba al clickear el texto.
+
+**Causa raíz — doble toggle:** en `OnboardingForm.tsx` el cuadro visual (`<div aria-hidden>`) vive DENTRO del
+`<label>` y además tenía su propio `onClick` con `setTermsAccepted(v => !v)`. Un click sobre la caja disparaba
+**dos** cambios: (1) el `onClick` del div y (2) el `<label>` reenviando la activación al `<input type=checkbox>`
+asociado implícitamente (sr-only), que corre `onChange`. Los dos toggles se anulaban → el estado volvía al valor
+original y parecía muerto. El texto solo recorría el camino (2), por eso sí respondía.
+
+**Fix (`bee1b8c`, merge `a88a4c7`):** se elimina el `onClick` del div presentacional (6 líneas). El `<label>` queda
+como única fuente de activación → caja y texto funcionan.
+
+**Verificación:** tsc frontend 0. Repro aislado en navegador (Playwright, dos variantes lado a lado): click en la
+caja → versión con `onClick` queda `false` (doble toggle confirmado empíricamente), versión sin `onClick` queda
+`true`; click en el texto sigue alternando.
+
+**Regla general (aprendizaje):** con el patrón "input `sr-only peer` + div visual dentro de un `<label>`", el div
+NUNCA debe tener su propio handler de toggle — el label ya activa el input. Grep `sr-only peer`: este era el
+ÚNICO caso en el frontend.
+
+⚠️ **Excepciones de proceso (autorizadas por el usuario por urgencia — había médicos probando):**
+
+- Fue **directo a `main`** (rama `hotfix/onboarding-terms-checkbox` desde `main`), sin pasar por staging. Tras
+  desplegar se sincronizaron `staging` (ff) y `develop` para que no divergieran.
+- El merge a `main` requirió `--no-verify`: el hook pre-commit de rama protegida corre `nx affected --target=test`
+  y **8 suites de backend fallan de antes en `main`** (billing/send-invoice-email, ehr, appointments, payments,
+  consultations, prescriptions, auth/sequelize-identity, ai-transcription/controller — 37 tests, errores de tipo
+  en los specs). NO los introduce este fix (el commit toca 1 archivo `.tsx`, 0 backend). **DEUDA: arreglar esos
+  8 suites** — hoy el hook de `main` está inservible y obliga a saltarlo.
+
+## 2026-07-24 — Reagendar cita (botón) + sync del evento de Google al reprogramar ✅ (DESPLEGADO Y VERIFICADO EN VIVO EN PROD)
+
+**Contexto:** durante la verificación E2E de Google Calendar en prod (cuenta demo del reviewer con el
+calendario `lucas.rivas.55@gmail.com` conectado), se confirmó que crear una cita online sincroniza a los
+**3 lugares** (agenda del portal + Google Calendar del doctor con Meet + Google Calendar del paciente como
+invitado) y envía el correo de confirmación al paciente. Faltaba **reagendar**.
+
+**Hallazgo:** el modal "Reagendar cita" (selector de día/hora) ya existía en `agenda/page.tsx` pero quedó
+**huérfano** — nada llamaba `setRescheduling`, así que no había forma de abrirlo desde la UI (solo el drag,
+que no funcionaba). Y el `reschedule-appointment.use-case` persistía el nuevo `scheduled_at` pero **NO movía
+el evento de Google** (el BFF `/api/doctor/reschedule` tenía el TODO "Fase 5: sync con Google Calendar diferido").
+
+**Fix (commit `feature/reschedule-google-sync`):**
+
+- **Frontend:** botón **"Reagendar"** en las acciones del detalle de la cita (`scheduled|confirmed`) que abre el
+  modal existente (`setRescheduling(detailAppt)`). `apps/frontend/app/doctor/agenda/page.tsx`.
+- **Backend:** cierra el TODO. `GoogleCalendarService.updateEventTime` (`events.patch`, `sendUpdates:'all'`,
+  conserva Meet/invitados/reminders) + nuevo `UpdateCalendarEventUseCase` (espejo de cancel: gating +
+  refresh de token). `RescheduleAppointmentUseCase` lo inyecta `@Optional` y, tras persistir, mueve el evento
+  por `googleCalendarEventId` (best-effort, no rompe el reschedule si Google falla).
+- tsc back+front 0; jest reschedule 13/13.
+
+**Verificación en vivo:** staging (botón aparece → modal → cita 09:00→11:00 persiste). **Prod:** cita 10:00→15:00 →
+el evento se movió a **3pm** en el Google Calendar del **doctor** (un solo evento, patch limpio) y del **paciente**
+(invitación 3pm). Flujo `feature → develop → staging → main`, deploys OK.
+
+⚠️ Nota E2E: quedó un evento suelto a las 11am en el calendar personal del paciente (remanente de pruebas
+previas; el patch nunca inserta, y el calendar del organizador está limpio). Borrable.
+
 ## 2026-07-23/24 — "Consultas por agendar" (preconsultas) + terminología especialista ✅ (VALIDADO EN VIVO en staging; PENDIENTE promover a prod)
 
 Sesión de equipo de agentes (lead + backend-agent + frontend-agent + security/code review). Desplegado y **validado end-to-end en `staging.deltasalud.app` con Playwright (2026-07-24)**; falta solo promover `staging → main` (prod) tras el visto bueno final del usuario. tsc/eslint/jest verdes en todo.
@@ -2508,3 +2777,147 @@ Commits `f03e9bd` + `d239eae` + `c142844` (deploys success, columna nueva vía m
 
 Datos de prueba en la BD migrada (borrables): paciente "Paciente Prueba QA" (V-30111222) + consulta
 DLT-202607-0027. Doctor de prueba lucas.rivas.55@gmail.com puesto en delta_plus por el usuario.
+
+## 2026-07-25 — Agenda sin `window.location.reload()` (QA con Playwright en staging)
+
+**Contexto:** QA en vivo del barrido de toasts (commits `cdfec11`/`65254e6`/`4e4e4f2`) sobre
+`staging.deltasalud.app` con Playwright. Cinco pantallas pasaron a la primera: pacientes (editar),
+servicios (visibilidad en booking, ida y vuelta), consultorios (activar/desactivar), configuración
+(guardar perfil). 0 errores de consola.
+
+**🐛 Hallazgo — el barrido no llegaba a la agenda.** Las tres acciones más usadas terminaban en
+`window.location.reload()`:
+
+1. **Crear cita**: `useAppointmentFlow.ts:669` SÍ emitía `Cita agendada correctamente`, pero
+   `showToast()` solo agenda un render de React mientras el `reload()` del `onSuccess` corre
+   sincrónicamente. **Medido en staging con un grabador en `sessionStorage`**: la navegación
+   arranca en `ts=144400` y el toast se pinta en `ts=144403` — 3 ms tarde, ya dentro del documento
+   que se está descargando. El usuario nunca lo veía.
+2. **Confirmar cita** (`agenda/page.tsx`): no tenía toast de éxito, solo el del error.
+3. **Modal de estado** (atendida / cancelada / no asistió): igual, solo toast en el `catch`.
+
+**Fix (`b2aeb9d`, rama `feature/agenda-toasts-sin-reload`):** los tres pasan al patrón que el mismo
+archivo ya usaba en reagendar (`:975`) y eliminar (`:1030`) — actualizar estado + `showToast` +
+`await loadData()`. El reload completo sobraba: `loadData()` ya repuebla citas, bloqueos y config.
+`successMsg` vive en el `cfg` del modal, junto al resto de su copy.
+
+**Regla:** nunca emitir un toast en la misma función que hace `window.location.reload()`. El toast
+vive en el estado de React y la recarga destruye el árbol. Si hace falta refrescar, `loadData()` o
+`router.refresh()` (conservan el árbol cliente); `location.reload()` es el martillo.
+
+**Verificado en vivo tras el deploy a staging** (`23c6ab7`, run 30183522798): crear cita → toast +
+la cita aparece en el calendario sin recargar; confirmar → `Cita confirmada` y el panel de detalle
+queda abierto (antes la recarga lo cerraba); cancelar → `Cita cancelada` **visible en pantalla**
+(`role=status` verde, `width>0`) a 2 s del clic, y la cita queda `Cancelada` tras recarga limpia.
+Log del grabador: 3 toasts, **cero entradas `NAV`** = ya no hay recargas. 0 errores de consola.
+
+**⏳ Pendiente (menor):** el modal Nuevo/Editar paciente no emite toast de **error** —
+`handlePatientSubmit` re-lanza y el formulario lo pinta inline (verificado con cédula duplicada:
+"Ya existe un paciente con la cédula 'V-88123401'", sin toast). `handleSaveEdit` y `handleAddPatient`
+del mismo archivo sí lo emiten. Inconsistencia, no fallo silencioso.
+
+**Datos de prueba en staging (borrables):** paciente `QA Toast Prueba` (V-88123401), cita 28/07 15:20
+(agendada) y 27/07 14:40 (cancelada); cita del 28/07 09:20 (Maria P.) y 29/07 10:00 quedaron
+confirmadas por el QA.
+
+## 2026-07-26 — Reactividad del inicio + lote de 7 pedidos (onboarding, perfil, terminología)
+
+**Revisión pedida (reactividad al ingresar algo inline).** Finanzas ya estaba bien:
+alta, edición y borrado de ingresos/gastos llaman `loadData(true)` + `setRefreshKey`.
+El hueco estaba en el **Inicio** y era estructural: `fetchData()` vivía DENTRO del
+`useEffect`, así que no existía refetch reutilizable. Registrar ingreso o gasto no
+refrescaba nada, y aprobar un cobro parcheaba las cifras con **aritmética local**
+(`pending_amount - monto`, `total_revenue + monto`) — una copia local de una regla del
+backend, que se desvía en cuanto el servidor calcula distinto. Se adopta el `refreshKey`
+de finanzas y se elimina la aritmética. Cubre ingreso, gasto, aprobar cobro, confirmar
+cita y crear paciente (commit `0afef3f`).
+
+> Nota: extraer el loader a `useCallback` es lo natural, pero `react-hooks/set-state-in-effect`
+> lo marca como error. El `refreshKey` evita el warning y deja UN solo patrón de refresco.
+
+**Los 7 pedidos:**
+
+1. **Stepper de puesta en marcha** (`feat/inicio-stepper`, `346dc05`) — sustituye las dos
+   tarjetas sueltas (plantillas / consultorio) por 5 pasos con barra de progreso:
+   información, consultorio, servicios, marca, métodos de pago. Solo el siguiente
+   pendiente se ve expandido. Desaparece al completarse. Si falla el fetch de servicios u
+   consultorios el paso queda `null` y NO se marca pendiente (no acusar al especialista de
+   algo que sí hizo). Componente `components/doctor/SetupStepper.tsx`.
+2. **Modal de bienvenida** (`feat/modal-bienvenida`, `5ce24ae`) — tour de los módulos
+   **filtrado por plan** (`planUnlocks`) + puntero al icono de ayuda. El check "no volver a
+   mostrar" se guarda en `profiles.welcome_dismissed_at` (mig `20260726000004`), NO en
+   localStorage. Decisión de producto: la columna queda NULL para todos los perfiles
+   existentes, así que **los especialistas actuales también lo ven una vez**.
+3. **Título profesional sin default** — arrancaba en `'Dr.'` en DOS sitios (estado inicial
+   y el mapper `profileToView`); las psicólogas quedaban como "Dr." sin elegirlo.
+4. **🐛 Especialidad invisible en Configuración** — el onboarding tiene combobox del
+   catálogo de BD **+ "Otra especialidad"** de texto libre; Configuración mantenía una
+   lista hardcodeada de 27, desincronizada. Una especialidad escrita a mano (p.ej.
+   "Cirugía Maxilofacial") no estaba entre las `<option>` y el `<select>` se veía **VACÍO**.
+   Ahora ambas leen `GET /api/specialties` (BFF público nuevo `/api/public/specialties`) y
+   Configuración también ofrece "Otra".
+5. **Terminología** — "consulta médica" → "consulta" en 7 textos de UI + plantillas de
+   correo en BD (mig `20260726000002`, alcanza 3 plantillas; también "Médico:" →
+   "Especialista:"). NO se tocan los textos legales de T&C/privacidad ni el prompt interno
+   de Gemini.
+6. **Género del especialista** — opcional (F/M/O/N) en onboarding y configuración, mig
+   `20260726000001`. Nada del sistema condiciona acceso ni precios por este campo.
+7. **Correo a administradores** — se quita la fila "ID del doctor" de
+   `doctor_pending_verification` (mig `20260726000003`, `regexp_replace` para no pisar los
+   3 restyles previos).
+
+**Aprendizajes:**
+
+- El DTO `update-doctor-profile` es `.strict()`: todo campo nuevo hay que declararlo o el
+  PUT devuelve 400 por clave no reconocida (mismo tropiezo que `relatedConsultationId`).
+- Los campos nuevos de entidad deben ser **opcionales con default** (`gender?`), si no
+  revientan 13 suites que construyen `DoctorProfile.create({...})` sin ellos.
+- **Migraciones con regex validadas contra la BD de staging ANTES de commitear**, con
+  cloud-sql-proxy + `SELECT` (usuario `delta`, no `postgres`). Confirmado que el patrón de
+  "ID del doctor" casa (html 2547→2481) y que el sweep alcanza 3 plantillas. Una migración
+  rota bloquea TODOS los despliegues, así que esto no es opcional.
+- Baseline de `develop`: **7 suites / 36 tests rojos preexistentes** y 1 error de lint en
+  `doctor/page.tsx` (`Date.now()` en render). Todo el lote cierra en ese mismo baseline.
+
+### Cierre de la sesión 2026-07-26 (addendum)
+
+**Fix posterior al QA del usuario:**
+
+- **Selector de especialidad con opción duplicada** (`fix/especialidad-otra-duplicada`):
+  el catálogo de BD tiene una especialidad llamada literalmente **"Otra"** y el selector
+  añadía "Otra especialidad" para el texto libre → dos opciones indistinguibles. Se
+  descarta la genérica del catálogo (`/^otr[ao]$/i`) en onboarding y configuración. Sin
+  tocar la BD: un perfil que ya tenga "Otra" guardado se muestra como texto libre.
+
+**⚠️ GOTCHA DE QA — el modal de bienvenida se "pierde" tras probarlo:** marcar "No volver
+a mostrar" durante el QA sella `profiles.welcome_dismissed_at` **para esa cuenta**, y el
+usuario ya no lo ve al entrar. Pasó con `lucas.rivas.55@gmail.com` (sellado 2026-07-26
+03:59). Para reponerlo:
+
+```sql
+UPDATE profiles SET welcome_dismissed_at = NULL WHERE email = '<correo>';
+```
+
+(vía cloud-sql-proxy puerto 5434 + `pg`, usuario **`delta`** — no `postgres` — y
+`PGPASSWORD` desde `gcloud secrets versions access latest --secret=DB_PASSWORD`).
+
+**Estado al cerrar la sesión:**
+
+- `develop` y `staging` tienen TODO lo de esta sesión. **`main` (prod) NO tiene NADA**:
+  ni el arreglo de la agenda (toasts sin recarga), ni el lote de 7 pedidos, ni la
+  reactividad del inicio. Falta que el usuario valide staging y promover
+  `staging → master`.
+- Migraciones nuevas ya aplicadas en la BD de staging y verificadas:
+  `20260726000001` (gender) · `20260726000002` (terminología correos) ·
+  `20260726000003` (ID del doctor) · `20260726000004` (welcome_dismissed_at).
+- Datos de prueba en staging (borrables): paciente `QA Toast Prueba` (V-88123401), citas
+  27/07 14:40 (cancelada) y 28/07 15:20; citas 28/07 09:20 y 29/07 10:00 quedaron
+  confirmadas por el QA.
+
+**⚠️ DEUDA que estorba el flujo: `develop` arrastra 7 suites de test rojas.** Seis son de
+integración y necesitan Postgres levantado; **una es una prueba obsoleta real**:
+`send-invoice-email.use-case.spec.ts` espera `"Suscripción mensual Delta Medical"` cuando
+el código ya dice `"Delta Salud"` (quedó atrás en el rebranding). El hook de pre-commit de
+`develop` corre `nx affected --target=test`, así que **cualquier commit que toque el
+backend se bloquea** y hay que usar `--no-verify`. Vale la pena arreglar al menos la
+obsoleta.

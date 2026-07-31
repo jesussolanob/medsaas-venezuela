@@ -147,6 +147,7 @@ export default function PaymentMethodModal({
       const path = uploadJson?.data?.path ?? uploadJson?.data?.url ?? null;
       if (uploadRes.ok && path) {
         setReceiptPath(path);
+        showToast({ type: 'success', message: 'Comprobante subido correctamente' });
       } else {
         showToast({ type: 'error', message: 'No se pudo subir el comprobante' });
       }

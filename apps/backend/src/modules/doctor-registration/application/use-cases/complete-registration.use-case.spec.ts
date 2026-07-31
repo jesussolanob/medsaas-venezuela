@@ -115,6 +115,7 @@ describe('CompleteRegistrationUseCase', () => {
       mppsNumber: null,
       colegiadoNumber: null,
       specialty: null,
+      gender: null,
     });
     expect(result.doctorId).toBe('doc-1');
     expect(result.verificationStatus).toBe('pending');
@@ -141,6 +142,7 @@ describe('CompleteRegistrationUseCase', () => {
       mppsNumber: 'MP-1',
       colegiadoNumber: 'COL-2',
       specialty: null,
+      gender: null,
     });
   });
 
@@ -163,6 +165,7 @@ describe('CompleteRegistrationUseCase', () => {
       mppsNumber: null,
       colegiadoNumber: null,
       specialty: 'Cardiología',
+      gender: null,
     });
   });
 

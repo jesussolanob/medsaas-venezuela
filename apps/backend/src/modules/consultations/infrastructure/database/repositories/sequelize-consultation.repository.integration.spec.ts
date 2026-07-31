@@ -7,9 +7,10 @@
  * Consultations have FK constraints to profiles (doctor_id) and patients (patient_id).
  * This test seeds a profile and a patient row, then cleans them up in afterAll.
  *
- * Run only these tests with:
+ * Excluded from the default `nx test backend` run. Run them with:
  *   export PATH="/opt/homebrew/bin:$HOME/.local/share/pnpm/bin:$PATH"
- *   pnpm nx test backend --testPathPattern="sequelize-consultation.repository.spec"
+ *   docker compose -f docker/docker-compose.yml up -d postgres
+ *   pnpm nx run backend:test-integration
  */
 import { Sequelize } from 'sequelize-typescript';
 import { QueryTypes } from 'sequelize';

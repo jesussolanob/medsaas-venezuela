@@ -512,7 +512,7 @@ export default function BillingPage() {
                         {doctorProfile?.full_name || 'Médico'}
                       </div>
                       <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>
-                        {doctorProfile?.specialty || 'Consulta Médica'}
+                        {doctorProfile?.specialty || 'Consulta'}
                       </div>
                       {doctorProfile?.phone && (
                         <div style={{ fontSize: 10, color: '#64748b', marginTop: 2 }}>

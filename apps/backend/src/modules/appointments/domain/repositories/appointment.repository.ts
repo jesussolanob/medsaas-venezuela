@@ -165,4 +165,18 @@ export interface IAppointmentRepository {
    * Returns null when no matching completed appointment exists.
    */
   findFirstCompletedByPaymentId(paymentId: string): Promise<Appointment | null>;
+
+  /**
+   * Finds upcoming active appointments for a doctor that have no Google Calendar
+   * event yet (google_calendar_event_id IS NULL). Used by the calendar-sync backfill.
+   *
+   * Scoped to: doctor_id = doctorId, status IN ('scheduled','confirmed'),
+   *            scheduled_at >= from, ordered ASC, limited to `limit` rows.
+   * NEVER logs PII.
+   */
+  findUpcomingWithoutCalendarEvent(
+    doctorId: string,
+    from: Date,
+    limit: number,
+  ): Promise<Appointment[]>;
 }

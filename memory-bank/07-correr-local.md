@@ -47,6 +47,18 @@ pnpm nx dev frontend        # http://localhost:3000
 
 (No necesita `.env`: `BACKEND_INTERNAL_URL` default = `http://localhost:3001`.)
 
+### 5. Tests del backend
+
+```bash
+pnpm nx test backend                  # unitarios — NO necesitan Docker, deben quedar en verde
+pnpm nx run backend:test-integration  # SÍ necesita el Postgres de arriba
+```
+
+Los `*.integration.spec.ts` (repositorios Sequelize contra la BD real) quedan **fuera**
+del run por defecto: así `nx test backend` y el hook de pre-commit pasan en cualquier
+máquina, con Docker apagado. Si escribes un test que necesita BD, nómbralo
+`*.integration.spec.ts` o romperás el hook de todos.
+
 ## Acceso / cambiar de rol
 
 > ⚠️ **El `.env` actual de `apps/frontend` tiene `AUTH_MODE=auth0`** (login real). En ese modo NO aplican
