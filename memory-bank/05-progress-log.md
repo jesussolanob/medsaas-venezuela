@@ -2,6 +2,36 @@
 
 > Registro cronológico. Una entrada por fase/hito completado.
 
+## 2026-07-31 — PROMOCIÓN A PRODUCCIÓN ✅ (se cierra la deuda de 67 commits)
+
+`staging → main` (merge `eac4a1c`, run de deploy `30656165688`, **success**, sin pasos fallidos).
+Se acabó el atraso: `main` llevaba **67 commits** por detrás desde el 26/07.
+
+**Qué llegó a prod:** lote del 26/07 (modal de bienvenida, `SetupStepper`, especialidad leída del
+catálogo de BD, género opcional, terminología especialista/consulta, correo a admins sin "ID del
+doctor") · arreglos posteriores de Google Calendar (sincronizar agenda + citas presenciales) · pie
+del menú compacto (`SidebarUtilityBar`) · suite de tests en verde.
+Preconsultas y el grueso del calendario **ya estaban** en `main` desde el 23-24/07.
+
+**4 migraciones aplicadas en la BD de prod**, ~0.3s cada una:
+`20260726000001-profiles-gender` · `20260726000002-email-templates-terminologia-consulta` ·
+`20260726000003-verification-email-drop-doctor-id` · `20260726000004-profiles-welcome-dismissed`.
+
+**Revisiones sirviendo 100% del tráfico:** backend `delta-backend-00437-kn7`, frontend
+`delta-frontend-00422-l5p`. `deltasalud.app` responde 200 en home y login.
+
+- **`deploy.yml` no se tocó** en todo el salto; el único workflow modificado fue `staging.yml`.
+  Verificado antes de empujar: solo `main` y `staging` disparan deploy, `develop` no dispara nada.
+- ⚠️ **commitlint corta el asunto del merge**: el primer intento de `git merge --no-ff staging` con
+  un mensaje largo murió en `commit-msg` y dejó el merge a medias (`Not committing merge`). Se
+  completó con `git commit` y un asunto corto. Contar caracteres antes de mergear a `main`.
+- ✅ El hook de pre-commit de `main` **corrió entero y pasó** (`✅ checks OK`) — prueba en vivo de
+  que el saneo de la suite del 30/07 funciona; antes esto habría exigido `--no-verify`.
+- **QA en prod: pendiente, lo hace el dueño.** El lead no puede: haría falta login real de Auth0
+  (el bypass de reviewer está apagado desde el 27/07 en prod y staging, variable compartida).
+- Recordatorio de QA: el **modal de bienvenida sale una sola vez por cuenta**; marcar "no volver a
+  mostrar" sella `profiles.welcome_dismissed_at` y hay que ponerla en `NULL` para reponerlo.
+
 ## 2026-07-30 — Pie del menú compacto + la suite de tests vuelve a verde ✅ (VALIDADO EN STAGING)
 
 Dos cosas independientes, cada una en su rama, ambas ya en `develop` y `staging`. **`main` sigue
