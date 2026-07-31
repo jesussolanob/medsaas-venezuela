@@ -8,6 +8,14 @@ module.exports = {
     '^.+\\.ts$': ['ts-jest', { tsconfig: '<rootDir>/tsconfig.spec.json' }],
   },
   moduleFileExtensions: ['ts', 'js', 'html'],
+  /**
+   * `*.integration.spec.ts` needs a live Postgres and is excluded from the
+   * default run, which must stay green on any machine (and in the pre-commit
+   * hook, where Docker is usually down). Run those with:
+   *   pnpm nx run backend:test-integration
+   * after `docker compose up -d postgres`.
+   */
+  testPathIgnorePatterns: ['/node_modules/', '\\.integration\\.spec\\.ts$'],
   moduleNameMapper: {
     '^@delta/shared-types$': '<rootDir>/../../libs/shared-types/src/index.ts',
     '^@delta/shared-utils$': '<rootDir>/../../libs/shared-utils/src/index.ts',
