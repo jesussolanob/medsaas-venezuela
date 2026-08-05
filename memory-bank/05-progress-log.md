@@ -3203,3 +3203,41 @@ restauración inmediata.
 
 **Pendiente de QA:** punto 3 (botón para ir al detalle tras crear una consulta) y ver el
 asistente de onboarding en pantalla.
+
+### Cloud Scheduler — job del cron de inactividad (2026-08-05)
+
+Creado en prod con autorización del dueño: `doctor-inactivity-notices` (us-east1).
+
+```
+schedule:   0 9 * * *  (America/Caracas — una vez al día, 9am)
+uri:        https://delta-backend-knliodnwza-ue.a.run.app/api/cron/doctor-inactivity
+método:     POST · header x-cron-secret (Secret Manager) · oidcToken de delta-backend-sa
+deadline:   300s · 1 reintento · backoff 5s–3600s
+estado:     ⏸️ PAUSED
+```
+
+**🔴 ESTÁ PAUSADO A PROPÓSITO.** El endpoint NO existe todavía en `main` (producción
+estaba 28 commits atrás al crearlo), así que habilitarlo antes de promover haría que le
+pegue a un 404 todos los días. Mismo patrón que ya se usó con `appointment-reminders`,
+cuya descripción también decía "Pausado hasta que la feature esté en prod".
+
+**AL PROMOVER `staging → main`, HAY QUE DESPAUSARLO:**
+
+```bash
+gcloud scheduler jobs resume doctor-inactivity-notices --location=us-east1
+```
+
+Sin ese paso el punto 5 queda construido, desplegado y **muerto**: nada lo dispara y
+nadie se entera, porque no falla — simplemente no corre nunca.
+
+Para probarlo a mano una vez despausado:
+
+```bash
+gcloud scheduler jobs run doctor-inactivity-notices --location=us-east1
+```
+
+⚠️ El backend solo acepta invocaciones de `delta-frontend-sa` y del `delta-backend-sa` del
+job. Una cuenta de persona (ej. `lucas@deltasalud.app`) recibe **401 de IAM de Cloud Run**
+—no de la app— al intentar pegarle al endpoint del cron. Por eso el cron NO se pudo probar
+de punta a punta en staging. Para hacerlo haría falta `roles/run.invoker` sobre el backend
+de staging, que NO se otorgó.
