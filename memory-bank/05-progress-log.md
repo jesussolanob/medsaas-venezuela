@@ -3241,3 +3241,67 @@ job. Una cuenta de persona (ej. `lucas@deltasalud.app`) recibe **401 de IAM de C
 —no de la app— al intentar pegarle al endpoint del cron. Por eso el cron NO se pudo probar
 de punta a punta en staging. Para hacerlo haría falta `roles/run.invoker` sobre el backend
 de staging, que NO se otorgó.
+
+---
+
+## 🔴 CIERRE DE SESIÓN 2026-08-05 — PUNTO DE RETOME
+
+### Estado exacto
+
+`develop` y `staging` **idénticos**, todo desplegado y verificado en `staging.deltasalud.app`.
+**`main` (prod) NO tiene NADA del lote** — está ~30 commits atrás. Nada se promovió.
+
+### Lo que falta, en orden
+
+1. **El dueño valida `staging`** ← es lo único que bloquea. Quedó haciéndolo al cerrar la sesión.
+2. Promover `staging → main` (dispara el deploy a prod y corre las 3 migraciones).
+3. **DESPAUSAR el cron** — `gcloud scheduler jobs resume doctor-inactivity-notices --location=us-east1`.
+   Si se olvida, el punto 5 queda muerto sin avisar.
+4. QA pendiente: **punto 3** (botón para ir al detalle tras crear una consulta — el dueño lo
+   difirió) y disparar el cron en vivo (bloqueado por IAM, ver abajo).
+
+### Riesgo de la promoción a prod: NINGUNO en la migración
+
+Verificado por lectura directa de la BD de prod (2026-08-05): **`subscription_payments` está
+VACÍA** (0 filas). El `CREATE UNIQUE INDEX` de `20260805000002` no tiene contra qué chocar y el
+paso de dedup afecta **0 filas**. Ninguna de las 3 migraciones corrió aún en prod.
+
+### ⚠️ Decisión de negocio ya tomada por el dueño
+
+Al despausar el cron, la primera corrida va a mandar **~11 correos de golpe** en prod: hay 16
+especialistas activos, **1 con ≥15 días** y **10 entre 10 y 14 días** de inactividad. Se le
+ofreció escalonarlo o arrancar solo con el escalón de 15 días. **Dijo que lo dejemos así.**
+No re-preguntar ni "suavizarlo" por cuenta propia.
+
+### Punto 11 (pedido nuevo del dueño, ya construido y verificado)
+
+Botones de cancelar/reagendar en el detalle de la consulta · cancelar con pago aprobado obliga
+a reagendar (**sin créditos, descartados explícitamente**) · reagendar disponible en TODOS los
+estados. Ver ADR de contrato en `04-api-documentation.md`.
+
+### Deuda que dejó este lote
+
+- **Dos implementaciones del selector de reagendar**: la inline de `agenda/page.tsx` y el
+  `RescheduleModal.tsx` nuevo. Se duplicó a propósito (el inicio y el detalle de consulta no
+  tienen cargados `config`/`availSlots`/`allAppointments` como sí los tiene la agenda), pero
+  van a divergir. Unificarlas es un refactor aparte.
+- `RescheduleModal.tsx` envuelve una limpieza de estado en `Promise.resolve().then()` solo para
+  esquivar `react-hooks/set-state-in-effect`. Funciona, pero es código escrito para el linter.
+- `resolveBlocksForDoctor` / `snapshotBlocksForConsultation` en `lib/consultation-blocks.ts` son
+  **código muerto** — no los llama nadie. Conviene borrarlos.
+- `GetDoctorProfileUseCase` suma 2 queries por llamada (`hasActiveOffice`/`hasActiveService`).
+- Prettier dejó 3 errores nuevos de `react-hooks/set-state-in-effect` en `admin/aprobaciones` y
+  `doctor/upgrade`. Frontend total: 124 errores contra 132 del baseline de `develop`.
+
+### 🧠 La lección técnica de esta sesión
+
+**Tres de los cinco bugs fueron el mismo patrón**: un tipo TypeScript escrito a mano que
+mentía sobre la forma real de la respuesta del backend (camelCase vs snake_case), y
+TypeScript le creyó. **Ni los tests, ni el typecheck, ni el build los detectaron** — solo
+aparecieron usando la app en un navegador real. Cuando se lea un campo de una respuesta del
+backend, VERIFICAR la forma real; no confiar en el tipo declarado.
+
+⚠️ **Y el modelo de bug más peligroso**: escribir una columna y leer OTRA. El onboarding
+sellaba `onboarding_completed_at` pero el guard leía `onboarding_completed`. Un test que
+mockea el repositorio NO lo agarra; hace falta un test que afirme sobre lo que realmente
+se le pasa al `update`.
