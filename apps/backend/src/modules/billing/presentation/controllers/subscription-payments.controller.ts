@@ -18,6 +18,7 @@ import { ApproveSubscriptionPaymentUseCase } from '../../application/use-cases/b
 import { RejectSubscriptionPaymentUseCase } from '../../application/use-cases/billing/reject-subscription-payment.use-case';
 import { RegisterManualPaymentUseCase } from '../../application/use-cases/billing/register-manual-payment.use-case';
 import { GetFinanceStatsUseCase } from '../../application/use-cases/billing/get-finance-stats.use-case';
+import { GetPaymentReceiptUrlUseCase } from '../../application/use-cases/billing/get-payment-receipt-url.use-case';
 import type { SubscriptionPaymentStatus } from '../../domain/entities/subscription-payment.entity';
 
 const VALID_STATUSES: SubscriptionPaymentStatus[] = ['pending', 'approved', 'rejected'];
@@ -39,11 +40,12 @@ interface PaginatedResponse<T> {
  * All endpoints require AppAuthGuard + RolesGuard with 'super_admin'.
  *
  * Routes:
- *   POST /api/admin/subscription-payments         — register manual payment (super_admin)
- *   GET  /api/admin/subscription-payments         — paginated payment list
+ *   POST /api/admin/subscription-payments              — register manual payment
+ *   GET  /api/admin/subscription-payments              — paginated payment list
  *   PUT  /api/admin/subscription-payments/:id/approve
  *   PUT  /api/admin/subscription-payments/:id/reject
- *   GET  /api/admin/finance-stats                 — aggregated finance KPIs
+ *   GET  /api/admin/subscription-payments/:id/receipt-url — signed URL for comprobante
+ *   GET  /api/admin/finance-stats                      — aggregated finance KPIs
  */
 @Controller('admin')
 @UseGuards(AppAuthGuard, RolesGuard)
@@ -55,6 +57,7 @@ export class SubscriptionPaymentsController {
     private readonly rejectPayment: RejectSubscriptionPaymentUseCase,
     private readonly registerManualPayment: RegisterManualPaymentUseCase,
     private readonly getFinanceStatsUseCase: GetFinanceStatsUseCase,
+    private readonly getReceiptUrl: GetPaymentReceiptUrlUseCase,
   ) {}
 
   /**
@@ -144,6 +147,20 @@ export class SubscriptionPaymentsController {
   }
 
   /**
+   * GET /api/admin/subscription-payments/:id/receipt-url
+   *
+   * Returns a short-lived signed URL (15 min) for a payment comprobante.
+   * Never exposes the raw GCS path — only the signed URL is returned.
+   *
+   * Returns 404 when the payment does not exist or has no comprobante.
+   */
+  @Get('subscription-payments/:id/receipt-url')
+  async receiptUrl(@Param('id') id: string): Promise<SuccessResponse<{ signedUrl: string }>> {
+    const data = await this.getReceiptUrl.execute(id);
+    return { success: true, data };
+  }
+
+  /**
    * GET /api/admin/finance-stats
    *
    * Returns aggregated finance KPIs from subscription_payments:
@@ -181,15 +198,30 @@ export class SubscriptionPaymentsController {
     reviewedAt: Date | null;
     createdAt: Date;
     updatedAt: Date;
+    amountBs?: number | null;
+    bcvRateUsed?: number | null;
+    bankCode?: string | null;
+    planKey?: string | null;
+    period?: string | null;
+    rejectionReason?: string | null;
+    receiptUrl?: string | null;
   }): unknown {
     return {
       id: props.id,
       doctorId: props.doctorId,
       amountUsd: props.amountUsd,
+      amountBs: props.amountBs ?? null,
+      bcvRateUsed: props.bcvRateUsed ?? null,
+      bankCode: props.bankCode ?? null,
+      planKey: props.planKey ?? null,
+      period: props.period ?? null,
       method: props.method,
       referenceNumber: props.referenceNumber,
       durationMonths: props.durationMonths,
       status: props.status,
+      rejectionReason: props.rejectionReason ?? null,
+      // hasReceipt: admin can also call GET :id/receipt-url to get a signed URL
+      hasReceipt: !!props.receiptUrl,
       reviewedBy: props.reviewedBy,
       reviewedAt: props.reviewedAt,
       createdAt: props.createdAt,

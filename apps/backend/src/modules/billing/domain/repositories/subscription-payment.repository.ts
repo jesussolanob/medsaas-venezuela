@@ -66,6 +66,30 @@ export interface CreateSubscriptionPaymentParams {
 }
 
 /**
+ * Parameters for creating a doctor self-service payment (pending, with comprobante).
+ * Amount fields are always server-calculated — never trusted from the client.
+ */
+export interface CreateDoctorPaymentParams {
+  id: string;
+  doctorId: string;
+  /** Server-calculated USD amount from plan_prices. */
+  amountUsd: number;
+  /** Server-calculated bolívar amount (amountUsd * bcvRate). */
+  amountBs: number;
+  /** BCV rate used for the conversion. */
+  bcvRateUsed: number;
+  method: string;
+  referenceNumber: string;
+  durationMonths: number;
+  planKey: string;
+  period: string;
+  bankCode: string;
+  /** GCS object path (NOT a signed URL). */
+  receiptUrl: string;
+  notes: string | null;
+}
+
+/**
  * Parameters for creating a manually-registered (already-approved) payment
  * and extending the subscription atomically.
  */
@@ -86,6 +110,13 @@ export interface ApproveSubscriptionPaymentParams {
   reviewerId: string;
   /** New subscription expiration after extending by durationMonths */
   newExpiresAt: Date;
+  /**
+   * When set (doctor self-service payment with a specific planKey),
+   * the approval ALSO changes the doctor's effective plan to this key.
+   * Must be atomic within the same transaction.
+   * When null/undefined, only the subscription period is extended (legacy behaviour).
+   */
+  newPlanKey?: string | null;
 }
 
 export interface SubscriptionPaymentListFilters {
@@ -103,9 +134,18 @@ export interface SubscriptionPaymentListResult {
 
 export interface ISubscriptionPaymentRepository {
   /**
-   * Lists subscription payments with optional status filter (paginated).
+   * Lists subscription payments (admin — all doctors) with optional status filter (paginated).
    */
   list(filters: SubscriptionPaymentListFilters): Promise<SubscriptionPaymentListResult>;
+
+  /**
+   * Lists subscription payments for a specific doctor (scoped by doctorId — anti-IDOR).
+   */
+  listByDoctor(
+    doctorId: string,
+    page: number,
+    limit: number,
+  ): Promise<SubscriptionPaymentListResult>;
 
   /**
    * Aggregates finance KPIs from subscription_payments for the admin finance page.
@@ -120,19 +160,33 @@ export interface ISubscriptionPaymentRepository {
   findById(id: string): Promise<SubscriptionPayment | null>;
 
   /**
-   * Persists a new subscription payment.
+   * Finds the most recent pending payment for a doctor.
+   * Used for anti-spam check: only one pending payment allowed at a time.
+   * Returns null when no pending payment exists.
+   */
+  findPendingByDoctor(doctorId: string): Promise<SubscriptionPayment | null>;
+
+  /**
+   * Persists a new subscription payment (admin manual registration path).
    */
   save(params: CreateSubscriptionPaymentParams): Promise<SubscriptionPayment>;
 
   /**
-   * Approves a subscription payment AND extends the subscription in a single
-   * transaction. Also inserts a subscription_changes_log entry.
+   * Persists a new doctor self-service payment with status='pending'.
+   * Amount fields are always server-calculated.
+   */
+  saveDoctorPayment(params: CreateDoctorPaymentParams): Promise<SubscriptionPayment>;
+
+  /**
+   * Approves a subscription payment AND extends (and optionally changes) the
+   * subscription in a single transaction. Also inserts a subscription_changes_log entry.
    *
    * Steps (atomic):
    *   1. Mark payment approved (status, reviewed_by, reviewed_at)
    *   2. Update subscriptions.current_period_end = newExpiresAt
-   *   3. Sync profiles snapshot (subscription_status='active', subscription_expires_at)
-   *   4. Insert subscription_changes_log
+   *   3. If newPlanKey is set: change profiles.plan + subscriptions.plan
+   *   4. Sync profiles snapshot (subscription_status='active', subscription_expires_at)
+   *   5. Insert subscription_changes_log
    */
   approveAndExtend(
     params: ApproveSubscriptionPaymentParams,
@@ -162,7 +216,7 @@ export interface ISubscriptionPaymentRepository {
   saveApprovedAndExtend(params: SaveApprovedAndExtendParams): Promise<SubscriptionPayment>;
 
   /**
-   * Rejects a subscription payment (status, reviewed_by, reviewed_at).
+   * Rejects a subscription payment (status, reviewed_by, reviewed_at, rejection_reason).
    */
   reject(paymentId: string, reviewerId: string, reason?: string): Promise<void>;
 }
