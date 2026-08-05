@@ -63,6 +63,14 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         { status: 403 },
       );
     }
+    if (status === 409 || code === 'APPOINTMENT_CANCEL_REQUIRES_RESCHEDULE') {
+      // Cancelling an appointment with an approved payment requires rescheduling first.
+      // The backend message is already in Spanish; forward it to the UI intact.
+      return NextResponse.json(
+        { error: message, code: 'APPOINTMENT_CANCEL_REQUIRES_RESCHEDULE' },
+        { status: 409 },
+      );
+    }
     if (status === 400) {
       return NextResponse.json({ error: message }, { status: 400 });
     }
