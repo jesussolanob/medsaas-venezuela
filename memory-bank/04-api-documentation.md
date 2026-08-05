@@ -705,3 +705,38 @@ Ahora expone:
 - `htmlToPlainText(input: string): string` — convierte HTML a texto plano (bloque→\n, li→"• item", entidades decodificadas). Sin dependencia de DOM.
 - `isProbablyHtml(input: string): boolean` — heurística por tag names (no dispara con `<3` ni `A < B`).
 - Usadas en `GetDocumentRenderDataUseCase.plainTextSnapshot()` para limpiar `blocksSnapshot` antes del PDF render.
+
+### `POST /api/cron/doctor-inactivity` — endpoint nuevo (2026-08-05)
+
+Cron de reactivación por inactividad del especialista. Máquina a máquina, sin usuario.
+
+| Endpoint                      | Método | Auth                                                          | Respuesta                                                      |
+| ----------------------------- | ------ | ------------------------------------------------------------- | -------------------------------------------------------------- |
+| `/api/cron/doctor-inactivity` | POST   | `CronSecretGuard` (header `x-cron-secret`) + IAM de Cloud Run | `{ success: true, data: { sent10, sent15, skipped, failed } }` |
+
+- Endpoint **separado** de `/api/cron/appointment-reminders`: este corre 1 vez al día, aquel cada 15 min.
+- Solo devuelve contadores agregados — NUNCA PII.
+- Idempotente vía `profiles.inactivity_notice_stage` (0/1/2): cada especialista recibe como
+  máximo 2 correos por ciclo. El inicio de sesión resetea el estado.
+- ⚠️ El backend solo acepta invocaciones de `delta-frontend-sa` y del `delta-backend-sa` del
+  job de Cloud Scheduler. Una cuenta de persona recibe **401 de IAM de Cloud Run** (no de la
+  app) al intentar llamarlo.
+
+### `PUT /api/appointments/:id/status` — regla nueva (2026-08-05)
+
+Cancelar una cita cuya consulta tiene el pago **aprobado** ahora falla:
+
+```
+409 { error: "Esta cita ya tiene un pago aprobado y no se puede cancelar. Para cambiar la
+     fecha, usa la opción de reagendar — el pago se mantiene vinculado a la nueva fecha.",
+     code: "APPOINTMENT_CANCEL_REQUIRES_RESCHEDULE" }
+```
+
+- Solo afecta la transición a `cancelled`. `confirmed` / `completed` / `no_show` no cambian.
+- **No existen créditos ni saldos a favor del paciente** — descartado explícitamente por el
+  dueño. La plata no se devuelve: se reagenda y el pago viaja con la cita, porque reagendar
+  solo toca `scheduled_at` y deja intacto el vínculo cita↔consulta↔pago.
+- Fail-open: si la cita no tiene consulta vinculada, la cancelación procede. Es regla de
+  negocio, no de seguridad.
+- El BFF `POST /api/doctor/appointment-status` propaga el 409 con su `code` para que la UI
+  abra el flujo de reagendar en vez de mostrar un error crudo.
