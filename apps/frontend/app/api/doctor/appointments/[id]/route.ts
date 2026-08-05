@@ -49,9 +49,11 @@ export interface AppointmentDetailData {
 
 export async function GET(
   _req: NextRequest,
-  { params }: { params: { id: string } },
+  { params }: { params: Promise<{ id: string }> },
 ): Promise<NextResponse> {
-  const { id } = params;
+  // Next 16: route handler params are async and must be awaited. Destructuring
+  // them synchronously leaves `id` undefined and trips the guard below with a 400.
+  const { id } = await params;
 
   if (!id) {
     return NextResponse.json(
