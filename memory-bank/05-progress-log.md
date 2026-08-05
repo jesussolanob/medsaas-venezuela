@@ -2,7 +2,13 @@
 
 > Registro cronológico. Una entrada por fase/hito completado.
 
-## 2026-08-04 — Fix: "Tiempo entre consultas" del consultorio no se guardaba en 0
+## 2026-08-04 — Fix: "Tiempo entre consultas" del consultorio no se guardaba en 0 ✅ EN PRODUCCIÓN
+
+**Promovido el 2026-08-04** por la cadena completa `fix/office-buffer-minutes-cero` → `develop`
+(`f0ee7f8`) → `staging` (`e6a3a53`, deploy `30964568134` success) → **validado en staging con
+Playwright** (se guardó 0, la tarjeta mostró "0 min entre consultas" y el modal reabrió en 0) →
+`main` (`12cf513`, deploy `30965154662` **success**). `deltasalud.app` responde 200.
+⚠️ Falta el QA visual del dueño en prod. Ojo: la rama de prod es **`main`**, no `master`.
 
 **Síntoma reportado:** en el detalle del consultorio se cambia _Tiempo entre consultas_, se guarda y
 el valor "se queda como se creó la primera vez".
