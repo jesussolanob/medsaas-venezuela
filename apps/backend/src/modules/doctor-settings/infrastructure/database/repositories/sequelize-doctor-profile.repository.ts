@@ -114,13 +114,21 @@ export class SequelizeDoctorProfileRepository implements IDoctorProfileRepositor
   }
 
   /**
-   * Sets onboarding_completed_at to NOW() for the given doctor.
-   * Idempotent: if already set, re-sets to the current timestamp (harmless).
+   * Marks onboarding as completed for the given doctor.
+   *
+   * BOTH columns must be written. `onboarding_completed` is the flag the
+   * frontend gate actually reads; `onboarding_completed_at` is only the audit
+   * timestamp. Writing the timestamp alone left the flag false forever, so the
+   * gate bounced the doctor back through onboarding on every page load and
+   * dropped them on /doctor, losing the route they asked for.
+   *
+   * Idempotent: re-running just refreshes the timestamp.
    */
   async markOnboardingCompleted(doctorId: string): Promise<void> {
-    await this.model.update({ onboardingCompletedAt: new Date() } as Record<string, unknown>, {
-      where: { id: doctorId },
-    });
+    await this.model.update(
+      { onboardingCompleted: true, onboardingCompletedAt: new Date() } as Record<string, unknown>,
+      { where: { id: doctorId } },
+    );
   }
 
   /**
