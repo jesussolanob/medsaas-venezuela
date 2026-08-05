@@ -28,6 +28,15 @@ const FALLBACK_DEV_DOCTOR_UUID = '00000000-0000-4000-8000-000000000001';
 // ---------------------------------------------------------------------------
 
 /**
+ * Result returned to the parent once the appointment is fully created.
+ * Emitted via onSuccess after the user dismisses the in-modal success step.
+ */
+export type AppointmentSuccessResult = {
+  appointmentId: string;
+  consultationId: string | null;
+};
+
+/**
  * Context passed to the deferred-sessions prompt shown after a successful
  * multi-session appointment creation.
  */
@@ -64,6 +73,13 @@ export type AppointmentFlowState = {
    */
   deferredContext: DeferredSessionsContext | null;
   clearDeferredContext: () => void;
+  /**
+   * Populated after a successful submit; consumed by NewAppointmentFlow to
+   * render the in-modal success step with "Ir a la consulta" / "Cerrar".
+   * null while the form is active or after the user dismisses the step.
+   */
+  successResult: AppointmentSuccessResult | null;
+  clearSuccessResult: () => void;
 
   // Step 1 — Paciente
   patientQuery: string;
@@ -137,7 +153,7 @@ export type AppointmentFlowState = {
 export function useAppointmentFlow(
   open: boolean,
   onClose: () => void,
-  onSuccess: ((id: string) => void) | undefined,
+  onSuccess: ((result: AppointmentSuccessResult) => void) | undefined,
   initialContext: AppointmentContext,
 ): AppointmentFlowState {
   const [currentStep, setCurrentStep] = useState(1);
@@ -146,6 +162,7 @@ export function useAppointmentFlow(
   const [uploadingReceipt, setUploadingReceipt] = useState(false);
   const [globalError, setGlobalError] = useState<string | null>(null);
   const [deferredContext, setDeferredContext] = useState<DeferredSessionsContext | null>(null);
+  const [successResult, setSuccessResult] = useState<AppointmentSuccessResult | null>(null);
 
   // Step 1 — Paciente
   const [patientQuery, setPatientQuery] = useState('');
@@ -518,6 +535,10 @@ export function useAppointmentFlow(
     setDeferredContext(null);
   }
 
+  function clearSuccessResult() {
+    setSuccessResult(null);
+  }
+
   function selectPatient(p: PatientLookup) {
     setSelectedPatient(p);
     setCurrentStep(2);
@@ -662,20 +683,32 @@ export function useAppointmentFlow(
           packageId: usePackage,
         }),
       });
-      const j = (await r.json()) as { error?: string; appointmentId?: string };
+      const j = (await r.json()) as {
+        error?: string;
+        appointmentId?: string;
+        consultationId?: string | null;
+      };
       if (!r.ok) throw new Error(j.error ?? 'Error al crear cita');
 
       const createdAppointmentId = j.appointmentId ?? '';
-      showToast({ type: 'success', message: 'Cita agendada correctamente' });
-      onSuccess?.(createdAppointmentId);
+      const createdConsultationId = j.consultationId ?? null;
 
-      // Multi-session plan (not a package): offer to defer remaining sessions.
+      // Store the result so NewAppointmentFlow can render the success step.
+      // The toast is NOT shown here — the success step itself confirms creation.
+      // onSuccess is called from the success step after the user dismisses it.
+      setSuccessResult({
+        appointmentId: createdAppointmentId,
+        consultationId: createdConsultationId,
+      });
+
+      // Multi-session plan (not a package): show the deferred-sessions prompt instead.
       // Condition: plan has >1 session, we're not using an existing package,
       // and the plan has a real UUID (not the generic fallback).
       const planSessions = selectedPlan?.sessions_count ?? 1;
       const planId = selectedPlan?.id ?? 'generic';
       if (!usePackage && planSessions > 1 && planId !== 'generic' && selectedPatient) {
-        // Session numbers to defer: [2, 3, ..., planSessions] (session 1 just created).
+        // Clear successResult so the deferred modal takes priority.
+        setSuccessResult(null);
         setDeferredContext({
           appointmentId: createdAppointmentId,
           planId,
@@ -689,7 +722,8 @@ export function useAppointmentFlow(
         return;
       }
 
-      onClose();
+      // Single-session / package: successResult is already set above.
+      // Do NOT call onClose() — the success step in NewAppointmentFlow handles it.
     } catch (err: unknown) {
       setGlobalError(err instanceof Error ? err.message : 'Error desconocido');
     } finally {
@@ -734,6 +768,8 @@ export function useAppointmentFlow(
     submit,
     deferredContext,
     clearDeferredContext,
+    successResult,
+    clearSuccessResult,
 
     patientQuery,
     setPatientQuery,
