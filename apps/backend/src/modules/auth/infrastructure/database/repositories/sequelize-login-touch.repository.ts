@@ -84,9 +84,16 @@ export class SequelizeLoginTouchRepository implements ILoginTouchRepository {
     const t = await this.sequelize.transaction();
     try {
       // 1. Update last_sign_in_at on the profile.
+      //    Also resets the doctor-inactivity notice cycle (stage + timestamp) so
+      //    the "te extrañamos" escalation can fire again if the doctor goes
+      //    inactive a second time. Done in the same statement to avoid an
+      //    extra round trip — harmless no-op for non-doctor profiles.
       await this.sequelize.query(
         `UPDATE profiles
-            SET last_sign_in_at = NOW(), updated_at = NOW()
+            SET last_sign_in_at = NOW(),
+                updated_at = NOW(),
+                inactivity_notice_stage = 0,
+                last_inactivity_notice_at = NULL
           WHERE id = :profileId`,
         { replacements: { profileId }, type: QueryTypes.UPDATE, transaction: t },
       );
@@ -130,9 +137,14 @@ export class SequelizeLoginTouchRepository implements ILoginTouchRepository {
   }
 
   async touchLastSignInAt(profileId: string): Promise<void> {
+    // Also resets the doctor-inactivity notice cycle (stage + timestamp) — see
+    // the identical comment in persistDowngradeAndTouch above.
     await this.sequelize.query(
       `UPDATE profiles
-          SET last_sign_in_at = NOW(), updated_at = NOW()
+          SET last_sign_in_at = NOW(),
+              updated_at = NOW(),
+              inactivity_notice_stage = 0,
+              last_inactivity_notice_at = NULL
         WHERE id = :profileId`,
       { replacements: { profileId }, type: QueryTypes.UPDATE },
     );
