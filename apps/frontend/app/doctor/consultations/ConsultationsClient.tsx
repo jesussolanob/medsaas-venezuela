@@ -92,7 +92,10 @@ import Paginator, { PAGE_SIZE_ALL } from '@/components/ui/Paginator';
 import { getEhrPatients } from '../ehr/actions';
 import { getPatientPrescriptions, createPrescription } from './prescriptions.client';
 import { useBcvRate } from '@/lib/useBcvRate';
-import DynamicBlocks, { SnapshotBlock } from '@/components/consultation/DynamicBlocks';
+import DynamicBlocks, {
+  SnapshotBlock,
+  normalizeBlockShape,
+} from '@/components/consultation/DynamicBlocks';
 import ConsultationRecorder from '@/components/consultation/ConsultationRecorder';
 // WP-E (2026-08): strip HTML from block values before passing to PDF renderers
 import { htmlToPlainText } from '@delta/shared-utils';
@@ -407,6 +410,12 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
   const openedConsultationIdRef = useRef<string | null>(null);
   // RONDA 38: tab inicial dinámico — se setea al abrir cada consulta segun su snapshot
   const [consultationTab, setConsultationTab] = useState<ConsultationTab>('block:chief_complaint');
+  // NOTA: `blocks_structure` quedó persistido en camelCase en las consultas ya
+  // guardadas (venía del backend sin mapear), mientras que SnapshotBlock usa
+  // snake_case. Al leerlo tal cual, content_type salía undefined y el bloque caía
+  // en la rama `default` de DynamicBlocks: textarea plano en vez del editor con
+  // formato. Normalizamos ambas formas al leer para no depender de una migración
+  // de datos sobre filas históricas.
   // WP-E (2026-08): disposición de los bloques — 'tabs' (horizontal) o 'vertical' (sidebar).
   // Se carga desde localStorage; el default viene de la config del doctor (cargado en el
   // useEffect de inicialización). El localStorage prevalece sobre el default del doctor.
@@ -432,7 +441,7 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
       // blocks_structure holds the metadata array (new column).
       // blocks_snapshot is now always a record of values — never use it as structure.
       const struct = consultation.blocks_structure;
-      if (Array.isArray(struct) && struct.length > 0) return struct as SnapshotBlock[];
+      if (Array.isArray(struct) && struct.length > 0) return struct.map(normalizeBlockShape);
       return doctorActiveBlocks;
     },
     [doctorActiveBlocks],
@@ -994,15 +1003,13 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
         if (blocksSettled.status === 'fulfilled' && blocksSettled.value.ok) {
           try {
             const j = await blocksSettled.value.json();
-            const resolved = (j.resolved || []) as Array<{
-              key: string;
-              label: string;
-              content_type: string;
-              sort_order: number;
-              printable: boolean;
-              send_to_patient: boolean;
-            }>;
-            setDoctorActiveBlocks(resolved as SnapshotBlock[]);
+            // El backend serializa `resolved` en camelCase (contentType, sortOrder…),
+            // igual que el catálogo de más abajo. Leerlo en snake_case dejaba
+            // content_type=undefined → el switch de DynamicBlocks caía en `default`
+            // y TODO bloque de texto salía como textarea plano, sin el editor con
+            // formato. normalizeBlockShape acepta ambas formas.
+            const resolved = (j.resolved || []) as unknown[];
+            setDoctorActiveBlocks(resolved.map(normalizeBlockShape));
             // WP-E: read layout preference from the API response.
             // Apply it ONLY if localStorage has no override (preserves user's manual toggle).
             const apiLayout = j.layout === 'vertical' ? 'vertical' : 'tabs';
