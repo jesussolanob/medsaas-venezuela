@@ -96,6 +96,17 @@ export interface IConsultationBlockRepository {
   getDoctorSpecialty(doctorId: string): Promise<string | null>;
 
   /**
+   * Returns the doctor's consultation_blocks_layout from profiles.
+   * Falls back to 'tabs' when the profile is not found or the column is null.
+   */
+  getDoctorLayout(doctorId: string): Promise<'tabs' | 'vertical'>;
+
+  /**
+   * Persists the consultation_blocks_layout for the given doctor.
+   */
+  setDoctorLayout(doctorId: string, layout: 'tabs' | 'vertical'): Promise<void>;
+
+  /**
    * Replaces the doctor's entire block configuration in a single transaction.
    * Executes DELETE WHERE doctor_id = ? then batch INSERT.
    * Returns the count of rows inserted.

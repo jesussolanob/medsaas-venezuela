@@ -14,6 +14,11 @@ export interface GetConsultationBlocksOutput {
   resolved: ConsultationBlock[];
   specialty_defaults: SpecialtyDefaultRow[];
   doctor_specialty: string | null;
+  /**
+   * Display layout for consultation blocks.
+   * 'tabs' (default) | 'vertical'. Set by the doctor via PUT.
+   */
+  layout: 'tabs' | 'vertical';
 }
 
 /**
@@ -30,7 +35,10 @@ export class GetConsultationBlocksUseCase {
   ) {}
 
   async execute(doctorId: string): Promise<GetConsultationBlocksOutput> {
-    const specialty = await this.repo.getDoctorSpecialty(doctorId);
+    const [specialty, layout] = await Promise.all([
+      this.repo.getDoctorSpecialty(doctorId),
+      this.repo.getDoctorLayout(doctorId),
+    ]);
 
     const [catalog, doctorConfig, specialtyDefaults, resolved] = await Promise.all([
       this.repo.listCatalog(),
@@ -45,6 +53,7 @@ export class GetConsultationBlocksUseCase {
       resolved,
       specialty_defaults: specialtyDefaults,
       doctor_specialty: specialty,
+      layout,
     };
   }
 }

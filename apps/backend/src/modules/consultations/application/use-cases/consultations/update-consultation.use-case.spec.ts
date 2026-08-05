@@ -3,6 +3,15 @@ import type { IConsultationRepository } from '../../../domain/repositories/consu
 import { Consultation } from '../../../domain/entities/consultation.entity';
 import { ConsultationNotFoundError } from '../../../domain/errors/consultation-not-found.error';
 import { ConsultationNotOwnedError } from '../../../domain/errors/consultation-not-owned.error';
+import { BlockContentSanitizer } from '../../block-content-sanitizer';
+
+// sanitize-html depends on htmlparser2@12 (ESM-only) which cannot be loaded by Jest
+// in CJS mode. Mock it so the BlockContentSanitizer can be instantiated in tests.
+jest.mock('sanitize-html', () => {
+  const fn = jest.fn((input: string) => input);
+  (fn as unknown as Record<string, unknown>)['default'] = fn;
+  return fn;
+});
 
 const DOCTOR_ID = 'dddddddd-0000-0000-0000-000000000001';
 const OTHER_DOCTOR_ID = 'eeeeeeee-0000-0000-0000-000000000002';
@@ -48,7 +57,7 @@ describe('UpdateConsultationUseCase', () => {
       deleteById: jest.fn().mockResolvedValue(undefined),
       listWithAppointment: jest.fn(),
     };
-    useCase = new UpdateConsultationUseCase(mockRepo);
+    useCase = new UpdateConsultationUseCase(mockRepo, new BlockContentSanitizer());
   });
 
   it('updates clinical fields for the owning doctor', async () => {

@@ -13,6 +13,8 @@ function makeRepo(): jest.Mocked<IConsultationBlockRepository> {
     getDoctorSpecialty: jest.fn(),
     replaceDoctorBlocks: jest.fn(),
     resolveBlocks: jest.fn(),
+    getDoctorLayout: jest.fn().mockResolvedValue('tabs'),
+    setDoctorLayout: jest.fn().mockResolvedValue(undefined),
   };
 }
 
