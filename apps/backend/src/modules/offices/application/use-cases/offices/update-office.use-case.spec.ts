@@ -143,6 +143,20 @@ describe('UpdateOfficeUseCase', () => {
     expect(savedOffice.name).toBe(existing.name); // unchanged
   });
 
+  it('persists buffer_minutes = 0 instead of falling back to the existing value', async () => {
+    const existing = makeExistingOffice({ bufferMinutes: 10 });
+    const updated = makeExistingOffice({ bufferMinutes: 0 });
+    mockRepo.findByIdForDoctor.mockResolvedValue(existing);
+    mockRepo.save.mockResolvedValue(updated);
+
+    const dto: UpdateOfficeDto = { buffer_minutes: 0 };
+    const result = await useCase.execute(OFFICE_ID, dto, DOCTOR_ID);
+
+    const savedOffice = mockRepo.save.mock.calls[0]![0] as Office;
+    expect(savedOffice.bufferMinutes).toBe(0);
+    expect(result.bufferMinutes).toBe(0);
+  });
+
   describe('schedule conflict detection on update', () => {
     const makeConflictingOffice = (): Office =>
       Office.create({
