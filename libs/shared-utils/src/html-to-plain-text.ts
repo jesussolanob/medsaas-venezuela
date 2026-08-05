@@ -91,7 +91,13 @@ export function htmlToPlainText(input: string): string {
   // 6. Drop any remaining unknown named entities (e.g. &copy;) — replace with empty string
   text = text.replace(NAMED_ENTITY_PATTERN, '');
 
-  // 7. Collapse runs of 3+ newlines to two (preserve paragraph spacing)
+  // 7. Re-attach bullets to their text.
+  //    Rich-text editors emit list items as <li><p>text</p></li>. Step 1 turns that
+  //    inner <p> into a newline BEFORE step 2 adds the bullet, which left the bullet
+  //    stranded on its own line ("• \ntext") in the PDF. Pull the text back up.
+  text = text.replace(/•[ \t]*\n+[ \t]*/g, '• ');
+
+  // 8. Collapse runs of 3+ newlines to two (preserve paragraph spacing)
   text = text.replace(/\n{3,}/g, '\n\n');
 
   return text.trim();
