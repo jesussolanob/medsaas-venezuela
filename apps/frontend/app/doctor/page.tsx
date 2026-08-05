@@ -28,7 +28,10 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { StatCard, Card } from '@/components/dh';
 import NewAppointmentFlow from '@/components/appointment-flow/NewAppointmentFlow';
-import AppointmentDetailModal from '@/components/doctor/AppointmentDetailModal';
+import AppointmentDetailModal, {
+  type RescheduleRequest,
+} from '@/components/doctor/AppointmentDetailModal';
+import RescheduleModal from '@/components/doctor/RescheduleModal';
 // L3 (2026-04-29): quick action "Crear paciente" en el dashboard reusa
 // el PatientForm unificado + addPatient action y muestra toast al guardar.
 import PatientForm, { type PatientFormData } from '@/components/patient/PatientForm';
@@ -189,6 +192,8 @@ export default function DoctorDashboard() {
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
   // Cita seleccionada para ver detalle en AppointmentDetailModal.
   const [detailApptId, setDetailApptId] = useState<string | null>(null);
+  // Target for RescheduleModal (emitted by AppointmentDetailModal.onReschedule).
+  const [rescheduleAppt, setRescheduleAppt] = useState<RescheduleRequest | null>(null);
 
   // "Registrar ingreso" modal — reutiliza el mismo IncomeModal de /doctor/finances.
   const [showIncomeModal, setShowIncomeModal] = useState(false);
@@ -1371,6 +1376,21 @@ export default function DoctorDashboard() {
           appointmentId={detailApptId}
           onClose={() => setDetailApptId(null)}
           onChanged={() => setRefreshKey((k) => k + 1)}
+          onReschedule={(req: RescheduleRequest) => {
+            setDetailApptId(null);
+            setRescheduleAppt(req);
+          }}
+        />
+      )}
+
+      {/* RescheduleModal — abre cuando el doctor hace click en "Reagendar" desde el dashboard */}
+      {rescheduleAppt && (
+        <RescheduleModal
+          appointmentId={rescheduleAppt.id}
+          patientName={rescheduleAppt.patientName}
+          currentScheduledAt={rescheduleAppt.scheduledAt}
+          onClose={() => setRescheduleAppt(null)}
+          onSuccess={() => setRefreshKey((k) => k + 1)}
         />
       )}
 

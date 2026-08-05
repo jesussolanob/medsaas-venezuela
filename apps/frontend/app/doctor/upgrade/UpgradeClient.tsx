@@ -288,8 +288,9 @@ export default function UpgradeClient({ plans, currentPlanKey }: UpgradeClientPr
           </div>
           <h1 className="text-2xl font-bold mb-2">Mejora tu plan Delta Salud</h1>
           <p className="text-white/80 text-sm max-w-xl">
-            Desbloquea todas las herramientas que necesitas para gestionar tu práctica médica. El
-            proceso de actualización es simple: contáctanos y te asignamos el plan en minutos.
+            Desbloquea todas las herramientas que necesitas para gestionar tu práctica médica. Elige
+            tu plan, paga desde aquí y sube tu comprobante: activamos el acceso apenas lo
+            verifiquemos.
           </p>
         </div>
       </div>

@@ -263,8 +263,23 @@ export default function AppointmentDetailModal({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ appointment_id: appt.id, new_status: 'cancelled' }),
       });
-      const j = (await res.json()) as { error?: string };
+      const j = (await res.json()) as { error?: string; code?: string };
       if (!res.ok) {
+        if (res.status === 409) {
+          // Approved payment — must reschedule instead of cancel.
+          // Forward the backend's Spanish message and open reschedule flow.
+          setShowCancelConfirm(false);
+          const msg =
+            j.error ??
+            'Esta cita tiene un pago aprobado. Para cancelarla debes reagendarla primero.';
+          if (onReschedule) {
+            showToast({ type: 'info', message: msg });
+            handleReschedule();
+          } else {
+            showToast({ type: 'error', message: msg });
+          }
+          return;
+        }
         showToast({ type: 'error', message: j.error ?? 'Error al cancelar' });
         return;
       }
@@ -547,13 +562,24 @@ export default function AppointmentDetailModal({
                 </div>
               )}
 
-              {/* Appointment actions */}
-              {isActive && (
+              {/* Appointment actions — shown when the appointment is active OR
+                  when Reagendar is available (which is always, per spec). */}
+              {(isActive || onReschedule) && (
                 <div className="pt-3 border-t border-slate-100 space-y-2">
                   <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
                     Acciones de la cita
                   </p>
+
+                  {/* Approved-payment notice: Cancel is hidden; explain why. */}
+                  {isActive && appt.paymentStatus === 'approved' && (
+                    <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                      Esta cita tiene un pago aprobado. El pago se mantiene al reagendar — no se
+                      emiten créditos ni devoluciones.
+                    </p>
+                  )}
+
                   <div className="flex flex-wrap gap-2">
+                    {/* Confirmar — only when scheduled */}
                     {appt.status === 'scheduled' && (
                       <button
                         onClick={() => void handleConfirm()}
@@ -568,21 +594,26 @@ export default function AppointmentDetailModal({
                         Confirmar cita
                       </button>
                     )}
-                    <button
-                      onClick={() => setShowCancelConfirm(true)}
-                      className="flex items-center gap-1 px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 text-xs font-bold rounded-lg border border-red-200"
-                    >
-                      Cancelar cita
-                    </button>
-                    {(appt.status === 'scheduled' || appt.status === 'confirmed') &&
-                      onReschedule && (
-                        <button
-                          onClick={handleReschedule}
-                          className="flex items-center gap-1 px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-700 text-xs font-bold rounded-lg border border-amber-200"
-                        >
-                          <Calendar className="w-3.5 h-3.5" /> Reagendar
-                        </button>
-                      )}
+
+                    {/* Cancelar — hidden when payment is approved (must reschedule instead) */}
+                    {isActive && appt.paymentStatus !== 'approved' && (
+                      <button
+                        onClick={() => setShowCancelConfirm(true)}
+                        className="flex items-center gap-1 px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 text-xs font-bold rounded-lg border border-red-200"
+                      >
+                        Cancelar cita
+                      </button>
+                    )}
+
+                    {/* Reagendar — always available in ALL statuses (completed, no_show, cancelled, etc.) */}
+                    {onReschedule && (
+                      <button
+                        onClick={handleReschedule}
+                        className="flex items-center gap-1 px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-700 text-xs font-bold rounded-lg border border-amber-200"
+                      >
+                        <Calendar className="w-3.5 h-3.5" /> Reagendar
+                      </button>
+                    )}
                   </div>
                   <p className="text-[11px] text-slate-500 italic mt-1">
                     El estado de la <strong>consulta</strong> y del <strong>pago</strong> se

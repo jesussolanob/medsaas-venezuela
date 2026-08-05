@@ -103,6 +103,7 @@ import { htmlToPlainText } from '@delta/shared-utils';
 import MarkdownText from '@/components/shared/MarkdownText';
 import NewAppointmentFlow from '@/components/appointment-flow/NewAppointmentFlow';
 import PatientFichaModal from '@/components/patient/PatientFichaModal';
+import RescheduleModal from '@/components/doctor/RescheduleModal';
 import PatientHistoryModal from './PatientHistoryModal';
 import { log } from '@/lib/logger';
 import { reportError } from '@/lib/report-error';
@@ -764,6 +765,17 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
   // Historial de consultas previas del paciente (solo lectura, drawer derecho).
   const [showHistory, setShowHistory] = useState(false);
 
+  // Point 11: cancel/reschedule appointment directly from the consultation detail.
+  const [showCancelApptConfirm, setShowCancelApptConfirm] = useState(false);
+  const [cancellingAppt, setCancellingAppt] = useState(false);
+  // When set, opens RescheduleModal for the linked appointment.
+  const [rescheduleApptTarget, setRescheduleApptTarget] = useState<{
+    id: string;
+    patientName: string;
+    scheduledAt: string;
+    infoMessage?: string;
+  } | null>(null);
+
   // Doctor profile for share template
   const [doctorName, setDoctorName] = useState('');
   // Logo y firma GLOBALES del doctor — se aplican a TODOS los PDFs por defecto
@@ -1283,6 +1295,49 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
     };
     const msg = labels[newStatus];
     if (msg) showToast({ type: 'success', message: msg });
+  }
+
+  // Point 11: cancel the linked appointment from within the consultation detail.
+  async function handleCancelAppt() {
+    if (!selected?.appointment_id) return;
+    const appointmentId = selected.appointment_id;
+    setCancellingAppt(true);
+    try {
+      const res = await fetch('/api/doctor/appointment-status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ appointment_id: appointmentId, new_status: 'cancelled' }),
+      });
+      const j = (await res.json()) as { error?: string; code?: string };
+      if (!res.ok) {
+        if (res.status === 409) {
+          // Approved payment: must reschedule instead of cancel.
+          setShowCancelApptConfirm(false);
+          setRescheduleApptTarget({
+            id: appointmentId,
+            patientName: selected.patient_name,
+            scheduledAt: selected.consultation_date + 'T12:00:00',
+            infoMessage:
+              j.error ??
+              'Esta cita tiene un pago aprobado. El pago se mantiene en la nueva fecha — no se emiten créditos.',
+          });
+          return;
+        }
+        showToast({ type: 'error', message: j.error ?? 'Error al cancelar la cita' });
+        return;
+      }
+      showToast({ type: 'success', message: 'Cita cancelada' });
+      // Reflect the cancelled appointment status in local state
+      setSelected((prev) => (prev ? { ...prev, appointment_status: 'cancelled' } : prev));
+      setConsultations((prev) =>
+        prev.map((c) => (c.id === selected.id ? { ...c, appointment_status: 'cancelled' } : c)),
+      );
+      setShowCancelApptConfirm(false);
+    } catch {
+      showToast({ type: 'error', message: 'Error de conexión al cancelar' });
+    } finally {
+      setCancellingAppt(false);
+    }
   }
 
   async function updatePagoStatus(
@@ -3187,6 +3242,43 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                   )}
                   {/* El cambio de estado de pago se centralizo en el select del panel derecho
                       "Configuracion de la consulta" (ronda 14). Aqui solo se ven los badges. */}
+
+                  {/* Point 11: Cancelar / Reagendar la cita vinculada a esta consulta.
+                      - Cancelar: solo si hay cita, no está ya cancelada y el pago no es 'approved'.
+                      - Reagendar: disponible siempre que haya cita, sin importar el estado. */}
+                  {selected.appointment_id &&
+                    selected.appointment_status !== 'cancelled' &&
+                    selected.payment_status !== 'approved' && (
+                      <button
+                        onClick={() => setShowCancelApptConfirm(true)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-red-200 rounded-lg text-xs font-semibold text-red-600 hover:bg-red-50 transition-colors"
+                        title="Cancelar la cita vinculada a esta consulta"
+                      >
+                        <X className="w-3.5 h-3.5" /> Cancelar cita
+                      </button>
+                    )}
+                  {selected.appointment_id &&
+                    selected.payment_status === 'approved' &&
+                    selected.appointment_status !== 'cancelled' && (
+                      <span className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1">
+                        Pago aprobado — reagenda para modificar la fecha
+                      </span>
+                    )}
+                  {selected.appointment_id && (
+                    <button
+                      onClick={() =>
+                        setRescheduleApptTarget({
+                          id: selected.appointment_id!,
+                          patientName: selected.patient_name,
+                          scheduledAt: selected.consultation_date + 'T12:00:00',
+                        })
+                      }
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-amber-200 rounded-lg text-xs font-semibold text-amber-700 hover:bg-amber-50 transition-colors"
+                      title="Reagendar la cita vinculada a esta consulta"
+                    >
+                      <Calendar className="w-3.5 h-3.5" /> Reagendar
+                    </button>
+                  )}
                 </div>
 
                 {/* Grupo derecho: acciones de archivo */}
@@ -5885,6 +5977,50 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
               }
             }}
           />
+        )}
+
+        {/* Point 11: RescheduleModal — reagendar la cita vinculada */}
+        {rescheduleApptTarget && (
+          <RescheduleModal
+            appointmentId={rescheduleApptTarget.id}
+            patientName={rescheduleApptTarget.patientName}
+            currentScheduledAt={rescheduleApptTarget.scheduledAt}
+            infoMessage={rescheduleApptTarget.infoMessage}
+            onClose={() => setRescheduleApptTarget(null)}
+            onSuccess={() => {
+              // Reflect appointment status change if desired; for now just close
+              setRescheduleApptTarget(null);
+            }}
+          />
+        )}
+
+        {/* Point 11: Confirmación para cancelar la cita vinculada */}
+        {showCancelApptConfirm && selected?.appointment_id && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[70] p-4">
+            <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 space-y-4">
+              <h3 className="text-base font-bold text-slate-900">Cancelar cita</h3>
+              <p className="text-sm text-slate-600">
+                ¿Confirmas que deseas cancelar la cita vinculada a esta consulta?
+              </p>
+              <div className="flex gap-2 pt-2">
+                <button
+                  onClick={() => setShowCancelApptConfirm(false)}
+                  disabled={cancellingAppt}
+                  className="flex-1 py-2 border border-slate-200 rounded-lg text-sm font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+                >
+                  Volver
+                </button>
+                <button
+                  onClick={() => void handleCancelAppt()}
+                  disabled={cancellingAppt}
+                  className="flex-1 py-2 bg-red-500 hover:bg-red-600 rounded-lg text-sm font-bold text-white flex items-center justify-center gap-2 disabled:opacity-60"
+                >
+                  {cancellingAppt && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                  {cancellingAppt ? 'Cancelando...' : 'Cancelar cita'}
+                </button>
+              </div>
+            </div>
+          </div>
         )}
 
         {/* Modal de confirmación al salir de una consulta no atendida */}
