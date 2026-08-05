@@ -43,6 +43,22 @@ describe('htmlToPlainText', () => {
     expect(result).toContain('• item two');
   });
 
+  it('keeps the bullet on the same line for editor-style <li><p>…</p></li>', () => {
+    // TipTap wraps every list item in a paragraph. The inner <p> used to become a
+    // newline before the bullet was inserted, stranding "• " on its own line in the PDF.
+    const result = htmlToPlainText('<ul><li><p>item one</p></li><li><p>item two</p></li></ul>');
+    expect(result).toContain('• item one');
+    expect(result).toContain('• item two');
+    expect(result).not.toMatch(/•[ \t]*\n/);
+  });
+
+  it('renders a full rich-text block as flat text for the PDF', () => {
+    const result = htmlToPlainText(
+      '<p><strong>Cefalea persistente</strong></p><ul><li><p>Inicio hace 3 dias</p></li></ul>',
+    );
+    expect(result).toBe('Cefalea persistente\n\n• Inicio hace 3 dias');
+  });
+
   it('strips <strong> tags but keeps text content', () => {
     expect(htmlToPlainText('<strong>bold text</strong>')).toBe('bold text');
   });
