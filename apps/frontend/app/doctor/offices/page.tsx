@@ -218,8 +218,11 @@ export default function OfficesPage() {
       data.map((o) => ({
         ...o,
         schedule: o.schedule?.length ? o.schedule : DEFAULT_SCHEDULE,
-        slot_duration: o.slot_duration || 30,
-        buffer_minutes: o.buffer_minutes || 10,
+        // `??` y NO `||`: "Tiempo entre consultas" admite 0 (sin descanso entre
+        // citas) y es un valor legítimo del selector. Con `||` el 0 guardado en
+        // BD se repintaba como 10, así que la edición parecía no guardarse.
+        slot_duration: o.slot_duration ?? 30,
+        buffer_minutes: o.buffer_minutes ?? 10,
         modality: o.modality ?? 'in_person',
       })),
     );
