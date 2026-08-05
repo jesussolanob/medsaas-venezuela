@@ -3121,3 +3121,85 @@ y frontend exit 0 · 389 suites / 3728 tests en verde · lint sin regresiones (e
 `develop` ya trae 3 errores en backend y 132 en frontend; el lote bajó frontend a 121).
 El boot del dist solo llegó hasta la conexión a Postgres, así que **el cableo de DI de lo
 nuevo se verifica recién al arrancar staging**.
+
+### QA en staging del lote de agosto (2026-08-05) — 4 bugs encontrados
+
+QA con Playwright contra `staging.deltasalud.app`, con login real de Auth0 hecho por el
+dueño (el acceso demo sigue APAGADO y su variable es compartida con prod, así que no se
+tocó). **Los 4 bugs se encontraron usando la app: ninguno lo agarraron los tests, el
+typecheck ni el build.** Tres de ellos son el mismo patrón de fondo — un tipo escrito a
+mano que miente sobre la forma real de los datos, y TypeScript le cree.
+
+1. **El detalle de cita no abría.** `app/api/doctor/appointments/[id]/route.ts`
+   desestructuraba `params` de forma síncrona; en Next 16 son asíncronos, así que el `id`
+   quedaba `undefined` y el guard devolvía 400 ("Falta el id de la cita"). Era la ÚNICA
+   ruta dinámica del repo desviada del patrón — las otras ocho ya usaban `Promise` + `await`.
+
+2. **El editor con formato no aparecía.** El backend serializa los bloques en camelCase
+   (`contentType`) y el frontend los leía en snake_case (`content_type`), con el tipo
+   declarado a mano. `content_type` quedaba `undefined` → el `switch` de `DynamicBlocks`
+   caía en la rama `default`, que es el textarea plano. Pasaba en DOS caminos: la config
+   viva del doctor y el `blocks_structure` ya congelado (persistido en camelCase). Se
+   normalizan ambas formas al leer (`normalizeBlockShape`) para no migrar datos históricos.
+   ⚠️ **Ya existía en `develop` desde el thin-proxy** — era invisible porque antes TODOS los
+   bloques eran textarea. `blocks_snapshot` guarda solo valores, así que no hubo datos que
+   reparar. De paso: `resolveBlocksForDoctor`/`snapshotBlocksForConsultation` en
+   `lib/consultation-blocks.ts` son **código muerto**, no los llama nadie — conviene borrarlos.
+
+3. **La viñeta de las listas quedaba huérfana en el PDF.** Los editores emiten
+   `<li><p>texto</p></li>`; ese `<p>` interno se volvía salto de línea ANTES de insertarse
+   la viñeta, dejando "• " en un renglón y el texto en el siguiente. El test que existía
+   usaba `<li>texto</li>` sin el `<p>`, por eso no lo detectaba.
+
+4. **El onboarding NUNCA quedaba completado (el más serio).** `markOnboardingCompleted`
+   escribía solo `onboarding_completed_at`, nunca `onboarding_completed` — y el booleano es
+   el que lee el guard del portal. Efecto: en cada carga de página el especialista rebotaba
+   por el onboarding, este auto-completaba (requisitos cumplidos) y lo devolvía a `/doctor`
+   **perdiendo la ruta pedida** (navegar a `/doctor/patients` terminaba en `/doctor`). Para
+   un especialista recién registrado es peor: completa el asistente y no queda registrado
+   nunca. Se agregaron los DOS specs que faltaban (ni el del repositorio ni el del use case
+   existían) y se verificó que **fallan contra el código viejo**, con un guard de regresión
+   explícito. Auditoría de los 28 modelos del backend buscando el mismo patrón
+   "booleano + timestamp donde solo se escribe uno": **no hay otro caso**.
+
+**Verificado y funcionando:** teléfono completo y sin código de cita en el modal (1), modal
+reusado desde el inicio (2), fecha en el detalle (4), editor con formato con round-trip
+exacto tras recargar (6), disposición alternable sin perder datos (7), apertura directa del
+detalle (8), checkout con monto calculado en servidor —$10 → Bs 8.433,60 a tasa BCV— y Zod
+rechazando períodos inválidos en español (10).
+
+**Seguridad probada EN VIVO** contra el endpoint real: `<script>`, `<img onerror>`,
+`<iframe>` y `href="javascript:"` eliminados; del enlace queda solo el texto; los arrays
+también se sanitizan (el arreglo del hallazgo LOW, confirmado en producción-real).
+
+**Punto 9 — el bloqueo del servidor SÍ funciona:** con los servicios desactivados,
+`POST /api/doctor/onboarding/complete` responde **422 "Debes crear al menos un consultorio
+y un servicio para continuar"**. No se puede saltear llamando al endpoint directo.
+
+**⚠️ Punto 5 — NO se pudo disparar el cron.** El backend de staging solo acepta invocaciones
+de `delta-frontend-sa`; la cuenta `lucas@deltasalud.app` no tiene `run.invoker` ni permiso de
+suplantación. Verificado en cambio por BD: columnas, índice parcial, plantillas activas, y
+**6 candidatos reales** (1 con ≥15 días, 5 entre 10 y 14). Para probarlo de verdad hay que
+otorgar `roles/run.invoker` sobre el backend de staging — NO se hizo, requiere decisión del dueño.
+
+**Cómo reponer el asistente de onboarding para QA:** el guard lee SOLO
+`profiles.onboarding_completed`. Ponerlo en `false` NO alcanza si el doctor ya tiene
+consultorio y servicio: el asistente auto-completa y nunca se ve. Hay que además desactivar
+sus `doctor_offices` y `pricing_plans` — SIEMPRE con respaldo previo del estado exacto y
+restauración inmediata.
+
+**Observaciones abiertas (menores, no bloquean):**
+
+- El encabezado de `/doctor/upgrade` sigue diciendo "contáctanos y te asignamos el plan en
+  minutos" — texto de la era WhatsApp que contradice el pago autogestionado.
+- Desde el inicio el modal de cita NO muestra "Reagendar" ni con la cita agendada, porque el
+  padre no le pasa el manejador. Es más amplio que el caso de `no_show`.
+- Se vio la tasa BCV como 842,68 en un endpoint y 843,36 en el modal con minutos de
+  diferencia — confirmar que no sean dos fuentes distintas.
+- Prettier, al reformatear durante los hooks, dejó 3 errores nuevos de
+  `react-hooks/set-state-in-effect` en `admin/aprobaciones` y `doctor/upgrade`. Misma regla
+  que ya falla en una decena de archivos del baseline; el total quedó en 124 contra 132 de
+  `develop`.
+
+**Pendiente de QA:** punto 3 (botón para ir al detalle tras crear una consulta) y ver el
+asistente de onboarding en pantalla.
