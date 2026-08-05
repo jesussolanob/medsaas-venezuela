@@ -55,6 +55,10 @@ import { UpdateServiceUseCase } from '../../application/use-cases/doctor-setting
 import { DeleteServiceUseCase } from '../../application/use-cases/doctor-settings/delete-service.use-case';
 import { GetDoctorExchangeRateUseCase } from '../../application/use-cases/doctor-settings/get-doctor-exchange-rate.use-case';
 import { SetDoctorExchangeRateUseCase } from '../../application/use-cases/doctor-settings/set-doctor-exchange-rate.use-case';
+import {
+  CompleteOnboardingUseCase,
+  type CompleteOnboardingOutput,
+} from '../../application/use-cases/doctor-settings/complete-onboarding.use-case';
 import type { DoctorProfile } from '../../domain/entities/doctor-profile.entity';
 import type { DoctorScheduleParams } from '../../domain/value-objects/doctor-schedule.vo';
 import type { PricingPlan } from '../../../packages/domain/entities/pricing-plan.entity';
@@ -98,6 +102,7 @@ export class DoctorController {
     private readonly deleteService: DeleteServiceUseCase,
     private readonly getDoctorExchangeRate: GetDoctorExchangeRateUseCase,
     private readonly setDoctorExchangeRate: SetDoctorExchangeRateUseCase,
+    private readonly completeOnboarding: CompleteOnboardingUseCase,
   ) {}
 
   /** GET /api/doctor/profile */
@@ -356,6 +361,25 @@ export class DoctorController {
     @CurrentUser() user: CurrentUserPayload,
   ): Promise<void> {
     await this.deleteService.execute(user.sub, id);
+  }
+
+  /**
+   * POST /api/doctor/onboarding/complete
+   *
+   * Server-side onboarding gate: verifies the doctor has ≥1 active office AND
+   * ≥1 active service before marking onboarding_completed_at. Idempotent.
+   *
+   * SECURITY: doctorId from authenticated token (anti-IDOR).
+   * ERRORS:
+   *   422 ONBOARDING_REQUIREMENTS_NOT_MET — missing office or service.
+   */
+  @Post('onboarding/complete')
+  @HttpCode(HttpStatus.OK)
+  async completeOnboardingHandler(
+    @CurrentUser() user: CurrentUserPayload,
+  ): Promise<SuccessResponse<CompleteOnboardingOutput>> {
+    const result = await this.completeOnboarding.execute(user.sub);
+    return { success: true, data: result };
   }
 
   // TODO: GET /doctor/templates — deferred until doctor_templates table is created

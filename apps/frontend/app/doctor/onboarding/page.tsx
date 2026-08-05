@@ -10,6 +10,8 @@
 
 import { getDoctorProfile } from '@/app/doctor/actions';
 import { backendGet } from '@/lib/api-client.server';
+import { completeOnboarding } from './actions';
+import { redirect } from 'next/navigation';
 import OnboardingForm from './OnboardingForm';
 import { Activity } from 'lucide-react';
 
@@ -53,6 +55,22 @@ export default async function DoctorOnboardingPage() {
     }
   }
 
+  // Determine which wizard step to start on based on profile state.
+  // hasActiveOffice/hasActiveService are new fields from the backend (WP-F).
+  // Fallback: if specialty filled → start at step 2, else step 1.
+  const hasActiveOffice = profile?.hasActiveOffice ?? false;
+  const hasActiveService = profile?.hasActiveService ?? false;
+
+  // Edge case: office + service both exist but onboardingCompleted was never sealed
+  // (e.g. the user navigated away between step 3 and success). Seal it server-side
+  // and redirect to the portal — no wizard UI needed.
+  if (hasActiveOffice && hasActiveService && !profile?.onboardingCompleted) {
+    await completeOnboarding();
+    redirect('/doctor');
+  }
+
+  const initialStep: 1 | 2 | 3 = hasActiveOffice ? 3 : profile?.specialty ? 2 : 1;
+
   return (
     <div className="min-h-screen flex flex-col items-center justify-center px-4 py-12">
       <div className="w-full max-w-lg space-y-6">
@@ -87,6 +105,7 @@ export default async function DoctorOnboardingPage() {
           initialCedulaNumber={initialCedulaNumber}
           initialSpecialty={profile?.specialty ?? ''}
           specialties={specialties}
+          initialStep={initialStep}
         />
 
         <p className="text-center text-xs" style={{ color: 'var(--dh-gray-400)' }}>

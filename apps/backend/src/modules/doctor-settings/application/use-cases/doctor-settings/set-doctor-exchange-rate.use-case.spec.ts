@@ -49,6 +49,8 @@ describe('SetDoctorExchangeRateUseCase', () => {
       findByDoctorId: jest.fn(),
       update: jest.fn(),
       updateExchangeRate: jest.fn(),
+      markOnboardingCompleted: jest.fn().mockResolvedValue(undefined),
+      updateBlocksLayout: jest.fn().mockResolvedValue(undefined),
     };
     mockRateStore = {
       getRate: jest.fn(),

@@ -104,6 +104,31 @@ export class SequelizeDoctorProfileRepository implements IDoctorProfileRepositor
       welcomeDismissedAt:
         row.welcomeDismissedAt != null ? new Date(row.welcomeDismissedAt).toISOString() : null,
       onboardingCompleted: row.onboardingCompleted ?? false,
+      consultationBlocksLayout: row.consultationBlocksLayout === 'vertical' ? 'vertical' : 'tabs',
+      onboardingCompletedAt: row.onboardingCompletedAt ?? null,
+      // hasActiveOffice / hasActiveService are enrichment fields — not persisted on profiles.
+      // They default to false here; GetDoctorProfileUseCase overrides them with live counts.
+      hasActiveOffice: false,
+      hasActiveService: false,
+    });
+  }
+
+  /**
+   * Sets onboarding_completed_at to NOW() for the given doctor.
+   * Idempotent: if already set, re-sets to the current timestamp (harmless).
+   */
+  async markOnboardingCompleted(doctorId: string): Promise<void> {
+    await this.model.update({ onboardingCompletedAt: new Date() } as Record<string, unknown>, {
+      where: { id: doctorId },
+    });
+  }
+
+  /**
+   * Updates the consultation_blocks_layout column for the given doctor.
+   */
+  async updateBlocksLayout(doctorId: string, layout: 'tabs' | 'vertical'): Promise<void> {
+    await this.model.update({ consultationBlocksLayout: layout } as Record<string, unknown>, {
+      where: { id: doctorId },
     });
   }
 }

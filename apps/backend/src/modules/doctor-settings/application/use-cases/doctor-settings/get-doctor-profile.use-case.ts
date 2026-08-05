@@ -10,6 +10,14 @@ import {
   type IStoragePort,
 } from '../../../../storage/application/ports/storage.port';
 import { resignGcsImageUrl } from '../../../../storage/application/helpers/resign-gcs-image.helper';
+import {
+  OFFICE_REPOSITORY,
+  type IOfficeRepository,
+} from '../../../../offices/domain/repositories/office.repository';
+import {
+  PRICING_PLAN_REPOSITORY,
+  type IPricingPlanRepository,
+} from '../../../../packages/domain/repositories/pricing-plan.repository';
 
 @Injectable()
 export class GetDoctorProfileUseCase {
@@ -18,30 +26,38 @@ export class GetDoctorProfileUseCase {
     private readonly profileRepo: IDoctorProfileRepository,
     @Inject(STORAGE_PORT)
     private readonly storagePort: IStoragePort,
+    @Inject(OFFICE_REPOSITORY)
+    private readonly officeRepo: IOfficeRepository,
+    @Inject(PRICING_PLAN_REPOSITORY)
+    private readonly pricingPlanRepo: IPricingPlanRepository,
   ) {}
 
   async execute(doctorId: string): Promise<DoctorProfile> {
     const profile = await this.profileRepo.findByDoctorId(doctorId);
     if (!profile) throw new DoctorProfileNotFoundError(doctorId);
 
-    // Re-sign GCS image URLs so they are always fresh on read.
-    // GCS v4 signed URLs expire after at most 7 days; avatars/logos stored
-    // at upload time will become 403s without this refresh step.
-    const [freshAvatarUrl, freshLogoUrl, freshSignatureUrl] = await Promise.all([
-      resignGcsImageUrl(profile.avatarUrl, this.storagePort),
-      resignGcsImageUrl(profile.logoUrl, this.storagePort),
-      resignGcsImageUrl(profile.signatureUrl, this.storagePort),
-    ]);
+    // Re-sign GCS image URLs and load enrichment data in parallel.
+    // hasActiveOffice / hasActiveService allow the onboarding wizard to know
+    // which step to resume at, without requiring an extra round-trip.
+    const [freshAvatarUrl, freshLogoUrl, freshSignatureUrl, activeOffices, allPlans] =
+      await Promise.all([
+        resignGcsImageUrl(profile.avatarUrl, this.storagePort),
+        resignGcsImageUrl(profile.logoUrl, this.storagePort),
+        resignGcsImageUrl(profile.signatureUrl, this.storagePort),
+        this.officeRepo.findActiveByDoctor(doctorId),
+        this.pricingPlanRepo.findAllByDoctorId(doctorId),
+      ]);
 
-    if (
-      freshAvatarUrl === profile.avatarUrl &&
-      freshLogoUrl === profile.logoUrl &&
-      freshSignatureUrl === profile.signatureUrl
-    ) {
-      // Nothing changed (MinIO or already fresh) — return as-is to avoid allocating
-      return profile;
-    }
+    const hasActiveOffice = activeOffices.length > 0;
+    const hasActiveService = allPlans.some((p) => p.isActive);
 
-    return profile.withRefreshedImageUrls(freshAvatarUrl, freshLogoUrl, freshSignatureUrl);
+    // Build an enriched profile with fresh image URLs and active-resource flags.
+    return profile.withRefreshedImageUrls(
+      freshAvatarUrl,
+      freshLogoUrl,
+      freshSignatureUrl,
+      hasActiveOffice,
+      hasActiveService,
+    );
   }
 }
