@@ -2,6 +2,61 @@
 
 > Registro cronológico. Una entrada por fase/hito completado.
 
+## 2026-08-04 — Investigación ABIERTA: "Consultas por agendar" vacío para la Dra. Ana María Solano
+
+**Reporte del dueño:** la Dra. Ana María Solano (psicóloga, cuenta de especialista en PROD) entra al
+módulo "Consultas por agendar" y **no le carga nada**. Uno de sus pacientes compró un servicio de
+**5 sesiones**. NO es que no vea el ítem del menú — el módulo abre y sale vacío.
+
+**QUÉ SE DESCARTÓ (con evidencia, no por lectura de código):**
+
+1. **El flujo de booking funciona.** Reproducido end-to-end en staging con Playwright, cuenta
+   `lucas.rivas.55@gmail.com`, servicio nuevo "QA Paquete 5 consultas" (5 sesiones, $20×5=$100,
+   validez 90d):
+   - Camino **"Agendar después"** → `POST /api/book` manda `planId` + `additionalSessions: []` →
+     se crean las **4 preconsultas** (sesiones 2-5, `pending_scheduling`) y **se ven en el módulo**.
+   - Camino **"Agendar ahora"** con las 4 fechas → `additionalSessions` con 4 items → **0
+     preconsultas** + **5 citas** en la Agenda (7/10/11/12/13 ago). Esto **es el diseño**, no un bug:
+     el módulo lista SOLO las sesiones diferidas.
+2. **No es un fallo de carga.** Sentry (`delta-salud-crm`) **cero issues** de pending-consultations
+   en 14d. El BFF loguea a Sentry cuando el backend falla → el endpoint está devolviendo **200 con
+   lista vacía**, o sea las filas NO EXISTEN en la BD.
+3. **No es gating de plan/capabilities.** El ítem del sidebar no tiene `moduleKey` y
+   `planUnlocks(features, undefined)` devuelve `true`; `/doctor/pending-consultations` tampoco
+   matchea ninguna entrada de `PLAN_GATED_ROUTES`.
+4. **No revienta con nulos.** `expires_at` null está contemplado (`ExpiryBadge`), y ni el entity ni
+   el `toDomain` del repo lanzan.
+
+**HIPÓTESIS VIVA (a confirmar mañana):** el servicio de ella tiene **`pricing_plans.sessions_count = 1`**
+(el nombre dice "5 sesiones" y el precio es el total, pero el campo "Sesiones incluidas" quedó en 1).
+El bloque que crea las preconsultas está detrás de
+`if (dto.plan_id && this.pricingPlanRepo && this.createPendingUC)` +
+`if (plan && plan.doctorId === dto.doctor_id && plan.sessionsCount > 1)` en `CreateBookingUseCase` —
+si `sessionsCount` es 1 **se salta EN SILENCIO**: sin error, sin log, sin Sentry. El paciente paga 5
+y el sistema registra 1.
+**Cómo confirmarlo sin credenciales:** abrir su link público `deltasalud.app/book/<su-doctorId>` y
+mirar si el servicio muestra el sub-badge "5 sesiones". Alternativa concluyente: consultar en la BD
+de prod `pricing_plans.sessions_count` + filas de `pending_consultations` de ese paciente.
+
+**DEFECTO REAL encontrado de paso (arreglo SIN COMMITEAR en el working tree, sobre `develop`):**
+`PendingConsultationsClient.tsx` hacía `if (!res.ok) { setItems([]); return }` y
+`catch { setItems([]) }` → **un fallo de carga y un "no hay nada" pintaban la MISMA pantalla vacía**.
+El parche agrega estado `loadError` + banner rojo con "Reintentar". `tsc` limpio. Sin esto es
+imposible que un especialista (o nosotros) distinga "no tengo preconsultas" de "la petición falló".
+
+**Otro hallazgo lateral (NO es la causa, pero es deuda real):** los grupos del sidebar del doctor
+arrancan **colapsados** (`openSections[section.key] ?? false`, `layout.tsx:574`) y solo se auto-abren
+si la ruta activa ya está dentro del grupo; `openSections` es `useState` sin persistencia. Un
+especialista parado en Inicio/Agenda NO ve "Consultas por agendar" hasta clickear "Consultorio".
+Además el contenedor abre con `maxHeight: visibleItems.length * 40px` + `overflow-hidden`, y el
+contenido real mide **225px contra un tope de 240px** — si una etiqueta se va a 2 líneas (zoom,
+fuente grande), el último ítem se corta sin aviso.
+
+**Datos de prueba que quedaron en STAGING** (BD clon, limpiar cuando estorben): servicio "QA Paquete
+5 consultas"; pacientes `QA Preconsultas Cinco` (4 preconsultas) y `QA Agenda Ahora Cinco` (5 citas
+del 7 al 13 de agosto); el consultorio "Unico" quedó en **0 min entre consultas** (se usó para
+validar el fix del buffer).
+
 ## 2026-08-04 — Fix: "Tiempo entre consultas" del consultorio no se guardaba en 0 ✅ EN PRODUCCIÓN
 
 **Promovido el 2026-08-04** por la cadena completa `fix/office-buffer-minutes-cero` → `develop`
