@@ -17,6 +17,7 @@
 
 import { backendPost } from '@/lib/api-client.server';
 import { log } from '@/lib/logger';
+import type { DaySchedule } from '@/lib/schedule-utils';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -90,4 +91,69 @@ export async function submitDoctorRegistration(
     ok: true,
     verificationStatus: result.value.verificationStatus,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Office creation during onboarding (returns the new office id)
+// ---------------------------------------------------------------------------
+
+export interface OnboardingOfficeInput {
+  name: string;
+  address: string;
+  city: string;
+  phone: string;
+  map_url?: string;
+  schedule: DaySchedule[];
+  slot_duration: number;
+  buffer_minutes: number;
+  modality: 'in_person' | 'online' | 'both';
+}
+
+export interface OnboardingOfficeResult {
+  ok: boolean;
+  id?: string;
+  error?: string;
+}
+
+interface BackendOffice {
+  id: string;
+}
+
+/**
+ * Creates the first office during the onboarding wizard.
+ * Returns the new office id on success so the wizard can pass it to step 3.
+ */
+export async function createOfficeForOnboarding(
+  input: OnboardingOfficeInput,
+): Promise<OnboardingOfficeResult> {
+  const result = await backendPost<BackendOffice>('/api/doctor/offices', input);
+  if (!result.ok) {
+    log.error('[createOfficeForOnboarding] backend error', {
+      code: result.error.code,
+      status: result.error.status,
+    });
+    return { ok: false, error: result.error.message };
+  }
+  return { ok: true, id: result.value.id };
+}
+
+// ---------------------------------------------------------------------------
+// Mark onboarding complete
+// ---------------------------------------------------------------------------
+
+/**
+ * Calls POST /api/doctor/onboarding/complete on the backend.
+ * The backend validates ≥1 active office and ≥1 active service exist,
+ * sets onboardingCompleted = true on the profile, and returns 422 if not.
+ */
+export async function completeOnboarding(): Promise<{ ok: boolean; error?: string }> {
+  const result = await backendPost<{ success: boolean }>('/api/doctor/onboarding/complete', {});
+  if (!result.ok) {
+    log.error('[completeOnboarding] backend error', {
+      code: result.error.code,
+      status: result.error.status,
+    });
+    return { ok: false, error: result.error.message };
+  }
+  return { ok: true };
 }

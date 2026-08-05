@@ -84,6 +84,8 @@ describe('TranscribeAudioUseCase', () => {
       findByDoctorId: jest.fn(),
       update: jest.fn(),
       updateExchangeRate: jest.fn(),
+      markOnboardingCompleted: jest.fn().mockResolvedValue(undefined),
+      updateBlocksLayout: jest.fn().mockResolvedValue(undefined),
     };
     mockPlanConfigRepo = { findByKey: jest.fn(), findPermanentPlanForRole: jest.fn() };
 

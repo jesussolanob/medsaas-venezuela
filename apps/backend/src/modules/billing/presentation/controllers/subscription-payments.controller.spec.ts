@@ -6,6 +6,7 @@ import { ListSubscriptionPaymentsUseCase } from '../../application/use-cases/bil
 import { ApproveSubscriptionPaymentUseCase } from '../../application/use-cases/billing/approve-subscription-payment.use-case';
 import { RejectSubscriptionPaymentUseCase } from '../../application/use-cases/billing/reject-subscription-payment.use-case';
 import { GetFinanceStatsUseCase } from '../../application/use-cases/billing/get-finance-stats.use-case';
+import { GetPaymentReceiptUrlUseCase } from '../../application/use-cases/billing/get-payment-receipt-url.use-case';
 import { ZodValidationPipe } from '../../../../presentation/pipes/zod-validation.pipe';
 import { RegisterManualPaymentBodySchema } from '../../application/dtos/billing.dtos';
 import { AppAuthGuard } from '../../../../infrastructure/auth/app-auth.guard';
@@ -61,6 +62,7 @@ describe('SubscriptionPaymentsController — registerManual', () => {
   let approveMock: { execute: jest.Mock };
   let rejectMock: { execute: jest.Mock };
   let financeStatsMock: { execute: jest.Mock };
+  let getReceiptUrlMock: { execute: jest.Mock };
 
   beforeEach(async () => {
     registerManualMock = { execute: jest.fn() };
@@ -68,6 +70,7 @@ describe('SubscriptionPaymentsController — registerManual', () => {
     approveMock = { execute: jest.fn() };
     rejectMock = { execute: jest.fn() };
     financeStatsMock = { execute: jest.fn() };
+    getReceiptUrlMock = { execute: jest.fn() };
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [SubscriptionPaymentsController],
@@ -77,6 +80,7 @@ describe('SubscriptionPaymentsController — registerManual', () => {
         { provide: ApproveSubscriptionPaymentUseCase, useValue: approveMock },
         { provide: RejectSubscriptionPaymentUseCase, useValue: rejectMock },
         { provide: GetFinanceStatsUseCase, useValue: financeStatsMock },
+        { provide: GetPaymentReceiptUrlUseCase, useValue: getReceiptUrlMock },
       ],
     })
       .overrideGuard(AppAuthGuard)

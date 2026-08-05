@@ -200,7 +200,8 @@ describe('AppointmentsController', () => {
       const response = await controller.create(dto as never, mockUser);
 
       expect(response.success).toBe(true);
-      expect(response.data).toBe(appt);
+      // POST now returns toPlainAppointment(appt) — a plain object, not the Appointment instance.
+      expect(response.data).toMatchObject({ id: appt.id, doctorId: appt.doctorId });
       // doctor_id must be the authenticated user, not the one from the body
       expect(mockCreateUseCase.execute).toHaveBeenCalledWith(
         expect.objectContaining({ doctor_id: DOCTOR_ID }),

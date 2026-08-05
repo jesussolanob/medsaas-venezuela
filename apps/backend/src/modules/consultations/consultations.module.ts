@@ -17,6 +17,7 @@ import { GetConsultationByIdUseCase } from './application/use-cases/consultation
 import { GetPatientConsultationHistoryUseCase } from './application/use-cases/consultations/get-patient-consultation-history.use-case';
 import { ListConsultationsUseCase } from './application/use-cases/consultations/list-consultations.use-case';
 import { ListConsultationsWithPatientUseCase } from './application/use-cases/consultations/list-consultations-with-patient.use-case';
+import { BlockContentSanitizer } from './application/block-content-sanitizer';
 
 import { ConsultationsController } from './presentation/controllers/consultations.controller';
 
@@ -38,6 +39,9 @@ import { PatientsModule } from '../patients/patients.module';
       provide: CONSULTATION_REPOSITORY,
       useClass: SequelizeConsultationRepository,
     },
+
+    // Services
+    BlockContentSanitizer,
 
     // Use cases
     CreateConsultationUseCase,

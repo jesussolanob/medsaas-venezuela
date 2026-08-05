@@ -7,6 +7,9 @@
  * Foco: comprobantes de pago pendientes de revisión.
  * Pattern: tabla compacta con acciones inline (aprobar/rechazar) tipo
  * "Approvals queue" del design admin-tabs.jsx.
+ *
+ * WP-F (2026-08): comprobante se abre en pestaña nueva via signed URL on-demand.
+ * Campos añadidos al tipo: bcv_rate, period, bank_code, bank_name, receipt_path.
  */
 
 import { useEffect, useState, useCallback } from 'react';
@@ -18,7 +21,6 @@ import {
   Loader2,
   AlertTriangle,
   Calendar,
-  DollarSign,
   ChevronDown,
   Filter,
 } from 'lucide-react';
@@ -31,10 +33,19 @@ type PaymentRow = {
   amount_usd: number;
   amount_bs: number | null;
   bcv_rate_used: number | null;
+  /** WP-F: alias for bcv_rate_used from new payment model. */
+  bcv_rate?: number | null;
   duration_months: number;
+  /** WP-F: billing period key (monthly|quarterly|semiannual|annual). */
+  period?: string | null;
   method: string;
+  bank_code?: string | null;
+  bank_name?: string | null;
   reference_number: string | null;
-  receipt_url: string | null;
+  /** Old field — may be absent in new payment model. */
+  receipt_url?: string | null;
+  /** WP-F: GCS object path — fetch signed URL on-demand. */
+  receipt_path?: string | null;
   status: 'pending' | 'approved' | 'rejected';
   notes: string | null;
   rejection_reason: string | null;
@@ -69,7 +80,7 @@ export default function AprobacionesPage() {
   const [payments, setPayments] = useState<PaymentRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [actioning, setActioning] = useState<string | null>(null);
-  const [previewId, setPreviewId] = useState<string | null>(null);
+  const [fetchingReceiptId, setFetchingReceiptId] = useState<string | null>(null);
 
   // Counts (para los tabs)
   const [counts, setCounts] = useState({ pending: 0, approved: 0, rejected: 0 });
@@ -97,20 +108,45 @@ export default function AprobacionesPage() {
         approved: (a.payments || []).length,
         rejected: (r.payments || []).length,
       });
-    } catch {}
+    } catch {
+      // counts are best-effort; failures are silent
+    }
   }, []);
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => {
     load();
   }, [load]);
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => {
     loadCounts();
   }, [loadCounts]);
 
+  /**
+   * Fetch a short-lived signed URL for the receipt and open it in a new tab.
+   * Never embeds the URL in the DOM — requested on-demand only.
+   */
+  async function openReceipt(id: string) {
+    setFetchingReceiptId(id);
+    try {
+      const r = await fetch(`/api/admin/subscription-payments/${id}/receipt-url`);
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error || 'No se pudo obtener el comprobante');
+      window.open(j.url as string, '_blank', 'noopener,noreferrer');
+    } catch (e: unknown) {
+      showToast({
+        type: 'error',
+        message: e instanceof Error ? e.message : 'Error al abrir el comprobante',
+      });
+    } finally {
+      setFetchingReceiptId(null);
+    }
+  }
+
   async function approve(id: string, doctorName: string, months: number) {
     if (
       !confirm(
-        `Aprobar pago de ${doctorName}?\nSe extenderá la suscripción por ${months} mes${months > 1 ? 'es' : ''}.`,
+        `Aprobar pago de ${doctorName}?${months > 0 ? `\nSe extenderá la suscripción por ${months} mes${months > 1 ? 'es' : ''}.` : ''}`,
       )
     )
       return;
@@ -126,8 +162,11 @@ export default function AprobacionesPage() {
       showToast({ type: 'success', message: 'Pago aprobado' });
       load();
       loadCounts();
-    } catch (e: any) {
-      showToast({ type: 'error', message: `Error: ${e.message}` });
+    } catch (e: unknown) {
+      showToast({
+        type: 'error',
+        message: e instanceof Error ? `Error: ${e.message}` : 'Error desconocido',
+      });
     } finally {
       setActioning(null);
     }
@@ -147,8 +186,11 @@ export default function AprobacionesPage() {
       showToast({ type: 'success', message: 'Comprobante rechazado' });
       load();
       loadCounts();
-    } catch (e: any) {
-      showToast({ type: 'error', message: `Error: ${e.message}` });
+    } catch (e: unknown) {
+      showToast({
+        type: 'error',
+        message: e instanceof Error ? `Error: ${e.message}` : 'Error desconocido',
+      });
     } finally {
       setActioning(null);
     }
@@ -290,11 +332,11 @@ export default function AprobacionesPage() {
             {payments.map((p) => {
               const fullName = p.profiles?.full_name || 'Doctor/a';
               const specialty = p.profiles?.specialty || '—';
-              const submittedDate = new Date(p.created_at).toLocaleDateString('es-VE', {
+              const submittedDate = new Intl.DateTimeFormat('es-VE', {
                 day: '2-digit',
                 month: 'short',
                 year: 'numeric',
-              });
+              }).format(new Date(p.created_at));
               return (
                 <div
                   key={p.id}
@@ -345,12 +387,25 @@ export default function AprobacionesPage() {
                       <span>{specialty}</span>
                       <span style={{ color: 'var(--dh-gray-300)' }}>·</span>
                       <span style={{ fontFamily: 'var(--dh-font-mono)' }}>${p.amount_usd} USD</span>
-                      <span style={{ color: 'var(--dh-gray-300)' }}>·</span>
-                      <span>
-                        {p.duration_months} mes{p.duration_months > 1 ? 'es' : ''}
-                      </span>
-                      <span style={{ color: 'var(--dh-gray-300)' }}>·</span>
-                      <span className="capitalize">{p.method.replace('_', ' ')}</span>
+                      {(p.bcv_rate ?? p.bcv_rate_used) && (
+                        <>
+                          <span style={{ color: 'var(--dh-gray-300)' }}>·</span>
+                          <span style={{ fontFamily: 'var(--dh-font-mono)' }}>
+                            BCV {(p.bcv_rate ?? p.bcv_rate_used)?.toFixed(2)}
+                          </span>
+                        </>
+                      )}
+                      {p.bank_name ? (
+                        <>
+                          <span style={{ color: 'var(--dh-gray-300)' }}>·</span>
+                          <span>{p.bank_name}</span>
+                        </>
+                      ) : p.method ? (
+                        <>
+                          <span style={{ color: 'var(--dh-gray-300)' }}>·</span>
+                          <span className="capitalize">{p.method.replace('_', ' ')}</span>
+                        </>
+                      ) : null}
                       {p.reference_number && (
                         <>
                           <span style={{ color: 'var(--dh-gray-300)' }}>·</span>
@@ -365,7 +420,7 @@ export default function AprobacionesPage() {
                         className="text-[11px] italic mt-1"
                         style={{ color: 'var(--dh-gray-600)' }}
                       >
-                        "{p.notes}"
+                        &ldquo;{p.notes}&rdquo;
                       </div>
                     )}
                     {p.rejection_reason && (
@@ -389,10 +444,11 @@ export default function AprobacionesPage() {
 
                   {/* Acciones */}
                   <div className="flex items-center gap-2 shrink-0 justify-end">
-                    {p.receipt_url && (
+                    {(p.receipt_path ?? p.receipt_url) && (
                       <button
-                        onClick={() => setPreviewId(p.id)}
-                        className="p-2 rounded-md transition-colors"
+                        onClick={() => openReceipt(p.id)}
+                        disabled={fetchingReceiptId === p.id}
+                        className="p-2 rounded-md transition-colors disabled:opacity-50"
                         style={{ color: 'var(--dh-gray-400)' }}
                         title="Ver comprobante"
                         onMouseEnter={(e) => {
@@ -402,7 +458,11 @@ export default function AprobacionesPage() {
                           e.currentTarget.style.background = 'transparent';
                         }}
                       >
-                        <Eye className="w-4 h-4" />
+                        {fetchingReceiptId === p.id ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <Eye className="w-4 h-4" />
+                        )}
                       </button>
                     )}
                     {tab === 'pending' && (
@@ -419,7 +479,7 @@ export default function AprobacionesPage() {
                           variant="turquoise"
                           size="sm"
                           icon={<CheckCircle2 className="w-3.5 h-3.5" />}
-                          onClick={() => approve(p.id, fullName, p.duration_months)}
+                          onClick={() => approve(p.id, fullName, p.duration_months ?? 0)}
                           disabled={actioning === p.id}
                         >
                           Aprobar
@@ -435,46 +495,7 @@ export default function AprobacionesPage() {
         )}
       </Card>
 
-      {/* Modal preview comprobante */}
-      {previewId && (
-        <div
-          className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4"
-          onClick={() => setPreviewId(null)}
-        >
-          <div
-            className="bg-white shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-hidden flex flex-col"
-            style={{ borderRadius: 'var(--dh-r-lg)' }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div
-              className="p-4 flex items-center justify-between"
-              style={{ borderBottom: '1px solid var(--dh-gray-100)' }}
-            >
-              <h3 className="font-bold" style={{ color: 'var(--dh-ink)' }}>
-                Comprobante de pago
-              </h3>
-              <button
-                onClick={() => setPreviewId(null)}
-                className="p-1.5 rounded-md hover:bg-[var(--dh-gray-50)]"
-                style={{ color: 'var(--dh-gray-400)' }}
-              >
-                <XCircle className="w-5 h-5" />
-              </button>
-            </div>
-            <div
-              className="flex-1 overflow-auto flex items-center justify-center p-4"
-              style={{ background: 'var(--dh-gray-50)' }}
-            >
-              <iframe
-                src={`/api/doctor/subscription/receipt/${previewId}`}
-                title="Comprobante"
-                className="w-full h-[70vh] bg-white"
-                style={{ borderRadius: 'var(--dh-r-md)' }}
-              />
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Comprobante se abre en pestaña nueva via GET /api/admin/subscription-payments/:id/receipt-url */}
     </div>
   );
 }

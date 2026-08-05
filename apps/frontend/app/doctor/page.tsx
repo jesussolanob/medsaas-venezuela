@@ -28,6 +28,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { StatCard, Card } from '@/components/dh';
 import NewAppointmentFlow from '@/components/appointment-flow/NewAppointmentFlow';
+import AppointmentDetailModal from '@/components/doctor/AppointmentDetailModal';
 // L3 (2026-04-29): quick action "Crear paciente" en el dashboard reusa
 // el PatientForm unificado + addPatient action y muestra toast al guardar.
 import PatientForm, { type PatientFormData } from '@/components/patient/PatientForm';
@@ -186,6 +187,8 @@ export default function DoctorDashboard() {
   // "Por confirmar" widget — citas con status=scheduled pendientes de confirmación.
   const [scheduledAppointments, setScheduledAppointments] = useState<ScheduledAppointment[]>([]);
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
+  // Cita seleccionada para ver detalle en AppointmentDetailModal.
+  const [detailApptId, setDetailApptId] = useState<string | null>(null);
 
   // "Registrar ingreso" modal — reutiliza el mismo IncomeModal de /doctor/finances.
   const [showIncomeModal, setShowIncomeModal] = useState(false);
@@ -978,8 +981,18 @@ export default function DoctorDashboard() {
                 return (
                   <div
                     key={apt.id}
-                    className="flex items-center gap-3 p-3 rounded-xl"
+                    className="flex items-center gap-3 p-3 rounded-xl cursor-pointer hover:bg-yellow-50 transition-colors"
                     style={{ background: 'rgba(255,255,255,0.7)', border: '1px solid #fde68a' }}
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`Ver detalles de la cita de ${apt.patientName ?? 'paciente'}`}
+                    onClick={() => setDetailApptId(apt.id)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        setDetailApptId(apt.id);
+                      }
+                    }}
                   >
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-semibold truncate" style={{ color: '#92400e' }}>
@@ -990,7 +1003,11 @@ export default function DoctorDashboard() {
                       </p>
                     </div>
                     <button
-                      onClick={() => void handleConfirmAppointment(apt.id)}
+                      onClick={(e) => {
+                        // Prevent row click from also firing
+                        e.stopPropagation();
+                        void handleConfirmAppointment(apt.id);
+                      }}
                       disabled={isConfirming || confirmingId !== null}
                       className="shrink-0 flex items-center gap-1.5 py-1.5 px-3 rounded-lg text-xs font-bold text-white transition-opacity hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
                       style={{ background: 'var(--dh-turquoise)' }}
@@ -1348,7 +1365,18 @@ export default function DoctorDashboard() {
         </div>
       </div>
 
-      {/* Modal: crear consulta (estilo acordeón) */}
+      {/* AppointmentDetailModal — se abre al hacer click en una cita "Por confirmar" */}
+      {detailApptId && (
+        <AppointmentDetailModal
+          appointmentId={detailApptId}
+          onClose={() => setDetailApptId(null)}
+          onChanged={() => setRefreshKey((k) => k + 1)}
+        />
+      )}
+
+      {/* Modal: crear consulta (estilo acordeón).
+          onSuccess: el modal maneja la navegación internamente (success step).
+          Solo hacemos limpieza aquí y refrescamos el dashboard. */}
       <NewAppointmentFlow
         open={showNewFlow}
         onClose={() => {
@@ -1356,10 +1384,8 @@ export default function DoctorDashboard() {
           setPreselectPatientId(null);
         }}
         onSuccess={() => {
-          setShowNewFlow(false);
           setPreselectPatientId(null);
-          // Tras crear, ir al LISTADO de consultas (sin ?open= → NO abre el editor).
-          router.push('/doctor/consultations');
+          setRefreshKey((k) => k + 1);
         }}
         initialContext={{
           origin: 'dashboard_btn',

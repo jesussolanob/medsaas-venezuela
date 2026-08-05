@@ -26,7 +26,6 @@ import {
   Eye,
   Pause,
   Play,
-  Calendar,
   DollarSign,
   Percent,
   ArrowLeftRight,
@@ -53,10 +52,19 @@ type PaymentRow = {
   amount_usd: number;
   amount_bs: number | null;
   bcv_rate_used: number | null;
+  /** New field (WP-F): BCV rate alias. */
+  bcv_rate?: number | null;
   duration_months: number;
+  /** New field (WP-F): billing period. */
+  period?: string | null;
   method: string;
+  bank_code?: string | null;
+  bank_name?: string | null;
   reference_number: string | null;
-  receipt_url: string | null;
+  /** Old field — may be absent in new payment model. */
+  receipt_url?: string | null;
+  /** New field (WP-F): GCS object path — fetch signed URL on-demand. */
+  receipt_path?: string | null;
   status: 'pending' | 'approved' | 'rejected';
   notes: string | null;
   rejection_reason: string | null;
@@ -759,7 +767,7 @@ function PaymentsTab() {
   const [statusFilter, setStatusFilter] = useState<'pending' | 'approved' | 'rejected'>('pending');
   const [loading, setLoading] = useState(true);
   const [actioning, setActioning] = useState<string | null>(null);
-  const [previewId, setPreviewId] = useState<string | null>(null);
+  const [fetchingReceiptId, setFetchingReceiptId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -776,10 +784,27 @@ function PaymentsTab() {
     load();
   }, [load]);
 
+  async function openReceipt(id: string) {
+    setFetchingReceiptId(id);
+    try {
+      const r = await fetch(`/api/admin/subscription-payments/${id}/receipt-url`);
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error || 'No se pudo obtener el comprobante');
+      window.open(j.url as string, '_blank', 'noopener,noreferrer');
+    } catch (e: unknown) {
+      showToast({
+        type: 'error',
+        message: e instanceof Error ? e.message : 'Error al abrir el comprobante',
+      });
+    } finally {
+      setFetchingReceiptId(null);
+    }
+  }
+
   async function approve(id: string, doctorName: string, months: number) {
     if (
       !confirm(
-        `Aprobar pago de ${doctorName}?\nSe extenderá la suscripción por ${months} mes${months > 1 ? 'es' : ''}.`,
+        `Aprobar pago de ${doctorName}?${months > 0 ? `\nSe extenderá la suscripción por ${months} mes${months > 1 ? 'es' : ''}.` : ''}`,
       )
     )
       return;
@@ -797,8 +822,11 @@ function PaymentsTab() {
         message: `Aprobado. Nueva expiración: ${new Date(j.new_expires_at).toLocaleDateString('es-VE')}`,
       });
       load();
-    } catch (e: any) {
-      showToast({ type: 'error', message: `Error: ${e.message}` });
+    } catch (e: unknown) {
+      showToast({
+        type: 'error',
+        message: e instanceof Error ? `Error: ${e.message}` : 'Error desconocido',
+      });
     } finally {
       setActioning(null);
     }
@@ -817,8 +845,11 @@ function PaymentsTab() {
       if (!r.ok) throw new Error((await r.json()).error);
       showToast({ type: 'success', message: 'Comprobante rechazado' });
       load();
-    } catch (e: any) {
-      showToast({ type: 'error', message: `Error: ${e.message}` });
+    } catch (e: unknown) {
+      showToast({
+        type: 'error',
+        message: e instanceof Error ? `Error: ${e.message}` : 'Error desconocido',
+      });
     } finally {
       setActioning(null);
     }
@@ -874,26 +905,26 @@ function PaymentsTab() {
                           minimumFractionDigits: 2,
                           maximumFractionDigits: 2,
                         })}
-                        {p.bcv_rate_used && (
+                        {(p.bcv_rate ?? p.bcv_rate_used) && (
                           <span className="text-amber-500 ml-1">
-                            (BCV {p.bcv_rate_used.toFixed(2)})
+                            (BCV {(p.bcv_rate ?? p.bcv_rate_used)?.toFixed(2)})
                           </span>
                         )}
                       </span>
                     )}
-                    <span>
-                      <Calendar className="w-3 h-3 inline" /> {p.duration_months} mes
-                      {p.duration_months > 1 ? 'es' : ''}
-                    </span>
-                    <span className="capitalize">{p.method.replace('_', ' ')}</span>
+                    {p.bank_name ? (
+                      <span className="font-medium text-slate-700">{p.bank_name}</span>
+                    ) : p.method ? (
+                      <span className="capitalize">{p.method.replace('_', ' ')}</span>
+                    ) : null}
                     <span className="font-mono">{p.reference_number || '—'}</span>
                     <span className="text-slate-400">
-                      {new Date(p.created_at).toLocaleDateString('es-VE', {
+                      {new Intl.DateTimeFormat('es-VE', {
                         day: '2-digit',
                         month: 'short',
                         hour: '2-digit',
                         minute: '2-digit',
-                      })}
+                      }).format(new Date(p.created_at))}
                     </span>
                   </div>
                   {p.notes && <div className="text-xs text-slate-600 mt-1 italic">"{p.notes}"</div>}
@@ -902,20 +933,25 @@ function PaymentsTab() {
                   )}
                 </div>
                 <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
-                  {p.receipt_url && (
+                  {(p.receipt_path || p.receipt_url) && (
                     <button
-                      onClick={() => setPreviewId(p.id)}
+                      onClick={() => openReceipt(p.id)}
+                      disabled={fetchingReceiptId === p.id}
                       title="Ver comprobante"
-                      className="p-2 text-slate-500 hover:bg-slate-100 rounded-md"
+                      className="p-2 text-slate-500 hover:bg-slate-100 rounded-md disabled:opacity-50 flex items-center gap-1.5 text-xs"
                     >
-                      <Eye className="w-4 h-4" />
+                      {fetchingReceiptId === p.id ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Eye className="w-4 h-4" />
+                      )}
                     </button>
                   )}
                   {p.status === 'pending' && (
                     <>
                       <button
                         onClick={() =>
-                          approve(p.id, p.profiles?.full_name || 'doctor', p.duration_months)
+                          approve(p.id, p.profiles?.full_name || 'doctor', p.duration_months ?? 0)
                         }
                         disabled={actioning === p.id}
                         className="px-3 py-1.5 text-xs font-semibold bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 disabled:opacity-50 flex items-center gap-1"
@@ -938,34 +974,7 @@ function PaymentsTab() {
         )}
       </div>
 
-      {previewId && (
-        <div
-          className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4"
-          onClick={() => setPreviewId(null)}
-        >
-          <div
-            className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-hidden flex flex-col"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="p-4 border-b border-slate-200 flex items-center justify-between">
-              <h3 className="font-bold text-slate-900">Comprobante</h3>
-              <button
-                onClick={() => setPreviewId(null)}
-                className="text-slate-400 hover:text-slate-700"
-              >
-                <XCircle className="w-5 h-5" />
-              </button>
-            </div>
-            <div className="flex-1 overflow-auto bg-slate-100 flex items-center justify-center p-4">
-              <iframe
-                src={`/api/doctor/subscription/receipt/${previewId}`}
-                title="Comprobante"
-                className="w-full h-[70vh] bg-white rounded-md"
-              />
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Comprobante se abre en pestaña nueva via GET /api/admin/subscription-payments/:id/receipt-url */}
     </>
   );
 }

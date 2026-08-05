@@ -1,3 +1,11 @@
+// sanitize-html → htmlparser2@12 (ESM-only). Mock before any import that
+// pulls in BlockContentSanitizer via the UpdateConsultationUseCase chain.
+jest.mock('sanitize-html', () => {
+  const fn = jest.fn((input: string) => input);
+  (fn as unknown as Record<string, unknown>)['default'] = fn;
+  return fn;
+});
+
 import { Test, type TestingModule } from '@nestjs/testing';
 import { ConsultationsController } from './consultations.controller';
 import { CreateConsultationUseCase } from '../../application/use-cases/consultations/create-consultation.use-case';

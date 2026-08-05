@@ -27,8 +27,10 @@ export interface ApproveSubscriptionPaymentOutput {
  * Transactional steps (delegated to the repository):
  *   (a) Mark subscription_payment approved
  *   (b) Extend subscriptions.current_period_end (from max(now, current) + months)
- *   (c) Sync profiles snapshot (subscription_status='active', subscription_expires_at)
- *   (d) Insert subscription_changes_log
+ *   (c) If payment.planKey is set: also change profiles.plan + subscriptions.plan
+ *       within the same transaction (doctor self-service payment for a different plan).
+ *   (d) Sync profiles snapshot (subscription_status='active', subscription_expires_at)
+ *   (e) Insert subscription_changes_log
  *
  * After committing, a non-fatal `payment_approved` email is sent to the doctor.
  * Email failure does NOT roll back the approval — the subscription extension is
@@ -73,6 +75,10 @@ export class ApproveSubscriptionPaymentUseCase {
         paymentId: approved.id,
         reviewerId: input.reviewerId,
         newExpiresAt,
+        // Pass the planKey from the payment (if any) so the repo can atomically
+        // change the doctor's effective plan within the same transaction.
+        // null/undefined → legacy behaviour (extension only, no plan change).
+        newPlanKey: payment.planKey ?? null,
       },
       {
         amountUsd: payment.amountUsd,

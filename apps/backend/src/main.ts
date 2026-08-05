@@ -3,10 +3,16 @@
 import './instrument';
 import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
 
 async function bootstrap(): Promise<void> {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+
+  // Enforce a 512 kb hard cap on all JSON request bodies before any controller
+  // sees the data. This is the outer guard; BlockContentSanitizer also enforces
+  // 300 000 chars at the use-case boundary (defense-in-depth).
+  app.useBodyParser('json', { limit: '512kb' });
 
   const globalPrefix = 'api';
   app.setGlobalPrefix(globalPrefix);

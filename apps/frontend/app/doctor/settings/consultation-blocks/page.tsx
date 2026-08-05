@@ -11,6 +11,8 @@ import {
   GripVertical,
   ArrowLeft,
   Lock,
+  LayoutGrid,
+  LayoutList,
 } from 'lucide-react';
 import { showToast } from '@/components/ui/Toaster';
 
@@ -98,6 +100,8 @@ export default function ConsultationBlocksConfigPage() {
   const [labelDrafts, setLabelDrafts] = useState<Record<string, string>>({});
   const [specialty, setSpecialty] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
+  // WP-E (2026-08): preferred block layout for the consultation editor.
+  const [blockLayout, setBlockLayout] = useState<'tabs' | 'vertical'>('tabs');
 
   async function load() {
     setLoading(true);
@@ -109,6 +113,8 @@ export default function ConsultationBlocksConfigPage() {
       return;
     }
     setSpecialty(j.doctor_specialty);
+    // WP-E: load layout preference (backend may not have it yet, default to 'tabs')
+    setBlockLayout(j.layout === 'vertical' ? 'vertical' : 'tabs');
 
     const catalog: CatalogEntry[] = j.catalog || [];
     const doctorCfg: DoctorConfigEntry[] = j.doctor_config || [];
@@ -232,7 +238,8 @@ export default function ConsultationBlocksConfigPage() {
       const r = await fetch('/api/doctor/consultation-blocks', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ blocks: payload }),
+        // WP-E: include layout preference in the save payload
+        body: JSON.stringify({ blocks: payload, layout: blockLayout }),
       });
       const j = await r.json();
       if (!r.ok) throw new Error(j.error || 'Error al guardar');
@@ -292,6 +299,45 @@ export default function ConsultationBlocksConfigPage() {
           {msg.text}
         </div>
       )}
+
+      {/* WP-E (2026-08): Layout preference */}
+      <div className="bg-white rounded-xl border border-slate-200 p-5 space-y-3">
+        <div>
+          <p className="text-sm font-semibold text-slate-800">Disposición de los bloques</p>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Cómo se muestran las secciones en el editor de consulta. Puede cambiarse puntualmente
+            dentro de cada consulta.
+          </p>
+        </div>
+        <div className="flex gap-3">
+          <button
+            type="button"
+            onClick={() => setBlockLayout('tabs')}
+            className={`flex-1 flex flex-col items-center gap-2 px-4 py-3 rounded-xl border-2 transition-colors ${
+              blockLayout === 'tabs'
+                ? 'border-teal-500 bg-teal-50 text-teal-700'
+                : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
+            }`}
+          >
+            <LayoutGrid className="w-5 h-5" />
+            <span className="text-sm font-semibold">Pestañas</span>
+            <span className="text-xs text-current opacity-70">Horizontal (por defecto)</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setBlockLayout('vertical')}
+            className={`flex-1 flex flex-col items-center gap-2 px-4 py-3 rounded-xl border-2 transition-colors ${
+              blockLayout === 'vertical'
+                ? 'border-teal-500 bg-teal-50 text-teal-700'
+                : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
+            }`}
+          >
+            <LayoutList className="w-5 h-5" />
+            <span className="text-sm font-semibold">Lista</span>
+            <span className="text-xs text-current opacity-70">Columna lateral</span>
+          </button>
+        </div>
+      </div>
 
       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
         <div className="px-5 py-3 border-b border-slate-100 flex items-center justify-between">

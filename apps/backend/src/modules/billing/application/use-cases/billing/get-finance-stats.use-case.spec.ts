@@ -37,8 +37,11 @@ const makeStats = (): FinanceStats => ({
 const makeRepo = (): jest.Mocked<ISubscriptionPaymentRepository> =>
   ({
     list: jest.fn(),
+    listByDoctor: jest.fn(),
     findById: jest.fn(),
+    findPendingByDoctor: jest.fn(),
     save: jest.fn(),
+    saveDoctorPayment: jest.fn(),
     approveAndExtend: jest.fn(),
     saveApprovedAndExtend: jest.fn(),
     reject: jest.fn(),

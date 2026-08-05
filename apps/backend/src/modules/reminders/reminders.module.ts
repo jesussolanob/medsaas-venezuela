@@ -5,8 +5,10 @@ import { RemindersSettingsModel } from './infrastructure/database/models/reminde
 import { RemindersQueueModel } from './infrastructure/database/models/reminders-queue.model';
 import { SequelizeRemindersSettingsRepository } from './infrastructure/database/repositories/sequelize-reminders-settings.repository';
 import { SequelizeRemindersQueueRepository } from './infrastructure/database/repositories/sequelize-reminders-queue.repository';
+import { SequelizeDoctorInactivityRepository } from './infrastructure/database/repositories/sequelize-doctor-inactivity.repository';
 import { REMINDERS_SETTINGS_REPOSITORY } from './domain/repositories/reminders-settings.repository';
 import { REMINDERS_QUEUE_REPOSITORY } from './domain/repositories/reminders-queue.repository';
+import { DOCTOR_INACTIVITY_REPOSITORY } from './domain/repositories/doctor-inactivity.repository';
 
 import { GetRemindersSettingsUseCase } from './application/use-cases/reminders/get-reminders-settings.use-case';
 import { UpsertRemindersSettingsUseCase } from './application/use-cases/reminders/upsert-reminders-settings.use-case';
@@ -14,6 +16,7 @@ import { GetDoctorRemindersQueueUseCase } from './application/use-cases/reminder
 import { GetAdminRemindersQueueUseCase } from './application/use-cases/reminders/get-admin-reminders-queue.use-case';
 import { SendAppointmentReminderEmailUseCase } from './application/use-cases/reminders/send-appointment-reminder-email.use-case';
 import { DispatchDueRemindersUseCase } from './application/use-cases/reminders/dispatch-due-reminders.use-case';
+import { DispatchDoctorInactivityNoticesUseCase } from './application/use-cases/reminders/dispatch-doctor-inactivity-notices.use-case';
 
 import { DoctorRemindersController } from './presentation/controllers/doctor-reminders.controller';
 import { AdminRemindersController } from './presentation/controllers/admin-reminders.controller';
@@ -50,6 +53,13 @@ import { PendingConsultationsModule } from '../pending-consultations/pending-con
  *   - PATIENT_REPOSITORY      → PatientsModule (exported)
  *   - DOCTOR_PROFILE_REPOSITORY → DoctorSettingsModule (exported)
  *   - MailerService           → EmailModule (exported)
+ *
+ * DispatchDoctorInactivityNoticesUseCase requires:
+ *   - DOCTOR_INACTIVITY_REPOSITORY → registered locally (raw SQL, no model —
+ *     same pattern as SequelizeLoginTouchRepository, avoids a `profiles`
+ *     model registration collision)
+ *   - MailerService  → EmailModule (exported)
+ *   - ConfigService  → global (registered in AppModule)
  */
 @Module({
   imports: [
@@ -72,6 +82,10 @@ import { PendingConsultationsModule } from '../pending-consultations/pending-con
       provide: REMINDERS_QUEUE_REPOSITORY,
       useClass: SequelizeRemindersQueueRepository,
     },
+    {
+      provide: DOCTOR_INACTIVITY_REPOSITORY,
+      useClass: SequelizeDoctorInactivityRepository,
+    },
 
     // Use cases
     GetRemindersSettingsUseCase,
@@ -80,6 +94,7 @@ import { PendingConsultationsModule } from '../pending-consultations/pending-con
     GetAdminRemindersQueueUseCase,
     SendAppointmentReminderEmailUseCase,
     DispatchDueRemindersUseCase,
+    DispatchDoctorInactivityNoticesUseCase,
   ],
 })
 export class RemindersModule {}

@@ -66,3 +66,6 @@ coverage-report/
 /local-*.png
 /verify-*.png
 /qa-*.png
+
+# Binario local de Cloud SQL Auth Proxy (no versionar)
+cloud-sql-proxy

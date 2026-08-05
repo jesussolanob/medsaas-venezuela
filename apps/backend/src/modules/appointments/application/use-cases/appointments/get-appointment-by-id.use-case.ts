@@ -19,14 +19,15 @@ export class GetAppointmentByIdUseCase {
   ) {}
 
   async execute(input: GetAppointmentByIdInput): Promise<Appointment> {
-    const appointment = await this.appointmentRepo.findById(input.appointmentId);
+    // findByIdScopedEnriched enforces ownership at the SQL level (WHERE doctor_id = :doctorId)
+    // AND enriches the response with consultationCode, paymentStatus, and officeName via JOIN.
+    // Returns null for non-existent appointments AND for appointments owned by another doctor —
+    // anti-IDOR (same 404 response, no enumeration).
+    const appointment = await this.appointmentRepo.findByIdScopedEnriched(
+      input.appointmentId,
+      input.doctorId,
+    );
     if (!appointment) {
-      throw new AppointmentNotFoundError(input.appointmentId);
-    }
-
-    // Anti-IDOR + anti-enumeración: una cita de otro doctor se trata como
-    // inexistente (mismo error que not-found), para no revelar su existencia.
-    if (!appointment.canBeModifiedBy(input.doctorId)) {
       throw new AppointmentNotFoundError(input.appointmentId);
     }
 

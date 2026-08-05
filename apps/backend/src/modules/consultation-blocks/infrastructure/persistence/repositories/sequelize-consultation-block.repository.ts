@@ -112,6 +112,26 @@ export class SequelizeConsultationBlockRepository implements IConsultationBlockR
     return profile?.specialty ?? null;
   }
 
+  // ── getDoctorLayout ───────────────────────────────────────────────────────
+
+  async getDoctorLayout(doctorId: string): Promise<'tabs' | 'vertical'> {
+    const profile = await this.profileModel.findByPk(doctorId, {
+      attributes: ['consultation_blocks_layout'],
+    });
+    const raw = (profile as unknown as { consultation_blocks_layout?: string | null })
+      ?.consultation_blocks_layout;
+    return raw === 'vertical' ? 'vertical' : 'tabs';
+  }
+
+  // ── setDoctorLayout ───────────────────────────────────────────────────────
+
+  async setDoctorLayout(doctorId: string, layout: 'tabs' | 'vertical'): Promise<void> {
+    await this.profileModel.update(
+      { consultationBlocksLayout: layout } as Record<string, unknown>,
+      { where: { id: doctorId } },
+    );
+  }
+
   // ── replaceDoctorBlocks ───────────────────────────────────────────────────
 
   async replaceDoctorBlocks(params: SaveDoctorBlocksParams): Promise<number> {

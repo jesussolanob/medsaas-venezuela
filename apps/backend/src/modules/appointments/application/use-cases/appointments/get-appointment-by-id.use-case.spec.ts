@@ -43,10 +43,12 @@ function makeAppointment(overrides: Partial<AppointmentCreateParams> = {}): Appo
   });
 }
 
-function makeRepo(appointment: Appointment | null): jest.Mocked<IAppointmentRepository> {
+function makeRepo(scopedResult: Appointment | null): jest.Mocked<IAppointmentRepository> {
   return {
-    findById: jest.fn().mockResolvedValue(appointment),
-    findByIdForDoctor: jest.fn().mockResolvedValue(appointment),
+    findById: jest.fn(),
+    findByIdForDoctor: jest.fn(),
+    // New anti-IDOR method: enforces ownership at the SQL WHERE level.
+    findByIdScopedEnriched: jest.fn().mockResolvedValue(scopedResult),
     list: jest.fn(),
     save: jest.fn(),
     updateStatus: jest.fn(),
@@ -75,7 +77,8 @@ describe('GetAppointmentByIdUseCase', () => {
     const result = await useCase.execute({ appointmentId: APPT_ID, doctorId: DOCTOR_ID });
 
     expect(result).toBe(appt);
-    expect(repo.findById).toHaveBeenCalledWith(APPT_ID);
+    // The anti-IDOR path uses findByIdScopedEnriched (filters by doctorId in SQL WHERE).
+    expect(repo.findByIdScopedEnriched).toHaveBeenCalledWith(APPT_ID, DOCTOR_ID);
   });
 
   it('throws AppointmentNotFoundError when appointment does not exist', async () => {
@@ -88,12 +91,14 @@ describe('GetAppointmentByIdUseCase', () => {
   });
 
   it('throws AppointmentNotFoundError (anti-enumeration) when actor is not the owning doctor', async () => {
-    const appt = makeAppointment({ doctorId: DOCTOR_ID });
-    const repo = makeRepo(appt);
+    // When another doctor queries an appointment they don't own, findByIdScopedEnriched
+    // returns null (SQL WHERE a.doctor_id = :doctorId excludes cross-doctor results).
+    const repo = makeRepo(null);
     const useCase = new GetAppointmentByIdUseCase(repo);
 
     await expect(
       useCase.execute({ appointmentId: APPT_ID, doctorId: 'another-doctor' }),
     ).rejects.toBeInstanceOf(AppointmentNotFoundError);
+    expect(repo.findByIdScopedEnriched).toHaveBeenCalledWith(APPT_ID, 'another-doctor');
   });
 });

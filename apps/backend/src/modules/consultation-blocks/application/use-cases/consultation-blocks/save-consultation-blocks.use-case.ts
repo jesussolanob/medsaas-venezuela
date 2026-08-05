@@ -51,8 +51,9 @@ export class SaveConsultationBlocksUseCase {
       }
     }
 
-    // Persist: atomic DELETE + INSERT in a single transaction
-    const count = await this.repo.replaceDoctorBlocks({
+    // Persist blocks and (optionally) layout concurrently.
+    // The layout update is independent of the block replace transaction.
+    const blockSavePromise = this.repo.replaceDoctorBlocks({
       doctorId,
       blocks: blocks.map((b, idx) => ({
         blockKey: b.block_key,
@@ -65,6 +66,11 @@ export class SaveConsultationBlocksUseCase {
         sendToPatient: b.send_to_patient ?? null,
       })),
     });
+
+    const layoutSavePromise =
+      dto.layout != null ? this.repo.setDoctorLayout(doctorId, dto.layout) : Promise.resolve();
+
+    const [count] = await Promise.all([blockSavePromise, layoutSavePromise]);
 
     return { success: true, blocks_saved: count };
   }

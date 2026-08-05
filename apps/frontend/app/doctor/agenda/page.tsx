@@ -35,6 +35,8 @@ import {
   buildPackageTotalSessionsMap,
 } from './actions'; // MIGRATED: appointments → NestJS backend
 import NewAppointmentFlow from '@/components/appointment-flow/NewAppointmentFlow';
+import AppointmentDetailModal from '@/components/doctor/AppointmentDetailModal';
+import type { RescheduleRequest } from '@/components/doctor/AppointmentDetailModal';
 import { toLocalHHMM, toLocalYMD } from '@/lib/timezone';
 import { showToast } from '@/components/ui/Toaster';
 import { reportError } from '@/lib/report-error';
@@ -334,11 +336,6 @@ export default function AgendaPage() {
   const [rescheduleTime, setRescheduleTime] = useState<string | null>(null);
   const [rescheduleWeekOffset, setRescheduleWeekOffset] = useState(0);
   const [detailAppt, setDetailAppt] = useState<CalendarAppointment | null>(null);
-  const [detailStatus, setDetailStatus] = useState<{
-    consulta: string | null;
-    pago: string | null;
-  }>({ consulta: null, pago: null });
-  const [showConfigPanel, setShowConfigPanel] = useState(false);
   // F1 (2026-04-29): tipo restringido a las 3 opciones visibles en los chips.
   const [statusFilter, setStatusFilter] = useState<'all' | 'scheduled' | 'confirmed'>('all');
   // L2 (2026-04-29): filtro adicional por estado de pago (consulta vinculada).
@@ -359,37 +356,6 @@ export default function AgendaPage() {
     appt: CalendarAppointment;
   } | null>(null);
 
-  // Deriva el estado de consulta y pago directamente de detailAppt.
-  // El endpoint GET /api/appointments/:id/detail no existe en el backend (Etapa 1).
-  // Los datos ya vienen en la lista vía LEFT JOIN a consultations:
-  //   - detailAppt.status    → estado clínico (completed = atendida, no_show, cancelled, etc.)
-  //   - detailAppt.payment_status → estado de pago de la consulta vinculada ('pending'|'approved'|null)
-  // No se requiere fetch adicional al abrir el modal.
-  useEffect(() => {
-    if (!detailAppt) {
-      setDetailStatus({ consulta: null, pago: null });
-      return;
-    }
-    // Estado de consulta: se deriva del status de la cita.
-    // Si hay una consulta vinculada (consultation_id presente) Y el status es terminal
-    // (completed / no_show / cancelled), usamos ese valor.
-    // Si hay consulta pero la cita es scheduled/confirmed → la consulta existe pero
-    // aún no está cerrada → mostramos 'pending' (en curso).
-    // Si no hay consultation_id, no hay consulta vinculada → null.
-    let consulta: string | null = null;
-    if (detailAppt.consultation_id) {
-      const terminalStatuses = ['completed', 'no_show', 'cancelled'];
-      if (terminalStatuses.includes(detailAppt.status)) {
-        consulta = detailAppt.status;
-      } else {
-        consulta = 'pending';
-      }
-    }
-    setDetailStatus({
-      consulta,
-      pago: detailAppt.payment_status ?? null,
-    });
-  }, [detailAppt]);
   const [statusReason, setStatusReason] = useState('');
   const [statusSaving, setStatusSaving] = useState(false);
 
@@ -2109,334 +2075,33 @@ export default function AgendaPage() {
           )}
         </div>
 
-        {/* ═══ APPOINTMENT DETAIL MODAL ═══ */}
+        {/* ═══ APPOINTMENT DETAIL MODAL ═══
+             Extraído a AppointmentDetailModal (agosto 2026).
+             Hace su propio fetch a GET /api/doctor/appointments/:id para obtener
+             el teléfono completo y no muestra appointment_code. */}
         {detailAppt && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 space-y-4">
-              <div className="flex items-center justify-between">
-                <h2 className="text-lg font-bold text-slate-900">Detalles de cita</h2>
-                <button
-                  onClick={() => setDetailAppt(null)}
-                  className="text-slate-400 hover:text-slate-600"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-
-              <div className="space-y-3">
-                <div>
-                  <p className="text-xs font-semibold text-slate-500 uppercase">Paciente</p>
-                  <p className="text-lg font-bold text-slate-900 mt-1">{detailAppt.patient_name}</p>
-                  {detailAppt.patient_phone && (
-                    <p className="text-xs text-slate-500 mt-0.5">{detailAppt.patient_phone}</p>
-                  )}
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <p className="text-xs font-semibold text-slate-500 uppercase">Fecha</p>
-                    <p className="text-sm font-semibold text-slate-700 mt-1">
-                      {new Date(detailAppt.isoDate).toLocaleDateString('es-VE')}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-xs font-semibold text-slate-500 uppercase">Horario</p>
-                    <p className="text-sm font-semibold text-slate-700 mt-1">
-                      {detailAppt.time} – {detailAppt.endTime}
-                    </p>
-                  </div>
-                </div>
-
-                {(detailAppt.consultation_code || detailAppt.appointment_code) && (
-                  <div className="grid grid-cols-2 gap-3">
-                    {/* consultation_code (DLT-YYYYMM-NNNN) toma prioridad visual.
-                        Si no viene en la lista (el backend aún no lo expone en /api/appointments),
-                        se muestra el código de cita. El código completo de consulta
-                        está disponible dentro de «Ir a consulta». */}
-                    {detailAppt.consultation_code ? (
-                      <div>
-                        <p className="text-xs font-semibold text-slate-500 uppercase">
-                          Código consulta
-                        </p>
-                        <p className="text-sm font-mono text-teal-600 mt-1">
-                          {detailAppt.consultation_code}
-                        </p>
-                      </div>
-                    ) : detailAppt.appointment_code ? (
-                      <div>
-                        <p className="text-xs font-semibold text-slate-500 uppercase">
-                          Código cita
-                        </p>
-                        <p className="text-sm font-mono text-slate-600 mt-1">
-                          {detailAppt.appointment_code}
-                        </p>
-                      </div>
-                    ) : null}
-                    {/* Mostrar código de cita en columna secundaria solo si
-                        también existe el de consulta (ambos presentes). */}
-                    {detailAppt.consultation_code && detailAppt.appointment_code && (
-                      <div>
-                        <p className="text-xs font-semibold text-slate-500 uppercase">
-                          Código cita
-                        </p>
-                        <p className="text-sm font-mono text-slate-400 mt-1">
-                          {detailAppt.appointment_code}
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {detailAppt.chief_complaint && (
-                  <div>
-                    <p className="text-xs font-semibold text-slate-500 uppercase">Motivo</p>
-                    <p className="text-sm text-slate-700 mt-1">{detailAppt.chief_complaint}</p>
-                  </div>
-                )}
-
-                {detailAppt.plan_name && (
-                  <div className="flex items-center gap-3">
-                    <span className="text-xs text-slate-500">{detailAppt.plan_name}</span>
-                    {detailAppt.plan_price != null && (
-                      <span className="text-sm font-bold text-emerald-600">
-                        ${detailAppt.plan_price}
-                      </span>
-                    )}
-                  </div>
-                )}
-
-                {/* 3 estados separados: Cita, Consulta, Pago */}
-                <div className="grid grid-cols-3 gap-2 bg-slate-50 rounded-xl p-3">
-                  <div>
-                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-                      Cita
-                    </p>
-                    {/* RONDA 19c — usa el mismo helper de estilo que las cards de la agenda */}
-                    {(() => {
-                      const sty = getApptStyle(detailAppt.status);
-                      const Icon = sty.Icon;
-                      // Override fino para "rescheduled" que no esta en el helper
-                      if ((detailAppt.status as string) === 'rescheduled') {
-                        return (
-                          <span className="inline-flex items-center gap-1 mt-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-violet-50 text-violet-700 border border-violet-200">
-                            <RefreshCw className="w-3 h-3" /> Reagendada
-                          </span>
-                        );
-                      }
-                      return (
-                        <span
-                          className={`inline-flex items-center gap-1 mt-1 text-[10px] font-bold px-2 py-0.5 rounded-full ${sty.badge}`}
-                        >
-                          <Icon className="w-3 h-3" /> {sty.badgeLabel}
-                        </span>
-                      );
-                    })()}
-                  </div>
-                  <div>
-                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-                      Consulta
-                    </p>
-                    <span
-                      className={`inline-block mt-1 text-[10px] font-semibold px-2 py-0.5 rounded-full border ${
-                        detailStatus.consulta === 'completed'
-                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                          : detailStatus.consulta === 'no_show'
-                            ? 'bg-orange-50 text-orange-700 border-orange-200'
-                            : detailStatus.consulta === 'in_progress'
-                              ? 'bg-blue-50 text-blue-700 border-blue-200'
-                              : detailStatus.consulta === 'cancelled'
-                                ? 'bg-red-50 text-red-700 border-red-200'
-                                : detailStatus.consulta === 'pending'
-                                  ? 'bg-slate-100 text-slate-600 border-slate-200'
-                                  : 'bg-slate-50 text-slate-400 border-slate-200'
-                      }`}
-                    >
-                      {detailStatus.consulta === 'completed'
-                        ? 'Atendida'
-                        : detailStatus.consulta === 'no_show'
-                          ? 'No asistió'
-                          : detailStatus.consulta === 'in_progress'
-                            ? 'En curso'
-                            : detailStatus.consulta === 'cancelled'
-                              ? 'Cancelada'
-                              : detailStatus.consulta === 'pending'
-                                ? 'Pendiente'
-                                : detailStatus.consulta || 'Sin consulta'}
-                    </span>
-                  </div>
-                  <div>
-                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-                      Pago
-                    </p>
-                    <span
-                      className={`inline-block mt-1 text-[10px] font-semibold px-2 py-0.5 rounded-full border ${
-                        detailStatus.pago === 'approved'
-                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                          : detailStatus.pago === 'pending'
-                            ? 'bg-amber-50 text-amber-700 border-amber-200'
-                            : 'bg-slate-50 text-slate-400 border-slate-200'
-                      }`}
-                    >
-                      {detailStatus.pago === 'approved'
-                        ? 'Aprobado'
-                        : detailStatus.pago === 'pending'
-                          ? 'Pendiente'
-                          : detailStatus.pago || 'Sin pago'}
-                    </span>
-                  </div>
-                </div>
-                <p className="text-[11px] text-slate-500 mt-2">
-                  Usa el botón «Ir a consulta» para ver el detalle completo y gestionar el pago.
-                </p>
-
-                {/* Google Meet link */}
-                {detailAppt.meet_link && (
-                  <div className="bg-gradient-to-r from-teal-50 to-cyan-50 border border-teal-200 rounded-xl p-3">
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-2">
-                        <svg
-                          className="w-5 h-5 text-teal-600"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        >
-                          <polygon points="23 7 16 12 23 17 23 7" />
-                          <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
-                        </svg>
-                        <div>
-                          <p className="text-sm font-semibold text-teal-700">Google Meet</p>
-                          <p className="text-xs text-teal-500">Videollamada activa</p>
-                        </div>
-                      </div>
-                      <a
-                        href={detailAppt.meet_link}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="bg-teal-500 hover:bg-teal-600 text-white font-semibold text-xs px-3 py-1.5 rounded-lg transition-colors"
-                      >
-                        Abrir Meet
-                      </a>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* ═══ ACCIONES DE LA CITA (solo cita: confirmar y cancelar) ═══ */}
-              {detailAppt.status !== 'completed' && detailAppt.status !== 'cancelled' && (
-                <div className="pt-3 border-t border-slate-100 space-y-2">
-                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                    Acciones de la cita
-                  </p>
-                  <div className="flex flex-wrap gap-2">
-                    {detailAppt.status === 'scheduled' && (
-                      <button
-                        onClick={async () => {
-                          const apptId = detailAppt.appointment_id || detailAppt.id;
-                          const r = await fetch('/api/doctor/appointment-status', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                              appointment_id: apptId,
-                              new_status: 'confirmed',
-                            }),
-                          });
-                          const j = await r.json();
-                          if (!r.ok) {
-                            showToast({ type: 'error', message: j.error || 'Error' });
-                            return;
-                          }
-                          setDetailAppt({ ...detailAppt, status: 'confirmed' });
-                          showToast({ type: 'success', message: 'Cita confirmada' });
-                          await loadData();
-                        }}
-                        className="flex items-center gap-1 px-3 py-1.5 bg-teal-50 hover:bg-teal-100 text-teal-700 text-xs font-bold rounded-lg border border-teal-200"
-                      >
-                        <CheckCircle className="w-3.5 h-3.5" /> Confirmar cita
-                      </button>
-                    )}
-                    {!(detailAppt.source === 'consultation' && !detailAppt.appointment_id) && (
-                      <button
-                        onClick={() => setStatusAction({ type: 'cancelled', appt: detailAppt })}
-                        className="flex items-center gap-1 px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 text-xs font-bold rounded-lg border border-red-200"
-                      >
-                        Cancelar cita
-                      </button>
-                    )}
-                    {(detailAppt.status === 'scheduled' || detailAppt.status === 'confirmed') &&
-                      !(detailAppt.source === 'consultation' && !detailAppt.appointment_id) && (
-                        <button
-                          onClick={() => {
-                            setRescheduling({
-                              id: detailAppt.appointment_id || detailAppt.id,
-                              patient_name: detailAppt.patient_name,
-                              patient_phone: detailAppt.patient_phone ?? null,
-                              patient_email: detailAppt.patient_email ?? null,
-                              patient_cedula: detailAppt.patient_cedula ?? null,
-                              scheduled_at: detailAppt.isoDate,
-                              chief_complaint: detailAppt.chief_complaint ?? null,
-                              plan_name: detailAppt.plan_name ?? null,
-                              plan_price: detailAppt.plan_price ?? null,
-                              status: detailAppt.status,
-                            });
-                            setDetailAppt(null);
-                          }}
-                          className="flex items-center gap-1 px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-700 text-xs font-bold rounded-lg border border-amber-200"
-                        >
-                          <Calendar className="w-3.5 h-3.5" /> Reagendar
-                        </button>
-                      )}
-                  </div>
-                  <p className="text-[11px] text-slate-500 italic mt-2">
-                    💡 El estado de la <strong>consulta</strong> (atendida / no asistió) y del{' '}
-                    <strong>pago</strong>
-                    se gestionan dentro de la consulta: usa "Ir a consulta" abajo.
-                  </p>
-                </div>
-              )}
-
-              <div className="flex gap-2 pt-4">
-                <button
-                  onClick={() => {
-                    // Open the linked consultation. For consultation-source rows the id
-                    // is already the consultation id; for appointment-source use the
-                    // consultation_id FK (present once the appointment is confirmed).
-                    const consultaId =
-                      detailAppt.consultation_id ??
-                      (detailAppt.source === 'consultation' ? detailAppt.id : null);
-                    if (consultaId) {
-                      router.push(`/doctor/consultations?open=${consultaId}`);
-                    } else {
-                      showToast({
-                        type: 'info',
-                        message: 'Confirma la cita para generar su consulta.',
-                      });
-                      router.push('/doctor/consultations');
-                    }
-                    setDetailAppt(null);
-                  }}
-                  className="flex-1 py-2 g-bg rounded-lg text-sm font-bold text-white hover:opacity-90 flex items-center justify-center gap-2"
-                >
-                  <Stethoscope className="w-4 h-4" />
-                  Ir a consulta
-                </button>
-                <button
-                  onClick={() => setConfirmDelete(detailAppt)}
-                  className="py-2 px-3 border border-red-200 rounded-lg text-sm font-semibold text-red-500 hover:bg-red-50 flex items-center justify-center gap-1"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-                <button
-                  onClick={() => setDetailAppt(null)}
-                  className="flex-1 py-2 border border-slate-200 rounded-lg text-sm font-semibold text-slate-600 hover:bg-slate-50"
-                >
-                  Cerrar
-                </button>
-              </div>
-            </div>
-          </div>
+          <AppointmentDetailModal
+            appointmentId={detailAppt.appointment_id ?? detailAppt.id}
+            onClose={() => setDetailAppt(null)}
+            onChanged={() => {
+              void loadData();
+            }}
+            onReschedule={(req: RescheduleRequest) => {
+              setRescheduling({
+                id: req.id,
+                patient_name: req.patientName,
+                patient_phone: req.patientPhone,
+                patient_email: req.patientEmail,
+                patient_cedula: req.patientCedula,
+                scheduled_at: req.scheduledAt,
+                chief_complaint: req.chiefComplaint,
+                plan_name: req.planName,
+                plan_price: req.planPrice,
+                status: req.status,
+              });
+              setDetailAppt(null);
+            }}
+          />
         )}
 
         {/* ═══ STATUS ACTION MODAL (marcar atendida / cancelar / no asistió) ═══ */}

@@ -6,6 +6,7 @@ import {
   IConsultationRepository,
   CONSULTATION_REPOSITORY,
 } from '../../../domain/repositories/consultation.repository';
+import { BlockContentSanitizer } from '../../block-content-sanitizer';
 
 export interface UpdateConsultationInput {
   consultationId: string;
@@ -47,6 +48,7 @@ export class UpdateConsultationUseCase {
   constructor(
     @Inject(CONSULTATION_REPOSITORY)
     private readonly repo: IConsultationRepository,
+    private readonly sanitizer: BlockContentSanitizer,
   ) {}
 
   async execute(input: UpdateConsultationInput): Promise<Consultation> {
@@ -62,12 +64,22 @@ export class UpdateConsultationUseCase {
       throw new ConsultationNotOwnedError();
     }
 
+    // Sanitize any HTML inside the blocks snapshot before persisting.
+    // Recurses into nested arrays/objects so list items are sanitized too.
+    // Non-string leaf values (numbers, booleans, null) pass through unchanged.
+    // Also validates the 300 KB size cap (throws BlocksSnapshotTooLargeError on excess)
+    // and the recursion depth cap (throws BlocksSnapshotTooDeepError on excess).
+    const sanitizedSnapshot =
+      input.blocksSnapshot != null
+        ? this.sanitizer.sanitizeSnapshot(input.blocksSnapshot)
+        : input.blocksSnapshot;
+
     return this.repo.update(input.consultationId, input.doctorId, {
       chiefComplaint: input.chiefComplaint,
       diagnosis: input.diagnosis,
       treatment: input.treatment,
       notes: input.notes,
-      blocksSnapshot: input.blocksSnapshot,
+      blocksSnapshot: sanitizedSnapshot,
       blocksStructure: input.blocksStructure,
     });
   }
