@@ -3045,3 +3045,79 @@ el código ya dice `"Delta Salud"` (quedó atrás en el rebranding). El hook de 
 `develop` corre `nx affected --target=test`, así que **cualquier commit que toque el
 backend se bloquea** y hay que usar `--no-verify`. Vale la pena arreglar al menos la
 obsoleta.
+
+---
+
+## 2026-08-05 — Lote de mejoras de agosto (10 pedidos del dueño)
+
+Lote pedido el 04/08. La sesión que lo implementó se cortó por un reinicio de la
+máquina y **quedó todo sin commitear**; esta sesión lo auditó, completó lo que
+faltaba, lo revisó y lo promovió.
+
+**Estado al retomar:** 9 de los 10 puntos estaban implementados en el working tree,
+sin un solo commit. El punto 5 tenía **solo la migración**, sin use case ni endpoint.
+Y el build del backend **estaba roto**: `main.ts` importaba `json` de `express`, que
+no es dependencia declarada (llega transitivamente por `@nestjs/platform-express` y
+pnpm no la hoistea). Se reemplazó por `app.useBodyParser('json', { limit: '512kb' })`,
+la API nativa de Nest 11 — mismo efecto, sin dependencia nueva.
+
+**Los 10 puntos:**
+
+1. Modal de cita sin código de cita y con teléfono completo del paciente.
+2. El mismo modal se abre desde las consultas por confirmar del inicio.
+3. Botón para ir directo al detalle tras crear una consulta.
+4. Fecha de la consulta visible en su detalle.
+5. Cron de reactivación por inactividad (10 y 15 días) — **construido en esta sesión**.
+6. Editor con formato (TipTap) en los bloques de texto abierto. El PDF sigue plano.
+7. Disposición de bloques configurable (pestañas o vertical), alternable en la consulta.
+8. Apertura directa del detalle de consulta desde el detalle del paciente.
+9. Onboarding exige consultorio + servicio para quedar operativo de una.
+10. Pago del plan dentro de la app (monto en Bs a tasa BCV, comprobante, banco y referencia).
+
+**Revisiones (equipo de agentes):** `security-agent` → APROBADO, 0 CRITICAL / 0 HIGH.
+`code-reviewer` → aprobado con observaciones.
+
+**Hallazgos arreglados antes de promover:**
+
+- Carrera en "un pago pendiente por especialista": había `SELECT` + `INSERT` sin lock ni
+  constraint. Se agregó índice único parcial `uq_subscription_payments_one_pending_per_doctor`
+  a la migración `20260805000002`, que **primero resuelve duplicados preexistentes** (una
+  migración rota bloquea TODOS los despliegues porque corren antes del build). La violación
+  de unicidad se traduce a `PendingPaymentExistsError` **en el repositorio**, no en el use
+  case — patrón que ya usaban `sequelize-patient`, `sequelize-identity` y `sequelize-admin`.
+- El sanitizador de bloques no recursaba en arrays: los ítems de lista se guardaban crudos.
+  XSS almacenado latente (hoy React los renderiza seguros, pero salía por PDF y correo).
+  Ahora recorre estructuras anidadas con tope de profundidad.
+- Faltaban validaciones Zod en los query params del checkout.
+
+**Hallazgos DESCARTADOS por el lead (no son deuda, son ruido):**
+
+- `BankCodeSchema` "es un `z.string()` pelado" (`code-reviewer`) → **falso positivo**. Ya
+  valida con `.refine()` contra un `Set` con los 25 códigos del BCV. Los dos agentes se
+  contradecían y el de seguridad tenía razón. Verificado a mano.
+
+**DEUDA DIFERIDA (registrada a propósito, no olvidada):**
+
+- `GetDoctorProfileUseCase` suma 2 queries por llamada (`hasActiveOffice` / `hasActiveService`).
+  El `code-reviewer` lo marcó HIGH; se bajó a deuda: el endpoint se llama desde el dashboard
+  y configuración, no en cada navegación, y hoy son decenas de doctores. Si el volumen sube,
+  cachear las flags en columnas de `profiles`.
+- `hasActiveOffice`/`hasActiveService` viven en la entidad de dominio en vez de un read-model.
+  Consistente con `consultationCode` en `Appointment.entity.ts`.
+- `PlanPaymentModal.tsx` (687 líneas) y `AppointmentDetailModal.tsx` (644) piden partirse.
+
+**Migraciones nuevas (3):** `20260805000001` (soporte backend del lote, incluye
+`consultation_blocks_layout`) · `20260805000002` (checkout del especialista + índice único)
+· `20260805000003` (estado de inactividad + plantillas de correo).
+
+**⚠️ El job de Cloud Scheduler del cron de inactividad NO está creado.** El único job que
+existe (`appointment-reminders`, cada 15 min, us-east1) apunta a **producción**. El de
+inactividad hay que crearlo recién cuando el código llegue a prod: diario, contra
+`POST /api/cron/doctor-inactivity`, con `x-cron-secret` y `oidcToken` de `delta-backend-sa`.
+Sin ese job el cron existe pero nunca corre.
+
+**Verificación en disco antes de promover:** build backend y frontend exit 0 · tsc backend
+y frontend exit 0 · 389 suites / 3728 tests en verde · lint sin regresiones (el baseline de
+`develop` ya trae 3 errores en backend y 132 en frontend; el lote bajó frontend a 121).
+El boot del dist solo llegó hasta la conexión a Postgres, así que **el cableo de DI de lo
+nuevo se verifica recién al arrancar staging**.
