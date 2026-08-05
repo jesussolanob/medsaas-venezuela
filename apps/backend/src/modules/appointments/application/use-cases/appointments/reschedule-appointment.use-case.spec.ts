@@ -180,6 +180,53 @@ describe('RescheduleAppointmentUseCase', () => {
     });
   });
 
+  // -----------------------------------------------------------------------
+  // Point 11 premise: rescheduling must preserve the consultation/payment link.
+  // A cancelled-with-payment appointment can only be MOVED (never refunded/
+  // credited), so the payment must simply travel with the new date.
+  // -----------------------------------------------------------------------
+  describe('preserves the consultation/payment link (point 11 premise)', () => {
+    it('only touches scheduled_at — never re-links or clears consultationId', async () => {
+      const appt = makeAppointment({ status: 'scheduled', consultationId: 'cons-paid-1' });
+      repo = makeRepo(appt);
+      useCase = new RescheduleAppointmentUseCase(repo);
+
+      await useCase.execute({
+        appointmentId: APPT_ID,
+        actorId: DOCTOR_ID,
+        newScheduledAt: newDate,
+      });
+
+      // updateScheduledAt is called with exactly (id, newScheduledAt) — no other
+      // field, so the consultation FK (and everything downstream of it, e.g. the
+      // linked consultation's payment_status/amount) is left untouched at the DB
+      // level. Rescheduling never calls updateConsultationId either.
+      expect(repo.updateScheduledAt).toHaveBeenCalledWith(APPT_ID, newDate);
+      expect(repo.updateConsultationId).not.toHaveBeenCalled();
+    });
+
+    it('returned appointment keeps the same consultationId after reschedule', async () => {
+      const appt = makeAppointment({ status: 'scheduled', consultationId: 'cons-paid-1' });
+      repo = makeRepo(appt, {
+        updateScheduledAt: jest
+          .fn()
+          .mockImplementation((_id, scheduledAt) =>
+            Promise.resolve(makeAppointment({ scheduledAt, consultationId: 'cons-paid-1' })),
+          ),
+      });
+      useCase = new RescheduleAppointmentUseCase(repo);
+
+      const result = await useCase.execute({
+        appointmentId: APPT_ID,
+        actorId: DOCTOR_ID,
+        newScheduledAt: newDate,
+      });
+
+      expect(result.consultationId).toBe('cons-paid-1');
+      expect(result.scheduledAt).toEqual(newDate);
+    });
+  });
+
   describe('error cases', () => {
     it('throws AppointmentNotFoundError when appointment does not exist', async () => {
       repo = makeRepo(null);
