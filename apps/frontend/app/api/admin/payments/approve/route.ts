@@ -10,9 +10,13 @@
  * DEFERRED — Fase 5: email de confirmación al doctor (sendPaymentApprovedEmail).
  */
 import { NextRequest, NextResponse } from 'next/server';
+import { requireRole } from '@/lib/auth-guards';
 import { backendPut } from '@/lib/api-client.server';
 
 export async function POST(req: NextRequest) {
+  const guard = await requireRole(['super_admin']);
+  if (!guard.ok) return guard.response;
+
   const { payment_id } = await req.json();
   if (!payment_id) {
     return NextResponse.json({ error: 'payment_id requerido' }, { status: 400 });

@@ -11,9 +11,20 @@ import type { Appointment } from '../../domain/entities/appointment.entity';
 /**
  * Converts an Appointment domain entity to a plain serialisable object.
  *
- * This guarantees every field — including `consultationId` — is present in the
- * API JSON response regardless of how the runtime serialises class instances.
- * Using a plain object avoids any NestJS / class-transformer filtering.
+ * This guarantees every field — including `consultationId` and `officeName` — is
+ * present in the API JSON response regardless of how the runtime serialises class
+ * instances. Using a plain object avoids any NestJS / class-transformer filtering.
+ *
+ * FULL PII NOTE: This mapper does NOT mask PII. It is used for:
+ *   1. GET /api/appointments/:id  — single appointment detail (owner-scoped, ADR-005).
+ *   2. POST /api/appointments     — the created appointment for the owning doctor.
+ * The LIST endpoint (GET /api/appointments) applies maskAppointmentPii() first.
+ *
+ * The `officeName` field is only populated when the query used a JOIN with doctor_offices
+ * (i.e. findByIdScopedEnriched). It is null in all other paths.
+ *
+ * No audit log is required for this endpoint — it is owner access, not a /reveal
+ * of masked data (same precedent as ADR-005 consultation billing view).
  */
 export function toPlainAppointment(appt: Appointment): Record<string, unknown> {
   return {
@@ -23,10 +34,14 @@ export function toPlainAppointment(appt: Appointment): Record<string, unknown> {
     authUserId: appt.authUserId,
     consultationId: appt.consultationId,
     patientName: appt.patientName,
+    /** Full PII — only returned for owner-scoped single-appointment detail. */
     patientPhone: appt.patientPhone,
+    /** Full PII — only returned for owner-scoped single-appointment detail. */
     patientEmail: appt.patientEmail,
+    /** Full PII — only returned for owner-scoped single-appointment detail. */
     patientCedula: appt.patientCedula,
     scheduledAt: appt.scheduledAt,
+    durationMinutes: appt.durationMinutes,
     status: appt.status,
     appointmentMode: appt.appointmentMode,
     source: appt.source,
@@ -40,16 +55,18 @@ export function toPlainAppointment(appt: Appointment): Record<string, unknown> {
     amountBs: appt.amountBs,
     packageId: appt.packageId,
     sessionNumber: appt.sessionNumber,
+    /** Chief complaint / reason for visit. */
     chiefComplaint: appt.chiefComplaint,
     appointmentCode: appt.appointmentCode,
     paymentId: appt.paymentId,
     meetLink: appt.meetLink,
     officeId: appt.officeId,
+    /** Office name — populated only by the enriched detail query (JOIN with doctor_offices). */
+    officeName: appt.officeName,
     googleCalendarEventId: appt.googleCalendarEventId,
-    durationMinutes: appt.durationMinutes,
     createdAt: appt.createdAt,
     updatedAt: appt.updatedAt,
-    /** Enriched from linked consultation. Null when no consultation is linked. */
+    /** Payment status from the linked consultation. Null when no consultation is linked. */
     paymentStatus: appt.paymentStatus,
     /** Consultation code (DLT-YYYYMM-NNNN). Null when no consultation is linked. */
     consultationCode: appt.consultationCode,

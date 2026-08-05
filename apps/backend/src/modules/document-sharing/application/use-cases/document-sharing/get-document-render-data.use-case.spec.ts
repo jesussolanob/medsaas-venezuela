@@ -137,6 +137,8 @@ const mockDoctorProfileRepo: jest.Mocked<IDoctorProfileRepository> = {
   findByDoctorId: jest.fn(),
   update: jest.fn(),
   updateExchangeRate: jest.fn(),
+  markOnboardingCompleted: jest.fn().mockResolvedValue(undefined),
+  updateBlocksLayout: jest.fn().mockResolvedValue(undefined),
 };
 
 const mockDoctorTemplateRepo: jest.Mocked<IDoctorTemplateRepository> = {
@@ -177,6 +179,7 @@ const makeBlocksOutput = (blocks: ConsultationBlock[]): GetConsultationBlocksOut
   resolved: blocks,
   specialty_defaults: [],
   doctor_specialty: null,
+  layout: 'tabs',
 });
 
 const makeActiveLink = (): SharedDocumentLink =>

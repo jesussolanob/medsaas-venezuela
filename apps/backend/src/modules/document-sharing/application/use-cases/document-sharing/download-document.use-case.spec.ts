@@ -89,6 +89,8 @@ const mockDoctorProfileRepo = {
   findByDoctorId: jest.fn(),
   update: jest.fn(),
   updateExchangeRate: jest.fn(),
+  markOnboardingCompleted: jest.fn().mockResolvedValue(undefined),
+  updateBlocksLayout: jest.fn().mockResolvedValue(undefined),
 } as jest.Mocked<IDoctorProfileRepository>;
 
 const mockPdfGenerator = {

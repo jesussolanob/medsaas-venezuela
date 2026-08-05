@@ -54,6 +54,8 @@ import {
   ArrowUpDown,
   Mic,
   Square,
+  LayoutGrid,
+  LayoutList,
 } from 'lucide-react';
 // Etapa 1: Supabase removed.
 // PLACEHOLDER — following data sources have no backend endpoint yet (Fase 5):
@@ -92,6 +94,8 @@ import { getPatientPrescriptions, createPrescription } from './prescriptions.cli
 import { useBcvRate } from '@/lib/useBcvRate';
 import DynamicBlocks, { SnapshotBlock } from '@/components/consultation/DynamicBlocks';
 import ConsultationRecorder from '@/components/consultation/ConsultationRecorder';
+// WP-E (2026-08): strip HTML from block values before passing to PDF renderers
+import { htmlToPlainText } from '@delta/shared-utils';
 // RONDA 46: renderer de markdown ligero para outputs de Gemini
 import MarkdownText from '@/components/shared/MarkdownText';
 import NewAppointmentFlow from '@/components/appointment-flow/NewAppointmentFlow';
@@ -403,6 +407,16 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
   const openedConsultationIdRef = useRef<string | null>(null);
   // RONDA 38: tab inicial dinámico — se setea al abrir cada consulta segun su snapshot
   const [consultationTab, setConsultationTab] = useState<ConsultationTab>('block:chief_complaint');
+  // WP-E (2026-08): disposición de los bloques — 'tabs' (horizontal) o 'vertical' (sidebar).
+  // Se carga desde localStorage; el default viene de la config del doctor (cargado en el
+  // useEffect de inicialización). El localStorage prevalece sobre el default del doctor.
+  const [blockLayout, setBlockLayout] = useState<'tabs' | 'vertical'>(() => {
+    if (typeof window === 'undefined') return 'tabs';
+    const stored = window.localStorage.getItem('delta:consultation-layout');
+    return stored === 'vertical' ? 'vertical' : 'tabs';
+  });
+  // Ref para el default del doctor (se usa para inicializar SOLO si localStorage está vacío).
+  const doctorLayoutDefaultRef = useRef<'tabs' | 'vertical' | null>(null);
   // RONDA 39: bloques actualmente ACTIVOS del doctor (config viva en /doctor/settings/consultation-blocks).
   // Se usa cuando una consulta no tiene blocks_structure congelada todavía.
   const [doctorActiveBlocks, setDoctorActiveBlocks] = useState<SnapshotBlock[]>([]);
@@ -492,19 +506,21 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
         }
 
         // 1. Valor desde blocks_data (fuente de verdad para bloques de texto)
+        // WP-E: strip HTML from string values so PDF output is always plain text
         const raw = bd[b.key];
         let value: string | string[] | null = null;
-        if (typeof raw === 'string') value = raw.trim() || null;
+        if (typeof raw === 'string') value = htmlToPlainText(raw.trim()) || null;
         else if (Array.isArray(raw)) value = (raw as string[]).filter(Boolean);
         else if (raw != null) value = String(raw);
 
         // 2. Fallback a campos legacy vivos (chief_complaint, diagnosis, etc.)
+        // WP-E: also strip HTML from legacy live fields
         if (
           (value === null || value === '') &&
           Object.prototype.hasOwnProperty.call(legacyLive, b.key)
         ) {
           const live = legacyLive[b.key];
-          if (live && live.trim()) value = live.trim();
+          if (live && live.trim()) value = htmlToPlainText(live.trim());
         }
 
         // 3. Fallback a valores sintéticos de bloques estructurados (prescription, paraclinical)
@@ -987,6 +1003,13 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
               send_to_patient: boolean;
             }>;
             setDoctorActiveBlocks(resolved as SnapshotBlock[]);
+            // WP-E: read layout preference from the API response.
+            // Apply it ONLY if localStorage has no override (preserves user's manual toggle).
+            const apiLayout = j.layout === 'vertical' ? 'vertical' : 'tabs';
+            doctorLayoutDefaultRef.current = apiLayout;
+            if (!window.localStorage.getItem('delta:consultation-layout')) {
+              setBlockLayout(apiLayout);
+            }
             // El backend serializa el catálogo en camelCase (defaultLabel, etc.).
             // Leerlo en snake_case dejaba label=undefined → el modal "Agregar bloque"
             // mostraba filas vacías (solo el "+"). Fix: leer camelCase.
@@ -1048,19 +1071,115 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
         // PLACEHOLDER: doctor_templates — no backend endpoint in Etapa 1.
         // templateConfigs stay at defaultTemplateConfig — Fase 5.
 
-        // MIGRATED: consultations list → GET /api/consultations (server-side paged)
-        // When ?open= is present we ALWAYS fetch from the client (need all IDs to find
-        // the target). Otherwise, if the Server Component already provided initialConsultations,
-        // skip the client-side fetch — the first paint already has the rows.
+        // D4 FIX: Cuando hay ?open=, abre el detalle al instante en lugar de cargar
+        // la lista completa primero. Estrategia:
+        //   1. Si openId presente → fetch puntual getConsultation(openId) (rápido).
+        //   2. Lista se carga en paralelo con limit normal (15), no 100_000.
+        //   3. Fallback: si el fetch puntual falla (posiblemente openId es appointment_id),
+        //      buscamos en la lista por c.appointment_id — pero con paginación razonable.
+
         let consultationsList = initialConsultations ?? [];
 
-        if (openId || !initialConsultations) {
-          // Need a fresh list: either because ?open= requires finding the target by ID
-          // (may not be in the initial 15-row slice), or because no server data was passed.
-          const initLimit = openId ? 100_000 : 15;
+        if (openId) {
+          // Intentar abrir el detalle INMEDIATAMENTE via fetch puntual.
+          // Guard: evitar reabrir si ya está abierto (openedConsultationIdRef).
+          const directFetch = getConsultation(openId);
+
+          // Cargar la lista en paralelo con limit normal (no 100_000).
+          const listFetch = listConsultationsPaged({
+            page: 1,
+            limit: 15,
+            sort: 'consultation_date',
+          });
+
+          // Resolver la consulta puntual primero (debería ser más rápido que la lista).
+          const directConsultation = await directFetch;
+
+          if (directConsultation) {
+            // Mapeamos al tipo local para passarlo a openConsultation.
+            const mapped: Consultation = {
+              id: directConsultation.id,
+              consultation_code: directConsultation.consultation_code,
+              consultation_date: directConsultation.consultation_date,
+              created_at: directConsultation.created_at,
+              chief_complaint: directConsultation.chief_complaint,
+              notes: directConsultation.notes,
+              diagnosis: directConsultation.diagnosis,
+              treatment: directConsultation.treatment,
+              status: mapAppointmentStatusToConsulta(
+                (directConsultation as { appointment_status?: string | null }).appointment_status,
+              ),
+              appointment_status:
+                (directConsultation as { appointment_status?: string | null }).appointment_status ??
+                null,
+              payment_status: directConsultation.payment_status,
+              appointment_id: directConsultation.appointment_id,
+              patient_id: directConsultation.patient_id,
+              patient_name: directConsultation.patient_name || 'Paciente',
+              patient_phone: null,
+              started_at: directConsultation.started_at,
+              ended_at: directConsultation.ended_at,
+              duration_minutes: directConsultation.duration_minutes,
+              version: null,
+            };
+
+            if (openedConsultationIdRef.current !== mapped.id) {
+              // Sin setTimeout artificial: openConsultation ya marca el id en el ref
+              // antes del fetch interno, evitando re-apertura. El montaje del editor
+              // ocurre sincrónicamente en el siguiente render.
+              openConsultation(mapped);
+            }
+          }
+
+          // Esperar la lista (que se lanzó en paralelo) y actualizar el estado.
+          // Si el fetch puntual devolvió null (openId era un appointment_id y no
+          // un consultation_id), buscamos en la lista como fallback.
+          const pagedResult = await listFetch;
+          consultationsList = pagedResult.items.map((c) => ({
+            id: c.id,
+            consultation_code: c.consultation_code,
+            consultation_date: c.consultation_date,
+            created_at: c.created_at,
+            chief_complaint: c.chief_complaint,
+            notes: c.notes,
+            diagnosis: c.diagnosis,
+            treatment: c.treatment,
+            status: mapAppointmentStatusToConsulta(c.appointment_status),
+            appointment_status: c.appointment_status ?? null,
+            payment_status: c.payment_status,
+            appointment_id: c.appointment_id,
+            patient_id: c.patient_id,
+            patient_name: c.patient_name || 'Paciente',
+            patient_phone: null,
+            started_at: c.started_at,
+            ended_at: c.ended_at,
+            duration_minutes: c.duration_minutes,
+            version: null,
+          }));
+
+          setConsultations(consultationsList);
+          setTotal(pagedResult.total);
+          setPage(1);
+
+          // Fallback: si el fetch puntual falló (returned null) y el openId corresponde
+          // a un appointment_id en la lista cargada, abrir esa consulta.
+          // Esto cubre el caso en que el caller pasa un appointment_id en lugar de
+          // un consultation_id (comportamiento anterior del dashboard).
+          if (!directConsultation) {
+            const byAppointmentId = consultationsList.find((c) => c.appointment_id === openId);
+            if (byAppointmentId && openedConsultationIdRef.current !== byAppointmentId.id) {
+              openConsultation(byAppointmentId);
+            } else if (!byAppointmentId) {
+              // Stale ?open= param — consultation not found or deleted; strip it from the URL.
+              router.replace(pathname);
+              showToast({ type: 'error', message: 'No encontramos esa consulta' });
+            }
+          }
+        } else if (!initialConsultations) {
+          // No hay openId y no hay datos del servidor: cargar la lista normalmente.
           const pagedResult = await listConsultationsPaged({
             page: 1,
-            limit: initLimit,
+            limit: 15,
             sort: 'consultation_date',
           });
           consultationsList = pagedResult.items.map((c) => ({
@@ -1082,26 +1201,13 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
             started_at: c.started_at,
             ended_at: c.ended_at,
             duration_minutes: c.duration_minutes,
-            version: null, // optimistic lock field — Fase 5
+            version: null,
           }));
 
           setConsultations(consultationsList);
           setTotal(pagedResult.total);
           setPage(1);
-          if (!openId) setPageSize(15);
-        }
-
-        // Auto-open consultation if openId is in query params
-        // Fix: buscar por c.id O por c.appointment_id (el dashboard redirige con appointmentId)
-        // Guard: si la consulta ya está abierta (mismo id) → no re-abrir para evitar doble-fetch
-        if (openId) {
-          const consultationToOpen = consultationsList.find(
-            (c) => c.id === openId || c.appointment_id === openId,
-          );
-          if (consultationToOpen && openedConsultationIdRef.current !== consultationToOpen.id) {
-            await new Promise((resolve) => setTimeout(resolve, 100));
-            openConsultation(consultationToOpen);
-          }
+          setPageSize(15);
         }
       } catch (err) {
         reportError('doctor/consultations', 'loadData', err);
@@ -3030,6 +3136,21 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                 </div>
               </div>
 
+              {/* D3: Fecha de la consulta — solo lectura, formateada en es-VE */}
+              {selected.consultation_date && (
+                <div className="flex items-center gap-1.5 text-xs text-slate-500">
+                  <Calendar className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                  <span>
+                    {new Intl.DateTimeFormat('es-VE', {
+                      weekday: 'long',
+                      day: 'numeric',
+                      month: 'long',
+                      year: 'numeric',
+                    }).format(new Date(selected.consultation_date))}
+                  </span>
+                </div>
+              )}
+
               {/* Fila 2: acciones agrupadas */}
               <div className="flex items-center justify-between gap-3 flex-wrap">
                 {/* Grupo izquierdo: cambios de status (solo aparecen si aplican) */}
@@ -3235,316 +3356,1034 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
               </div>
             )}
 
-            {/* Medical Report Form with Safari-style Tabs */}
-            <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
-              {/* Safari-style Tab Navigation — DINÁMICAS según blocks_structure del doctor.
-                  Si no hay snapshot (consultas viejas), usamos las 5 tabs clásicas.
-                  L1 (2026-04-29): se agrega botón "+" al final para sumar bloques on-the-fly.
-                  Flechas ‹ › para desplazar el strip cuando no caben todos los tabs. */}
-              <div className="flex items-stretch bg-slate-50 border-b border-slate-200">
-                {/* Flecha izquierda */}
-                <button
-                  type="button"
-                  aria-label="Desplazar tabs a la izquierda"
-                  onClick={() =>
-                    tabsScrollRef.current?.scrollBy({ left: -120, behavior: 'smooth' })
-                  }
-                  className="shrink-0 flex items-center justify-center px-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
-                >
-                  <ChevronLeft className="w-4 h-4" />
-                </button>
+            {/* Medical Report Form — tabs (horizontal) or vertical sidebar layout.
+                WP-E (2026-08): toggleable via the layout button; default comes from
+                the doctor's consultation-blocks config; override stored in localStorage. */}
+            <div
+              className={`bg-white border border-slate-200 rounded-xl overflow-hidden${
+                blockLayout === 'vertical' ? ' flex' : ''
+              }`}
+            >
+              {/* WP-E: compute dynamic tabs once, reuse in both nav modes */}
+              {(() => {
+                // RONDA 38+39: tabs 100% dinámicas.
+                //   - Si la consulta tiene blocks_structure congelada → usarla (inmutable)
+                //   - Si no → reflejar la config ACTUAL del doctor en tiempo real
+                // Fallback último: motivo + diagnóstico para que el doctor nunca vea
+                // un informe vacío.
+                let dynamicTabs: { key: string; label: string }[] = [];
+                const effectiveNav = getEffectiveBlocks(selected as Consultation);
+                if (effectiveNav && effectiveNav.length > 0) {
+                  const sorted = [...effectiveNav].sort((a, b) => a.sort_order - b.sort_order);
+                  const LOCKED_BLOCK_LABELS: Record<string, string> = {
+                    prescription: 'Récipe',
+                    indications: 'Evaluación actual',
+                  };
+                  dynamicTabs = sorted.map((b) => ({
+                    key: `block:${b.key}`,
+                    label: LOCKED_BLOCK_LABELS[b.key] ?? b.label ?? b.key,
+                  }));
+                } else {
+                  dynamicTabs = [
+                    { key: 'block:chief_complaint', label: 'Motivo de consulta' },
+                    { key: 'block:diagnosis', label: 'Diagnóstico' },
+                  ];
+                }
 
-                {/* Strip de tabs con scroll horizontal suave */}
-                <div
-                  ref={tabsScrollRef}
-                  className="flex items-end gap-1 px-2 pt-4 overflow-x-auto flex-1 scroll-smooth"
-                  style={{ scrollbarWidth: 'none' }}
-                >
-                  {(() => {
-                    // RONDA 38+39: tabs 100% dinamicas.
-                    //   - Si la consulta tiene blocks_structure congelada → usarla (inmutable)
-                    //   - Si no → reflejar la config ACTUAL del doctor en tiempo real
-                    // Fallback ultimo: motivo + diagnostico para que el doctor nunca vea
-                    // un informe vacio.
-                    let dynamicTabs: { key: string; label: string }[] = [];
-                    const effective = getEffectiveBlocks(selected as Consultation);
-                    if (effective && effective.length > 0) {
-                      const sorted = [...effective].sort((a, b) => a.sort_order - b.sort_order);
-                      // Label desde el bloque; nunca mostrar el key técnico en la UI.
-                      // Overrides de UI: prescription → Récipe, indications → Evaluación actual.
-                      const LOCKED_BLOCK_LABELS: Record<string, string> = {
-                        prescription: 'Récipe',
-                        indications: 'Evaluación actual',
-                      };
-                      dynamicTabs = sorted.map((b) => ({
-                        key: `block:${b.key}`,
-                        label: LOCKED_BLOCK_LABELS[b.key] ?? b.label ?? b.key,
-                      }));
-                    } else {
-                      dynamicTabs = [
-                        { key: 'block:chief_complaint', label: 'Motivo de consulta' },
-                        { key: 'block:diagnosis', label: 'Diagnóstico' },
-                      ];
-                    }
-                    return dynamicTabs.map((t) => (
-                      <button
-                        key={t.key}
-                        onClick={() => handleTabChange(t.key)}
-                        className={`safari-tab text-sm font-semibold transition-all whitespace-nowrap ${
-                          consultationTab === t.key
-                            ? 'active border-t border-l border-r border-slate-200 text-slate-900'
-                            : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                        }`}
-                      >
-                        {t.label}
-                      </button>
-                    ));
-                  })()}
-                  {/* FIX 2026-04-29: el contenedor padre tiene overflow-x-auto que
-                      clipea cualquier dropdown absolute. Solución: convertir a
-                      MODAL global (fixed inset-0) para escapar el clip. */}
-                  <button
-                    type="button"
-                    onClick={() => setShowAddBlockMenu(true)}
-                    title="Agregar bloque"
-                    className="safari-tab text-sm font-bold whitespace-nowrap bg-slate-100 text-teal-600 hover:bg-slate-200 transition-all"
-                  >
-                    +
-                  </button>
-                </div>
+                /** Toggle helper — flushes pending block save, then updates state + localStorage */
+                const toggleLayout = () => {
+                  flushBlocksSave();
+                  const next = blockLayout === 'tabs' ? 'vertical' : 'tabs';
+                  setBlockLayout(next);
+                  localStorage.setItem('delta:consultation-layout', next);
+                };
 
-                {/* Flecha derecha */}
-                <button
-                  type="button"
-                  aria-label="Desplazar tabs a la derecha"
-                  onClick={() => tabsScrollRef.current?.scrollBy({ left: 120, behavior: 'smooth' })}
-                  className="shrink-0 flex items-center justify-center px-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
-                >
-                  <ChevronRight className="w-4 h-4" />
-                </button>
-              </div>
-              {showAddBlockMenu &&
-                selected &&
-                (() => {
-                  const effective = getEffectiveBlocks(selected);
-                  const activeKeys = new Set(effective.map((b) => b.key));
+                if (blockLayout === 'vertical') {
+                  // ── Vertical sidebar ──────────────────────────────────────────
                   return (
-                    <div
-                      className="fixed inset-0 z-[80] bg-black/50 flex items-center justify-center p-4"
-                      onClick={() => !addingBlock && setShowAddBlockMenu(false)}
+                    <nav
+                      aria-label="Bloques de consulta"
+                      className="w-44 lg:w-52 shrink-0 border-r border-slate-200 bg-slate-50 flex flex-col"
                     >
-                      <div
-                        className="bg-white border border-slate-200 rounded-2xl shadow-2xl max-w-md w-full max-h-[80vh] overflow-y-auto p-5"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <div className="flex items-center justify-between mb-3">
-                          <p className="text-base font-bold text-slate-800">
-                            Agregar bloque a esta consulta
-                          </p>
-                          <button
-                            onClick={() => !addingBlock && setShowAddBlockMenu(false)}
-                            className="text-slate-400 hover:text-slate-600"
-                          >
-                            <X className="w-5 h-5" />
-                          </button>
-                        </div>
-                        <p className="text-xs text-slate-500 mb-3">
-                          Selecciona un bloque del catálogo. Los que ya están activos se ven en
-                          gris.
+                      {/* Header with toggle */}
+                      <div className="flex items-center justify-between px-3 py-2.5 border-b border-slate-100 bg-slate-100 shrink-0">
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                          Secciones
                         </p>
-                        {blockCatalog.length === 0 ? (
-                          <p className="text-xs text-slate-400 italic px-2 py-2">Catálogo vacío.</p>
-                        ) : (
-                          blockCatalog.map((c) => {
-                            const alreadyActive = activeKeys.has(c.key);
-                            return (
-                              <button
-                                key={c.key}
-                                disabled={addingBlock || alreadyActive}
-                                onClick={async () => {
-                                  if (alreadyActive) return;
-                                  if (!selected) return;
-                                  setAddingBlock(true);
-                                  try {
-                                    // FIX: agregar un bloque a UNA consulta solo debe afectar
-                                    // el blocks_structure de ESA consulta, nunca la config global
-                                    // del doctor (PUT /api/doctor/consultation-blocks). La config
-                                    // global se gestiona únicamente desde
-                                    // /doctor/settings/consultation-blocks.
-                                    //
-                                    // Caso A — la consulta ya tiene blocks_structure congelada:
-                                    //   → agregar el bloque a la estructura existente.
-                                    // Caso B — la consulta aún usa la config viva (sin estructura):
-                                    //   → materializar la estructura desde getEffectiveBlocks +
-                                    //     el nuevo bloque, congelando así esta consulta con
-                                    //     exactamente los bloques actuales del doctor más el extra.
-                                    const currentStruct = selected.blocks_structure;
-                                    const baseBlocks: SnapshotBlock[] =
-                                      Array.isArray(currentStruct) && currentStruct.length > 0
-                                        ? (currentStruct as SnapshotBlock[])
-                                        : getEffectiveBlocks(selected);
-                                    const maxSort = baseBlocks.reduce(
-                                      (m, b) => Math.max(m, b.sort_order ?? 0),
-                                      0,
-                                    );
-                                    const newSnap: SnapshotBlock[] = [
-                                      ...baseBlocks,
-                                      {
-                                        key: c.key,
-                                        label: c.label,
-                                        content_type:
-                                          c.content_type as SnapshotBlock['content_type'],
-                                        sort_order: maxSort + 1,
-                                        printable: c.printable,
-                                        send_to_patient: c.send_to_patient,
-                                      },
-                                    ];
-                                    const res = await fetch('/api/doctor/consultations', {
-                                      method: 'PATCH',
-                                      headers: { 'Content-Type': 'application/json' },
-                                      body: JSON.stringify({
-                                        id: selected.id,
+                        <button
+                          type="button"
+                          onClick={toggleLayout}
+                          aria-label="Cambiar disposición de los bloques"
+                          title="Cambiar a pestañas"
+                          className="flex items-center justify-center w-6 h-6 rounded text-slate-400 hover:text-teal-600 hover:bg-white transition-colors"
+                        >
+                          <LayoutGrid className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+
+                      {/* Block list */}
+                      <div className="flex-1 overflow-y-auto py-1">
+                        {dynamicTabs.map((t) => (
+                          <button
+                            key={t.key}
+                            type="button"
+                            onClick={() => handleTabChange(t.key)}
+                            className={`w-full text-left px-3 py-2 text-sm transition-colors ${
+                              consultationTab === t.key
+                                ? 'bg-teal-50 text-teal-700 font-semibold border-r-2 border-teal-500'
+                                : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                            }`}
+                          >
+                            {t.label}
+                          </button>
+                        ))}
+                      </div>
+
+                      {/* Add block button at bottom */}
+                      <button
+                        type="button"
+                        onClick={() => setShowAddBlockMenu(true)}
+                        className="shrink-0 w-full flex items-center justify-center gap-1 px-3 py-2 text-xs font-semibold text-teal-600 hover:bg-teal-50 border-t border-slate-200 transition-colors"
+                      >
+                        <Plus className="w-3.5 h-3.5" /> Agregar bloque
+                      </button>
+                    </nav>
+                  );
+                }
+
+                // ── Horizontal Safari-style tabs (default) ───────────────────
+                return (
+                  <div className="flex items-stretch bg-slate-50 border-b border-slate-200">
+                    {/* Flecha izquierda */}
+                    <button
+                      type="button"
+                      aria-label="Desplazar tabs a la izquierda"
+                      onClick={() =>
+                        tabsScrollRef.current?.scrollBy({ left: -120, behavior: 'smooth' })
+                      }
+                      className="shrink-0 flex items-center justify-center px-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
+                    >
+                      <ChevronLeft className="w-4 h-4" />
+                    </button>
+
+                    {/* Strip de tabs con scroll horizontal suave */}
+                    <div
+                      ref={tabsScrollRef}
+                      className="flex items-end gap-1 px-2 pt-4 overflow-x-auto flex-1 scroll-smooth"
+                      style={{ scrollbarWidth: 'none' }}
+                    >
+                      {dynamicTabs.map((t) => (
+                        <button
+                          key={t.key}
+                          onClick={() => handleTabChange(t.key)}
+                          className={`safari-tab text-sm font-semibold transition-all whitespace-nowrap ${
+                            consultationTab === t.key
+                              ? 'active border-t border-l border-r border-slate-200 text-slate-900'
+                              : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                          }`}
+                        >
+                          {t.label}
+                        </button>
+                      ))}
+                      {/* FIX 2026-04-29: usar modal global (fixed) para escapar el clip de overflow-x-auto */}
+                      <button
+                        type="button"
+                        onClick={() => setShowAddBlockMenu(true)}
+                        title="Agregar bloque"
+                        className="safari-tab text-sm font-bold whitespace-nowrap bg-slate-100 text-teal-600 hover:bg-slate-200 transition-all"
+                      >
+                        +
+                      </button>
+                    </div>
+
+                    {/* Flecha derecha */}
+                    <button
+                      type="button"
+                      aria-label="Desplazar tabs a la derecha"
+                      onClick={() =>
+                        tabsScrollRef.current?.scrollBy({ left: 120, behavior: 'smooth' })
+                      }
+                      className="shrink-0 flex items-center justify-center px-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
+                    >
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
+
+                    {/* WP-E: layout toggle button */}
+                    <button
+                      type="button"
+                      onClick={toggleLayout}
+                      aria-label="Cambiar disposición de los bloques"
+                      title="Cambiar a vista vertical"
+                      className="shrink-0 flex items-center justify-center px-2 text-slate-400 hover:text-teal-600 hover:bg-slate-100 transition-colors border-l border-slate-200"
+                    >
+                      <LayoutList className="w-4 h-4" />
+                    </button>
+                  </div>
+                );
+              })()}
+
+              {/* Content area — flex-1 in vertical mode so it fills the remaining width */}
+              <div className={blockLayout === 'vertical' ? 'flex-1 min-w-0 overflow-auto' : ''}>
+                {showAddBlockMenu &&
+                  selected &&
+                  (() => {
+                    const effective = getEffectiveBlocks(selected);
+                    const activeKeys = new Set(effective.map((b) => b.key));
+                    return (
+                      <div
+                        className="fixed inset-0 z-[80] bg-black/50 flex items-center justify-center p-4"
+                        onClick={() => !addingBlock && setShowAddBlockMenu(false)}
+                      >
+                        <div
+                          className="bg-white border border-slate-200 rounded-2xl shadow-2xl max-w-md w-full max-h-[80vh] overflow-y-auto p-5"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <div className="flex items-center justify-between mb-3">
+                            <p className="text-base font-bold text-slate-800">
+                              Agregar bloque a esta consulta
+                            </p>
+                            <button
+                              onClick={() => !addingBlock && setShowAddBlockMenu(false)}
+                              className="text-slate-400 hover:text-slate-600"
+                            >
+                              <X className="w-5 h-5" />
+                            </button>
+                          </div>
+                          <p className="text-xs text-slate-500 mb-3">
+                            Selecciona un bloque del catálogo. Los que ya están activos se ven en
+                            gris.
+                          </p>
+                          {blockCatalog.length === 0 ? (
+                            <p className="text-xs text-slate-400 italic px-2 py-2">
+                              Catálogo vacío.
+                            </p>
+                          ) : (
+                            blockCatalog.map((c) => {
+                              const alreadyActive = activeKeys.has(c.key);
+                              return (
+                                <button
+                                  key={c.key}
+                                  disabled={addingBlock || alreadyActive}
+                                  onClick={async () => {
+                                    if (alreadyActive) return;
+                                    if (!selected) return;
+                                    setAddingBlock(true);
+                                    try {
+                                      // FIX: agregar un bloque a UNA consulta solo debe afectar
+                                      // el blocks_structure de ESA consulta, nunca la config global
+                                      // del doctor (PUT /api/doctor/consultation-blocks). La config
+                                      // global se gestiona únicamente desde
+                                      // /doctor/settings/consultation-blocks.
+                                      //
+                                      // Caso A — la consulta ya tiene blocks_structure congelada:
+                                      //   → agregar el bloque a la estructura existente.
+                                      // Caso B — la consulta aún usa la config viva (sin estructura):
+                                      //   → materializar la estructura desde getEffectiveBlocks +
+                                      //     el nuevo bloque, congelando así esta consulta con
+                                      //     exactamente los bloques actuales del doctor más el extra.
+                                      const currentStruct = selected.blocks_structure;
+                                      const baseBlocks: SnapshotBlock[] =
+                                        Array.isArray(currentStruct) && currentStruct.length > 0
+                                          ? (currentStruct as SnapshotBlock[])
+                                          : getEffectiveBlocks(selected);
+                                      const maxSort = baseBlocks.reduce(
+                                        (m, b) => Math.max(m, b.sort_order ?? 0),
+                                        0,
+                                      );
+                                      const newSnap: SnapshotBlock[] = [
+                                        ...baseBlocks,
+                                        {
+                                          key: c.key,
+                                          label: c.label,
+                                          content_type:
+                                            c.content_type as SnapshotBlock['content_type'],
+                                          sort_order: maxSort + 1,
+                                          printable: c.printable,
+                                          send_to_patient: c.send_to_patient,
+                                        },
+                                      ];
+                                      const res = await fetch('/api/doctor/consultations', {
+                                        method: 'PATCH',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({
+                                          id: selected.id,
+                                          blocks_structure: newSnap,
+                                        }),
+                                      });
+                                      if (!res.ok) {
+                                        const e = await res.json().catch(() => ({}));
+                                        showToast({
+                                          type: 'error',
+                                          message: e.error || 'No se pudo agregar el bloque',
+                                        });
+                                        return;
+                                      }
+                                      // Actualizar estado local para que el tab aparezca de inmediato.
+                                      // newSnap es compatible con Consultation.blocks_structure.
+                                      const updated: Consultation = {
+                                        ...selected,
                                         blocks_structure: newSnap,
-                                      }),
-                                    });
-                                    if (!res.ok) {
-                                      const e = await res.json().catch(() => ({}));
+                                      };
+                                      setSelected(updated);
+                                      setConsultations((prev) =>
+                                        prev.map((x) => (x.id === selected.id ? updated : x)),
+                                      );
+                                      setShowAddBlockMenu(false);
+                                      handleTabChange(`block:${c.key}`);
+                                    } catch (err) {
+                                      reportError('doctor/consultations', 'addBlock', err);
                                       showToast({
                                         type: 'error',
-                                        message: e.error || 'No se pudo agregar el bloque',
+                                        message: 'Error agregando el bloque',
                                       });
-                                      return;
+                                    } finally {
+                                      setAddingBlock(false);
                                     }
-                                    // Actualizar estado local para que el tab aparezca de inmediato.
-                                    // newSnap es compatible con Consultation.blocks_structure.
-                                    const updated: Consultation = {
-                                      ...selected,
-                                      blocks_structure: newSnap,
-                                    };
-                                    setSelected(updated);
-                                    setConsultations((prev) =>
-                                      prev.map((x) => (x.id === selected.id ? updated : x)),
-                                    );
-                                    setShowAddBlockMenu(false);
-                                    handleTabChange(`block:${c.key}`);
-                                  } catch (err) {
-                                    reportError('doctor/consultations', 'addBlock', err);
-                                    showToast({
-                                      type: 'error',
-                                      message: 'Error agregando el bloque',
-                                    });
-                                  } finally {
-                                    setAddingBlock(false);
-                                  }
-                                }}
-                                className={`w-full text-left text-sm px-2 py-1.5 rounded flex items-center gap-2 ${
-                                  alreadyActive
-                                    ? 'opacity-60 cursor-not-allowed bg-slate-50'
-                                    : 'hover:bg-slate-50 disabled:opacity-50'
-                                }`}
-                              >
-                                <Plus
-                                  className={`w-3.5 h-3.5 shrink-0 ${alreadyActive ? 'text-slate-300' : 'text-teal-500'}`}
-                                />
-                                <span
-                                  className={`flex-1 ${alreadyActive ? 'text-slate-400' : 'text-slate-700'}`}
+                                  }}
+                                  className={`w-full text-left text-sm px-2 py-1.5 rounded flex items-center gap-2 ${
+                                    alreadyActive
+                                      ? 'opacity-60 cursor-not-allowed bg-slate-50'
+                                      : 'hover:bg-slate-50 disabled:opacity-50'
+                                  }`}
                                 >
-                                  {c.label}
-                                </span>
-                                {alreadyActive && (
-                                  <span className="text-[9px] font-semibold uppercase tracking-wide text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded shrink-0">
-                                    Ya activo
+                                  <Plus
+                                    className={`w-3.5 h-3.5 shrink-0 ${alreadyActive ? 'text-slate-300' : 'text-teal-500'}`}
+                                  />
+                                  <span
+                                    className={`flex-1 ${alreadyActive ? 'text-slate-400' : 'text-slate-700'}`}
+                                  >
+                                    {c.label}
                                   </span>
-                                )}
-                              </button>
-                            );
-                          })
-                        )}
+                                  {alreadyActive && (
+                                    <span className="text-[9px] font-semibold uppercase tracking-wide text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded shrink-0">
+                                      Ya activo
+                                    </span>
+                                  )}
+                                </button>
+                              );
+                            })
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  );
-                })()}
+                    );
+                  })()}
 
-              {/* RONDA 38: renderer del bloque dinámico.
+                {/* RONDA 38: renderer del bloque dinámico.
                   - Si el block_key tiene un FLUJO ESPECIAL (prescription, requested_exams, rest,
                     internal_notes) → no renderizamos DynamicBlocks, dejamos que la sección
                     hardcoded de abajo lo muestre con su catálogo/datos especiales.
                   - Para cualquier otro block_key → render genérico con DynamicBlocks.
                   - Si el snapshot está vacío y el doctor está en chief_complaint/diagnosis,
                     construimos un bloque FAKE para que igual pueda escribir (fallback). */}
-              {consultationTab.startsWith('block:') &&
-                (() => {
-                  const blockKey = consultationTab.replace('block:', '');
-                  // Bloques con UI especial — NO usar DynamicBlocks aquí
-                  // 'paraclinical' pasa a ser el bloque estructurado de exámenes (antes 'requested_exams').
-                  const SPECIAL_BLOCKS = new Set([
-                    'prescription',
-                    'paraclinical',
-                    'rest',
-                    'internal_notes',
-                  ]);
-                  if (SPECIAL_BLOCKS.has(blockKey)) return null;
+                {consultationTab.startsWith('block:') &&
+                  (() => {
+                    const blockKey = consultationTab.replace('block:', '');
+                    // Bloques con UI especial — NO usar DynamicBlocks aquí
+                    // 'paraclinical' pasa a ser el bloque estructurado de exámenes (antes 'requested_exams').
+                    const SPECIAL_BLOCKS = new Set([
+                      'prescription',
+                      'paraclinical',
+                      'rest',
+                      'internal_notes',
+                    ]);
+                    if (SPECIAL_BLOCKS.has(blockKey)) return null;
 
-                  // RONDA 39: usar bloques EFECTIVOS (snapshot si existe, config viva si no)
-                  const effective = getEffectiveBlocks(selected as Consultation);
-                  let oneBlock = effective.filter((b) => b.key === blockKey);
-                  // "Referencia" (requested_exams) ahora es texto libre (antes lista/UI de exámenes).
-                  if (blockKey === 'requested_exams') {
-                    oneBlock = oneBlock.map((b) => ({ ...b, content_type: 'rich_text' as const }));
-                  }
+                    // RONDA 39: usar bloques EFECTIVOS (snapshot si existe, config viva si no)
+                    const effective = getEffectiveBlocks(selected as Consultation);
+                    let oneBlock = effective.filter((b) => b.key === blockKey);
+                    // "Referencia" (requested_exams) ahora es texto libre (antes lista/UI de exámenes).
+                    if (blockKey === 'requested_exams') {
+                      oneBlock = oneBlock.map((b) => ({
+                        ...b,
+                        content_type: 'rich_text' as const,
+                      }));
+                    }
 
-                  // Fallback: snapshot vacío + el doctor está en motivo/diagnóstico → bloque fake
-                  if (
-                    oneBlock.length === 0 &&
-                    (blockKey === 'chief_complaint' || blockKey === 'diagnosis')
-                  ) {
-                    oneBlock = [
-                      {
-                        key: blockKey,
-                        label:
-                          blockKey === 'chief_complaint' ? 'Motivo de consulta' : 'Diagnóstico',
-                        content_type: 'rich_text',
-                        sort_order: blockKey === 'chief_complaint' ? 1 : 2,
-                        printable: true,
-                        send_to_patient: true,
-                      },
-                    ];
-                  }
-                  if (oneBlock.length === 0) return null;
+                    // Fallback: snapshot vacío + el doctor está en motivo/diagnóstico → bloque fake
+                    if (
+                      oneBlock.length === 0 &&
+                      (blockKey === 'chief_complaint' || blockKey === 'diagnosis')
+                    ) {
+                      oneBlock = [
+                        {
+                          key: blockKey,
+                          label:
+                            blockKey === 'chief_complaint' ? 'Motivo de consulta' : 'Diagnóstico',
+                          content_type: 'rich_text',
+                          sort_order: blockKey === 'chief_complaint' ? 1 : 2,
+                          printable: true,
+                          send_to_patient: true,
+                        },
+                      ];
+                    }
+                    if (oneBlock.length === 0) return null;
 
-                  const data = (selected as Consultation).blocks_data || {};
-                  return (
-                    <div className="p-6">
-                      <DynamicBlocks
-                        blocks={oneBlock}
-                        values={data}
-                        onChange={(key, value) => {
-                          // Inmutable: no mutar selected directamente.
-                          // Merge con el estado ACTUAL en el ref para no perder keys de otros bloques.
+                    const data = (selected as Consultation).blocks_data || {};
+                    return (
+                      <div className="p-6">
+                        <DynamicBlocks
+                          blocks={oneBlock}
+                          values={data}
+                          onChange={(key, value) => {
+                            // Inmutable: no mutar selected directamente.
+                            // Merge con el estado ACTUAL en el ref para no perder keys de otros bloques.
+                            const currentData =
+                              (selectedRef.current?.blocks_data as Record<string, unknown>) || {};
+                            const next = { ...currentData, [key]: value };
+                            setSelected((prev) => (prev ? { ...prev, blocks_data: next } : prev));
+                            // Sync estado legacy si aplica (para que report.* y blocks_data.* sean consistentes)
+                            if (
+                              key === 'chief_complaint' ||
+                              key === 'diagnosis' ||
+                              key === 'treatment' ||
+                              key === 'notes'
+                            ) {
+                              const legacyVal = typeof value === 'string' ? value : '';
+                              setReport((p) => ({ ...p, [key]: legacyVal }));
+                            }
+                            // Autosave debounced — lee blocks_data frescos del ref al disparar.
+                            if (blocksAutoSaveTimer.current)
+                              clearTimeout(blocksAutoSaveTimer.current);
+                            setAutoSaving(false);
+                            blocksAutoSaveTimer.current = setTimeout(() => {
+                              if (!selectedRef.current) return;
+                              // Leer blocks_data ACTUAL (no el next capturado en el closure)
+                              const latestBd =
+                                (selectedRef.current.blocks_data as Record<string, unknown>) || {};
+                              setAutoSaving(true);
+                              fetch('/api/doctor/consultations', {
+                                method: 'PATCH',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                  id: selectedRef.current.id,
+                                  blocks_data: latestBd,
+                                }),
+                              })
+                                .then(() => {
+                                  setAutoSaving(false);
+                                  setSaved(true);
+                                  setTimeout(() => setSaved(false), 2000);
+                                })
+                                .catch(() => setAutoSaving(false));
+                              // Sync legacy columns
+                              const legacyKeys = [
+                                'chief_complaint',
+                                'diagnosis',
+                                'treatment',
+                                'notes',
+                              ] as const;
+                              const legacyUpdates: Record<string, string | null> = {};
+                              let hasLegacy = false;
+                              for (const k of legacyKeys) {
+                                if (k in latestBd && typeof latestBd[k] === 'string') {
+                                  legacyUpdates[k] = (latestBd[k] as string) || null;
+                                  hasLegacy = true;
+                                }
+                              }
+                              if (hasLegacy) {
+                                updateConsultation(selectedRef.current.id, legacyUpdates).catch(
+                                  () => {},
+                                );
+                              }
+                            }, 1500);
+                          }}
+                          lockedKeys={LOCKED_BLOCK_KEYS}
+                          onSave={async () => {
+                            // Guardado manual inmediato — usa selectedRef para datos frescos
+                            if (!selectedRef.current) return;
+                            await fetch('/api/doctor/consultations', {
+                              method: 'PATCH',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({
+                                id: selectedRef.current.id,
+                                blocks_data:
+                                  (selectedRef.current.blocks_data as Record<string, unknown>) ||
+                                  {},
+                              }),
+                            });
+                            showToast({ type: 'success', message: 'Bloque guardado' });
+                          }}
+                        />
+                      </div>
+                    );
+                  })()}
+
+                {/* RONDA 38: Tab Content — Las únicas tabs que aún usan UI hardcoded son
+                  las que tienen FLUJO ESPECIAL (catálogo de medicamentos, exámenes, días reposo,
+                  notas internas). Todas las demás se renderizan dinámicamente arriba con DynamicBlocks.
+                  La condición de visibilidad ahora aparta el contenedor solo si la tab activa
+                  es una de las especiales. */}
+                <div
+                  className={`p-6 space-y-4 ${
+                    [
+                      'block:prescription',
+                      'block:paraclinical',
+                      'block:rest',
+                      'block:internal_notes',
+                    ].includes(consultationTab)
+                      ? ''
+                      : 'hidden'
+                  }`}
+                >
+                  {/* Récipe Tab — block:prescription */}
+                  {consultationTab === 'block:prescription' && (
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                        <div className="flex items-center gap-2">
+                          <Pill className="w-4 h-4 text-slate-400" />
+                          <p className="text-sm font-bold text-slate-800">Récipe</p>
+                        </div>
+                        <button
+                          onClick={() => setShowRecipe(true)}
+                          className="flex items-center gap-2 px-3 py-1.5 g-bg rounded-lg text-xs font-bold text-white hover:opacity-90"
+                        >
+                          <Pill className="w-3.5 h-3.5" />{' '}
+                          {recipe.medications.length > 0 ? 'Editar receta' : 'Generar receta'}
+                        </button>
+                      </div>
+
+                      {/* Show saved medications summary */}
+                      {recipe.medications.length > 0 && (
+                        <div className="space-y-2">
+                          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
+                            Medicamentos en receta ({recipe.medications.length})
+                          </p>
+                          {recipe.medications.map((med, idx) => (
+                            <div
+                              key={idx}
+                              className="bg-teal-50 border border-teal-200 rounded-lg p-3"
+                            >
+                              <p className="text-sm font-bold text-teal-900">{med.name}</p>
+                              <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1">
+                                {med.dose && (
+                                  <span className="text-xs text-teal-700">Dosis: {med.dose}</span>
+                                )}
+                                {med.route && (
+                                  <span className="text-xs text-teal-700">Vía: {med.route}</span>
+                                )}
+                                {med.frequency && (
+                                  <span className="text-xs text-teal-700">
+                                    Frecuencia: {med.frequency}
+                                  </span>
+                                )}
+                                {med.duration && (
+                                  <span className="text-xs text-teal-700">
+                                    Duración: {med.duration}
+                                  </span>
+                                )}
+                                {med.presentation && (
+                                  <span className="text-xs text-teal-700">
+                                    Presentación: {med.presentation}
+                                  </span>
+                                )}
+                              </div>
+                              {med.indications && (
+                                <p className="text-xs text-teal-600 mt-1">{med.indications}</p>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Quick meds: catálogo precargado del doctor — clic para agregar al instante */}
+                      {quickMeds.length > 0 && (
+                        <div>
+                          <p className="text-xs font-semibold text-slate-500 mb-2 uppercase tracking-wide">
+                            Medicamentos frecuentes (clic para agregar)
+                          </p>
+                          <div className="flex flex-wrap gap-1.5">
+                            {quickMeds.map((q) => (
+                              <button
+                                key={q.id}
+                                onClick={() =>
+                                  setRecipe((p) => ({
+                                    ...p,
+                                    medications: [
+                                      ...p.medications,
+                                      {
+                                        name: q.name,
+                                        dose: q.details || '',
+                                        route: '',
+                                        frequency: '',
+                                        duration: '',
+                                        presentation: '',
+                                        indications: '',
+                                      },
+                                    ],
+                                  }))
+                                }
+                                className="text-xs px-2.5 py-1.5 bg-teal-50 text-teal-700 border border-teal-200 rounded-lg hover:bg-teal-100 transition-colors font-medium"
+                              >
+                                + {q.name}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Generación on-click del récipe PDF — sin pre-render constante.
+                        Solo medicamentos en el récipe (el diagnóstico NO va en el récipe). */}
+                      <div className="flex gap-2 pt-2">
+                        {pdfTemplateConfig && recipe.medications.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              try {
+                                const { pdf } = await import('@react-pdf/renderer');
+                                const { MedicalDocumentPdf } =
+                                  await import('@/components/pdf/MedicalDocumentPdf');
+                                const { buildRecetasContent, buildRecipeHoja2Content } =
+                                  await import('./consultation-documents');
+
+                                // Convertir recipe.medications al shape de SavedPrescription
+                                const syntheticPrescriptions = [
+                                  {
+                                    id: 'local',
+                                    medications: recipe.medications,
+                                    notes: recipe.notes || null,
+                                    created_at: '',
+                                  },
+                                ];
+
+                                // Hoja 1: solo nombre/dosis (el diagnóstico NO va en el récipe)
+                                const hoja1Blocks: ContentBlock[] = [
+                                  ...buildRecetasContent(syntheticPrescriptions),
+                                ];
+
+                                // Hoja 2: detalles completos por medicamento
+                                const hoja2Blocks = buildRecipeHoja2Content(syntheticPrescriptions);
+
+                                const docPages = [
+                                  ...(hoja1Blocks.length > 0
+                                    ? [{ docType: 'recipe', content: hoja1Blocks }]
+                                    : []),
+                                  ...(hoja2Blocks.length > 0
+                                    ? [{ docType: 'indications', content: hoja2Blocks }]
+                                    : []),
+                                ];
+
+                                const patientCedula =
+                                  patients.find((p) => p.id === selected.patient_id)?.cedula ??
+                                  null;
+
+                                const el = (
+                                  <MedicalDocumentPdf
+                                    docType="recipe"
+                                    templateConfig={pdfTemplateConfig}
+                                    doctor={{
+                                      fullName: doctorName || '',
+                                      specialty: doctorSpecialty,
+                                      licenseNumber: doctorLicense,
+                                    }}
+                                    patient={{
+                                      fullName: selected.patient_name || '—',
+                                      cedula: patientCedula,
+                                    }}
+                                    docDate={selected.consultation_date}
+                                    consultationCode={selected.consultation_code}
+                                    content={docPages[0]?.content ?? []}
+                                    documents={docPages.length > 1 ? docPages : undefined}
+                                  />
+                                );
+                                const blob = await pdf(el).toBlob();
+                                const url = URL.createObjectURL(blob);
+                                const a = document.createElement('a');
+                                a.href = url;
+                                a.download = `Recipe-${(selected.consultation_code || 'consulta').replace(/[^\w-]/g, '')}.pdf`;
+                                // Anchor en el DOM → el navegador respeta el nombre (si no,
+                                // descargaba un UUID sin extensión tras el await).
+                                a.style.display = 'none';
+                                document.body.appendChild(a);
+                                a.click();
+                                setTimeout(() => {
+                                  URL.revokeObjectURL(url);
+                                  a.remove();
+                                }, 1000);
+                              } catch (err) {
+                                showToast({ type: 'error', message: 'Error al generar el PDF' });
+                                console.error('[RecipePdf]', err);
+                              }
+                            }}
+                            className="flex items-center justify-center gap-2 bg-teal-500 hover:bg-teal-600 text-white px-4 py-2.5 rounded-xl text-sm font-bold transition-colors"
+                          >
+                            <Printer className="w-4 h-4" /> Descargar récipe PDF
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Exámenes Tab — block:paraclinical (exámenes médicos estructurados) */}
+                  {consultationTab === 'block:paraclinical' && (
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                        <div className="flex items-center gap-2">
+                          <FileText className="w-4 h-4 text-slate-400" />
+                          <p className="text-sm font-bold text-slate-800">Prescripciones médicas</p>
+                        </div>
+                      </div>
+                      <p className="text-xs text-slate-500">
+                        Exámenes e indicaciones que el especialista ordena al paciente (laboratorio,
+                        imágenes, etc.)
+                      </p>
+
+                      {/* Quick exams from templates */}
+                      {quickExams.length > 0 && (
+                        <div>
+                          <p className="text-xs font-semibold text-slate-500 mb-2">
+                            Exámenes frecuentes (clic para agregar):
+                          </p>
+                          <div className="flex flex-wrap gap-1.5">
+                            {quickExams.map((q) => (
+                              <button
+                                key={q.id}
+                                onClick={() =>
+                                  setPrescripciones((prev) => [
+                                    ...prev,
+                                    { exam_name: q.name, notes: q.details || '' },
+                                  ])
+                                }
+                                className="text-xs px-2.5 py-1.5 bg-teal-50 text-teal-700 border border-teal-200 rounded-lg hover:bg-teal-100 transition-colors font-medium"
+                              >
+                                + {q.name}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="space-y-3">
+                        {prescripciones.map((p, idx) => (
+                          <div
+                            key={idx}
+                            className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3"
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="flex-1 space-y-2">
+                                <input
+                                  type="text"
+                                  placeholder="Nombre del examen (ej: Hematología completa, Rx de tórax...)"
+                                  value={p.exam_name}
+                                  onChange={(e) =>
+                                    setPrescripciones((prev) =>
+                                      prev.map((item, i) =>
+                                        i === idx ? { ...item, exam_name: e.target.value } : item,
+                                      ),
+                                    )
+                                  }
+                                  className={fi}
+                                />
+                                <input
+                                  type="text"
+                                  placeholder="Indicaciones (ej: En ayunas, contraste oral...)"
+                                  value={p.notes}
+                                  onChange={(e) =>
+                                    setPrescripciones((prev) =>
+                                      prev.map((item, i) =>
+                                        i === idx ? { ...item, notes: e.target.value } : item,
+                                      ),
+                                    )
+                                  }
+                                  className={fi}
+                                />
+                              </div>
+                              <button
+                                onClick={() =>
+                                  setPrescripciones((prev) => prev.filter((_, i) => i !== idx))
+                                }
+                                className="text-red-500 hover:text-red-700 mt-1"
+                              >
+                                <X className="w-5 h-5" />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      <button
+                        onClick={() =>
+                          setPrescripciones((prev) => [...prev, { exam_name: '', notes: '' }])
+                        }
+                        className="w-full border-2 border-dashed border-teal-300 rounded-xl py-2.5 text-sm font-semibold text-teal-600 hover:bg-teal-50"
+                      >
+                        + Agregar examen
+                      </button>
+
+                      {prescripciones.length > 0 && (
+                        <div className="flex gap-3 pt-2">
+                          <button
+                            onClick={async () => {
+                              if (
+                                !selected ||
+                                prescripciones.filter((p) => p.exam_name.trim()).length === 0
+                              ) {
+                                showToast({
+                                  type: 'error',
+                                  message: 'Agrega al menos un examen con nombre',
+                                });
+                                return;
+                              }
+                              setIsSavingPrescripciones(true);
+                              try {
+                                // El paraclínico se persiste en blocks_snapshot['paraclinical']
+                                // (bloque estructurado), NO en la tabla prescriptions. Así se
+                                // rehidrata al reabrir y el PDF compartido lo incluye.
+                                const ok = await saveParaclinicalNow();
+                                const count = prescripciones.filter((p) =>
+                                  p.exam_name.trim(),
+                                ).length;
+                                showToast(
+                                  ok
+                                    ? { type: 'success', message: `Exámenes guardados (${count})` }
+                                    : { type: 'error', message: 'No se pudo guardar los exámenes' },
+                                );
+                              } catch (err: unknown) {
+                                reportError('doctor/consultations', 'savePrescripciones', err);
+                                showToast({
+                                  type: 'error',
+                                  message: `Error al guardar exámenes: ${err instanceof Error ? err.message : 'desconocido'}`,
+                                });
+                              } finally {
+                                setIsSavingPrescripciones(false);
+                              }
+                            }}
+                            disabled={isSavingPrescripciones}
+                            className="flex-1 flex items-center justify-center gap-2 g-bg px-4 py-2.5 rounded-xl text-sm font-bold text-white hover:opacity-90 disabled:opacity-60"
+                          >
+                            {isSavingPrescripciones ? (
+                              'Guardando...'
+                            ) : (
+                              <>
+                                <Save className="w-4 h-4" /> Guardar
+                              </>
+                            )}
+                          </button>
+                          {/* Botón "PDF" viejo (print HTML) ELIMINADO: descargaba un archivo
+                            distinto al branded. Para el PDF del paraclínico usar "Generar
+                            Documento" (MedicalDocumentPdf branded, mismo formato que compartir). */}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Reposo Tab — block:rest */}
+                  {consultationTab === 'block:rest' && (
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                        <div className="flex items-center gap-2">
+                          <FileText className="w-4 h-4 text-slate-400" />
+                          <p className="text-sm font-bold text-slate-800">Constancia de reposo</p>
+                        </div>
+                        {(reposoDiagnosis || reposoDays > 0 || reposoFrom) && (
+                          <span className="text-[10px] text-emerald-600 font-medium flex items-center gap-1">
+                            <Check className="w-3 h-3" /> Guardado
+                          </span>
+                        )}
+                      </div>
+                      <div className="bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 text-xs text-blue-800">
+                        Los datos de reposo se guardan automáticamente en la consulta. Quedan
+                        disponibles aunque cierres y vuelvas.
+                      </div>
+                      <div>
+                        <label className="flex items-center gap-2 text-sm font-medium text-slate-700 mb-1.5">
+                          <FileText className="w-3.5 h-3.5 text-slate-400" /> Diagnóstico
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="Diagnóstico para el reposo"
+                          value={reposoDiagnosis}
+                          onChange={(e) => setReposoDiagnosis(e.target.value)}
+                          className={fi}
+                        />
+                      </div>
+                      <div>
+                        <label className="flex items-center gap-2 text-sm font-medium text-slate-700 mb-1.5">
+                          <Clock className="w-3.5 h-3.5 text-slate-400" /> Días de reposo
+                        </label>
+                        <input
+                          type="number"
+                          placeholder="0"
+                          min="0"
+                          value={reposoDays}
+                          onChange={(e) => {
+                            const days = parseInt(e.target.value) || 0;
+                            setReposoDays(days);
+                            if (reposoFrom) {
+                              const fromDate = new Date(reposoFrom);
+                              const toDate = new Date(fromDate);
+                              toDate.setDate(toDate.getDate() + days);
+                              setReposoTo(toDate.toISOString().split('T')[0]);
+                            }
+                          }}
+                          className={fi}
+                        />
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="flex items-center gap-2 text-sm font-medium text-slate-700 mb-1.5">
+                            <Calendar className="w-3.5 h-3.5 text-slate-400" /> Desde
+                          </label>
+                          <input
+                            type="date"
+                            value={reposoFrom}
+                            onChange={(e) => {
+                              setReposoFrom(e.target.value);
+                              if (reposoDays > 0) {
+                                const fromDate = new Date(e.target.value);
+                                const toDate = new Date(fromDate);
+                                toDate.setDate(toDate.getDate() + reposoDays);
+                                setReposoTo(toDate.toISOString().split('T')[0]);
+                              }
+                            }}
+                            className={fi}
+                          />
+                        </div>
+                        <div>
+                          <label className="flex items-center gap-2 text-sm font-medium text-slate-700 mb-1.5">
+                            <Calendar className="w-3.5 h-3.5 text-slate-400" /> Hasta
+                          </label>
+                          <input
+                            type="date"
+                            value={reposoTo}
+                            disabled
+                            className={fi + ' opacity-60'}
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="flex items-center gap-2 text-sm font-medium text-slate-700 mb-1.5">
+                          <FileText className="w-3.5 h-3.5 text-slate-400" /> Comentarios{' '}
+                          <span className="text-slate-400 font-normal text-xs">(opcional)</span>
+                        </label>
+                        <textarea
+                          placeholder="Observaciones adicionales del especialista..."
+                          value={reposoComments}
+                          onChange={(e) => setReposoComments(e.target.value)}
+                          rows={3}
+                          className={fi + ' resize-none'}
+                        />
+                      </div>
+                      <button
+                        onClick={async () => {
+                          if (!reposoFrom || !reposoDiagnosis || reposoDays === 0) {
+                            showToast({
+                              type: 'error',
+                              message: 'Completa diagnóstico, días y fecha de inicio',
+                            });
+                            return;
+                          }
+                          try {
+                            const { pdf } = await import('@react-pdf/renderer');
+                            const { MedicalDocumentPdf } =
+                              await import('@/components/pdf/MedicalDocumentPdf');
+                            const tmplCfg = informeTemplateConfig ?? pdfTemplateConfig;
+                            if (!tmplCfg) {
+                              showToast({ type: 'error', message: 'Plantilla no disponible aún' });
+                              return;
+                            }
+                            const reposoBlocks = [
+                              { key: 'reposo-diag', label: 'Diagnóstico', value: reposoDiagnosis },
+                              {
+                                key: 'reposo-period',
+                                label: 'Período de reposo',
+                                value:
+                                  `${reposoDays} día${reposoDays !== 1 ? 's' : ''}` +
+                                  ` — desde ${new Date(reposoFrom).toLocaleDateString('es-VE', { day: '2-digit', month: '2-digit', year: 'numeric' })}` +
+                                  (reposoTo
+                                    ? ` hasta ${new Date(reposoTo).toLocaleDateString('es-VE', { day: '2-digit', month: '2-digit', year: 'numeric' })}`
+                                    : ''),
+                              },
+                              ...(reposoComments
+                                ? [
+                                    {
+                                      key: 'reposo-comments',
+                                      label: 'Comentarios',
+                                      value: reposoComments,
+                                    },
+                                  ]
+                                : []),
+                            ];
+                            const element = (
+                              <MedicalDocumentPdf
+                                docType="rest"
+                                templateConfig={tmplCfg}
+                                doctor={{
+                                  fullName: doctorName || '',
+                                  specialty: doctorSpecialty,
+                                  licenseNumber: doctorLicense,
+                                }}
+                                patient={{
+                                  fullName: selected.patient_name || '—',
+                                  cedula:
+                                    patients.find((p) => p.id === selected.patient_id)?.cedula ??
+                                    null,
+                                }}
+                                docDate={selected.consultation_date}
+                                consultationCode={selected.consultation_code}
+                                content={reposoBlocks}
+                              />
+                            );
+                            const blob = await pdf(element).toBlob();
+                            const url = URL.createObjectURL(blob);
+                            const anchor = document.createElement('a');
+                            anchor.href = url;
+                            anchor.download = `Reposo-${(selected.consultation_code || 'consulta').replace(/[^\w-]/g, '')}.pdf`;
+                            // Anchor en el DOM → el navegador respeta el nombre.
+                            anchor.style.display = 'none';
+                            document.body.appendChild(anchor);
+                            anchor.click();
+                            setTimeout(() => {
+                              URL.revokeObjectURL(url);
+                              anchor.remove();
+                            }, 1000);
+                          } catch (err) {
+                            showToast({
+                              type: 'error',
+                              message:
+                                err instanceof Error ? err.message : 'Error al generar el PDF',
+                            });
+                          }
+                        }}
+                        className="w-full flex items-center justify-center gap-2 g-bg px-4 py-2.5 rounded-xl text-sm font-bold text-white hover:opacity-90"
+                      >
+                        <Printer className="w-4 h-4" /> Descargar PDF Reposo
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Notas internas Tab — block:internal_notes */}
+                  {consultationTab === 'block:internal_notes' && (
+                    <div className="space-y-4">
+                      <div className="flex items-center gap-2 pb-3 border-b border-slate-100">
+                        <FileText className="w-4 h-4 text-slate-400" />
+                        <p className="text-sm font-bold text-slate-800">Notas internas</p>
+                      </div>
+                      <p className="text-xs text-slate-500">
+                        Notas privadas del especialista sobre esta consulta. No se incluyen en
+                        documentos del paciente.
+                      </p>
+                      <RichTextEditor
+                        value={
+                          ((
+                            ((selected as Consultation).blocks_data || {}) as Record<
+                              string,
+                              unknown
+                            >
+                          ).internal_notes as string | undefined) || ''
+                        }
+                        onChange={(html) => {
+                          // RONDA 38: persistir en blocks_data.internal_notes (no en columna legacy diagnosis)
+                          // Inmutable: merge con estado actual del ref para no perder otros bloques.
                           const currentData =
                             (selectedRef.current?.blocks_data as Record<string, unknown>) || {};
-                          const next = { ...currentData, [key]: value };
+                          const next = { ...currentData, internal_notes: html };
                           setSelected((prev) => (prev ? { ...prev, blocks_data: next } : prev));
-                          // Sync estado legacy si aplica (para que report.* y blocks_data.* sean consistentes)
-                          if (
-                            key === 'chief_complaint' ||
-                            key === 'diagnosis' ||
-                            key === 'treatment' ||
-                            key === 'notes'
-                          ) {
-                            const legacyVal = typeof value === 'string' ? value : '';
-                            setReport((p) => ({ ...p, [key]: legacyVal }));
-                          }
-                          // Autosave debounced — lee blocks_data frescos del ref al disparar.
                           if (blocksAutoSaveTimer.current)
                             clearTimeout(blocksAutoSaveTimer.current);
-                          setAutoSaving(false);
                           blocksAutoSaveTimer.current = setTimeout(() => {
                             if (!selectedRef.current) return;
-                            // Leer blocks_data ACTUAL (no el next capturado en el closure)
                             const latestBd =
                               (selectedRef.current.blocks_data as Record<string, unknown>) || {};
-                            setAutoSaving(true);
                             fetch('/api/doctor/consultations', {
                               method: 'PATCH',
                               headers: { 'Content-Type': 'application/json' },
@@ -3552,638 +4391,18 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                                 id: selectedRef.current.id,
                                 blocks_data: latestBd,
                               }),
-                            })
-                              .then(() => {
-                                setAutoSaving(false);
-                                setSaved(true);
-                                setTimeout(() => setSaved(false), 2000);
-                              })
-                              .catch(() => setAutoSaving(false));
-                            // Sync legacy columns
-                            const legacyKeys = [
-                              'chief_complaint',
-                              'diagnosis',
-                              'treatment',
-                              'notes',
-                            ] as const;
-                            const legacyUpdates: Record<string, string | null> = {};
-                            let hasLegacy = false;
-                            for (const k of legacyKeys) {
-                              if (k in latestBd && typeof latestBd[k] === 'string') {
-                                legacyUpdates[k] = (latestBd[k] as string) || null;
-                                hasLegacy = true;
-                              }
-                            }
-                            if (hasLegacy) {
-                              updateConsultation(selectedRef.current.id, legacyUpdates).catch(
-                                () => {},
-                              );
-                            }
+                            }).catch(() => {});
                           }, 1500);
                         }}
-                        lockedKeys={LOCKED_BLOCK_KEYS}
-                        onSave={async () => {
-                          // Guardado manual inmediato — usa selectedRef para datos frescos
-                          if (!selectedRef.current) return;
-                          await fetch('/api/doctor/consultations', {
-                            method: 'PATCH',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                              id: selectedRef.current.id,
-                              blocks_data:
-                                (selectedRef.current.blocks_data as Record<string, unknown>) || {},
-                            }),
-                          });
-                          showToast({ type: 'success', message: 'Bloque guardado' });
-                        }}
+                        placeholder="Notas internas, observaciones, seguimiento pendiente..."
                       />
                     </div>
-                  );
-                })()}
-
-              {/* RONDA 38: Tab Content — Las únicas tabs que aún usan UI hardcoded son
-                  las que tienen FLUJO ESPECIAL (catálogo de medicamentos, exámenes, días reposo,
-                  notas internas). Todas las demás se renderizan dinámicamente arriba con DynamicBlocks.
-                  La condición de visibilidad ahora aparta el contenedor solo si la tab activa
-                  es una de las especiales. */}
-              <div
-                className={`p-6 space-y-4 ${
-                  [
-                    'block:prescription',
-                    'block:paraclinical',
-                    'block:rest',
-                    'block:internal_notes',
-                  ].includes(consultationTab)
-                    ? ''
-                    : 'hidden'
-                }`}
-              >
-                {/* Récipe Tab — block:prescription */}
-                {consultationTab === 'block:prescription' && (
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                      <div className="flex items-center gap-2">
-                        <Pill className="w-4 h-4 text-slate-400" />
-                        <p className="text-sm font-bold text-slate-800">Récipe</p>
-                      </div>
-                      <button
-                        onClick={() => setShowRecipe(true)}
-                        className="flex items-center gap-2 px-3 py-1.5 g-bg rounded-lg text-xs font-bold text-white hover:opacity-90"
-                      >
-                        <Pill className="w-3.5 h-3.5" />{' '}
-                        {recipe.medications.length > 0 ? 'Editar receta' : 'Generar receta'}
-                      </button>
-                    </div>
-
-                    {/* Show saved medications summary */}
-                    {recipe.medications.length > 0 && (
-                      <div className="space-y-2">
-                        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">
-                          Medicamentos en receta ({recipe.medications.length})
-                        </p>
-                        {recipe.medications.map((med, idx) => (
-                          <div
-                            key={idx}
-                            className="bg-teal-50 border border-teal-200 rounded-lg p-3"
-                          >
-                            <p className="text-sm font-bold text-teal-900">{med.name}</p>
-                            <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1">
-                              {med.dose && (
-                                <span className="text-xs text-teal-700">Dosis: {med.dose}</span>
-                              )}
-                              {med.route && (
-                                <span className="text-xs text-teal-700">Vía: {med.route}</span>
-                              )}
-                              {med.frequency && (
-                                <span className="text-xs text-teal-700">
-                                  Frecuencia: {med.frequency}
-                                </span>
-                              )}
-                              {med.duration && (
-                                <span className="text-xs text-teal-700">
-                                  Duración: {med.duration}
-                                </span>
-                              )}
-                              {med.presentation && (
-                                <span className="text-xs text-teal-700">
-                                  Presentación: {med.presentation}
-                                </span>
-                              )}
-                            </div>
-                            {med.indications && (
-                              <p className="text-xs text-teal-600 mt-1">{med.indications}</p>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-
-                    {/* Quick meds: catálogo precargado del doctor — clic para agregar al instante */}
-                    {quickMeds.length > 0 && (
-                      <div>
-                        <p className="text-xs font-semibold text-slate-500 mb-2 uppercase tracking-wide">
-                          Medicamentos frecuentes (clic para agregar)
-                        </p>
-                        <div className="flex flex-wrap gap-1.5">
-                          {quickMeds.map((q) => (
-                            <button
-                              key={q.id}
-                              onClick={() =>
-                                setRecipe((p) => ({
-                                  ...p,
-                                  medications: [
-                                    ...p.medications,
-                                    {
-                                      name: q.name,
-                                      dose: q.details || '',
-                                      route: '',
-                                      frequency: '',
-                                      duration: '',
-                                      presentation: '',
-                                      indications: '',
-                                    },
-                                  ],
-                                }))
-                              }
-                              className="text-xs px-2.5 py-1.5 bg-teal-50 text-teal-700 border border-teal-200 rounded-lg hover:bg-teal-100 transition-colors font-medium"
-                            >
-                              + {q.name}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Generación on-click del récipe PDF — sin pre-render constante.
-                        Solo medicamentos en el récipe (el diagnóstico NO va en el récipe). */}
-                    <div className="flex gap-2 pt-2">
-                      {pdfTemplateConfig && recipe.medications.length > 0 && (
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            try {
-                              const { pdf } = await import('@react-pdf/renderer');
-                              const { MedicalDocumentPdf } =
-                                await import('@/components/pdf/MedicalDocumentPdf');
-                              const { buildRecetasContent, buildRecipeHoja2Content } =
-                                await import('./consultation-documents');
-
-                              // Convertir recipe.medications al shape de SavedPrescription
-                              const syntheticPrescriptions = [
-                                {
-                                  id: 'local',
-                                  medications: recipe.medications,
-                                  notes: recipe.notes || null,
-                                  created_at: '',
-                                },
-                              ];
-
-                              // Hoja 1: solo nombre/dosis (el diagnóstico NO va en el récipe)
-                              const hoja1Blocks: ContentBlock[] = [
-                                ...buildRecetasContent(syntheticPrescriptions),
-                              ];
-
-                              // Hoja 2: detalles completos por medicamento
-                              const hoja2Blocks = buildRecipeHoja2Content(syntheticPrescriptions);
-
-                              const docPages = [
-                                ...(hoja1Blocks.length > 0
-                                  ? [{ docType: 'recipe', content: hoja1Blocks }]
-                                  : []),
-                                ...(hoja2Blocks.length > 0
-                                  ? [{ docType: 'indications', content: hoja2Blocks }]
-                                  : []),
-                              ];
-
-                              const patientCedula =
-                                patients.find((p) => p.id === selected.patient_id)?.cedula ?? null;
-
-                              const el = (
-                                <MedicalDocumentPdf
-                                  docType="recipe"
-                                  templateConfig={pdfTemplateConfig}
-                                  doctor={{
-                                    fullName: doctorName || '',
-                                    specialty: doctorSpecialty,
-                                    licenseNumber: doctorLicense,
-                                  }}
-                                  patient={{
-                                    fullName: selected.patient_name || '—',
-                                    cedula: patientCedula,
-                                  }}
-                                  docDate={selected.consultation_date}
-                                  consultationCode={selected.consultation_code}
-                                  content={docPages[0]?.content ?? []}
-                                  documents={docPages.length > 1 ? docPages : undefined}
-                                />
-                              );
-                              const blob = await pdf(el).toBlob();
-                              const url = URL.createObjectURL(blob);
-                              const a = document.createElement('a');
-                              a.href = url;
-                              a.download = `Recipe-${(selected.consultation_code || 'consulta').replace(/[^\w-]/g, '')}.pdf`;
-                              // Anchor en el DOM → el navegador respeta el nombre (si no,
-                              // descargaba un UUID sin extensión tras el await).
-                              a.style.display = 'none';
-                              document.body.appendChild(a);
-                              a.click();
-                              setTimeout(() => {
-                                URL.revokeObjectURL(url);
-                                a.remove();
-                              }, 1000);
-                            } catch (err) {
-                              showToast({ type: 'error', message: 'Error al generar el PDF' });
-                              console.error('[RecipePdf]', err);
-                            }
-                          }}
-                          className="flex items-center justify-center gap-2 bg-teal-500 hover:bg-teal-600 text-white px-4 py-2.5 rounded-xl text-sm font-bold transition-colors"
-                        >
-                          <Printer className="w-4 h-4" /> Descargar récipe PDF
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {/* Exámenes Tab — block:paraclinical (exámenes médicos estructurados) */}
-                {consultationTab === 'block:paraclinical' && (
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                      <div className="flex items-center gap-2">
-                        <FileText className="w-4 h-4 text-slate-400" />
-                        <p className="text-sm font-bold text-slate-800">Prescripciones médicas</p>
-                      </div>
-                    </div>
-                    <p className="text-xs text-slate-500">
-                      Exámenes e indicaciones que el especialista ordena al paciente (laboratorio,
-                      imágenes, etc.)
-                    </p>
-
-                    {/* Quick exams from templates */}
-                    {quickExams.length > 0 && (
-                      <div>
-                        <p className="text-xs font-semibold text-slate-500 mb-2">
-                          Exámenes frecuentes (clic para agregar):
-                        </p>
-                        <div className="flex flex-wrap gap-1.5">
-                          {quickExams.map((q) => (
-                            <button
-                              key={q.id}
-                              onClick={() =>
-                                setPrescripciones((prev) => [
-                                  ...prev,
-                                  { exam_name: q.name, notes: q.details || '' },
-                                ])
-                              }
-                              className="text-xs px-2.5 py-1.5 bg-teal-50 text-teal-700 border border-teal-200 rounded-lg hover:bg-teal-100 transition-colors font-medium"
-                            >
-                              + {q.name}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    <div className="space-y-3">
-                      {prescripciones.map((p, idx) => (
-                        <div
-                          key={idx}
-                          className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3"
-                        >
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="flex-1 space-y-2">
-                              <input
-                                type="text"
-                                placeholder="Nombre del examen (ej: Hematología completa, Rx de tórax...)"
-                                value={p.exam_name}
-                                onChange={(e) =>
-                                  setPrescripciones((prev) =>
-                                    prev.map((item, i) =>
-                                      i === idx ? { ...item, exam_name: e.target.value } : item,
-                                    ),
-                                  )
-                                }
-                                className={fi}
-                              />
-                              <input
-                                type="text"
-                                placeholder="Indicaciones (ej: En ayunas, contraste oral...)"
-                                value={p.notes}
-                                onChange={(e) =>
-                                  setPrescripciones((prev) =>
-                                    prev.map((item, i) =>
-                                      i === idx ? { ...item, notes: e.target.value } : item,
-                                    ),
-                                  )
-                                }
-                                className={fi}
-                              />
-                            </div>
-                            <button
-                              onClick={() =>
-                                setPrescripciones((prev) => prev.filter((_, i) => i !== idx))
-                              }
-                              className="text-red-500 hover:text-red-700 mt-1"
-                            >
-                              <X className="w-5 h-5" />
-                            </button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-
-                    <button
-                      onClick={() =>
-                        setPrescripciones((prev) => [...prev, { exam_name: '', notes: '' }])
-                      }
-                      className="w-full border-2 border-dashed border-teal-300 rounded-xl py-2.5 text-sm font-semibold text-teal-600 hover:bg-teal-50"
-                    >
-                      + Agregar examen
-                    </button>
-
-                    {prescripciones.length > 0 && (
-                      <div className="flex gap-3 pt-2">
-                        <button
-                          onClick={async () => {
-                            if (
-                              !selected ||
-                              prescripciones.filter((p) => p.exam_name.trim()).length === 0
-                            ) {
-                              showToast({
-                                type: 'error',
-                                message: 'Agrega al menos un examen con nombre',
-                              });
-                              return;
-                            }
-                            setIsSavingPrescripciones(true);
-                            try {
-                              // El paraclínico se persiste en blocks_snapshot['paraclinical']
-                              // (bloque estructurado), NO en la tabla prescriptions. Así se
-                              // rehidrata al reabrir y el PDF compartido lo incluye.
-                              const ok = await saveParaclinicalNow();
-                              const count = prescripciones.filter((p) => p.exam_name.trim()).length;
-                              showToast(
-                                ok
-                                  ? { type: 'success', message: `Exámenes guardados (${count})` }
-                                  : { type: 'error', message: 'No se pudo guardar los exámenes' },
-                              );
-                            } catch (err: unknown) {
-                              reportError('doctor/consultations', 'savePrescripciones', err);
-                              showToast({
-                                type: 'error',
-                                message: `Error al guardar exámenes: ${err instanceof Error ? err.message : 'desconocido'}`,
-                              });
-                            } finally {
-                              setIsSavingPrescripciones(false);
-                            }
-                          }}
-                          disabled={isSavingPrescripciones}
-                          className="flex-1 flex items-center justify-center gap-2 g-bg px-4 py-2.5 rounded-xl text-sm font-bold text-white hover:opacity-90 disabled:opacity-60"
-                        >
-                          {isSavingPrescripciones ? (
-                            'Guardando...'
-                          ) : (
-                            <>
-                              <Save className="w-4 h-4" /> Guardar
-                            </>
-                          )}
-                        </button>
-                        {/* Botón "PDF" viejo (print HTML) ELIMINADO: descargaba un archivo
-                            distinto al branded. Para el PDF del paraclínico usar "Generar
-                            Documento" (MedicalDocumentPdf branded, mismo formato que compartir). */}
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* Reposo Tab — block:rest */}
-                {consultationTab === 'block:rest' && (
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                      <div className="flex items-center gap-2">
-                        <FileText className="w-4 h-4 text-slate-400" />
-                        <p className="text-sm font-bold text-slate-800">Constancia de reposo</p>
-                      </div>
-                      {(reposoDiagnosis || reposoDays > 0 || reposoFrom) && (
-                        <span className="text-[10px] text-emerald-600 font-medium flex items-center gap-1">
-                          <Check className="w-3 h-3" /> Guardado
-                        </span>
-                      )}
-                    </div>
-                    <div className="bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 text-xs text-blue-800">
-                      Los datos de reposo se guardan automáticamente en la consulta. Quedan
-                      disponibles aunque cierres y vuelvas.
-                    </div>
-                    <div>
-                      <label className="flex items-center gap-2 text-sm font-medium text-slate-700 mb-1.5">
-                        <FileText className="w-3.5 h-3.5 text-slate-400" /> Diagnóstico
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="Diagnóstico para el reposo"
-                        value={reposoDiagnosis}
-                        onChange={(e) => setReposoDiagnosis(e.target.value)}
-                        className={fi}
-                      />
-                    </div>
-                    <div>
-                      <label className="flex items-center gap-2 text-sm font-medium text-slate-700 mb-1.5">
-                        <Clock className="w-3.5 h-3.5 text-slate-400" /> Días de reposo
-                      </label>
-                      <input
-                        type="number"
-                        placeholder="0"
-                        min="0"
-                        value={reposoDays}
-                        onChange={(e) => {
-                          const days = parseInt(e.target.value) || 0;
-                          setReposoDays(days);
-                          if (reposoFrom) {
-                            const fromDate = new Date(reposoFrom);
-                            const toDate = new Date(fromDate);
-                            toDate.setDate(toDate.getDate() + days);
-                            setReposoTo(toDate.toISOString().split('T')[0]);
-                          }
-                        }}
-                        className={fi}
-                      />
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="flex items-center gap-2 text-sm font-medium text-slate-700 mb-1.5">
-                          <Calendar className="w-3.5 h-3.5 text-slate-400" /> Desde
-                        </label>
-                        <input
-                          type="date"
-                          value={reposoFrom}
-                          onChange={(e) => {
-                            setReposoFrom(e.target.value);
-                            if (reposoDays > 0) {
-                              const fromDate = new Date(e.target.value);
-                              const toDate = new Date(fromDate);
-                              toDate.setDate(toDate.getDate() + reposoDays);
-                              setReposoTo(toDate.toISOString().split('T')[0]);
-                            }
-                          }}
-                          className={fi}
-                        />
-                      </div>
-                      <div>
-                        <label className="flex items-center gap-2 text-sm font-medium text-slate-700 mb-1.5">
-                          <Calendar className="w-3.5 h-3.5 text-slate-400" /> Hasta
-                        </label>
-                        <input
-                          type="date"
-                          value={reposoTo}
-                          disabled
-                          className={fi + ' opacity-60'}
-                        />
-                      </div>
-                    </div>
-                    <div>
-                      <label className="flex items-center gap-2 text-sm font-medium text-slate-700 mb-1.5">
-                        <FileText className="w-3.5 h-3.5 text-slate-400" /> Comentarios{' '}
-                        <span className="text-slate-400 font-normal text-xs">(opcional)</span>
-                      </label>
-                      <textarea
-                        placeholder="Observaciones adicionales del especialista..."
-                        value={reposoComments}
-                        onChange={(e) => setReposoComments(e.target.value)}
-                        rows={3}
-                        className={fi + ' resize-none'}
-                      />
-                    </div>
-                    <button
-                      onClick={async () => {
-                        if (!reposoFrom || !reposoDiagnosis || reposoDays === 0) {
-                          showToast({
-                            type: 'error',
-                            message: 'Completa diagnóstico, días y fecha de inicio',
-                          });
-                          return;
-                        }
-                        try {
-                          const { pdf } = await import('@react-pdf/renderer');
-                          const { MedicalDocumentPdf } =
-                            await import('@/components/pdf/MedicalDocumentPdf');
-                          const tmplCfg = informeTemplateConfig ?? pdfTemplateConfig;
-                          if (!tmplCfg) {
-                            showToast({ type: 'error', message: 'Plantilla no disponible aún' });
-                            return;
-                          }
-                          const reposoBlocks = [
-                            { key: 'reposo-diag', label: 'Diagnóstico', value: reposoDiagnosis },
-                            {
-                              key: 'reposo-period',
-                              label: 'Período de reposo',
-                              value:
-                                `${reposoDays} día${reposoDays !== 1 ? 's' : ''}` +
-                                ` — desde ${new Date(reposoFrom).toLocaleDateString('es-VE', { day: '2-digit', month: '2-digit', year: 'numeric' })}` +
-                                (reposoTo
-                                  ? ` hasta ${new Date(reposoTo).toLocaleDateString('es-VE', { day: '2-digit', month: '2-digit', year: 'numeric' })}`
-                                  : ''),
-                            },
-                            ...(reposoComments
-                              ? [
-                                  {
-                                    key: 'reposo-comments',
-                                    label: 'Comentarios',
-                                    value: reposoComments,
-                                  },
-                                ]
-                              : []),
-                          ];
-                          const element = (
-                            <MedicalDocumentPdf
-                              docType="rest"
-                              templateConfig={tmplCfg}
-                              doctor={{
-                                fullName: doctorName || '',
-                                specialty: doctorSpecialty,
-                                licenseNumber: doctorLicense,
-                              }}
-                              patient={{
-                                fullName: selected.patient_name || '—',
-                                cedula:
-                                  patients.find((p) => p.id === selected.patient_id)?.cedula ??
-                                  null,
-                              }}
-                              docDate={selected.consultation_date}
-                              consultationCode={selected.consultation_code}
-                              content={reposoBlocks}
-                            />
-                          );
-                          const blob = await pdf(element).toBlob();
-                          const url = URL.createObjectURL(blob);
-                          const anchor = document.createElement('a');
-                          anchor.href = url;
-                          anchor.download = `Reposo-${(selected.consultation_code || 'consulta').replace(/[^\w-]/g, '')}.pdf`;
-                          // Anchor en el DOM → el navegador respeta el nombre.
-                          anchor.style.display = 'none';
-                          document.body.appendChild(anchor);
-                          anchor.click();
-                          setTimeout(() => {
-                            URL.revokeObjectURL(url);
-                            anchor.remove();
-                          }, 1000);
-                        } catch (err) {
-                          showToast({
-                            type: 'error',
-                            message: err instanceof Error ? err.message : 'Error al generar el PDF',
-                          });
-                        }
-                      }}
-                      className="w-full flex items-center justify-center gap-2 g-bg px-4 py-2.5 rounded-xl text-sm font-bold text-white hover:opacity-90"
-                    >
-                      <Printer className="w-4 h-4" /> Descargar PDF Reposo
-                    </button>
-                  </div>
-                )}
-
-                {/* Notas internas Tab — block:internal_notes */}
-                {consultationTab === 'block:internal_notes' && (
-                  <div className="space-y-4">
-                    <div className="flex items-center gap-2 pb-3 border-b border-slate-100">
-                      <FileText className="w-4 h-4 text-slate-400" />
-                      <p className="text-sm font-bold text-slate-800">Notas internas</p>
-                    </div>
-                    <p className="text-xs text-slate-500">
-                      Notas privadas del especialista sobre esta consulta. No se incluyen en
-                      documentos del paciente.
-                    </p>
-                    <RichTextEditor
-                      value={
-                        ((((selected as Consultation).blocks_data || {}) as Record<string, unknown>)
-                          .internal_notes as string | undefined) || ''
-                      }
-                      onChange={(html) => {
-                        // RONDA 38: persistir en blocks_data.internal_notes (no en columna legacy diagnosis)
-                        // Inmutable: merge con estado actual del ref para no perder otros bloques.
-                        const currentData =
-                          (selectedRef.current?.blocks_data as Record<string, unknown>) || {};
-                        const next = { ...currentData, internal_notes: html };
-                        setSelected((prev) => (prev ? { ...prev, blocks_data: next } : prev));
-                        if (blocksAutoSaveTimer.current) clearTimeout(blocksAutoSaveTimer.current);
-                        blocksAutoSaveTimer.current = setTimeout(() => {
-                          if (!selectedRef.current) return;
-                          const latestBd =
-                            (selectedRef.current.blocks_data as Record<string, unknown>) || {};
-                          fetch('/api/doctor/consultations', {
-                            method: 'PATCH',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                              id: selectedRef.current.id,
-                              blocks_data: latestBd,
-                            }),
-                          }).catch(() => {});
-                        }, 1500);
-                      }}
-                      placeholder="Notas internas, observaciones, seguimiento pendiente..."
-                    />
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
+              {/* /content wrapper — WP-E: flex-1 in vertical mode */}
             </div>
+            {/* /Medical Report Form */}
 
             {/* L1 (2026-04-29): Asistente IA UNIFICADO — único panel de IA en la consulta.
                 3 modos: resumir historial, mejorar redacción (con dropdown de bloque),
@@ -5368,10 +5587,6 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
           (() => {
             const effective = getEffectiveBlocks(selected);
             const printable = effective.filter((b) => b.printable);
-            console.log('[generar-informe] MODAL RENDERING (consultation view)', {
-              effectiveCount: effective.length,
-              printableCount: printable.length,
-            });
             return (
               <div
                 className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4"
@@ -6489,10 +6704,6 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
           (() => {
             const effective = getEffectiveBlocks(selected);
             const printable = effective.filter((b) => b.printable);
-            console.log('[generar-informe] MODAL RENDERING', {
-              effectiveCount: effective.length,
-              printableCount: printable.length,
-            });
             return (
               <div
                 className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4"

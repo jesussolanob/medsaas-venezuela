@@ -43,6 +43,14 @@ export interface DoctorProfileCreateParams {
    * onboarding completion from specialty being non-null.
    */
   onboardingCompleted: boolean;
+  /** Display layout for consultation blocks: 'tabs' (default) or 'vertical'. */
+  consultationBlocksLayout?: 'tabs' | 'vertical';
+  /** Timestamp when the doctor completed the full onboarding gate. Null if not done. */
+  onboardingCompletedAt?: Date | null;
+  /** Whether the doctor has at least one active office (enrichment). */
+  hasActiveOffice?: boolean;
+  /** Whether the doctor has at least one active service / pricing plan (enrichment). */
+  hasActiveService?: boolean;
 }
 
 export interface DoctorProfileUpdateParams {
@@ -101,6 +109,26 @@ export class DoctorProfile {
   readonly welcomeDismissedAt: string | null;
   /** True once the doctor has submitted the onboarding form. Set server-side — never derived from specialty. */
   readonly onboardingCompleted: boolean;
+  /**
+   * Display layout for consultation blocks.
+   * 'tabs' (default) or 'vertical'. Added by migration 20260805000001.
+   */
+  readonly consultationBlocksLayout: 'tabs' | 'vertical';
+  /**
+   * Timestamp when the doctor completed the full onboarding gate (≥1 office + ≥1 service).
+   * Null when not yet completed. Added by migration 20260805000001.
+   */
+  readonly onboardingCompletedAt: Date | null;
+  /**
+   * Whether the doctor has at least one active office.
+   * Enrichment field — populated by GetDoctorProfileUseCase, not persisted directly here.
+   */
+  readonly hasActiveOffice: boolean;
+  /**
+   * Whether the doctor has at least one active service / pricing plan.
+   * Enrichment field — populated by GetDoctorProfileUseCase, not persisted directly here.
+   */
+  readonly hasActiveService: boolean;
 
   constructor(params: DoctorProfileCreateParams) {
     this.id = params.id;
@@ -130,6 +158,10 @@ export class DoctorProfile {
     this.gender = params.gender ?? null;
     this.welcomeDismissedAt = params.welcomeDismissedAt ?? null;
     this.onboardingCompleted = params.onboardingCompleted;
+    this.consultationBlocksLayout = params.consultationBlocksLayout ?? 'tabs';
+    this.onboardingCompletedAt = params.onboardingCompletedAt ?? null;
+    this.hasActiveOffice = params.hasActiveOffice ?? false;
+    this.hasActiveService = params.hasActiveService ?? false;
   }
 
   /** Public booking link for sharing with patients. */
@@ -147,14 +179,17 @@ export class DoctorProfile {
   }
 
   /**
-   * Returns a new DoctorProfile with image URLs replaced by freshly signed ones.
-   * Used by use cases that re-sign GCS URLs at read time.
+   * Returns a new DoctorProfile with image URLs replaced by freshly signed ones
+   * and optional enrichment fields (hasActiveOffice, hasActiveService).
+   * Used by GetDoctorProfileUseCase to build the full profile response in one pass.
    * Pure domain method — no external dependencies.
    */
   withRefreshedImageUrls(
     avatarUrl: string | null,
     logoUrl: string | null,
     signatureUrl: string | null,
+    hasActiveOffice = false,
+    hasActiveService = false,
   ): DoctorProfile {
     return DoctorProfile.create({
       id: this.id,
@@ -184,6 +219,10 @@ export class DoctorProfile {
       gender: this.gender,
       welcomeDismissedAt: this.welcomeDismissedAt,
       onboardingCompleted: this.onboardingCompleted,
+      consultationBlocksLayout: this.consultationBlocksLayout,
+      onboardingCompletedAt: this.onboardingCompletedAt,
+      hasActiveOffice,
+      hasActiveService,
     });
   }
 }

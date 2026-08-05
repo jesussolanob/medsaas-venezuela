@@ -16,8 +16,16 @@ export interface IDoctorProfileRepository {
   update(doctorId: string, params: DoctorProfileUpdateParams): Promise<DoctorProfile>;
 
   /** Persist the doctor's exchange-rate preference. Returns the updated domain entity. */
-  updateExchangeRate(
-    doctorId: string,
-    params: ExchangeRateUpdateParams,
-  ): Promise<DoctorProfile>;
+  updateExchangeRate(doctorId: string, params: ExchangeRateUpdateParams): Promise<DoctorProfile>;
+
+  /**
+   * Sets onboarding_completed_at to NOW() for the given doctor.
+   * Idempotent: safe to call multiple times.
+   */
+  markOnboardingCompleted(doctorId: string): Promise<void>;
+
+  /**
+   * Persists the consultation_blocks_layout for the given doctor.
+   */
+  updateBlocksLayout(doctorId: string, layout: 'tabs' | 'vertical'): Promise<void>;
 }

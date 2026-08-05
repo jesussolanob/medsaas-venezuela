@@ -235,15 +235,34 @@ Módulo `pending-consultations`. Envelope `{success,data}`. Doctor scoped por `u
 
 #### Subscription Payments (admin)
 
-| Endpoint                                       | Método | Roles       | Notas                                                                                                                                                                                     |
-| ---------------------------------------------- | ------ | ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/api/admin/subscription-payments`             | GET    | super_admin | Lista pagos de suscripción. Query: `?status=pending\|approved\|rejected`, `?page`, `?limit`.                                                                                              |
-| `/api/admin/subscription-payments/:id/approve` | PUT    | super_admin | Aprueba el pago. TRANSACCIONAL: marca payment approved + extiende subscriptions.current_period_end + sync profiles snapshot (status=active) + inserta subscription_changes_log. Sin body. |
-| `/api/admin/subscription-payments/:id/reject`  | PUT    | super_admin | Rechaza el pago. Body: `{ reason?: string }`. Inserta subscription_changes_log.                                                                                                           |
+| Endpoint                                           | Método | Roles       | Notas                                                                                                                                                                                                                                                       |
+| -------------------------------------------------- | ------ | ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/api/admin/subscription-payments`                 | POST   | super_admin | Registra pago manual (ya aprobado). Body: `{ doctor_id, amount_usd, method, duration_months, reference_number? }`. TRANSACCIONAL.                                                                                                                           |
+| `/api/admin/subscription-payments`                 | GET    | super_admin | Lista pagos. Query: `?status=pending\|approved\|rejected`, `?page`, `?limit`. Respuesta incluye: `amountBs, bcvRateUsed, bankCode, planKey, period, rejectionReason, hasReceipt`.                                                                           |
+| `/api/admin/subscription-payments/:id/approve`     | PUT    | super_admin | Aprueba el pago. TRANSACCIONAL: marca approved + extiende sub + si `payment.planKey` → cambia `profiles.plan` + `subscriptions.plan` + sync profiles snapshot + inserta subscription_changes_log. Sin body. Lanza 422 si ya resuelto, 404 si no encontrado. |
+| `/api/admin/subscription-payments/:id/reject`      | PUT    | super_admin | Rechaza el pago. Body: `{ reason?: string }`. Guarda `rejection_reason` en BD.                                                                                                                                                                              |
+| `/api/admin/subscription-payments/:id/receipt-url` | GET    | super_admin | Devuelve URL firmada (TTL 15 min) del comprobante. 404 si no existe o no tiene comprobante. NUNCA expone el path GCS crudo.                                                                                                                                 |
 
 > La extensión de suscripción parte de max(now, currentExpiresAt) + payment.duration_months.
 > Lanza SubscriptionPaymentNotFoundError(404) y SubscriptionPaymentAlreadyResolvedError(422) si procede.
 > Reemplaza: `app/api/admin/payments/route.ts` + `approve/route.ts` + `reject/route.ts`.
+
+#### Subscription Payments — autogestión del especialista (WP-B, 2026-08-05)
+
+| Endpoint                                          | Método | Roles  | Notas                                                                                                                                                                                                                                    |
+| ------------------------------------------------- | ------ | ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/api/doctor/subscription-payments/checkout-info` | GET    | doctor | Info de checkout: `{ planName, planKey, period, amountUsd, amountBs, bcvRate, bcvRateDate, banks[], paymentInstructions }`. Query: `?planKey=&period=`. Calcula `amountBs` en servidor (nunca del cliente). Lanza 503 si falta tasa BCV. |
+| `/api/doctor/subscription-payments`               | POST   | doctor | Envía comprobante. Body: `{ planKey, period, bankCode, referenceNumber, receiptPath, notes? }`. Anti-spam: 1 pago pendiente a la vez. Anti-IDOR: `receiptPath` debe empezar con `receipt/{doctorId}/`. `doctorId` siempre de `user.sub`. |
+| `/api/doctor/subscription-payments`               | GET    | doctor | Historial propio paginado. Respuesta: `{ id, planKey, period, amountUsd, amountBs, bcvRateUsed, bankCode, referenceNumber, status, rejectionReason, createdAt, reviewedAt, hasReceipt }`. NUNCA expone `receiptUrl` raw.                 |
+
+> **Errores de dominio nuevos (WP-B):**
+>
+> - `PlanNotFoundForCheckoutError` (422) — plan/período no existe o está inactivo
+> - `RateUnavailableError` (503) — no hay tasa BCV en app_settings
+> - `PendingPaymentExistsError` (409) — ya existe un pago pendiente para este doctor
+> - `ReceiptPathNotOwnedError` (422) — `receiptPath` no pertenece al doctor autenticado
+>
+> **Migración:** `20260805000002-subscription-payments-doctor-checkout.cjs` — agrega 8 columnas a `subscription_payments` + seed `platform_payment_instructions` en `app_settings`.
 
 #### Invoices — facturas de plataforma (admin)
 
@@ -624,3 +643,65 @@ ahí o el PUT responde **400 por clave no reconocida**.
 > Ambas usan `REPLACE`/`regexp_replace` sobre las columnas en vez de reinsertar la
 > plantilla, para no pisar los restyles previos. **Validadas con `SELECT` contra la BD de
 > staging ANTES de commitear** — una migración rota bloquea TODOS los despliegues.
+
+---
+
+## Lote agosto 2026 — WP-C (backend soporte transversal) — 2026-08-05
+
+### Migración `20260805000001-lote-agosto-backend-support.cjs`
+
+Añade a `profiles`:
+
+- `consultation_blocks_layout TEXT NOT NULL DEFAULT 'tabs'` — layout del editor de bloques.
+- `onboarding_completed_at TIMESTAMPTZ NULL` — timestamp del completado del onboarding gate.
+- Backfill: `UPDATE profiles SET onboarding_completed_at = NOW() WHERE role='doctor' AND specialty IS NOT NULL AND onboarding_completed_at IS NULL`.
+
+### `GET /api/doctor/consultation-blocks` — campo nuevo
+
+Ahora incluye `layout: 'tabs' | 'vertical'` en la respuesta. Retrocompatible.
+
+### `PUT /api/doctor/consultation-blocks` — campo nuevo
+
+Acepta `layout?: 'tabs' | 'vertical'` (opcional). Si presente, persiste en `profiles.consultation_blocks_layout`. Si ausente, solo guarda los bloques (comportamiento anterior).
+
+### `GET /api/appointments/:id` — enriquecido + anti-IDOR en repo
+
+- Respuesta ahora incluye `officeName: string | null`.
+- Anti-IDOR reforzado: `findByIdScopedEnriched(id, doctorId)` filtra por `doctor_id = :doctorId` en SQL WHERE (defensa en profundidad; antes: check a nivel use-case).
+- Acceso owner-scoped: devuelve PII completo sin enmascarar, sin audit log (ADR-005). Los campos `consultationCode` y `officeName` vienen de JOIN a `consultations` y `doctor_offices`.
+
+### `POST /api/appointments` — campo nuevo en respuesta
+
+Ahora devuelve `consultationId: string | null` (vía `toPlainAppointment`). Antes devolvía la entidad cruda; ahora retorna el plain object mapeado.
+
+### `POST /api/doctor/onboarding/complete` — endpoint nuevo
+
+| Endpoint                          | Método | Auth   | Body | Errores                               |
+| --------------------------------- | ------ | ------ | ---- | ------------------------------------- |
+| `/api/doctor/onboarding/complete` | POST   | doctor | —    | `422 ONBOARDING_REQUIREMENTS_NOT_MET` |
+
+Verifica server-side que el doctor tiene ≥1 consultorio activo Y ≥1 servicio activo. Si cumple, sella `profiles.onboarding_completed_at = NOW()` (idempotente). Respuesta: `{ onboardingCompleted: true }`.
+
+### `GET /api/doctor/profile` — campos nuevos
+
+Ahora expone:
+
+- `consultationBlocksLayout: 'tabs' | 'vertical'` — layout del editor.
+- `onboardingCompletedAt: string | null` — ISO timestamp o null.
+- `hasActiveOffice: boolean` — el doctor tiene ≥1 consultorio activo (enrichment en el GET, no columna directa).
+- `hasActiveService: boolean` — el doctor tiene ≥1 servicio activo (enrichment en el GET).
+
+### Seguridad — `BlockContentSanitizer` (módulo consultations)
+
+`BlockContentSanitizer.sanitizeSnapshot()` limpia valores HTML en `blocks_snapshot` antes de persistir.
+
+- Allowlist estricta: `p, br, strong, b, em, i, u, s, ul, ol, li, h1–h6, blockquote, pre, code, hr, span`.
+- Zero atributos permitidos (onclick, style, href, src → todos eliminados).
+- Cap de 300 000 chars serializado: lanza `BlocksSnapshotTooLargeError` (422) si excede.
+- Invocado en `UpdateConsultationUseCase` antes de `repo.update()`.
+
+### Utilidades HTML — `libs/shared-utils`
+
+- `htmlToPlainText(input: string): string` — convierte HTML a texto plano (bloque→\n, li→"• item", entidades decodificadas). Sin dependencia de DOM.
+- `isProbablyHtml(input: string): boolean` — heurística por tag names (no dispara con `<3` ni `A < B`).
+- Usadas en `GetDocumentRenderDataUseCase.plainTextSnapshot()` para limpiar `blocksSnapshot` antes del PDF render.

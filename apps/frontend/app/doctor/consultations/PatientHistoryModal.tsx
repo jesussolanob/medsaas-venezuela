@@ -27,6 +27,7 @@ import {
   ClipboardList,
 } from 'lucide-react';
 import { getPatientConsultations, type Consultation } from './actions';
+import RichTextView from '@/components/consultation/RichTextView';
 
 // ---------------------------------------------------------------------------
 // Tipos locales
@@ -231,7 +232,8 @@ function ConsultationCard({
                       <p className="text-[10px] font-bold uppercase tracking-wider text-teal-600 mb-0.5">
                         {block.label}
                       </p>
-                      <p className="text-xs text-slate-800 leading-relaxed">{strValue}</p>
+                      {/* WP-E: use RichTextView to handle HTML from TipTap editor */}
+                      <RichTextView value={strValue} className="text-xs text-slate-800" />
                     </div>
                   );
                 }
@@ -241,9 +243,8 @@ function ConsultationCard({
                     <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-0.5">
                       {block.label}
                     </p>
-                    <p className="text-xs text-slate-700 leading-relaxed whitespace-pre-line">
-                      {strValue}
-                    </p>
+                    {/* WP-E: use RichTextView to handle HTML or plain text */}
+                    <RichTextView value={strValue} className="text-xs" />
                   </div>
                 );
               })}

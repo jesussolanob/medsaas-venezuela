@@ -47,6 +47,8 @@ describe('UpdateDoctorProfileUseCase', () => {
       findByDoctorId: jest.fn(),
       update: jest.fn(),
       updateExchangeRate: jest.fn(),
+      markOnboardingCompleted: jest.fn().mockResolvedValue(undefined),
+      updateBlocksLayout: jest.fn().mockResolvedValue(undefined),
     };
     useCase = new UpdateDoctorProfileUseCase(mockRepo);
   });

@@ -105,7 +105,7 @@ export class AppointmentsController {
   /** GET /api/appointments/:id — single appointment detail (full PII, ownership enforced). */
   @Get(':id')
   async findOne(
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: CurrentUserPayload,
   ): Promise<SuccessResponse<unknown>> {
     const appointment = await this.getById.execute({
@@ -133,7 +133,10 @@ export class AppointmentsController {
       { ...dto, doctor_id: user.sub },
       user.role,
     );
-    return { success: true, data: appointment };
+    // toPlainAppointment ensures consultationId (and all fields) appear in the
+    // JSON response. ADR-021: every appointment with a patient auto-creates a
+    // consultation; the caller needs consultationId to navigate to it.
+    return { success: true, data: toPlainAppointment(appointment) };
   }
 
   /**
@@ -145,7 +148,7 @@ export class AppointmentsController {
    */
   @Put(':id/reschedule')
   async rescheduleAppointment(
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Body(new ZodValidationPipe(RescheduleAppointmentDtoSchema)) dto: RescheduleAppointmentDto,
     @CurrentUser() user: CurrentUserPayload,
   ): Promise<SuccessResponse<unknown>> {
@@ -166,7 +169,7 @@ export class AppointmentsController {
    */
   @Put(':id/status')
   async updateAppointmentStatus(
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Body(new ZodValidationPipe(UpdateAppointmentStatusBodyDtoSchema))
     body: UpdateAppointmentStatusBodyDto,
     @CurrentUser() user: CurrentUserPayload,

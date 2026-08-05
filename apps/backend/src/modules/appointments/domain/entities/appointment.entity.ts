@@ -83,6 +83,13 @@ export class Appointment {
      * Read-side enrichment only — not a domain invariant.
      */
     public readonly consultationCode: string | null = null,
+    /**
+     * Office name from the linked doctor_offices.
+     * Populated by the enriched single-appointment detail query.
+     * Null when officeId is null or no matching office exists.
+     * Read-side enrichment only — not a domain invariant.
+     */
+    public readonly officeName: string | null = null,
   ) {}
 
   /**
@@ -142,6 +149,7 @@ export class Appointment {
       params.updatedAt,
       params.paymentStatus ?? null,
       params.consultationCode ?? null,
+      params.officeName ?? null,
     );
   }
 }
@@ -212,4 +220,11 @@ export interface AppointmentCreateParams {
    * Read-side enrichment only — not persisted on the appointments table.
    */
   consultationCode?: string | null;
+  /**
+   * Office name from the linked doctor_offices.
+   * Populated by the enriched single-appointment detail query.
+   * Null when officeId is null or not loaded via JOIN.
+   * Read-side enrichment only — not persisted on the appointments table.
+   */
+  officeName?: string | null;
 }

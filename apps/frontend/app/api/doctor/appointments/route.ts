@@ -192,6 +192,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     appointmentCode: string;
     scheduledAt: string;
     meetLink: string | null;
+    consultationId?: string | null;
   }>('/api/doctor/appointments', backendPayload);
 
   if (!result.ok) {
@@ -214,11 +215,12 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   }
 
   // Normalize to the same shape as POST /api/book so useAppointmentFlow
-  // requires no changes to its response parsing.
+  // can access appointmentId and consultationId for the success step.
   return NextResponse.json({
     success: true,
     appointmentId: result.value.appointmentId ?? null,
     appointmentCode: result.value.appointmentCode ?? null,
+    consultationId: result.value.consultationId ?? null,
     packageUsed: !!packageId,
     packageRemaining: null,
     meetLink: result.value.meetLink ?? null,
