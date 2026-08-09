@@ -46,6 +46,7 @@ import { SetDoctorExchangeRateUseCase } from './application/use-cases/doctor-set
 import { GetDoctorFeaturesV2UseCase } from './application/use-cases/doctor-settings/get-doctor-features-v2.use-case';
 import { GetDoctorSubscriptionPanelUseCase } from './application/use-cases/doctor-settings/get-doctor-subscription-panel.use-case';
 import { CompleteOnboardingUseCase } from './application/use-cases/doctor-settings/complete-onboarding.use-case';
+import { DeactivateOwnAccountUseCase } from './application/use-cases/doctor-settings/deactivate-own-account.use-case';
 
 // Controller
 import { DoctorController } from './presentation/controllers/doctor.controller';
@@ -135,6 +136,7 @@ import { DoctorController } from './presentation/controllers/doctor.controller';
     GetDoctorFeaturesV2UseCase,
     GetDoctorSubscriptionPanelUseCase,
     CompleteOnboardingUseCase,
+    DeactivateOwnAccountUseCase,
   ],
   // Export DOCTOR_PROFILE_REPOSITORY so other modules can inject the doctor profile
   // without duplicating model registrations.

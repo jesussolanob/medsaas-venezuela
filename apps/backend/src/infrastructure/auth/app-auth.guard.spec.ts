@@ -3,8 +3,9 @@ import { ConfigService } from '@nestjs/config';
 import { AppAuthGuard } from './app-auth.guard';
 import { DevAuthGuard } from './dev-auth.guard';
 import { Auth0Guard } from './auth0.guard';
-import type { IAccountStatusPort } from './account-status.port';
+import type { DeactivationOrigin, IAccountStatusPort } from './account-status.port';
 import { AccountBlockedError } from './errors/account-blocked.error';
+import { AccountDeactivatedError } from './errors/account-deactivated.error';
 import type { ReviewerTokenService, ReviewerPayload } from './reviewer-token.service';
 
 // We mock Auth0Guard entirely — its own spec covers the JWT logic
@@ -43,8 +44,16 @@ function makeContext(
   } as unknown as ExecutionContext;
 }
 
-function makeAccountStatusPort(active = true): jest.Mocked<IAccountStatusPort> {
-  return { isActive: jest.fn().mockResolvedValue(active) };
+function makeAccountStatusPort(
+  active = true,
+  deactivatedBy: DeactivationOrigin | null = null,
+): jest.Mocked<IAccountStatusPort> {
+  return {
+    getStatus: jest.fn().mockResolvedValue({
+      isActive: active,
+      deactivatedBy: active ? null : (deactivatedBy ?? 'admin'),
+    }),
+  };
 }
 
 function makeReviewerTokenService(
@@ -233,7 +242,7 @@ describe('AppAuthGuard', () => {
     const result = await guard.canActivate(ctx);
 
     expect(result).toBe(true);
-    expect(port.isActive).toHaveBeenCalledWith('doctor-1');
+    expect(port.getStatus).toHaveBeenCalledWith('doctor-1');
   });
 
   it('throws AccountBlockedError (403) when a doctor has is_active=false', async () => {
@@ -249,7 +258,62 @@ describe('AppAuthGuard', () => {
     );
 
     await expect(guard.canActivate(ctx)).rejects.toBeInstanceOf(AccountBlockedError);
-    expect(port.isActive).toHaveBeenCalledWith('blocked-doc');
+    expect(port.getStatus).toHaveBeenCalledWith('blocked-doc');
+  });
+
+  // The two errors below sit behind the SAME is_active=false flag and differ
+  // only by deactivated_by. Getting this branch wrong tells a specialist who
+  // chose to leave that they "have been blocked", which reads as a sanction.
+  it('throws AccountDeactivatedError when the doctor switched the account off themselves', async () => {
+    const port = makeAccountStatusPort(false, 'self');
+    const ctx = makeContext({ sub: 'self-off-doc', role: 'doctor' });
+
+    const guard = makeGuard(
+      makeConfigService('dev'),
+      devAuthGuard,
+      auth0Guard,
+      port,
+      makeReviewerTokenService(),
+    );
+
+    await expect(guard.canActivate(ctx)).rejects.toBeInstanceOf(AccountDeactivatedError);
+    expect(port.getStatus).toHaveBeenCalledWith('self-off-doc');
+  });
+
+  it('throws AccountBlockedError — not AccountDeactivatedError — when an admin switched it off', async () => {
+    const port = makeAccountStatusPort(false, 'admin');
+    const ctx = makeContext({ sub: 'admin-banned-doc', role: 'doctor' });
+
+    const guard = makeGuard(
+      makeConfigService('dev'),
+      devAuthGuard,
+      auth0Guard,
+      port,
+      makeReviewerTokenService(),
+    );
+
+    const error = await guard.canActivate(ctx).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(AccountBlockedError);
+    expect(error).not.toBeInstanceOf(AccountDeactivatedError);
+  });
+
+  it('verifies AccountDeactivatedError has code ACCOUNT_DEACTIVATED and httpStatus 403', async () => {
+    const port = makeAccountStatusPort(false, 'self');
+    const ctx = makeContext({ sub: 'self-off-doc', role: 'doctor' });
+
+    const guard = makeGuard(
+      makeConfigService('dev'),
+      devAuthGuard,
+      auth0Guard,
+      port,
+      makeReviewerTokenService(),
+    );
+
+    const error = (await guard
+      .canActivate(ctx)
+      .catch((e: unknown) => e)) as AccountDeactivatedError;
+    expect(error.code).toBe('ACCOUNT_DEACTIVATED');
+    expect(error.httpStatus).toBe(403);
   });
 
   it('verifies AccountBlockedError has code ACCOUNT_BLOCKED and httpStatus 403', async () => {
@@ -289,7 +353,7 @@ describe('AppAuthGuard', () => {
 
     expect(result).toBe(true);
     // Port must NOT be called for super_admin
-    expect(port.isActive).not.toHaveBeenCalled();
+    expect(port.getStatus).not.toHaveBeenCalled();
   });
 
   it('skips block check when request.user is not set (underlying guard not setting user)', async () => {
@@ -306,7 +370,7 @@ describe('AppAuthGuard', () => {
     const result = await guard.canActivate(ctx);
 
     expect(result).toBe(true);
-    expect(port.isActive).not.toHaveBeenCalled();
+    expect(port.getStatus).not.toHaveBeenCalled();
   });
 
   // =========================================================================
@@ -385,7 +449,7 @@ describe('AppAuthGuard', () => {
     expect(auth0Guard.canActivate).not.toHaveBeenCalled();
     expect(devAuthGuard.canActivate).not.toHaveBeenCalled();
     // Ban check must run on the reviewer profile
-    expect(port.isActive).toHaveBeenCalledWith(DEMO_SUB);
+    expect(port.getStatus).toHaveBeenCalledWith(DEMO_SUB);
   });
 
   it('gives a real Auth0 token precedence over a reviewer token when both are sent', async () => {
@@ -428,7 +492,7 @@ describe('AppAuthGuard', () => {
     // The reviewer token must never be consulted, and the identity stays the real one.
     expect(reviewerSvc.verify).not.toHaveBeenCalled();
     expect(requestObj.user).toEqual({ sub: 'real-doctor-uuid', role: 'doctor' });
-    expect(port.isActive).toHaveBeenCalledWith('real-doctor-uuid');
+    expect(port.getStatus).toHaveBeenCalledWith('real-doctor-uuid');
   });
 
   it('reviewer user is blocked when demo profile has is_active=false', async () => {
@@ -447,7 +511,7 @@ describe('AppAuthGuard', () => {
     );
 
     await expect(guard.canActivate(ctx)).rejects.toBeInstanceOf(AccountBlockedError);
-    expect(port.isActive).toHaveBeenCalledWith(DEMO_SUB);
+    expect(port.getStatus).toHaveBeenCalledWith(DEMO_SUB);
   });
 
   it('reviewer role is always doctor — never super_admin', async () => {
@@ -473,7 +537,7 @@ describe('AppAuthGuard', () => {
 
     expect(requestObj.user?.role).toBe('doctor');
     // Ban check IS called — we did not skip it (as we would for super_admin)
-    expect(port.isActive).toHaveBeenCalled();
+    expect(port.getStatus).toHaveBeenCalled();
   });
 
   // =========================================================================

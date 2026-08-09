@@ -20,6 +20,14 @@ export interface DoctorRegistrationProps {
   createdAt: Date;
   /** Whether the account is active. NULL from DB is normalised to true (fail-open). */
   isActive: boolean;
+  /**
+   * Who switched the account off — 'self' | 'admin' | null. Only meaningful
+   * while isActive is false; the flag alone cannot tell a specialist who left
+   * apart from one an admin banned, and the panel must not confuse them.
+   *
+   * Optional: absent means a live account, which is what null already encodes.
+   */
+  deactivatedBy?: string | null;
 }
 
 export class DoctorRegistration {
@@ -36,6 +44,8 @@ export class DoctorRegistration {
   readonly createdAt: Date;
   /** Whether the account is active. Always a boolean (null normalised to true). */
   readonly isActive: boolean;
+  /** Who switched the account off — 'self' | 'admin' | null. */
+  readonly deactivatedBy: string | null;
 
   private constructor(props: DoctorRegistrationProps) {
     this.id = props.id;
@@ -50,6 +60,7 @@ export class DoctorRegistration {
     this.verifiedBy = props.verifiedBy;
     this.createdAt = props.createdAt;
     this.isActive = props.isActive;
+    this.deactivatedBy = props.deactivatedBy ?? null;
   }
 
   static create(props: DoctorRegistrationProps): DoctorRegistration {
@@ -90,6 +101,7 @@ export class DoctorRegistration {
       verifiedBy,
       createdAt: this.createdAt,
       isActive: this.isActive,
+      deactivatedBy: this.deactivatedBy,
     });
   }
 
@@ -117,6 +129,7 @@ export class DoctorRegistration {
       verifiedBy: null,
       createdAt: this.createdAt,
       isActive: this.isActive,
+      deactivatedBy: this.deactivatedBy,
     });
   }
 }

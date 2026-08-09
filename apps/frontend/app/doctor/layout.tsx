@@ -42,7 +42,7 @@ import { blockedLogoutAction } from './blocked-logout-action';
 import DoctorNotificationToast from './DoctorNotificationToast';
 import SearchCommandPalette from './SearchCommandPalette';
 import { HelpButton } from '@/components/help/HelpButton';
-import { useAccountBlockedGuard } from '@/hooks/useAccountBlockedGuard';
+import { useAccountBlockedGuard, type AccountOffCode } from '@/hooks/useAccountBlockedGuard';
 import { Toaster } from '@/components/ui/Toaster';
 import { DeltaMark } from '@/components/dh';
 import { getMyCapabilities } from '@/app/capabilities-actions';
@@ -218,13 +218,15 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
   const [mobileOpen, setMobileOpen] = useState(false);
   const [caps, setCaps] = useState<Capabilities | null>(null);
   const [planFeatures, setPlanFeatures] = useState<PlanFeatures | null>(null);
-  const [accountBlocked, setAccountBlocked] = useState(false);
+  // null = cuenta viva. Si no, guarda POR QUÉ está apagada: el texto cambia
+  // entre "te bloqueó el administrador" y "diste de baja tu cuenta".
+  const [accountOffCode, setAccountOffCode] = useState<AccountOffCode | null>(null);
   const [termsModalOpen, setTermsModalOpen] = useState(false);
   const [privacyModalOpen, setPrivacyModalOpen] = useState(false);
 
-  // Intercept 403 ACCOUNT_BLOCKED from any BFF fetch in the doctor portal.
-  useAccountBlockedGuard(() => {
-    setAccountBlocked(true);
+  // Intercept 403 ACCOUNT_BLOCKED / ACCOUNT_DEACTIVATED from any BFF fetch.
+  useAccountBlockedGuard((code) => {
+    setAccountOffCode(code);
   });
 
   // Onboarding gate: 'checking' → 'ok' | 'redirect'
@@ -382,7 +384,7 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
 
   // Full-screen blocked account screen. Shown when any backend call returns
   // 403 ACCOUNT_BLOCKED. Prevents the doctor from using any portal feature.
-  if (accountBlocked) {
+  if (accountOffCode) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50 px-4">
         <div className="bg-white border border-slate-200 rounded-xl p-8 max-w-md w-full text-center shadow-sm">
@@ -410,14 +412,15 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
             className="text-xl font-bold mb-2"
             style={{ color: 'var(--dh-ink)', fontFamily: 'var(--dh-font-display)' }}
           >
-            Cuenta bloqueada
+            {accountOffCode === 'ACCOUNT_DEACTIVATED' ? 'Cuenta dada de baja' : 'Cuenta bloqueada'}
           </h1>
           <p className="text-sm mb-6" style={{ color: 'var(--dh-gray-500)' }}>
-            Tu cuenta ha sido bloqueada por el administrador. Para restablecer el acceso, comunícate
-            con el soporte de Delta Salud.
+            {accountOffCode === 'ACCOUNT_DEACTIVATED'
+              ? 'Diste de baja tu cuenta. Tu información sigue guardada: para reactivarla, comunícate con el soporte de Delta Salud.'
+              : 'Tu cuenta ha sido bloqueada por el administrador. Para restablecer el acceso, comunícate con el soporte de Delta Salud.'}
           </p>
           <button
-            onClick={() => void blockedLogoutAction()}
+            onClick={() => void blockedLogoutAction(accountOffCode === 'ACCOUNT_DEACTIVATED')}
             className="w-full py-2.5 rounded-lg text-sm font-semibold text-white transition-colors"
             style={{ background: 'var(--dh-turquoise)' }}
           >

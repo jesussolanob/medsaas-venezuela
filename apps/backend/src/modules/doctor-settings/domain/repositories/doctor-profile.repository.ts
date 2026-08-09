@@ -28,4 +28,22 @@ export interface IDoctorProfileRepository {
    * Persists the consultation_blocks_layout for the given doctor.
    */
   updateBlocksLayout(doctorId: string, layout: 'tabs' | 'vertical'): Promise<void>;
+
+  /**
+   * Counts appointments booked after `now` that still expect the doctor to show
+   * up. Cancelled, completed and no-show appointments are excluded — they owe
+   * the patient nothing.
+   *
+   * Used to block self-deactivation while patients are still waiting.
+   */
+  countUpcomingAppointments(doctorId: string): Promise<number>;
+
+  /**
+   * Switches the account off on the owner's request: is_active = false plus the
+   * provenance columns stamped with 'self'.
+   *
+   * Deliberately NOT a delete — every row the specialist produced stays exactly
+   * where it is, and a super_admin can switch the account back on.
+   */
+  deactivateOwnAccount(doctorId: string, reason: string | null): Promise<void>;
 }

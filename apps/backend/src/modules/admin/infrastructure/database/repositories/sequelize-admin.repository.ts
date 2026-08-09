@@ -320,6 +320,9 @@ export class SequelizeAdminRepository implements IAdminRepository {
       city: row.city ?? null,
       state: row.state ?? null,
       isActive: row.isActive ?? null,
+      deactivatedBy: row.deactivatedBy ?? null,
+      deactivatedAt: row.deactivatedAt ?? null,
+      deactivationReason: row.deactivationReason ?? null,
       createdAt: row.createdAt,
       subscriptionStatus: base.subscriptionStatus,
       subscriptionPlan: base.subscriptionPlan,
@@ -1406,8 +1409,15 @@ export class SequelizeAdminRepository implements IAdminRepository {
   // ---------------------------------------------------------------------------
 
   async setProfileActive(profileId: string, isActive: boolean): Promise<boolean> {
+    // Reactivating clears the deactivation provenance so the row does not keep
+    // claiming it is switched off; blocking stamps it as an admin action, which
+    // is what tells this apart from a specialist who deactivated themselves.
+    const provenance = isActive
+      ? { deactivatedAt: null, deactivatedBy: null, deactivationReason: null }
+      : { deactivatedAt: new Date(), deactivatedBy: 'admin' };
+
     const [affectedRows] = await this.profileModel.update(
-      { isActive },
+      { isActive, ...provenance } as Record<string, unknown>,
       { where: { id: profileId } },
     );
 

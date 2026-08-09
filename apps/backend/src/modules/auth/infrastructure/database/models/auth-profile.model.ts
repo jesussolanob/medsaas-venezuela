@@ -34,6 +34,14 @@ export class AuthProfileModel extends Model {
   @Column({ type: DataType.BOOLEAN, allowNull: true, field: 'is_active' })
   declare isActive: boolean | null;
 
+  /**
+   * Who switched the account off — 'self' | 'admin'. Added by migration
+   * 20260809000001. Meaningful only while isActive is false; the guard reads it
+   * to tell a voluntary deactivation apart from an admin ban.
+   */
+  @Column({ type: DataType.TEXT, allowNull: true, field: 'deactivated_by' })
+  declare deactivatedBy: string | null;
+
   /** Auth0 subject identifier — added by migration 20260608000000. */
   @Column({ type: DataType.TEXT, allowNull: true, field: 'auth0_sub' })
   declare auth0Sub: string | null;
