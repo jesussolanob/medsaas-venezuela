@@ -27,12 +27,24 @@ name: Deploy (Cloud Run · staging)
 # llave y no se podría descifrar con otra.
 #
 # CORREO EN STAGING (cambiado 2026-08-09): EMAIL_DRIVER=resend — staging SÍ envía
-# correo de verdad, para poder demostrar y probar el flujo completo. La BD es un
-# clon de prod y trae direcciones de pacientes REALES, así que el envío va
-# SIEMPRE redirigido: SANDBOX_EMAIL hace que SandboxEmailPort reescriba el
-# destinatario de CADA correo a esa única casilla. Nadie más recibe nada.
-# La variable STAGING_SANDBOX_EMAIL es OBLIGATORIA (ver el paso de guarda más
-# abajo): sin ella el deploy falla en vez de exponer a los pacientes clonados.
+# correo de verdad, al destinatario real, para poder probar el flujo completo
+# incluyendo a quién le llega. SANDBOX_EMAIL queda SIN definir a propósito: con
+# ella, SandboxEmailPort reescribiría el destinatario de cada correo.
+#
+# ⚠️ La BD de staging es un clon de prod y trae direcciones de pacientes REALES,
+# así que un envío disparado sobre datos clonados llega a esa persona. La
+# decisión (dueño, 2026-08-09) es asumirlo bajo estas dos condiciones:
+#
+#   1. A staging solo entran administradores, y el correo se dispara únicamente
+#      desde pruebas manuales — no hay tráfico de terceros que lo gatille solo.
+#   2. NINGÚN cron corre contra staging. Verificado el 2026-08-09: los dos jobs
+#      de Cloud Scheduler (appointment-reminders, doctor-inactivity-notices)
+#      apuntan a `delta-backend` (prod), NO a `delta-backend-staging`, y el
+#      backend no tiene ningún @Cron interno que se auto-dispare al bootear.
+#
+# La condición 2 es la que importa: un cron sobre las citas clonadas mandaría
+# correo EN LOTE a pacientes reales sin que nadie lo pida. Si algún día se apunta
+# un scheduler a staging, hay que volver a poner SANDBOX_EMAIL antes.
 
 on:
   push:
@@ -64,18 +76,6 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      # Guarda fail-closed, primera de todas: staging envía correo real y su BD
-      # es un clon de prod con direcciones de pacientes reales. Sin casilla de
-      # redirección el envío llegaría a esas personas. Va antes del build y de
-      # las migraciones para no gastarlos en un deploy que igual va a abortar.
-      - name: Verify staging email redirect is configured
-        run: |
-          if [ -z "${{ vars.STAGING_SANDBOX_EMAIL }}" ]; then
-            echo "::error::STAGING_SANDBOX_EMAIL no está definida. Staging usa EMAIL_DRIVER=resend sobre una BD clonada de producción: sin casilla de redirección los correos llegarían a pacientes reales. Definí la variable en Settings → Variables → Actions."
-            exit 1
-          fi
-          echo "Redirección de correo activa — todo el correo de staging va a una sola casilla."
-
       - uses: actions/checkout@v4
 
       - name: Auth to GCP (Workload Identity Federation)
@@ -86,6 +86,20 @@ jobs:
 
       - name: Set up gcloud
         uses: google-github-actions/setup-gcloud@v2
+
+      # Guarda fail-closed: staging manda correo real al destinatario real sobre
+      # una BD clonada de prod. Eso es tolerable SOLO mientras ningún cron corra
+      # contra staging — un scheduler apuntado acá mandaría correo en lote a
+      # pacientes reales sin que nadie lo pida. Va apenas hay gcloud disponible
+      # y antes del build/migraciones, para no gastarlos en un deploy que igual
+      # va a abortar.
+      - name: Verify no scheduler targets staging
+        run: |
+          if gcloud scheduler jobs list --location=$REGION --format='value(httpTarget.uri)' | grep -q 'delta-backend-staging'; then
+            echo "::error::Hay un job de Cloud Scheduler apuntando al backend de staging. Staging envía correo REAL a destinatarios REALES sobre una BD clonada de producción: un cron acá dispara correo en lote a pacientes de verdad. Reapuntá o borrá ese job, o definí SANDBOX_EMAIL para redirigir el correo, antes de volver a desplegar."
+            exit 1
+          fi
+          echo "Ningún scheduler apunta a staging — el correo solo sale de pruebas manuales."
 
       # --- 1) Build & push both images (staging-tagged) ---------------------
       - name: Build & push images
@@ -128,7 +142,7 @@ jobs:
             --no-allow-unauthenticated \
             --add-cloudsql-instances="$SQL_CONN" \
             --set-secrets=DATABASE_URL=DATABASE_URL_STAGING:latest,ENCRYPTION_KEY=ENCRYPTION_KEY:latest,ENCRYPTION_HMAC_SECRET=ENCRYPTION_HMAC_SECRET:latest,AUTH_RESOLVE_SECRET=AUTH_RESOLVE_SECRET:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,GOOGLE_CLIENT_SECRET=GOOGLE_CLIENT_SECRET:latest,RESEND_API_KEY=RESEND_API_KEY:latest,CRON_SECRET=CRON_SECRET:latest,REVIEWER_PASSWORD=REVIEWER_PASSWORD:latest,REVIEWER_SESSION_SECRET=REVIEWER_SESSION_SECRET:latest \
-            --set-env-vars=NODE_ENV=production,AUTH_MODE=auth0,AUTH0_DOMAIN=${{ vars.AUTH0_DOMAIN }},AUTH0_CLIENT_ID=${{ vars.AUTH0_CLIENT_ID }},AUTH0_ROLE_NAMESPACE=${{ vars.AUTH0_ROLE_NAMESPACE }},REDIS_DISABLED=true,DB_POOL_MAX=5,DB_POOL_MIN=0,STORAGE_DRIVER=gcs,GCS_BUCKET=$GCS_BUCKET,GCS_PROJECT_ID=$PROJECT_ID,EMAIL_DRIVER=resend,EMAIL_FROM=noreply@deltasalud.app,SANDBOX=false,SANDBOX_EMAIL=${{ vars.STAGING_SANDBOX_EMAIL }},GOOGLE_CLIENT_ID=${{ vars.GOOGLE_CLIENT_ID }},SENTRY_ENABLED=false,REVIEWER_ACCESS_ENABLED=${{ vars.REVIEWER_ACCESS_ENABLED }},REVIEWER_EMAIL=demo.google@deltasalud.app,REVIEWER_PROFILE_ID=b938843b-8a93-4281-af29-cc6968fffc7f \
+            --set-env-vars=NODE_ENV=production,AUTH_MODE=auth0,AUTH0_DOMAIN=${{ vars.AUTH0_DOMAIN }},AUTH0_CLIENT_ID=${{ vars.AUTH0_CLIENT_ID }},AUTH0_ROLE_NAMESPACE=${{ vars.AUTH0_ROLE_NAMESPACE }},REDIS_DISABLED=true,DB_POOL_MAX=5,DB_POOL_MIN=0,STORAGE_DRIVER=gcs,GCS_BUCKET=$GCS_BUCKET,GCS_PROJECT_ID=$PROJECT_ID,EMAIL_DRIVER=resend,EMAIL_FROM=noreply@deltasalud.app,SANDBOX=false,GOOGLE_CLIENT_ID=${{ vars.GOOGLE_CLIENT_ID }},SENTRY_ENABLED=false,REVIEWER_ACCESS_ENABLED=${{ vars.REVIEWER_ACCESS_ENABLED }},REVIEWER_EMAIL=demo.google@deltasalud.app,REVIEWER_PROFILE_ID=b938843b-8a93-4281-af29-cc6968fffc7f \
             --memory=512Mi --cpu=1 --min-instances=0 --max-instances=1 --port=8080
 
       - name: Resolve backend URL + grant frontend invoker
@@ -166,4 +180,4 @@ jobs:
           echo "### Deploy STAGING OK :rocket:" >> "$GITHUB_STEP_SUMMARY"
           echo "- Frontend: $STAGING_URL (run.app: $(gcloud run services describe delta-frontend-staging --region=$REGION --format='value(status.url)'))" >> "$GITHUB_STEP_SUMMARY"
           echo "- Backend (IAM, no público): ${{ steps.backend.outputs.url }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "- EMAIL_DRIVER=resend, redirigido a una sola casilla · Sentry off · min=0/max=1" >> "$GITHUB_STEP_SUMMARY"
+          echo "- EMAIL_DRIVER=resend, al destinatario REAL · Sentry off · min=0/max=1" >> "$GITHUB_STEP_SUMMARY"
