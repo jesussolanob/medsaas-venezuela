@@ -131,6 +131,22 @@ export class DoctorProfileModel extends Model {
   declare isActive: boolean | null;
 
   /**
+   * Deactivation provenance for the is_active switch. Added by migration
+   * 20260809000001. All three are NULL while the account is live.
+   *
+   * deactivatedBy is 'self' (the specialist left) or 'admin' (banned) — the
+   * flag alone cannot tell those apart, and they need different copy.
+   */
+  @Column({ type: DataType.DATE, allowNull: true, field: 'deactivated_at' })
+  declare deactivatedAt: Date | null;
+
+  @Column({ type: DataType.TEXT, allowNull: true, field: 'deactivated_by' })
+  declare deactivatedBy: string | null;
+
+  @Column({ type: DataType.TEXT, allowNull: true, field: 'deactivation_reason' })
+  declare deactivationReason: string | null;
+
+  /**
    * Consultation blocks display layout. Added by migration 20260805000001.
    * Valid values: 'tabs' | 'vertical'. Default: 'tabs'.
    */

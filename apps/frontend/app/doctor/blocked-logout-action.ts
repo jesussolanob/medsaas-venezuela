@@ -14,7 +14,7 @@
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 
-export async function blockedLogoutAction(): Promise<void> {
+export async function blockedLogoutAction(deactivated = false): Promise<void> {
   // Clear reviewer_token regardless of auth mode (same as logoutAction).
   const cookieStore = await cookies();
   cookieStore.delete('reviewer_token');
@@ -27,5 +27,7 @@ export async function blockedLogoutAction(): Promise<void> {
   }
   cookieStore.delete('dev_user_id');
   cookieStore.delete('dev_user_role');
-  redirect('/login?blocked=1');
+  // ?deactivated=1 cuando el propio especialista dio de baja su cuenta: el
+  // login muestra un texto distinto al del bloqueo por administrador.
+  redirect(deactivated ? '/login?deactivated=1' : '/login?blocked=1');
 }

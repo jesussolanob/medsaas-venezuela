@@ -55,6 +55,7 @@ export interface VerificationListItemDto {
   verificationStatus: string;
   /** Whether the account is active. false means the account is hard-banned by super_admin. */
   isActive: boolean;
+  deactivatedBy: string | null;
   createdAt: Date;
 }
 
@@ -68,6 +69,7 @@ function toVerificationListItem(entity: DoctorRegistration): VerificationListIte
     colegiadoNumber: entity.colegiadoNumber,
     verificationStatus: entity.verificationStatus,
     isActive: entity.isActive,
+    deactivatedBy: entity.deactivatedBy,
     createdAt: entity.createdAt,
   };
 }

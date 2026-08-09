@@ -48,6 +48,7 @@ import {
   type GoogleStatusView,
 } from './actions';
 import SignaturePad from './SignaturePad';
+import DeactivateAccountCard from './DeactivateAccountCard';
 import ExchangeRateSection from '@/components/doctor/ExchangeRateSection';
 import { VENEZUELA_INSURANCES } from './insurances';
 import AvatarUploader from './avatar-uploader';
@@ -1259,6 +1260,9 @@ function SettingsPageInner() {
                 </div>
               )}
             </div>
+
+            {/* Zona de baja — al pie del perfil, separada del resto. */}
+            <DeactivateAccountCard />
           </div>
         )}
 

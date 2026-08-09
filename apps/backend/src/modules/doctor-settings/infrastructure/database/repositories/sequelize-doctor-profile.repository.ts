@@ -139,4 +139,54 @@ export class SequelizeDoctorProfileRepository implements IDoctorProfileRepositor
       where: { id: doctorId },
     });
   }
+
+  /**
+   * Counts future appointments that still expect the doctor to show up.
+   *
+   * Raw SQL on purpose: reaching for AppointmentModel here would mean importing
+   * the appointments module into doctor-settings, and a DI cycle through that
+   * graph already took the backend down once in Cloud Run (mocked TestingModules
+   * do not catch it). A single scalar count needs no model registration.
+   *
+   * 'pending' and 'accepted' are legacy statuses still present in the SQL enum;
+   * they are included because a row in either state is also a patient waiting.
+   */
+  async countUpcomingAppointments(doctorId: string): Promise<number> {
+    const sequelize = this.model.sequelize;
+    if (!sequelize) throw new Error('Sequelize instance is not available');
+
+    const rows = (await sequelize.query(
+      `SELECT COUNT(*)::int AS count
+         FROM appointments
+        WHERE doctor_id = :doctorId
+          AND scheduled_at > NOW()
+          AND status IN ('scheduled', 'confirmed', 'pending', 'accepted')`,
+      {
+        replacements: { doctorId },
+        type: 'SELECT',
+      },
+    )) as unknown as Array<{ count: number }>;
+
+    return rows[0]?.count ?? 0;
+  }
+
+  /**
+   * Switches the account off at the owner's request.
+   *
+   * is_active carries the enforcement (AppAuthGuard and the public booking flow
+   * already honour it); the three deactivation columns carry the provenance so
+   * the portal shows "you deactivated your account" instead of "you were
+   * blocked", and the admin knows what they are reactivating.
+   */
+  async deactivateOwnAccount(doctorId: string, reason: string | null): Promise<void> {
+    await this.model.update(
+      {
+        isActive: false,
+        deactivatedAt: new Date(),
+        deactivatedBy: 'self',
+        deactivationReason: reason,
+      } as Record<string, unknown>,
+      { where: { id: doctorId } },
+    );
+  }
 }

@@ -11,6 +11,7 @@ import { DevAuthGuard } from './dev-auth.guard';
 import { Auth0Guard } from './auth0.guard';
 import { ACCOUNT_STATUS_PORT, type IAccountStatusPort } from './account-status.port';
 import { AccountBlockedError } from './errors/account-blocked.error';
+import { AccountDeactivatedError } from './errors/account-deactivated.error';
 import { ReviewerTokenService } from './reviewer-token.service';
 
 /**
@@ -40,8 +41,10 @@ import { ReviewerTokenService } from './reviewer-token.service';
  * enforces the hard account ban (profiles.is_active = false):
  *
  *   - If request.user.role === 'super_admin' → skip block check (anti-lockout).
- *   - Otherwise: read is_active from DB via IAccountStatusPort.
- *     If false → throw AccountBlockedError (HTTP 403, code ACCOUNT_BLOCKED).
+ *   - Otherwise: read the account status from DB via IAccountStatusPort.
+ *     If off → AccountDeactivatedError (403, ACCOUNT_DEACTIVATED) when the owner
+ *     switched it off themselves, AccountBlockedError (403, ACCOUNT_BLOCKED)
+ *     when an admin did. Same flag, different message.
  *
  * RolesGuard and CapabilitiesGuard read from request.user (set by whichever
  * underlying guard runs) — they are unaffected by this delegation.
@@ -138,9 +141,12 @@ export class AppAuthGuard implements CanActivate {
   private async checkAccountBan(user: { sub: string; role: string }): Promise<boolean> {
     if (user.role === 'super_admin') return true;
 
-    const active = await this.accountStatus.isActive(user.sub);
-    if (!active) throw new AccountBlockedError();
+    const status = await this.accountStatus.getStatus(user.sub);
+    if (status.isActive) return true;
 
-    return true;
+    // Same flag, two very different situations for the person reading the screen.
+    throw status.deactivatedBy === 'self'
+      ? new AccountDeactivatedError()
+      : new AccountBlockedError();
   }
 }
