@@ -71,6 +71,10 @@ export class RegistrationProfileModel extends Model {
   @Column({ type: DataType.BOOLEAN, allowNull: true, field: 'is_active' })
   declare isActive: boolean | null;
 
+  /** Deactivation provenance — 'self' | 'admin'. Migration 20260809000001. */
+  @Column({ type: DataType.TEXT, allowNull: true, field: 'deactivated_by' })
+  declare deactivatedBy: string | null;
+
   /**
    * Explicit onboarding completion flag. Added in migration 20260617000004.
    * Set to true by updateRegistration when the doctor submits the onboarding form.

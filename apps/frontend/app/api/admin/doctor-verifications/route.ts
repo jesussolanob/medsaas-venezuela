@@ -12,7 +12,8 @@
  *   { success: true, data: VerificationListItemDto[] }
  *
  * VerificationListItemDto:
- *   { doctorId, fullName, email, cedula, mppsNumber, colegiadoNumber, verificationStatus, createdAt }
+ *   { doctorId, fullName, email, cedula, mppsNumber, colegiadoNumber, verificationStatus,
+ *     isActive, deactivatedBy, createdAt }
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -27,6 +28,10 @@ export interface VerificationItem {
   mppsNumber: string | null;
   colegiadoNumber: string | null;
   verificationStatus: string;
+  /** false = cuenta apagada. El panel ya lo consumía sin estar declarado acá. */
+  isActive: boolean;
+  /** Quién la apagó: 'self' (se dio de baja) | 'admin' (bloqueo) | null. */
+  deactivatedBy: string | null;
   createdAt: string;
 }
 

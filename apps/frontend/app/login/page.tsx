@@ -53,16 +53,21 @@ function LoginInner() {
   const router = useRouter();
   const authError = searchParams.get('error');
   const isBlocked = searchParams.get('blocked') === '1';
+  // El especialista dio de baja su propia cuenta: no corresponde el texto de
+  // bloqueo, que se lee como sanción. Su información sigue guardada.
+  const isDeactivated = searchParams.get('deactivated') === '1';
   const isReviewMode = searchParams.get('review') === '1';
   const [loading] = useState(false);
   const [error, setError] = useState(
-    isBlocked
-      ? 'Tu cuenta ha sido bloqueada. Contacta al administrador de Delta Salud.'
-      : authError === 'auth'
-        ? 'Error de autenticación. Intenta de nuevo.'
-        : authError === 'suspended'
-          ? 'Tu cuenta se encuentra suspendida. Contacta al administrador.'
-          : '',
+    isDeactivated
+      ? 'Diste de baja tu cuenta. Tu información sigue guardada: para reactivarla, contacta al administrador de Delta Salud.'
+      : isBlocked
+        ? 'Tu cuenta ha sido bloqueada. Contacta al administrador de Delta Salud.'
+        : authError === 'auth'
+          ? 'Error de autenticación. Intenta de nuevo.'
+          : authError === 'suspended'
+            ? 'Tu cuenta se encuentra suspendida. Contacta al administrador.'
+            : '',
   );
 
   const [showEmailForm, setShowEmailForm] = useState(false);

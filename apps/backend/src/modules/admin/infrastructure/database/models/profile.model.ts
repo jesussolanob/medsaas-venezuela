@@ -35,6 +35,20 @@ export class ProfileAdminModel extends Model {
   @Column({ type: DataType.BOOLEAN, allowNull: true, field: 'is_active' })
   declare isActive: boolean | null;
 
+  /**
+   * Deactivation provenance for the is_active switch. Added by migration
+   * 20260809000001. 'self' = the specialist deactivated their own account,
+   * 'admin' = banned from this panel. All NULL while the account is live.
+   */
+  @Column({ type: DataType.DATE, allowNull: true, field: 'deactivated_at' })
+  declare deactivatedAt: Date | null;
+
+  @Column({ type: DataType.TEXT, allowNull: true, field: 'deactivated_by' })
+  declare deactivatedBy: string | null;
+
+  @Column({ type: DataType.TEXT, allowNull: true, field: 'deactivation_reason' })
+  declare deactivationReason: string | null;
+
   // Snapshot columns written by the auth/register flow
   @Column({ type: DataType.TEXT, allowNull: true })
   declare plan: string | null;

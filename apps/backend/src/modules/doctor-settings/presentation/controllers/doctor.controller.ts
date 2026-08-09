@@ -30,6 +30,8 @@ import {
   type UpdatePricingPlanDto,
   UpdateDoctorExchangeRateDtoSchema,
   type UpdateDoctorExchangeRateDto,
+  DeactivateAccountDtoSchema,
+  type DeactivateAccountDto,
 } from '@delta/shared-types';
 
 import { GetDoctorProfileUseCase } from '../../application/use-cases/doctor-settings/get-doctor-profile.use-case';
@@ -59,6 +61,10 @@ import {
   CompleteOnboardingUseCase,
   type CompleteOnboardingOutput,
 } from '../../application/use-cases/doctor-settings/complete-onboarding.use-case';
+import {
+  DeactivateOwnAccountUseCase,
+  type DeactivateOwnAccountOutput,
+} from '../../application/use-cases/doctor-settings/deactivate-own-account.use-case';
 import type { DoctorProfile } from '../../domain/entities/doctor-profile.entity';
 import type { DoctorScheduleParams } from '../../domain/value-objects/doctor-schedule.vo';
 import type { PricingPlan } from '../../../packages/domain/entities/pricing-plan.entity';
@@ -103,6 +109,7 @@ export class DoctorController {
     private readonly getDoctorExchangeRate: GetDoctorExchangeRateUseCase,
     private readonly setDoctorExchangeRate: SetDoctorExchangeRateUseCase,
     private readonly completeOnboarding: CompleteOnboardingUseCase,
+    private readonly deactivateOwnAccount: DeactivateOwnAccountUseCase,
   ) {}
 
   /** GET /api/doctor/profile */
@@ -379,6 +386,34 @@ export class DoctorController {
     @CurrentUser() user: CurrentUserPayload,
   ): Promise<SuccessResponse<CompleteOnboardingOutput>> {
     const result = await this.completeOnboarding.execute(user.sub);
+    return { success: true, data: result };
+  }
+
+  /**
+   * POST /api/doctor/account/deactivate
+   *
+   * The specialist switches their OWN account off. Deactivation, not deletion:
+   * every row stays under the same profile id and a super_admin can switch the
+   * account back on from the admin panel.
+   *
+   * SECURITY: the target is always user.sub — the body carries no id, so this
+   * cannot be pointed at another account (anti-IDOR).
+   * ERRORS:
+   *   422 ACCOUNT_HAS_UPCOMING_APPOINTMENTS — patients still booked ahead.
+   *   422 CANNOT_DEACTIVATE_ROLE — caller is not a specialist.
+   */
+  @Post('account/deactivate')
+  @HttpCode(HttpStatus.OK)
+  async deactivateAccountHandler(
+    @Body(new ZodValidationPipe(DeactivateAccountDtoSchema))
+    dto: DeactivateAccountDto,
+    @CurrentUser() user: CurrentUserPayload,
+  ): Promise<SuccessResponse<DeactivateOwnAccountOutput>> {
+    const result = await this.deactivateOwnAccount.execute({
+      doctorId: user.sub,
+      role: user.role,
+      reason: dto.reason ?? null,
+    });
     return { success: true, data: result };
   }
 

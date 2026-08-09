@@ -55,6 +55,8 @@ export interface VerificationItem {
    * undefined = estado desconocido (se muestran ambas opciones al admin).
    */
   isActive?: boolean;
+  /** 'self' = el especialista se dio de baja · 'admin' = lo bloqueó un admin. */
+  deactivatedBy?: string | null;
 }
 
 type MppsStatus = 'pending' | 'verified' | 'not_found' | 'mismatch' | 'error';
@@ -700,6 +702,9 @@ export default function VerificationsClient({ initialItems }: Props) {
             const isAccessPending = accessPendingId === item.doctorId;
             // isActive: true = cuenta activa, false = bloqueada, undefined = desconocido
             const isActive = item.isActive;
+            // La cuenta apagada por voluntad propia NO es un bloqueo: el admin
+            // necesita distinguirlas para saber qué está reactivando.
+            const selfDeactivated = isActive === false && item.deactivatedBy === 'self';
 
             return (
               <article
@@ -867,12 +872,18 @@ export default function VerificationsClient({ initialItems }: Props) {
                     {/* Account access toggle — visible for all tabs */}
                     <div className="sm:mt-1">
                       {/* Badge when account is known-blocked */}
-                      {isActive === false && (
-                        <span className="flex items-center gap-1 text-[11px] font-semibold text-red-600 bg-red-50 border border-red-200 px-2 py-0.5 rounded-full mb-1.5 w-fit">
-                          <ShieldOff className="w-3 h-3" aria-hidden="true" />
-                          Acceso bloqueado
-                        </span>
-                      )}
+                      {isActive === false &&
+                        (selfDeactivated ? (
+                          <span className="flex items-center gap-1 text-[11px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full mb-1.5 w-fit">
+                            <ShieldOff className="w-3 h-3" aria-hidden="true" />
+                            Se dio de baja
+                          </span>
+                        ) : (
+                          <span className="flex items-center gap-1 text-[11px] font-semibold text-red-600 bg-red-50 border border-red-200 px-2 py-0.5 rounded-full mb-1.5 w-fit">
+                            <ShieldOff className="w-3 h-3" aria-hidden="true" />
+                            Acceso bloqueado
+                          </span>
+                        ))}
 
                       {isActive === false ? (
                         <button
@@ -893,7 +904,11 @@ export default function VerificationsClient({ initialItems }: Props) {
                           ) : (
                             <ShieldCheck className="w-3.5 h-3.5" />
                           )}
-                          {isAccessPending ? 'Actualizando…' : 'Desbloquear acceso'}
+                          {isAccessPending
+                            ? 'Actualizando…'
+                            : selfDeactivated
+                              ? 'Reactivar cuenta'
+                              : 'Desbloquear acceso'}
                         </button>
                       ) : (
                         <button
