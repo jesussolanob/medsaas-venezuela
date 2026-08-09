@@ -682,6 +682,39 @@ Ahora devuelve `consultationId: string | null` (vía `toPlainAppointment`). Ante
 
 Verifica server-side que el doctor tiene ≥1 consultorio activo Y ≥1 servicio activo. Si cumple, sella `profiles.onboarding_completed_at = NOW()` (idempotente). Respuesta: `{ onboardingCompleted: true }`.
 
+### `POST /api/doctor/account/deactivate` — endpoint nuevo (2026-08-09)
+
+| Endpoint                         | Método | Auth   | Body                        | Errores                                                                     |
+| -------------------------------- | ------ | ------ | --------------------------- | --------------------------------------------------------------------------- |
+| `/api/doctor/account/deactivate` | POST   | doctor | `{ reason?: string\|null }` | `422 ACCOUNT_HAS_UPCOMING_APPOINTMENTS` · `422 CANNOT_DEACTIVATE_ROLE` |
+
+El especialista da de baja su **propia** cuenta desde Configuración → Mi perfil.
+Es una **desactivación, nunca un borrado**: toda la información queda bajo el mismo
+`profile id` y un super_admin la reactiva desde `/admin/verifications`. Respuesta:
+`{ deactivated: true }`.
+
+- **Anti-IDOR:** el body NO lleva id — el objetivo sale siempre de `user.sub`.
+- **Solo rol `doctor`:** un super_admin se encerraría fuera del panel que reactiva.
+- **422 si hay citas a futuro** (el mensaje trae la cantidad): apagar la cuenta
+  también baja el link público y deja sin acceso al único que podía cancelar.
+- Reusa el flag ya existente `profiles.is_active`, que `AppAuthGuard` y el booking
+  público ya respetan. La migración `20260809000001` agrega la **procedencia**:
+  `deactivated_at`, `deactivated_by` (`'self'|'admin'`, con CHECK) y
+  `deactivation_reason`.
+
+**Código 403 nuevo — `ACCOUNT_DEACTIVATED`.** Convive con `ACCOUNT_BLOCKED` sobre el
+MISMO flag; los distingue `deactivated_by`. Sin esta separación, a quien se dio de
+baja solo se le decía que "fue bloqueado", que se lee como sanción. `AppAuthGuard`
+elige uno u otro; el frontend lo propaga por `useAccountBlockedGuard` → pantalla del
+portal → `/login?deactivated=1`.
+
+### `GET /api/admin/doctor-verifications` — campos nuevos (2026-08-09)
+
+Cada ítem agrega `isActive: boolean` (el panel ya lo consumía sin estar declarado) y
+`deactivatedBy: 'self' | 'admin' | null`. La UI muestra "Se dio de baja" (ámbar) contra
+"Acceso bloqueado" (rojo), y el botón dice "Reactivar cuenta" en vez de "Desbloquear
+acceso" — el admin necesita saber qué está reactivando.
+
 ### `GET /api/doctor/profile` — campos nuevos
 
 Ahora expone:

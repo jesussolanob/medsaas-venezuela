@@ -522,3 +522,27 @@ su propia lista hardcodeada, que se desincronizó.
 **Inicio (`app/doctor/page.tsx`) — patrón de refresco:** `refreshKey` incrementado por
 cada mutación, igual que `/doctor/finances`. NO extraer el loader a `useCallback`:
 `react-hooks/set-state-in-effect` lo marca como error.
+
+### Baja de cuenta por el especialista (2026-08-09)
+
+**`app/doctor/settings/DeactivateAccountCard.tsx`** — zona de baja al pie de "Mi perfil".
+Modal con confirmación **por frase tipeada** ("DAR DE BAJA"): un sí/no se toca por
+accidente. El 422 del backend por citas a futuro trae el conteo real y está redactado
+para el usuario, así que se muestra literal en vez de un error genérico.
+
+**Regla de vocabulario:** es DESACTIVACIÓN, nunca borrado. La información queda intacta y
+reactivable, así que la UI no dice "eliminar" en ningún lado — prometer un borrado que no
+ocurre es peor que no ofrecerlo.
+
+**`ACCOUNT_DEACTIVATED` vs `ACCOUNT_BLOCKED`** — dos códigos 403 sobre el MISMO flag
+`profiles.is_active`, distinguidos por `deactivated_by`. Recorrido completo:
+`AppAuthGuard` → `hooks/useAccountBlockedGuard.ts` (ahora pasa CUÁL de los dos al
+callback) → pantalla de cuenta apagada en `app/doctor/layout.tsx` → `blockedLogoutAction`
+→ `/login?deactivated=1`. **Si se agrega un tercer motivo, hay que tocar los cuatro
+puntos**; el hook filtra por un `Set` de códigos conocidos y todo lo demás lo ignora.
+
+A quien se dio de baja solo NO se le dice que "fue bloqueado": se lee como sanción.
+
+**`app/admin/verifications/VerificationsClient.tsx`** — badge ámbar "Se dio de baja"
+contra el rojo "Acceso bloqueado", y el botón pasa a "Reactivar cuenta". El admin
+necesita saber qué está reactivando antes de tocarlo.
