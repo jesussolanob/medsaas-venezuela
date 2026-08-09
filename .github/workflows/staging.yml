@@ -24,8 +24,15 @@ name: Deploy (Cloud Run · staging)
 #
 # NOTA: reusa las MISMAS llaves de cifrado de prod (ENCRYPTION_KEY /
 # ENCRYPTION_HMAC_SECRET). Es obligatorio: la BD clonada está cifrada con esa
-# llave y no se podría descifrar con otra. EMAIL_DRIVER=noop para que staging
-# NO envíe correos reales a los pacientes de los datos clonados.
+# llave y no se podría descifrar con otra.
+#
+# CORREO EN STAGING (cambiado 2026-08-09): EMAIL_DRIVER=resend — staging SÍ envía
+# correo de verdad, para poder demostrar y probar el flujo completo. La BD es un
+# clon de prod y trae direcciones de pacientes REALES, así que el envío va
+# SIEMPRE redirigido: SANDBOX_EMAIL hace que SandboxEmailPort reescriba el
+# destinatario de CADA correo a esa única casilla. Nadie más recibe nada.
+# La variable STAGING_SANDBOX_EMAIL es OBLIGATORIA (ver el paso de guarda más
+# abajo): sin ella el deploy falla en vez de exponer a los pacientes clonados.
 
 on:
   push:
@@ -57,6 +64,18 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
+      # Guarda fail-closed, primera de todas: staging envía correo real y su BD
+      # es un clon de prod con direcciones de pacientes reales. Sin casilla de
+      # redirección el envío llegaría a esas personas. Va antes del build y de
+      # las migraciones para no gastarlos en un deploy que igual va a abortar.
+      - name: Verify staging email redirect is configured
+        run: |
+          if [ -z "${{ vars.STAGING_SANDBOX_EMAIL }}" ]; then
+            echo "::error::STAGING_SANDBOX_EMAIL no está definida. Staging usa EMAIL_DRIVER=resend sobre una BD clonada de producción: sin casilla de redirección los correos llegarían a pacientes reales. Definí la variable en Settings → Variables → Actions."
+            exit 1
+          fi
+          echo "Redirección de correo activa — todo el correo de staging va a una sola casilla."
+
       - uses: actions/checkout@v4
 
       - name: Auth to GCP (Workload Identity Federation)
@@ -109,7 +128,7 @@ jobs:
             --no-allow-unauthenticated \
             --add-cloudsql-instances="$SQL_CONN" \
             --set-secrets=DATABASE_URL=DATABASE_URL_STAGING:latest,ENCRYPTION_KEY=ENCRYPTION_KEY:latest,ENCRYPTION_HMAC_SECRET=ENCRYPTION_HMAC_SECRET:latest,AUTH_RESOLVE_SECRET=AUTH_RESOLVE_SECRET:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest,GOOGLE_CLIENT_SECRET=GOOGLE_CLIENT_SECRET:latest,RESEND_API_KEY=RESEND_API_KEY:latest,CRON_SECRET=CRON_SECRET:latest,REVIEWER_PASSWORD=REVIEWER_PASSWORD:latest,REVIEWER_SESSION_SECRET=REVIEWER_SESSION_SECRET:latest \
-            --set-env-vars=NODE_ENV=production,AUTH_MODE=auth0,AUTH0_DOMAIN=${{ vars.AUTH0_DOMAIN }},AUTH0_CLIENT_ID=${{ vars.AUTH0_CLIENT_ID }},AUTH0_ROLE_NAMESPACE=${{ vars.AUTH0_ROLE_NAMESPACE }},REDIS_DISABLED=true,DB_POOL_MAX=5,DB_POOL_MIN=0,STORAGE_DRIVER=gcs,GCS_BUCKET=$GCS_BUCKET,GCS_PROJECT_ID=$PROJECT_ID,EMAIL_DRIVER=noop,EMAIL_FROM=noreply@deltasalud.app,SANDBOX=false,GOOGLE_CLIENT_ID=${{ vars.GOOGLE_CLIENT_ID }},SENTRY_ENABLED=false,REVIEWER_ACCESS_ENABLED=${{ vars.REVIEWER_ACCESS_ENABLED }},REVIEWER_EMAIL=demo.google@deltasalud.app,REVIEWER_PROFILE_ID=b938843b-8a93-4281-af29-cc6968fffc7f \
+            --set-env-vars=NODE_ENV=production,AUTH_MODE=auth0,AUTH0_DOMAIN=${{ vars.AUTH0_DOMAIN }},AUTH0_CLIENT_ID=${{ vars.AUTH0_CLIENT_ID }},AUTH0_ROLE_NAMESPACE=${{ vars.AUTH0_ROLE_NAMESPACE }},REDIS_DISABLED=true,DB_POOL_MAX=5,DB_POOL_MIN=0,STORAGE_DRIVER=gcs,GCS_BUCKET=$GCS_BUCKET,GCS_PROJECT_ID=$PROJECT_ID,EMAIL_DRIVER=resend,EMAIL_FROM=noreply@deltasalud.app,SANDBOX=false,SANDBOX_EMAIL=${{ vars.STAGING_SANDBOX_EMAIL }},GOOGLE_CLIENT_ID=${{ vars.GOOGLE_CLIENT_ID }},SENTRY_ENABLED=false,REVIEWER_ACCESS_ENABLED=${{ vars.REVIEWER_ACCESS_ENABLED }},REVIEWER_EMAIL=demo.google@deltasalud.app,REVIEWER_PROFILE_ID=b938843b-8a93-4281-af29-cc6968fffc7f \
             --memory=512Mi --cpu=1 --min-instances=0 --max-instances=1 --port=8080
 
       - name: Resolve backend URL + grant frontend invoker
@@ -147,4 +166,4 @@ jobs:
           echo "### Deploy STAGING OK :rocket:" >> "$GITHUB_STEP_SUMMARY"
           echo "- Frontend: $STAGING_URL (run.app: $(gcloud run services describe delta-frontend-staging --region=$REGION --format='value(status.url)'))" >> "$GITHUB_STEP_SUMMARY"
           echo "- Backend (IAM, no público): ${{ steps.backend.outputs.url }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "- EMAIL_DRIVER=noop · Sentry off · min=0/max=1" >> "$GITHUB_STEP_SUMMARY"
+          echo "- EMAIL_DRIVER=resend, redirigido a una sola casilla · Sentry off · min=0/max=1" >> "$GITHUB_STEP_SUMMARY"
