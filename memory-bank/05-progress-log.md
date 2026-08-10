@@ -2,6 +2,71 @@
 
 > Registro cronológico. Una entrada por fase/hito completado.
 
+## 2026-08-10 — Mejoras de onboarding y servicios ⏳ EN STAGING (deploy BLOQUEADO)
+
+Cadena `feature/mejoras-onboarding` → `develop` (`272699d`) → `staging` (`9aaa5ce`).
+**El deploy de staging FALLA** — ver "Deploy bloqueado" abajo. Nada llegó a staging todavía.
+
+### 🔴 La suite del backend estaba ROJA y nadie se enteró
+
+El lote de la baja de cuenta (2026-08-09) agregó `countUpcomingAppointments` y
+`deactivateOwnAccount` a `IDoctorProfileRepository` y **no actualizó los mocks de los demás
+specs**: 16 suites quedaron rojas y el lote se mergeó igual a `develop` y `staging`.
+
+**El workflow de deploy corre migraciones y build, NO tests.** Nada avisa. La única barrera
+es el hook de pre-commit de `develop`/`main`, y se venía usando `--no-verify`.
+Arreglado: 13 mocks del puerto + el use case nuevo en el módulo de prueba del controller +
+3 campos en los literales `DoctorDetail` de admin. **392 suites / 3763 tests en verde.**
+
+### Bugs de onboarding (los dos silenciosos)
+
+1. **`updateRegistration` marcaba `onboardingCompleted = true` en el PASO 1.** El guard del
+   portal lee ese booleano → quien completaba solo sus datos personales y navegaba a
+   `/doctor` **entraba sin consultorio ni servicio**: el onboarding obligatorio dejaba de
+   serlo. Ahora lo marca solo `markOnboardingCompleted`, que exige ≥1 consultorio y ≥1
+   servicio activos.
+2. **Reentrar al wizard des-verificaba al especialista.** `verificationStatus` volvía a
+   `'pending'` y `verified_at` se borraba SIEMPRE. Ahora solo si cambió cédula, MPPS o
+   colegiado (`resetVerification`, decidido en el use case que tiene el estado previo).
+   La comparación normaliza `null`/`undefined`/`''` al mismo valor: el cliente manda `''`
+   para un opcional sin llenar y comparado crudo se leía como cambio. **+4 tests.**
+
+### Lote de mejoras pedido
+
+- **Lámina de bienvenida** (`OnboardingWelcome.tsx`) antes del paso 1. Solo para quien
+  arranca de cero — si el wizard lo dejó en el paso 2 o 3, no se muestra.
+- **Varios bloques por día** en el paso del consultorio. La lógica estaba **duplicada** entre
+  `/doctor/offices` y el onboarding, y la copia del onboarding se quedó atrás (un bloque por
+  día). Se extrajo a `lib/schedule-utils` como funciones puras: **ahora las dos pantallas
+  usan lo mismo y no pueden volver a divergir.**
+- **QA (nota de voz):** el paso 3 creaba la consulta con `type: 'service'` = "Servicio extra"
+  (limpieza, examen). Lo correcto es `type: 'plan'` = "Plan de consulta". Se corrigieron
+  también los textos, que decían "servicio" en todo el paso — la confusión de vocabulario
+  era la misma que producía el bug.
+- **Duración por servicio de vuelta en `/doctor/services`** (se había quitado el 12-07).
+  **NO cambia cómo se generan los turnos** — el booking sigue usando `slot_duration` del
+  consultorio. Condiciona la ASOCIACIÓN: un servicio de 45 min no entra en un consultorio de
+  30. Los que no lo soportan salen deshabilitados con el motivo a la vista. Un servicio
+  "General" solo se permite si entra en TODOS (decisión del dueño).
+- **Instrucciones de pago en viñetas** (`PaymentInstructions.tsx` + migración
+  `20260810000001`). El texto lo edita el super admin desde `/admin/settings`, así que la
+  migración **solo reescribe si sigue siendo el sembrado** y el parser **degrada a párrafo**
+  con el texto viejo. El beneficiario NO se tocó: es el titular de una cuenta real.
+- Fuera "Medical CRM" del encabezado del onboarding.
+
+### 🔴 Deploy bloqueado — decisión pendiente
+
+La guarda "Verify no scheduler targets staging" (agregada el 09/08) **fallaba ABIERTA**: si
+`gcloud` fallaba, el `grep` no encontraba nada y el deploy seguía. Se corrigió a fail-closed
+y ahí se descubrió que **`delta-deployer-sa` NO tiene `cloudscheduler.jobs.list`** → la
+guarda nunca verificó nada, y ahora corta el deploy.
+
+Opciones: (a) otorgar `roles/cloudscheduler.viewer` al deployer SA — read-only, un comando;
+(b) quitar la guarda y quedarse con el invariante documentado. **Pendiente del dueño.**
+
+⚠️ Recordatorio: staging manda **correo REAL al destinatario REAL** sobre una BD clon de
+prod. Para probar correo, usar pacientes de prueba creados a mano.
+
 ## 2026-08-09 — Baja de cuenta por el especialista + staging con correo real ⏳ EN STAGING
 
 Cadena `feature/baja-de-cuenta` → `develop` (`989816d`) → `staging` (`ac4fe4c`).
