@@ -28,9 +28,19 @@ import { completeOnboarding } from './actions';
 
 interface Props {
   officeId: string | null;
+  /**
+   * Duración del bloque del consultorio del paso anterior. La consulta se
+   * agenda sobre ese bloque, así que una consulta más larga no entraría: las
+   * opciones que exceden el bloque se ofrecen deshabilitadas, con el motivo a
+   * la vista en vez de desaparecer sin explicación.
+   */
+  officeSlotDuration?: number | null;
   onBack: () => void;
   onSuccess: () => void;
 }
+
+/** Opciones de duración, en minutos. Mismo set que /doctor/services. */
+const DURATION_OPTIONS = [15, 20, 30, 45, 60, 90] as const;
 
 interface FieldErrors {
   name?: string;
@@ -46,13 +56,25 @@ const inpErr =
 // Component
 // ---------------------------------------------------------------------------
 
-export default function OnboardingStepService({ officeId, onBack, onSuccess }: Props) {
+export default function OnboardingStepService({
+  officeId,
+  officeSlotDuration,
+  onBack,
+  onSuccess,
+}: Props) {
   const [isPending, startTransition] = useTransition();
 
   const [name, setName] = useState('');
   const [priceUsd, setPriceUsd] = useState('');
-  const [durationMins, setDurationMins] = useState(30);
   const [description, setDescription] = useState('');
+
+  // Arranca en la duración del bloque del consultorio: es la que siempre entra.
+  const maxDuration = officeSlotDuration ?? null;
+  const [durationMins, setDurationMins] = useState(() =>
+    maxDuration && maxDuration < 30 ? maxDuration : 30,
+  );
+
+  const durationFits = maxDuration == null || durationMins <= maxDuration;
 
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [serverError, setServerError] = useState<string | null>(null);
@@ -65,7 +87,9 @@ export default function OnboardingStepService({ officeId, onBack, onSuccess }: P
       errors.price_usd = 'Ingresa un precio válido en USD (puede ser 0)';
     }
     setFieldErrors(errors);
-    return Object.keys(errors).length === 0;
+    // La duración no tiene campo de error propio: el select ya deshabilita lo
+    // que no entra, y este guard sólo cubre un estado inicial inconsistente.
+    return Object.keys(errors).length === 0 && durationFits;
   }
 
   function handleSubmit(e: React.FormEvent) {
@@ -74,14 +98,18 @@ export default function OnboardingStepService({ officeId, onBack, onSuccess }: P
     setServerError(null);
 
     startTransition(async () => {
-      // 1. Create the service
+      // 1. Create the first consultation.
+      //    type 'plan' = "Plan de consulta" (una consulta), que es lo que el
+      //    especialista está creando acá. 'service' es el "servicio extra"
+      //    (limpieza, examen) y NO corresponde: mandarlo dejaba la primera
+      //    consulta catalogada como servicio extra en /doctor/services.
       const serviceResult = await createDoctorService({
         name: name.trim(),
         price_usd: parseFloat(priceUsd),
         duration_minutes: durationMins,
         sessions_count: 1,
         description: description.trim() || null,
-        type: 'service',
+        type: 'plan',
         show_in_booking: true,
         office_id: officeId ?? null,
       });
@@ -128,10 +156,11 @@ export default function OnboardingStepService({ officeId, onBack, onSuccess }: P
               className="font-bold text-lg leading-tight"
               style={{ color: 'var(--dh-ink)', fontFamily: 'var(--dh-font-display)' }}
             >
-              Tu primer servicio
+              Tu primera consulta
             </h2>
             <p className="text-xs mt-0.5" style={{ color: 'var(--dh-gray-400)' }}>
-              Define el servicio que ofrecerás — podrás añadir más desde la configuración
+              Define la consulta que ofrecerás — luego podrás agregar más y también servicios extras
+              desde Servicios
             </p>
           </div>
         </div>
@@ -153,7 +182,7 @@ export default function OnboardingStepService({ officeId, onBack, onSuccess }: P
             className="block text-xs font-semibold mb-1.5"
             style={{ color: 'var(--dh-gray-700)' }}
           >
-            Nombre del servicio <span className="text-red-400">*</span>
+            Nombre de la consulta <span className="text-red-400">*</span>
           </label>
           <div className="relative">
             <Stethoscope
@@ -230,15 +259,25 @@ export default function OnboardingStepService({ officeId, onBack, onSuccess }: P
                 onChange={(e) => setDurationMins(Number(e.target.value))}
                 className={`${inp} pl-10`}
               >
-                {[15, 20, 30, 45, 60, 90].map((v) => (
-                  <option key={v} value={v}>
-                    {v} min
-                  </option>
-                ))}
+                {DURATION_OPTIONS.map((v) => {
+                  const fits = maxDuration == null || v <= maxDuration;
+                  return (
+                    <option key={v} value={v} disabled={!fits}>
+                      {v} min{!fits && ' — no entra en el bloque'}
+                    </option>
+                  );
+                })}
               </select>
             </div>
           </div>
         </div>
+
+        {maxDuration != null && (
+          <p className="text-[11px] -mt-2" style={{ color: 'var(--dh-gray-400)' }}>
+            Tu consultorio atiende en bloques de {maxDuration} min, así que la consulta no puede
+            durar más que eso. Puedes cambiarlo después desde Consultorios.
+          </p>
+        )}
 
         {/* Descripción */}
         <div>
@@ -256,7 +295,7 @@ export default function OnboardingStepService({ officeId, onBack, onSuccess }: P
             id="os-description"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            placeholder="Describe brevemente qué incluye este servicio..."
+            placeholder="Describe brevemente qué incluye esta consulta..."
             rows={3}
             className={`${inp} resize-none`}
           />

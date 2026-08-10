@@ -116,6 +116,7 @@ describe('CompleteRegistrationUseCase', () => {
       colegiadoNumber: null,
       specialty: null,
       gender: null,
+      resetVerification: true,
     });
     expect(result.doctorId).toBe('doc-1');
     expect(result.verificationStatus).toBe('pending');
@@ -143,6 +144,7 @@ describe('CompleteRegistrationUseCase', () => {
       colegiadoNumber: 'COL-2',
       specialty: null,
       gender: null,
+      resetVerification: true,
     });
   });
 
@@ -166,7 +168,106 @@ describe('CompleteRegistrationUseCase', () => {
       colegiadoNumber: null,
       specialty: 'Cardiología',
       gender: null,
+      resetVerification: true,
     });
+  });
+
+  // ---------------------------------------------------------------------------
+  // resetVerification — a quién se le cae la verificación y a quién no.
+  //
+  // Un especialista ya verificado puede volver a entrar al wizard de onboarding
+  // (la ruta sigue accesible) y reenviar el paso 1. Antes eso lo mandaba de
+  // vuelta a 'pending' SIEMPRE, en silencio y sin avisarle. La verificación es
+  // sobre los documentos de identidad, así que solo debe caerse si cambia uno.
+  // ---------------------------------------------------------------------------
+
+  it('conserva la verificación cuando se reenvían exactamente los mismos datos', async () => {
+    const verificado = makeRegistration({
+      cedula: 'V-12345678',
+      mppsNumber: 'MP-1',
+      colegiadoNumber: 'COL-2',
+      verificationStatus: 'verified',
+    });
+    mockRepo.findById.mockResolvedValue(verificado);
+    mockRepo.updateRegistration.mockResolvedValue(verificado);
+    mockRepo.findAllSuperAdmins.mockResolvedValue([]);
+
+    await useCase.execute({
+      doctorId: 'doc-1',
+      fullName: 'Carlos M.',
+      cedula: 'V-12345678',
+      mppsNumber: 'MP-1',
+      colegiadoNumber: 'COL-2',
+    });
+
+    expect(mockRepo.updateRegistration).toHaveBeenCalledWith(
+      'doc-1',
+      expect.objectContaining({ resetVerification: false }),
+    );
+  });
+
+  it('conserva la verificación cuando el campo opcional llega como cadena vacía en vez de null', async () => {
+    // El cliente manda '' para un opcional sin llenar. Comparado crudo contra
+    // null eso se lee como cambio y des-verifica sin que nadie tocara nada.
+    const verificado = makeRegistration({
+      cedula: 'V-12345678',
+      mppsNumber: null,
+      colegiadoNumber: null,
+      verificationStatus: 'verified',
+    });
+    mockRepo.findById.mockResolvedValue(verificado);
+    mockRepo.updateRegistration.mockResolvedValue(verificado);
+    mockRepo.findAllSuperAdmins.mockResolvedValue([]);
+
+    await useCase.execute({
+      doctorId: 'doc-1',
+      fullName: 'Carlos M.',
+      cedula: '  V-12345678  ',
+      mppsNumber: '',
+      colegiadoNumber: '',
+    });
+
+    expect(mockRepo.updateRegistration).toHaveBeenCalledWith(
+      'doc-1',
+      expect.objectContaining({ resetVerification: false }),
+    );
+  });
+
+  it('vuelve a pending cuando cambia la cédula', async () => {
+    const verificado = makeRegistration({ cedula: 'V-11111111', verificationStatus: 'verified' });
+    mockRepo.findById.mockResolvedValue(verificado);
+    mockRepo.updateRegistration.mockResolvedValue(verificado);
+    mockRepo.findAllSuperAdmins.mockResolvedValue([]);
+
+    await useCase.execute({ doctorId: 'doc-1', fullName: 'Carlos M.', cedula: 'V-22222222' });
+
+    expect(mockRepo.updateRegistration).toHaveBeenCalledWith(
+      'doc-1',
+      expect.objectContaining({ resetVerification: true }),
+    );
+  });
+
+  it('vuelve a pending cuando cambia el MPPS', async () => {
+    const verificado = makeRegistration({
+      cedula: 'V-12345678',
+      mppsNumber: 'MP-1',
+      verificationStatus: 'verified',
+    });
+    mockRepo.findById.mockResolvedValue(verificado);
+    mockRepo.updateRegistration.mockResolvedValue(verificado);
+    mockRepo.findAllSuperAdmins.mockResolvedValue([]);
+
+    await useCase.execute({
+      doctorId: 'doc-1',
+      fullName: 'Carlos M.',
+      cedula: 'V-12345678',
+      mppsNumber: 'MP-999',
+    });
+
+    expect(mockRepo.updateRegistration).toHaveBeenCalledWith(
+      'doc-1',
+      expect.objectContaining({ resetVerification: true }),
+    );
   });
 
   it('persists null specialty when not provided', async () => {

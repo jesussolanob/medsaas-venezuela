@@ -83,17 +83,12 @@ export default async function DoctorOnboardingPage() {
             <Activity className="w-5 h-5 text-white" />
           </div>
           <div className="text-left">
+            {/* Solo "Delta Salud" — la bajada "Medical CRM" se quitó a pedido del dueño. */}
             <p
               className="font-extrabold text-lg leading-none"
               style={{ color: 'var(--dh-ink)', fontFamily: 'var(--dh-font-display)' }}
             >
               Delta <span style={{ color: 'var(--dh-turquoise)' }}>Salud</span>
-            </p>
-            <p
-              className="text-[10px] font-semibold uppercase tracking-[0.16em]"
-              style={{ color: 'var(--dh-turquoise-700)', fontFamily: 'var(--dh-font-mono)' }}
-            >
-              Medical CRM
             </p>
           </div>
         </div>

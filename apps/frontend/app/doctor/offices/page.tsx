@@ -29,6 +29,12 @@ import {
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import { showToast } from '@/components/ui/Toaster';
 import PhoneInput from '@/components/shared/PhoneInput';
+import {
+  addBlock as addBlockIn,
+  removeBlock as removeBlockIn,
+  toggleDay as toggleDayIn,
+  updateBlock as updateBlockIn,
+} from '@/lib/schedule-utils';
 
 type Office = {
   id: string;
@@ -86,23 +92,8 @@ function timeToMinutes(hhmm: string): number {
   return (h ?? 0) * 60 + (m ?? 0);
 }
 
-/**
- * Dada la hora de fin del último bloque de un día, sugiere el inicio del
- * siguiente (2 horas después, máx. 18:00).
- */
-function suggestNextStart(lastEnd: string): string {
-  const mins = Math.min(timeToMinutes(lastEnd) + 120, 18 * 60);
-  const h = String(Math.floor(mins / 60)).padStart(2, '0');
-  const m = String(mins % 60).padStart(2, '0');
-  return `${h}:${m}`;
-}
-
-function suggestNextEnd(nextStart: string): string {
-  const mins = Math.min(timeToMinutes(nextStart) + 240, 22 * 60);
-  const h = String(Math.floor(mins / 60)).padStart(2, '0');
-  const m = String(mins % 60).padStart(2, '0');
-  return `${h}:${m}`;
-}
+// `suggestNextStart` / `suggestNextEnd` vivían acá; se movieron a
+// `lib/schedule-utils` junto con las operaciones de bloques que las usaban.
 
 // ---------------------------------------------------------------------------
 // Validación de solapamiento intra-día
@@ -277,50 +268,29 @@ export default function OfficesPage() {
   // Operaciones sobre bloques (inmutables)
   // ---------------------------------------------------------------------------
 
+  // La lógica vive en `lib/schedule-utils` como funciones puras: el onboarding
+  // usa exactamente las mismas. Estaban duplicadas acá, y la copia del
+  // onboarding se quedó atrás — sólo admitía un bloque por día. Estos wrappers
+  // son el puente al estado local; el comportamiento es idéntico al anterior.
+
   /** Activa/desactiva un día completo. Activa = agrega un bloque inicial si no hay ninguno. */
   function toggleDay(dayNum: number) {
-    const blocksForDay = schedule.filter((b) => b.day === dayNum);
-    const isEnabled = blocksForDay.some((b) => b.enabled);
-
-    if (isEnabled) {
-      // Desactivar: marcar todos los bloques de ese día como disabled
-      setSchedule((prev) => prev.map((b) => (b.day === dayNum ? { ...b, enabled: false } : b)));
-    } else {
-      // Activar: si hay bloques disabled, reactivarlos; si no hay ninguno, agregar uno
-      if (blocksForDay.length > 0) {
-        setSchedule((prev) => prev.map((b) => (b.day === dayNum ? { ...b, enabled: true } : b)));
-      } else {
-        setSchedule((prev) => [
-          ...prev,
-          { day: dayNum, enabled: true, start: '08:00', end: '17:00' },
-        ]);
-      }
-    }
+    setSchedule((prev) => toggleDayIn(prev, dayNum));
   }
 
   /** Actualiza un campo de un bloque puntual por su índice en el array plano. */
   function updateBlock(blockIndex: number, field: 'start' | 'end', value: string) {
-    setSchedule((prev) => prev.map((b, i) => (i === blockIndex ? { ...b, [field]: value } : b)));
+    setSchedule((prev) => updateBlockIn(prev, blockIndex, field, value));
   }
 
   /** Elimina un bloque por su índice. Si era el único del día, deja el día sin bloques. */
   function removeBlock(blockIndex: number) {
-    setSchedule((prev) => prev.filter((_, i) => i !== blockIndex));
+    setSchedule((prev) => removeBlockIn(prev, blockIndex));
   }
 
   /** Agrega un bloque nuevo al final de los bloques existentes de un día. */
   function addBlock(dayNum: number) {
-    const blocksForDay = schedule.filter((b) => b.day === dayNum && b.enabled);
-    let start = '08:00';
-    let end = '12:00';
-
-    if (blocksForDay.length > 0) {
-      const lastEnd = blocksForDay[blocksForDay.length - 1]?.end ?? '12:00';
-      start = suggestNextStart(lastEnd);
-      end = suggestNextEnd(start);
-    }
-
-    setSchedule((prev) => [...prev, { day: dayNum, enabled: true, start, end }]);
+    setSchedule((prev) => addBlockIn(prev, dayNum));
   }
 
   // ---------------------------------------------------------------------------

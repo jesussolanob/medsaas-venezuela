@@ -12,6 +12,18 @@ export interface RegistrationUpdateParams {
   colegiadoNumber: string | null;
   specialty: string | null;
   gender?: string | null;
+  /**
+   * Whether to send the profile back to 'pending' verification.
+   *
+   * The verification an admin performs is over the identity documents (cédula,
+   * MPPS, colegiado), so it only becomes stale when one of those changes. This
+   * used to be unconditional, which meant an already-verified specialist who
+   * walked back into the onboarding wizard and re-submitted the same data was
+   * silently de-verified — with no notice to them and no trace of why.
+   *
+   * The caller decides, because only it can compare against the prior state.
+   */
+  resetVerification: boolean;
 }
 
 export interface VerificationUpdateParams {

@@ -95,7 +95,15 @@ jobs:
       # va a abortar.
       - name: Verify no scheduler targets staging
         run: |
-          if gcloud scheduler jobs list --location=$REGION --format='value(httpTarget.uri)' | grep -q 'delta-backend-staging'; then
+          # El listado tiene que SALIR BIEN para que la guarda valga. Si se
+          # tomaba la salida de un gcloud que falló (permisos, API apagada),
+          # el grep no encontraba nada y el deploy seguía: fallaba ABIERTA,
+          # justo al revés de lo que hace falta acá.
+          if ! JOBS=$(gcloud scheduler jobs list --location="$REGION" --format='value(httpTarget.uri)' 2>&1); then
+            echo "::error::No se pudo listar los jobs de Cloud Scheduler, así que no se puede garantizar que ninguno apunte a staging. Staging manda correo REAL a destinatarios REALES sobre una BD clonada de producción. Detalle: ${JOBS}"
+            exit 1
+          fi
+          if echo "$JOBS" | grep -q 'delta-backend-staging'; then
             echo "::error::Hay un job de Cloud Scheduler apuntando al backend de staging. Staging envía correo REAL a destinatarios REALES sobre una BD clonada de producción: un cron acá dispara correo en lote a pacientes de verdad. Reapuntá o borrá ese job, o definí SANDBOX_EMAIL para redirigir el correo, antes de volver a desplegar."
             exit 1
           fi

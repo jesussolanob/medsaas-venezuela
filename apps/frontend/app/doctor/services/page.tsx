@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 // MIGRATED (Etapa 1): services CRUD → NestJS /api/doctor/services
 import {
   getDoctorServices,
@@ -26,6 +26,7 @@ import {
   Tag,
   Building2,
   AlertTriangle,
+  Clock,
 } from 'lucide-react';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import { showToast } from '@/components/ui/Toaster';
@@ -37,7 +38,16 @@ type DoctorOffice = {
   name: string;
   modality: 'in_person' | 'online' | 'both';
   address?: string | null;
+  /** Duración del bloque de cita del consultorio, en minutos. El wire es
+   *  snake_case (verificado contra el consumo en /doctor/offices). */
+  slot_duration?: number;
 };
+
+/** Opciones de duración de un servicio, en minutos. */
+const DURATION_OPTIONS = [15, 20, 30, 45, 60, 90] as const;
+
+/** Duración de bloque asumida cuando el consultorio no la informa. */
+const DEFAULT_SLOT_DURATION = 30;
 
 const inp =
   'w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm outline-none transition-all focus:border-teal-400 bg-white';
@@ -124,11 +134,56 @@ export default function ServicesPage() {
     setEditing(null);
   }
 
+  // ---------------------------------------------------------------------------
+  // Compatibilidad servicio ↔ consultorio
+  //
+  // La cita se agenda sobre el bloque del consultorio (`slot_duration`), así que
+  // un servicio de 45 min no entra en un consultorio que atiende de 30 en 30:
+  // quedaría pisando la cita siguiente. La regla es que el bloque del
+  // consultorio sea AL MENOS la duración del servicio.
+  //
+  // Un servicio "General" aparece en todos los consultorios, así que tiene que
+  // entrar en todos.
+  // ---------------------------------------------------------------------------
+
+  const durationMins = parseInt(durationMinutes) || DEFAULT_SLOT_DURATION;
+
+  /** Duración del bloque de un consultorio, con default explícito. */
+  const slotOf = (o: DoctorOffice) => o.slot_duration ?? DEFAULT_SLOT_DURATION;
+
+  const officeFits = (o: DoctorOffice) => slotOf(o) >= durationMins;
+
+  /** Consultorios donde el servicio, con la duración elegida, NO entra. */
+  const incompatibleOffices = useMemo(
+    () => offices.filter((o) => !officeFits(o)),
+    // `durationMins` entra vía officeFits; se declara para que el memo se recalcule.
+    [offices, durationMins],
+  );
+
+  /** "General" solo es válido si el servicio entra en TODOS los consultorios. */
+  const generalIsValid = incompatibleOffices.length === 0;
+
+  const selectedOffice = offices.find((o) => o.id === selectedOfficeId) ?? null;
+  const selectedOfficeFits = selectedOffice ? officeFits(selectedOffice) : generalIsValid;
+
   async function handleSave() {
     if (!name.trim() || !priceUsd) {
       showToast({ type: 'error', message: 'Nombre y precio son obligatorios' });
       return;
     }
+
+    // Guarda de último momento: la UI ya deshabilita las opciones que no
+    // entran, pero la duración se puede cambiar DESPUÉS de elegir consultorio.
+    if (!selectedOfficeFits) {
+      showToast({
+        type: 'error',
+        message: selectedOffice
+          ? `"${selectedOffice.name}" atiende en bloques de ${slotOf(selectedOffice)} min y este servicio dura ${durationMins}. Elige otro consultorio o reduce la duración.`
+          : `Para dejarlo en "General" el servicio debe entrar en todos los consultorios, y ${incompatibleOffices.length === 1 ? 'uno atiende' : `${incompatibleOffices.length} atienden`} en bloques más cortos que ${durationMins} min.`,
+      });
+      return;
+    }
+
     setSaving(true);
     const parsedSessions = parseInt(sessionsCount) || 1;
     const parsedValidity = validityDays.trim() !== '' ? parseInt(validityDays) : null;
@@ -597,18 +652,35 @@ export default function ServicesPage() {
                     className={inp}
                     aria-label="Seleccionar consultorio"
                   >
-                    <option value="">General (todos los consultorios)</option>
-                    {offices.map((o) => (
-                      <option key={o.id} value={o.id}>
-                        {o.name}
-                      </option>
-                    ))}
+                    <option value="" disabled={!generalIsValid}>
+                      General (todos los consultorios)
+                      {!generalIsValid && ' — no entra en todos'}
+                    </option>
+                    {offices.map((o) => {
+                      const fits = officeFits(o);
+                      return (
+                        <option key={o.id} value={o.id} disabled={!fits}>
+                          {o.name}
+                          {!fits && ` — bloques de ${slotOf(o)} min`}
+                        </option>
+                      );
+                    })}
                   </select>
                 )}
-                <p className="text-[10px] text-slate-400 mt-1">
-                  &quot;General&quot; aparece en todos los consultorios. Elige uno para restringirlo
-                  a ese espacio.
-                </p>
+                {selectedOfficeFits ? (
+                  <p className="text-[10px] text-slate-400 mt-1">
+                    &quot;General&quot; aparece en todos los consultorios. Elige uno para
+                    restringirlo a ese espacio.
+                  </p>
+                ) : (
+                  <p className="text-[10px] text-red-500 mt-1">
+                    {selectedOffice
+                      ? `Este servicio dura ${durationMins} min y "${selectedOffice.name}" atiende en bloques de ${slotOf(selectedOffice)} min.`
+                      : `Para dejarlo en "General" tiene que entrar en todos los consultorios: ${incompatibleOffices
+                          .map((o) => `${o.name} (${slotOf(o)} min)`)
+                          .join(', ')}.`}
+                  </p>
+                )}
               </div>
 
               <div>
@@ -623,8 +695,35 @@ export default function ServicesPage() {
                 />
               </div>
 
-              {/* Duración removida (PRUEBAS 12-07): la duración real de la cita se define
-                  a nivel de consultorio (doctor_offices.slot_duration), no por servicio. */}
+              {/* Duración. Se había quitado el 12-07 porque la cita se agenda con el
+                  bloque del consultorio; vuelve porque el especialista necesita
+                  registrar cuánto dura realmente cada servicio. No cambia cómo se
+                  generan los turnos: condiciona a qué consultorio se puede asociar
+                  (ver `officeFits`). */}
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1.5">
+                  <span className="inline-flex items-center gap-1.5">
+                    <Clock className="w-3.5 h-3.5" />
+                    Duración
+                  </span>
+                </label>
+                <select
+                  value={durationMinutes}
+                  onChange={(e) => setDurationMinutes(e.target.value)}
+                  className={inp}
+                  aria-label="Duración del servicio"
+                >
+                  {DURATION_OPTIONS.map((v) => (
+                    <option key={v} value={v}>
+                      {v} min
+                    </option>
+                  ))}
+                </select>
+                <p className="text-[10px] text-slate-400 mt-1">
+                  Solo puede asociarse a consultorios cuyos bloques sean de al menos esta duración.
+                </p>
+              </div>
+
               <div>
                 <label className="block text-xs font-medium text-slate-600 mb-1.5">
                   Precio USD unitario <span className="text-red-400">*</span>

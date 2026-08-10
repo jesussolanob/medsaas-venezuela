@@ -41,11 +41,20 @@ export class SequelizeDoctorRegistrationRepository implements IDoctorRegistratio
       colegiadoNumber: params.colegiadoNumber,
       specialty: params.specialty,
       ...(params.gender != null && { gender: params.gender }),
-      verificationStatus: 'pending',
-      verifiedAt: null,
-      verifiedBy: null,
-      // Mark onboarding complete — explicit flag replaces fragile specialty heuristic.
-      onboardingCompleted: true,
+      // Solo se vuelve a 'pending' si cambiaron los datos que el admin verifica
+      // (ver `resetVerification` en el puerto). Antes era incondicional y
+      // des-verificaba en silencio a quien reentraba al wizard.
+      ...(params.resetVerification && {
+        verificationStatus: 'pending',
+        verifiedAt: null,
+        verifiedBy: null,
+      }),
+      // `onboardingCompleted` NO se marca acá. Este método persiste solo el
+      // paso 1 (datos personales), y el guard del portal lee ese booleano: al
+      // marcarlo acá, quien completaba el paso 1 y navegaba a /doctor entraba
+      // sin consultorio ni servicio, y el onboarding obligatorio dejaba de
+      // serlo. Lo marca `markOnboardingCompleted`, que sí exige ≥1 consultorio
+      // y ≥1 servicio activos.
     });
 
     return this.toDomain(row);

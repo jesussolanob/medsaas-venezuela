@@ -77,7 +77,12 @@ export class RegistrationProfileModel extends Model {
 
   /**
    * Explicit onboarding completion flag. Added in migration 20260617000004.
-   * Set to true by updateRegistration when the doctor submits the onboarding form.
+   *
+   * Lo marca `markOnboardingCompleted` (módulo doctor-settings), que exige ≥1
+   * consultorio y ≥1 servicio activos. NO lo marca `updateRegistration`: ese
+   * método persiste solo el paso 1 del wizard, y como el guard del portal lee
+   * este booleano, marcarlo ahí dejaba entrar al portal a quien había cargado
+   * únicamente sus datos personales.
    */
   @Default(false)
   @Column({ type: DataType.BOOLEAN, allowNull: false, field: 'onboarding_completed' })
