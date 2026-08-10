@@ -2,10 +2,11 @@
 
 > Registro cronológico. Una entrada por fase/hito completado.
 
-## 2026-08-10 — Mejoras de onboarding y servicios ⏳ EN STAGING (deploy BLOQUEADO)
+## 2026-08-10 — Mejoras de onboarding y servicios ✅ DESPLEGADO EN STAGING
 
-Cadena `feature/mejoras-onboarding` → `develop` (`272699d`) → `staging` (`9aaa5ce`).
-**El deploy de staging FALLA** — ver "Deploy bloqueado" abajo. Nada llegó a staging todavía.
+Cadena `feature/mejoras-onboarding` → `develop` (`a8179eb`) → `staging` (`9aaa5ce`).
+Run `31436055810` **success** (migraciones + backend + frontend), `staging.deltasalud.app`
+responde 200. **Falta el QA visual del dueño.** `main` no tiene nada de esto.
 
 ### 🔴 La suite del backend estaba ROJA y nadie se enteró
 
@@ -54,18 +55,49 @@ Arreglado: 13 mocks del puerto + el use case nuevo en el módulo de prueba del c
   con el texto viejo. El beneficiario NO se tocó: es el titular de una cuenta real.
 - Fuera "Medical CRM" del encabezado del onboarding.
 
-### 🔴 Deploy bloqueado — decisión pendiente
+### La guarda de scheduler nunca había verificado nada — RESUELTO
 
 La guarda "Verify no scheduler targets staging" (agregada el 09/08) **fallaba ABIERTA**: si
-`gcloud` fallaba, el `grep` no encontraba nada y el deploy seguía. Se corrigió a fail-closed
-y ahí se descubrió que **`delta-deployer-sa` NO tiene `cloudscheduler.jobs.list`** → la
-guarda nunca verificó nada, y ahora corta el deploy.
+`gcloud` fallaba, el `grep` no encontraba nada y el deploy seguía igual. Se corrigió a
+fail-closed y ahí se descubrió que **`delta-deployer-sa` no tenía `cloudscheduler.jobs.list`**
+→ o sea que el deploy del 09/08 pasó por casualidad, no porque la verificación diera bien.
 
-Opciones: (a) otorgar `roles/cloudscheduler.viewer` al deployer SA — read-only, un comando;
-(b) quitar la guarda y quedarse con el invariante documentado. **Pendiente del dueño.**
+Resuelto otorgando **`roles/cloudscheduler.viewer`** al deployer SA (read-only). ⚠️ La
+propagación de IAM tardó **varios minutos**: los dos primeros reintentos siguieron dando
+`PERMISSION_DENIED`. Si vuelve a pasar, esperar y reintentar antes de sospechar del rol.
+⚠️ Y OJO: `--impersonate-service-account` NO sirve para probarlo desde la cuenta de Lucas
+(falta `iam.serviceAccounts.getAccessToken`) — el error engaña, parece del rol y es de la
+impersonación. La prueba real es relanzar el deploy.
 
 ⚠️ Recordatorio: staging manda **correo REAL al destinatario REAL** sobre una BD clon de
 prod. Para probar correo, usar pacientes de prueba creados a mano.
+
+### 🔜 PENDIENTE al retomar (sesión pausada 2026-08-10)
+
+1. **QA visual del dueño en `staging.deltasalud.app`** — es lo único que falta de este lote.
+   Guion sugerido: (a) onboarding completo de cero → ver la lámina de bienvenida, partir un
+   día en dos bloques, y confirmar que la consulta creada aparece como **"Plan"** y NO como
+   "Servicio" en `/doctor/services`; (b) crear un servicio de 45 min y verificar que un
+   consultorio de 30 sale deshabilitado y que "General" se bloquea; (c) abrir el modal de
+   pago de plan y ver las instrucciones en viñetas.
+   Para reponer el onboarding en una cuenta ya usada, ver la memoria `qa-reponer-onboarding`:
+   bajar `onboarding_completed` NO alcanza, hay que desactivar consultorio y servicio.
+2. **Promover a `main`** una vez validado. `main` está muy atrás — arrastra también el lote
+   de agosto y la baja de cuenta, que siguen sin validar. Al promover: **despausar el cron**
+   `gcloud scheduler jobs resume doctor-inactivity-notices --location=us-east1`.
+3. **Agujero de proceso abierto:** el workflow de deploy **no corre tests**. La suite estuvo
+   roja 16 suites desde el 09/08 sin que nada avisara. Evaluar agregar un paso de test al CI
+   (o al menos a la rama `staging`), porque hoy la única barrera es el hook de pre-commit y
+   se viene saltando con `--no-verify`.
+4. **Investigado pero SIN implementar:** odontograma, esquema oftálmico y el congelamiento de
+   la especialidad. Informe completo en el artifact y en las memorias
+   `gating-por-especialidad` / `odontograma-y-oftalmologia`. Lo primero de esa línea NO es el
+   odontograma: es el endpoint de admin para corregir la especialidad, porque 5 de 16
+   especialistas quedarían encerrados el día que se congele.
+5. **Menor:** el beneficiario de las instrucciones de pago sigue siendo "Delta Medical CRM,
+   C.A." con un RIF de ejemplo (`J-000000000-0`). Si la cuenta bancaria real tiene otro
+   titular, hay que actualizarlo desde `/admin/settings` — NO por migración, para no pisar
+   una personalización del admin.
 
 ## 2026-08-09 — Baja de cuenta por el especialista + staging con correo real ⏳ EN STAGING
 
