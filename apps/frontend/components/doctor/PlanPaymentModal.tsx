@@ -27,6 +27,7 @@ import {
   ArrowRight,
   Clock,
 } from 'lucide-react';
+import PaymentInstructions from './PaymentInstructions';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -403,16 +404,7 @@ export default function PlanPaymentModal({ planKey, planName, period, onClose, o
                     >
                       Instrucciones de pago
                     </h4>
-                    <div
-                      className="rounded-xl p-4 text-sm whitespace-pre-line leading-relaxed"
-                      style={{
-                        background: 'var(--dh-gray-50)',
-                        color: 'var(--dh-gray-800)',
-                        border: '1px solid var(--dh-gray-100)',
-                      }}
-                    >
-                      {checkoutInfo.paymentInstructions}
-                    </div>
+                    <PaymentInstructions value={checkoutInfo.paymentInstructions} />
                   </div>
                 </>
               ) : null}
