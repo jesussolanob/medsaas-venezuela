@@ -2,6 +2,65 @@
 
 > Registro cronológico. Una entrada por fase/hito completado.
 
+## 2026-08-09 — Baja de cuenta por el especialista + staging con correo real ⏳ EN STAGING
+
+Cadena `feature/baja-de-cuenta` → `develop` (`989816d`) → `staging` (`ac4fe4c`).
+Pendiente el QA del dueño en `staging.deltasalud.app`.
+
+⚠️ **La sesión anterior se cortó por un reinicio de la máquina** (segunda vez, ver la
+entrada del 2026-07-20) y dejó todo esto sin commitear en el working tree de `develop`.
+No se perdió nada. Al retomar se verificó en disco antes de tocar: `tsc` backend EXIT 0,
+`tsc` frontend limpio, `jest` de `app-auth.guard` + `deactivate-own-account` **35/35**.
+
+### 1. El especialista da de baja su propia cuenta
+
+Configuración → Mi perfil. Es **desactivación, nunca borrado**: toda fila queda bajo el
+mismo `profile id`, auditable, y un super_admin la reactiva. El texto nunca dice
+"borrar" — prometer un borrado que no ocurre es peor que no ofrecerlo.
+
+Reusa el flag que ya existía (`profiles.is_active`, que `AppAuthGuard` y el booking
+público ya respetan) en vez de agregar un segundo interruptor paralelo. Lo que faltaba
+era **el porqué**: con solo `is_active=false`, un baneo del admin y una salida
+voluntaria se ven idénticos. Migración `20260809000001` agrega `deactivated_at`,
+`deactivated_by` (`'self'|'admin'` con CHECK) y `deactivation_reason`, más backfill
+`'admin'` a las cuentas ya apagadas (todas anteriores a este camino).
+
+De ahí sale **`ACCOUNT_DEACTIVATED`** (403) al lado de `ACCOUNT_BLOCKED`: mismo flag,
+mensaje opuesto. Viaja guard → `useAccountBlockedGuard` → pantalla del portal →
+`/login?deactivated=1`. El panel admin muestra "Se dio de baja" (ámbar) contra "Acceso
+bloqueado" (rojo) y el botón pasa a "Reactivar cuenta".
+
+Reglas del use-case: `doctorId` sale siempre de `user.sub`, nunca del body (anti-IDOR) ·
+solo rol `doctor`, porque un super_admin se encerraría fuera del panel que reactiva ·
+**422 si tiene citas a futuro**, porque apagar la cuenta también baja el link público y
+deja sin acceso al único que podía cancelar o reagendar. La confirmación pide tipear
+"DAR DE BAJA": un sí/no se toca por accidente.
+
+### 2. Staging pasa a mandar correo REAL, al destinatario real
+
+`EMAIL_DRIVER` de `noop` → `resend` en `.github/workflows/staging.yml`.
+
+Se implementó primero con redirección (`SANDBOX_EMAIL` → `SandboxEmailPort` reescribe el
+destinatario de cada correo), y **el dueño decidió sacarla**: la prueba tiene que cubrir
+también a quién le llega. Condiciones bajo las que se asume:
+
+1. A staging solo entran administradores y el correo sale únicamente de pruebas manuales.
+2. **NINGÚN cron corre contra staging.**
+
+La 2 es la que importa: un cron sobre las citas clonadas mandaría correo **en lote** a
+pacientes reales sin que nadie lo pida. Verificado el 2026-08-09 — los dos jobs de Cloud
+Scheduler (`appointment-reminders`, `doctor-inactivity-notices`) apuntan a
+`delta-backend` (**prod**), no a `delta-backend-staging`, y el backend **no tiene ningún
+`@Cron` interno** que se dispare al bootear.
+
+Esa verificación dejó de ser una foto y es **una guarda del deploy**: el workflow corre
+`gcloud scheduler jobs list` y **falla antes del build** si algún job apunta al backend
+de staging. Se descubre ahí, no cuando ya salieron los correos.
+
+⚠️ **Recordatorio permanente:** la BD de staging es un clon de prod con direcciones de
+pacientes REALES. Probar envíos sobre una fila clonada le manda un correo a esa persona.
+Para probar correo, usar pacientes de prueba creados a mano.
+
 ## 2026-08-04 — Investigación ABIERTA: "Consultas por agendar" vacío para la Dra. Ana María Solano
 
 **Reporte del dueño:** la Dra. Ana María Solano (psicóloga, cuenta de especialista en PROD) entra al

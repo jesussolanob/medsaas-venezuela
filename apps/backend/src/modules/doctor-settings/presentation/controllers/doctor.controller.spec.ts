@@ -15,6 +15,7 @@ import { DeleteServiceUseCase } from '../../application/use-cases/doctor-setting
 import { GetDoctorExchangeRateUseCase } from '../../application/use-cases/doctor-settings/get-doctor-exchange-rate.use-case';
 import { SetDoctorExchangeRateUseCase } from '../../application/use-cases/doctor-settings/set-doctor-exchange-rate.use-case';
 import { CompleteOnboardingUseCase } from '../../application/use-cases/doctor-settings/complete-onboarding.use-case';
+import { DeactivateOwnAccountUseCase } from '../../application/use-cases/doctor-settings/deactivate-own-account.use-case';
 import { DoctorProfile } from '../../domain/entities/doctor-profile.entity';
 import { PricingPlan } from '../../../packages/domain/entities/pricing-plan.entity';
 import type { CurrentUserPayload } from '../../../../presentation/decorators/current-user.decorator';
@@ -88,6 +89,7 @@ describe('DoctorController', () => {
   const mockGetExchangeRate = { execute: jest.fn() };
   const mockSetExchangeRate = { execute: jest.fn() };
   const mockCompleteOnboarding = { execute: jest.fn() };
+  const mockDeactivateOwnAccount = { execute: jest.fn() };
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -108,6 +110,7 @@ describe('DoctorController', () => {
         { provide: GetDoctorExchangeRateUseCase, useValue: mockGetExchangeRate },
         { provide: SetDoctorExchangeRateUseCase, useValue: mockSetExchangeRate },
         { provide: CompleteOnboardingUseCase, useValue: mockCompleteOnboarding },
+        { provide: DeactivateOwnAccountUseCase, useValue: mockDeactivateOwnAccount },
       ],
     })
       .overrideGuard(AppAuthGuard)

@@ -6,7 +6,10 @@
  * Permite crear el primer consultorio del especialista.
  * Campos obligatorios: nombre, dirección, ciudad, ≥1 día habilitado.
  * Campos opcionales: teléfono, URL del mapa.
- * Horario: un bloque por día (Lun–Dom), toggle + rangos de hora.
+ * Horario: VARIOS bloques por día (Lun–Dom), igual que en /doctor/offices —
+ * un especialista que atiende mañana y tarde necesita partir el día, y hasta
+ * ahora este paso solo admitía un bloque, así que el horario que armaba acá no
+ * era el mismo que podía armar después desde Consultorios.
  * Slot y buffer: selectores simples.
  */
 
@@ -20,6 +23,8 @@ import {
   AlertCircle,
   ArrowLeft,
   ArrowRight,
+  Plus,
+  X,
 } from 'lucide-react';
 import {
   DAYS,
@@ -27,6 +32,10 @@ import {
   DEFAULT_SCHEDULE,
   timeToMinutes,
   findOverlaps,
+  addBlock,
+  removeBlock,
+  updateBlock,
+  toggleDay,
   type DaySchedule,
   type OverlapError,
 } from '@/lib/schedule-utils';
@@ -41,7 +50,12 @@ type OfficeModality = 'in_person' | 'online' | 'both';
 
 interface Props {
   onBack: () => void;
-  onSuccess: (officeId: string) => void;
+  /**
+   * Se llama con el id del consultorio y la duración de sus bloques. El paso
+   * siguiente necesita el slot para no dejar crear una consulta más larga que
+   * el bloque del consultorio recién creado.
+   */
+  onSuccess: (officeId: string, slotDuration: number) => void;
   /** If the user already created an office in a previous attempt, pass the id
    *  so we UPDATE instead of creating a duplicate. */
   existingOfficeId?: string | null;
@@ -104,8 +118,19 @@ export default function OnboardingStepOffice({ onBack, onSuccess, existingOffice
   const hasScheduleError = overlaps.length > 0 || invalidIndexes.size > 0;
   const hasEnabledDay = schedule.some((d) => d.enabled);
 
-  function updateDay(idx: number, changes: Partial<DaySchedule>) {
-    setSchedule((prev) => prev.map((d, i) => (i === idx ? { ...d, ...changes } : d)));
+  // Operaciones sobre bloques — funciones puras compartidas con /doctor/offices,
+  // para que las dos pantallas no vuelvan a divergir.
+  const handleToggleDay = (dayNum: number) => setSchedule((prev) => toggleDay(prev, dayNum));
+  const handleAddBlock = (dayNum: number) => setSchedule((prev) => addBlock(prev, dayNum));
+  const handleRemoveBlock = (idx: number) => setSchedule((prev) => removeBlock(prev, idx));
+  const handleUpdateBlock = (idx: number, field: 'start' | 'end', value: string) =>
+    setSchedule((prev) => updateBlock(prev, idx, field, value));
+
+  /** Bloques de un día con su índice en el array plano (el que usan las validaciones). */
+  function blocksOfDay(dayNum: number): { block: DaySchedule; globalIdx: number }[] {
+    return schedule
+      .map((block, globalIdx) => ({ block, globalIdx }))
+      .filter(({ block }) => block.day === dayNum);
   }
 
   function validate(): boolean {
@@ -149,7 +174,7 @@ export default function OnboardingStepOffice({ onBack, onSuccess, existingOffice
           setServerError(result.error ?? 'Error al actualizar el consultorio. Intenta nuevamente.');
           return;
         }
-        onSuccess(existingOfficeId);
+        onSuccess(existingOfficeId, slotDuration);
       } else {
         // First attempt — create a new office.
         const result = await createOfficeForOnboarding(officeInput);
@@ -157,7 +182,7 @@ export default function OnboardingStepOffice({ onBack, onSuccess, existingOffice
           setServerError(result.error ?? 'Error al crear el consultorio. Intenta nuevamente.');
           return;
         }
-        onSuccess(result.id);
+        onSuccess(result.id, slotDuration);
       }
     });
   }
@@ -379,78 +404,132 @@ export default function OnboardingStepOffice({ onBack, onSuccess, existingOffice
             <Clock className="w-4 h-4" style={{ color: 'var(--dh-gray-400)' }} />
           </div>
           <div className="rounded-xl border border-slate-200 overflow-hidden divide-y divide-slate-100">
-            {schedule.map((block, idx) => {
-              const hasOverlap = overlappingIndexes.has(idx);
-              const hasInvalid = invalidIndexes.has(idx);
-              const rowError = hasOverlap || hasInvalid;
+            {DAYS.map((dayName, dayNum) => {
+              const dayBlocks = blocksOfDay(dayNum);
+              const isDayActive = dayBlocks.some(({ block }) => block.enabled);
+
               return (
-                <div
-                  key={block.day}
-                  className={`flex items-center gap-3 px-3 py-2.5 transition-colors ${
-                    !block.enabled ? 'opacity-60' : ''
-                  } ${rowError ? 'bg-red-50' : 'bg-white'}`}
-                >
-                  {/* Toggle */}
-                  <button
-                    type="button"
-                    onClick={() => updateDay(idx, { enabled: !block.enabled })}
-                    className={`w-9 h-5 rounded-full transition-colors shrink-0 relative ${
-                      block.enabled ? 'bg-teal-500' : 'bg-slate-200'
-                    }`}
-                    aria-label={`${block.enabled ? 'Deshabilitar' : 'Habilitar'} ${DAYS[block.day]}`}
-                    aria-pressed={block.enabled}
-                  >
-                    <span
-                      className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all ${
-                        block.enabled ? 'left-[18px]' : 'left-0.5'
+                <div key={dayNum} className={isDayActive ? 'bg-white' : 'bg-white opacity-60'}>
+                  {/* Cabecera del día */}
+                  <div className="flex items-center gap-3 px-3 py-2.5">
+                    <button
+                      type="button"
+                      onClick={() => handleToggleDay(dayNum)}
+                      className={`w-9 h-5 rounded-full transition-colors shrink-0 relative ${
+                        isDayActive ? 'bg-teal-500' : 'bg-slate-200'
                       }`}
-                    />
-                  </button>
-
-                  {/* Day label */}
-                  <span
-                    className="w-8 text-xs font-semibold shrink-0"
-                    style={{ color: block.enabled ? 'var(--dh-ink)' : 'var(--dh-gray-400)' }}
-                  >
-                    {DAYS_SHORT[block.day]}
-                  </span>
-
-                  {/* Times */}
-                  {block.enabled ? (
-                    <div className="flex items-center gap-2 flex-1">
-                      <input
-                        type="time"
-                        value={block.start}
-                        onChange={(e) => updateDay(idx, { start: e.target.value })}
-                        className={`flex-1 px-2 py-1 text-sm rounded-lg border outline-none transition-all ${
-                          rowError
-                            ? 'border-red-300 bg-red-50'
-                            : 'border-slate-200 focus:border-teal-400'
+                      aria-label={`${isDayActive ? 'Deshabilitar' : 'Habilitar'} ${dayName}`}
+                      aria-pressed={isDayActive}
+                    >
+                      <span
+                        className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all ${
+                          isDayActive ? 'left-[18px]' : 'left-0.5'
                         }`}
-                        aria-label={`Inicio ${DAYS[block.day]}`}
                       />
-                      <span className="text-xs text-slate-400">–</span>
-                      <input
-                        type="time"
-                        value={block.end}
-                        onChange={(e) => updateDay(idx, { end: e.target.value })}
-                        className={`flex-1 px-2 py-1 text-sm rounded-lg border outline-none transition-all ${
-                          rowError
-                            ? 'border-red-300 bg-red-50'
-                            : 'border-slate-200 focus:border-teal-400'
-                        }`}
-                        aria-label={`Fin ${DAYS[block.day]}`}
-                      />
-                    </div>
-                  ) : (
-                    <span className="flex-1 text-xs" style={{ color: 'var(--dh-gray-400)' }}>
-                      No disponible
+                    </button>
+
+                    <span
+                      className="w-8 text-xs font-semibold shrink-0"
+                      style={{ color: isDayActive ? 'var(--dh-ink)' : 'var(--dh-gray-400)' }}
+                    >
+                      {DAYS_SHORT[dayNum]}
                     </span>
+
+                    {!isDayActive && (
+                      <span className="flex-1 text-xs" style={{ color: 'var(--dh-gray-400)' }}>
+                        No disponible
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Bloques del día */}
+                  {isDayActive && (
+                    <div className="px-3 pb-3 flex flex-col gap-2">
+                      {dayBlocks.map(({ block, globalIdx }) => {
+                        if (!block.enabled) return null;
+
+                        const isOverlap = overlappingIndexes.has(globalIdx);
+                        const isInvalid = invalidIndexes.has(globalIdx);
+                        const hasError = isOverlap || isInvalid;
+                        const onlyBlock =
+                          dayBlocks.filter(({ block: b }) => b.enabled).length === 1;
+
+                        return (
+                          <div key={globalIdx} className="flex flex-col gap-1">
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="time"
+                                value={block.start}
+                                onChange={(e) =>
+                                  handleUpdateBlock(globalIdx, 'start', e.target.value)
+                                }
+                                className={`flex-1 min-w-0 px-2 py-1 text-sm rounded-lg border outline-none transition-all ${
+                                  hasError
+                                    ? 'border-red-300 bg-red-50'
+                                    : 'border-slate-200 focus:border-teal-400'
+                                }`}
+                                aria-label={`Inicio — ${dayName}, bloque ${globalIdx + 1}`}
+                              />
+                              <span className="text-xs text-slate-400 shrink-0">–</span>
+                              <input
+                                type="time"
+                                value={block.end}
+                                onChange={(e) =>
+                                  handleUpdateBlock(globalIdx, 'end', e.target.value)
+                                }
+                                className={`flex-1 min-w-0 px-2 py-1 text-sm rounded-lg border outline-none transition-all ${
+                                  hasError
+                                    ? 'border-red-300 bg-red-50'
+                                    : 'border-slate-200 focus:border-teal-400'
+                                }`}
+                                aria-label={`Fin — ${dayName}, bloque ${globalIdx + 1}`}
+                              />
+                              {/* Quitar: se oculta si es el único bloque del día —
+                                  para eso está el toggle, y así no queda un día
+                                  activo sin ningún horario. */}
+                              {!onlyBlock && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveBlock(globalIdx)}
+                                  aria-label={`Quitar bloque de ${dayName}`}
+                                  className="shrink-0 p-1 rounded-md text-slate-400 hover:bg-red-100 hover:text-red-500 transition-colors"
+                                >
+                                  <X className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                            </div>
+
+                            {isInvalid && !isOverlap && (
+                              <p className="text-[10px] text-red-500 pl-1">
+                                La hora de fin debe ser posterior a la de inicio.
+                              </p>
+                            )}
+                            {isOverlap && (
+                              <p className="text-[10px] text-red-500 pl-1">
+                                Este bloque se solapa con otro del mismo día.
+                              </p>
+                            )}
+                          </div>
+                        );
+                      })}
+
+                      <button
+                        type="button"
+                        onClick={() => handleAddBlock(dayNum)}
+                        className="flex items-center gap-1.5 text-xs font-semibold text-teal-600 hover:text-teal-700 transition-colors w-fit"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        Agregar bloque
+                      </button>
+                    </div>
                   )}
                 </div>
               );
             })}
           </div>
+          <p className="text-[10px] mt-1.5" style={{ color: 'var(--dh-gray-400)' }}>
+            Puedes dividir el día — por ejemplo, 8:00–12:00 y 14:00–18:00.
+          </p>
           {fieldErrors.schedule && (
             <p className="text-xs text-red-500 mt-1">{fieldErrors.schedule}</p>
           )}

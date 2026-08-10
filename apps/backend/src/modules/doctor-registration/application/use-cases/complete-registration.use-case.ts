@@ -40,7 +40,9 @@ const NOT_SPECIFIED = 'No especificado';
  * Called by POST /api/doctor/registration. The doctor submits identity data
  * after their first login (Google SSO / Auth0). The use case:
  *
- *   1. Persists the identity fields + resets verification_status to 'pending'.
+ *   1. Persists the identity fields. Sends verification_status back to 'pending'
+ *      ONLY when an identity document changed (or on first registration): un
+ *      reenvío con los mismos datos conserva la verificación del admin.
  *   2. Fetches all super_admin emails.
  *   3. Dispatches a notification email to every super_admin containing the
  *      doctor's full name, cedula, email, specialty, MPPS number, and
@@ -80,6 +82,15 @@ export class CompleteRegistrationUseCase {
     const prior = await this.repo.findById(input.doctorId);
     const isFirstRegistration = !prior?.cedula || prior.cedula.trim() === '';
 
+    // La verificación del admin es sobre los documentos de identidad, así que
+    // solo queda obsoleta si cambia alguno de ellos. Un reenvío con los mismos
+    // datos —lo que pasa al volver al wizard— debe conservar la verificación.
+    const identityChanged =
+      isFirstRegistration ||
+      normalise(prior?.cedula) !== normalise(input.cedula) ||
+      normalise(prior?.mppsNumber) !== normalise(input.mppsNumber) ||
+      normalise(prior?.colegiadoNumber) !== normalise(input.colegiadoNumber);
+
     // 1. Persist registration data (idempotent — updates if already submitted)
     const updated = await this.repo.updateRegistration(input.doctorId, {
       fullName: input.fullName,
@@ -88,6 +99,7 @@ export class CompleteRegistrationUseCase {
       colegiadoNumber: input.colegiadoNumber ?? null,
       specialty: input.specialty ?? null,
       gender: input.gender ?? null,
+      resetVerification: identityChanged,
     });
 
     if (!updated) {
@@ -211,4 +223,16 @@ export class CompleteRegistrationUseCase {
       `[registration] verification notification dispatched to ${admins.length} admin(s)`,
     );
   }
+}
+
+/**
+ * Normalises an identity field for comparison: null, undefined and blank all
+ * collapse to the same value, and surrounding whitespace is ignored.
+ *
+ * Without this, re-submitting the wizard with an untouched optional field that
+ * the client sends as '' instead of null would read as a change and needlessly
+ * de-verify the specialist.
+ */
+function normalise(value: string | null | undefined): string {
+  return (value ?? '').trim();
 }
