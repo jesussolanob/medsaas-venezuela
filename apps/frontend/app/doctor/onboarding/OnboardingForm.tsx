@@ -33,6 +33,7 @@ import { submitDoctorRegistration } from './actions';
 import TermsModal from '@/components/legal/TermsModal';
 import OnboardingStepOffice from './OnboardingStepOffice';
 import OnboardingStepService from './OnboardingStepService';
+import OnboardingWelcome from './OnboardingWelcome';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -372,7 +373,10 @@ function SpecialtyCombobox({
 const WIZARD_STEPS = [
   { n: 1, label: 'Tus datos' },
   { n: 2, label: 'Consultorio' },
-  { n: 3, label: 'Servicio' },
+  // El paso 3 crea un "plan de consulta", no un servicio extra. Decía
+  // "Servicio" y era parte de la misma confusión que lo hacía guardarse con el
+  // tipo equivocado.
+  { n: 3, label: 'Consulta' },
 ] as const;
 
 function WizardProgress({ current }: { current: 1 | 2 | 3 }) {
@@ -472,7 +476,16 @@ export default function OnboardingForm({
   // Wizard state (WP-F)
   // ---------------------------------------------------------------------------
   const [step, setStep] = useState<1 | 2 | 3>(initialStep);
+  /**
+   * Lámina de bienvenida. Solo para quien arranca de cero: si el wizard lo dejó
+   * en el paso 2 o 3 es porque ya avanzó, y darle la bienvenida ahí se leería
+   * como que perdió lo hecho.
+   */
+  const [showWelcome, setShowWelcome] = useState(initialStep === 1);
   const [officeId, setOfficeId] = useState<string | null>(null);
+  /** Duración del bloque del consultorio creado en el paso 2 — acota la duración
+   *  que se puede elegir en el paso 3. */
+  const [officeSlotDuration, setOfficeSlotDuration] = useState<number | null>(null);
   const [wizardDone, setWizardDone] = useState(false);
 
   // ---------------------------------------------------------------------------
@@ -611,6 +624,11 @@ export default function OnboardingForm({
     );
   }
 
+  // Lámina de bienvenida — antes de cualquier formulario.
+  if (showWelcome) {
+    return <OnboardingWelcome fullName={initialFullName} onStart={() => setShowWelcome(false)} />;
+  }
+
   // Step 2 — create first office
   if (step === 2) {
     return (
@@ -618,8 +636,9 @@ export default function OnboardingForm({
         <WizardProgress current={2} />
         <OnboardingStepOffice
           onBack={() => setStep(1)}
-          onSuccess={(id) => {
+          onSuccess={(id, slot) => {
             setOfficeId(id);
+            setOfficeSlotDuration(slot);
             setStep(3);
           }}
           existingOfficeId={officeId}
@@ -635,6 +654,7 @@ export default function OnboardingForm({
         <WizardProgress current={3} />
         <OnboardingStepService
           officeId={officeId}
+          officeSlotDuration={officeSlotDuration}
           onBack={() => setStep(2)}
           onSuccess={() => setWizardDone(true)}
         />
