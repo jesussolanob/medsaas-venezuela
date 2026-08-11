@@ -1,4 +1,4 @@
-import { encrypt, decrypt, hashForSearch, hexKeyToBuffer } from './index';
+import { encrypt, decrypt, hashForSearch, hexKeyToBuffer, normalizeForSearch } from './index';
 
 // 64 hex chars = 32 bytes for AES-256
 const TEST_KEY_HEX = '0000000000000000000000000000000000000000000000000000000000000000';
@@ -130,5 +130,21 @@ describe('hashForSearch', () => {
     const hash1 = hashForSearch('juan', TEST_HMAC_HEX);
     const hash2 = hashForSearch('juan', secret2);
     expect(hash1).not.toBe(hash2);
+  });
+});
+
+describe('normalizeForSearch', () => {
+  it('strips accents, collapses spaces, trims and lowercases', () => {
+    expect(normalizeForSearch('  María  José  ')).toBe('maria jose');
+  });
+
+  it('leaves an already normalized value untouched', () => {
+    expect(normalizeForSearch('ana sweeney')).toBe('ana sweeney');
+  });
+
+  it('matches the normalization used by hashForSearch', () => {
+    const a = hashForSearch('  Ana   SWEENEY ', TEST_HMAC_HEX);
+    const b = hashForSearch(normalizeForSearch('  Ana   SWEENEY '), TEST_HMAC_HEX);
+    expect(a).toBe(b);
   });
 });

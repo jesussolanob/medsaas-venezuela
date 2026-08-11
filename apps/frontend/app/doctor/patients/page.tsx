@@ -660,7 +660,13 @@ export default function PatientsPage() {
 
   // RONDA 19b — handler UNICO para PatientForm. UPDATE si data.id existe, INSERT si no.
   async function handlePatientSubmit(formData: PatientFormData) {
-    if (!doctorId) return;
+    // El backend deriva el doctor del token (anti-IDOR) y `doctorId` aquí es solo
+    // compatibilidad de firma. Antes un `return` mudo cuando aún no había resuelto
+    // dejaba el click en "Guardar" sin request, sin error y sin toast: el
+    // especialista creía haber guardado un paciente que nunca se escribió.
+    if (!doctorId) {
+      throw new Error('Aún estamos cargando tu sesión. Intenta de nuevo en unos segundos.');
+    }
     setPatientFormSaving(true);
     try {
       if (formData.id) {
@@ -744,7 +750,10 @@ export default function PatientsPage() {
       setPatError(newBdError);
       return;
     }
-    if (!doctorId) return;
+    if (!doctorId) {
+      setPatError('Aún estamos cargando tu sesión. Intenta de nuevo en unos segundos.');
+      return;
+    }
     setPatError('');
     startTransition(async () => {
       const res = await addPatient(doctorId, {
