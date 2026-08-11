@@ -82,6 +82,9 @@ export type Consultation = {
   /** Enriched by the backend list/detail endpoints (JOIN patients / appointments). */
   patient_name?: string | null;
   appointment_status?: string | null;
+  /** Combo de varias sesiones: "la 2 de 3". Null cuando la consulta es suelta. */
+  session_number?: number | null;
+  package_total_sessions?: number | null;
 };
 
 export type ConsultationActionResult = { success: true } | { success: false; error: string };

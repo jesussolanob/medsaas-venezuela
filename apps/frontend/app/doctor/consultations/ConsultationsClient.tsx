@@ -134,6 +134,9 @@ type Consultation = {
   status: 'pending' | 'in_progress' | 'completed' | 'no_show'; // Estado de la CONSULTA (no del pago)
   /** Raw appointment status (scheduled/confirmed/completed/no_show) — preservado para mostrar "Por confirmar" */
   appointment_status?: string | null;
+  /** Combo de varias sesiones: "Consulta 2 de 3". Null cuando la consulta es suelta. */
+  session_number?: number | null;
+  package_total_sessions?: number | null;
   payment_status: 'pending' | 'approved'; // Quitamos 'cancelled' — los pagos no se cancelan
   payment_method?: string | null;
   payment_reference?: string | null;
@@ -235,6 +238,21 @@ const PAYMENT_STATUS: Record<string, { label: string; color: string; dot: string
 // Helper para resolver aliases legacy ('unpaid','pending_approval','cancelled') a 'pending'
 function normalizePaymentStatus(s: string | null | undefined): 'pending' | 'approved' {
   return s === 'approved' ? 'approved' : 'pending';
+}
+
+/**
+ * "Consulta 2 de 3" cuando la cita pertenece a un combo de varias sesiones.
+ * Devuelve null para consultas sueltas, o cuando el paquete tiene una sola sesión
+ * (ahí el rótulo no aporta nada).
+ */
+function sessionLabel(c: {
+  session_number?: number | null;
+  package_total_sessions?: number | null;
+}): string | null {
+  const n = c.session_number;
+  const total = c.package_total_sessions;
+  if (!n || !total || total < 2) return null;
+  return `Consulta ${n} de ${total}`;
 }
 
 /**
@@ -1165,6 +1183,8 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
             treatment: c.treatment,
             status: mapAppointmentStatusToConsulta(c.appointment_status),
             appointment_status: c.appointment_status ?? null,
+            session_number: c.session_number ?? null,
+            package_total_sessions: c.package_total_sessions ?? null,
             payment_status: c.payment_status,
             appointment_id: c.appointment_id,
             patient_id: c.patient_id,
@@ -1212,6 +1232,8 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
             treatment: c.treatment,
             status: mapAppointmentStatusToConsulta(c.appointment_status),
             appointment_status: c.appointment_status ?? null,
+            session_number: c.session_number ?? null,
+            package_total_sessions: c.package_total_sessions ?? null,
             payment_status: c.payment_status,
             appointment_id: c.appointment_id,
             patient_id: c.patient_id,
@@ -2788,6 +2810,8 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
             treatment: c.treatment,
             status: mapAppointmentStatusToConsulta(c.appointment_status),
             appointment_status: c.appointment_status ?? null,
+            session_number: c.session_number ?? null,
+            package_total_sessions: c.package_total_sessions ?? null,
             payment_status: c.payment_status,
             appointment_id: c.appointment_id,
             patient_id: c.patient_id,
@@ -4828,6 +4852,11 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                     <p className="text-[11px] text-slate-400 font-mono mt-0.5">
                       {selected.consultation_code}
                     </p>
+                    {sessionLabel(selected) && (
+                      <p className="inline-flex items-center gap-1 mt-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-violet-100 text-violet-700 border border-violet-200">
+                        {sessionLabel(selected)}
+                      </p>
+                    )}
                     {selected.patient_id && (
                       <div className="flex flex-col gap-0.5 mt-1">
                         <button
@@ -6285,6 +6314,11 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                       {c.appointment_status === 'scheduled' && (
                         <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 border border-amber-200 shrink-0">
                           Por confirmar
+                        </span>
+                      )}
+                      {sessionLabel(c) && (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-violet-100 text-violet-700 border border-violet-200 shrink-0">
+                          {sessionLabel(c)}
                         </span>
                       )}
                     </div>

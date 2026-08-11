@@ -56,6 +56,10 @@ export interface ConsultationCreateParams {
    */
   patientName?: string | null;
   appointmentStatus?: string | null;
+  /** Nº de sesión dentro del combo comprado (1-based); null si la cita no es de un paquete. */
+  sessionNumber?: number | null;
+  /** Total de sesiones del paquete de la cita; null si no hay paquete. */
+  packageTotalSessions?: number | null;
   /**
    * Extra service items linked to this consultation.
    * Populated by findById (not by list queries — too expensive).
@@ -102,6 +106,13 @@ export class Consultation {
   readonly patientName: string | null;
   /** Status of the linked appointment — populated by the enriched list/findById query. */
   readonly appointmentStatus: string | null;
+  /**
+   * Ubicación de esta consulta dentro de un combo de varias sesiones: "la 2 de 3".
+   * Ambos vienen del JOIN (appointments.session_number + patient_packages.total_sessions)
+   * y son null cuando la consulta es suelta. Sirven solo para mostrar, no son invariantes.
+   */
+  readonly sessionNumber: number | null;
+  readonly packageTotalSessions: number | null;
   /** Extra service items — populated by findById. Empty array when not loaded. */
   readonly extraItems: ConsultationExtraItem[];
 
@@ -129,6 +140,8 @@ export class Consultation {
     this.updatedAt = params.updatedAt;
     this.patientName = params.patientName ?? null;
     this.appointmentStatus = params.appointmentStatus ?? null;
+    this.sessionNumber = params.sessionNumber ?? null;
+    this.packageTotalSessions = params.packageTotalSessions ?? null;
     this.extraItems = params.extraItems ?? [];
   }
 
