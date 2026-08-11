@@ -746,8 +746,33 @@ export default function AgendaPage() {
 
   // ── Accept / Reject appointments ────────────────────────────────────────
 
+  /**
+   * Busca el id de un paciente ya registrado por cédula o correo.
+   * Se usa cuando el alta devuelve 409 (duplicado): el backend NO devuelve el id
+   * del existente, así que hay que resolverlo con el buscador (match exacto por
+   * hash de cédula/email).
+   */
+  async function findExistingPatientId(lookup: string | null): Promise<string | null> {
+    if (!lookup?.trim()) return null;
+    try {
+      const res = await fetch(`/api/patients/search?q=${encodeURIComponent(lookup.trim())}`);
+      if (!res.ok) return null;
+      const json = await res.json();
+      const items = Array.isArray(json?.data) ? json.data : [];
+      return items[0]?.id ?? null;
+    } catch {
+      return null;
+    }
+  }
+
   async function acceptAppointment(appt: PendingAppointment) {
-    if (!doctorId) return;
+    if (!doctorId) {
+      showToast({
+        type: 'error',
+        message: 'Aún estamos cargando tu sesión. Intenta de nuevo en unos segundos.',
+      });
+      return;
+    }
     setAccepting(appt.id);
 
     try {
@@ -792,13 +817,17 @@ export default function AgendaPage() {
         return;
       }
 
-      // Find or create patient via backend POST /api/patients (upsert by email/cedula).
-      // El backend valida duplicados y retorna el paciente existente o el nuevo.
+      // Alta del paciente vía POST /api/patients.
+      // El DTO del backend es snake_case y `.strict()`: mandar `fullName` (camelCase)
+      // o sin `doctor_id` daba 400 SIEMPRE — este camino nunca llegó a funcionar.
       const patientRes = await fetch('/api/patients', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          fullName: appt.patient_name,
+          // El backend lo sobreescribe con la identidad autenticada (anti-IDOR),
+          // pero el schema lo exige.
+          doctor_id: doctorId,
+          full_name: appt.patient_name,
           phone: appt.patient_phone ?? undefined,
           email: appt.patient_email ?? undefined,
           cedula: appt.patient_cedula ?? undefined,
@@ -806,15 +835,20 @@ export default function AgendaPage() {
         }),
       });
       const patientJson = await patientRes.json();
-      // Si ya existe (409 / conflict) el backend puede retornar el id en el error o
-      // en un campo existingId. Intentamos extraer el id de cualquier forma.
-      const patientData = patientJson?.data ?? patientJson;
-      const patientId: string | null =
-        patientData?.id ?? patientJson?.existingId ?? patientJson?.error?.existingId ?? null;
+
+      let patientId: string | null = patientRes.ok ? (patientJson?.data?.id ?? null) : null;
+
+      // 409 = el paciente ya está en su listado. El error no trae el id, así que
+      // se resuelve buscándolo por cédula y, si no, por correo.
+      if (!patientId && patientRes.status === 409) {
+        patientId =
+          (await findExistingPatientId(appt.patient_cedula)) ??
+          (await findExistingPatientId(appt.patient_email));
+      }
 
       if (!patientId) {
         throw new Error(
-          patientJson?.message ?? patientJson?.error?.message ?? 'Error al registrar paciente',
+          patientJson?.error?.message ?? patientJson?.message ?? 'Error al registrar paciente',
         );
       }
 

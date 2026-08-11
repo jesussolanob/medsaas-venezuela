@@ -1,4 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
+import { normalizeForSearch } from '@delta/shared-crypto';
 import { Patient } from '../../../domain/entities/patient.entity';
 import {
   PATIENT_REPOSITORY,
@@ -78,9 +79,12 @@ export class SearchPatientsUseCase {
     input: SearchPatientsInput,
   ): Promise<SearchPatientsResult> {
     const all = await this.patientRepo.findAllByDoctor(input.doctorId);
-    const lower = q.toLowerCase();
+    // Misma normalización que el hash de búsqueda (trim, espacios colapsados, sin
+    // acentos, minúsculas): así "maria jose" encuentra a "María  José" y el nombre
+    // guardado con espacios de sobra no queda invisible.
+    const needle = normalizeForSearch(q);
 
-    const matched = all.filter((p) => p.fullName.toLowerCase().includes(lower));
+    const matched = all.filter((p) => normalizeForSearch(p.fullName).includes(needle));
 
     const total = matched.length;
     const offset = (input.page - 1) * input.limit;

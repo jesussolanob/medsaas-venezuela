@@ -139,6 +139,38 @@ describe('SearchPatientsUseCase', () => {
     expect(page1.total).toBe(25);
   });
 
+  it('finds accented names when the query has no accents', async () => {
+    const patients = [
+      makePatient({ id: 'p1', fullName: 'María José Rodríguez' }),
+      makePatient({ id: 'p2', fullName: 'Juan Pérez' }),
+    ];
+    repo.findAllByDoctor.mockResolvedValue(patients);
+
+    const result = await useCase.execute({
+      query: 'maria jose',
+      doctorId: DOCTOR_ID,
+      page: 1,
+      limit: 20,
+    });
+
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0]?.fullName).toBe('María José Rodríguez');
+  });
+
+  it('finds names stored with stray whitespace', async () => {
+    const patients = [makePatient({ id: 'p1', fullName: 'Ana   Sweeney ' })];
+    repo.findAllByDoctor.mockResolvedValue(patients);
+
+    const result = await useCase.execute({
+      query: 'ana sweeney',
+      doctorId: DOCTOR_ID,
+      page: 1,
+      limit: 20,
+    });
+
+    expect(result.items).toHaveLength(1);
+  });
+
   it('returns empty result when no patients match', async () => {
     repo.findAllByDoctor.mockResolvedValue([]);
     const result = await useCase.execute({
