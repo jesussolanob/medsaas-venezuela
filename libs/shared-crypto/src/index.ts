@@ -75,9 +75,13 @@ export function decrypt(payload: string, key: Buffer): string {
  *
  * This ensures "Juan  Pérez" and "juan perez" produce the same hash.
  *
+ * Exported because the partial-name search decrypts and filters in-app, and has to
+ * compare with exactly the same criteria the hash uses — si no, buscar "Maria" no
+ * encuentra a "María".
+ *
  * @param value - raw input string
  */
-function normalizeForSearch(value: string): string {
+export function normalizeForSearch(value: string): string {
   return value.trim().replace(/\s+/g, ' ').normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
 }
 

@@ -2,6 +2,103 @@
 
 > Registro cronológico. Una entrada por fase/hito completado.
 
+## 2026-08-10 — Mejoras de onboarding y servicios ✅ DESPLEGADO EN STAGING
+
+Cadena `feature/mejoras-onboarding` → `develop` (`a8179eb`) → `staging` (`9aaa5ce`).
+Run `31436055810` **success** (migraciones + backend + frontend), `staging.deltasalud.app`
+responde 200. **Falta el QA visual del dueño.** `main` no tiene nada de esto.
+
+### 🔴 La suite del backend estaba ROJA y nadie se enteró
+
+El lote de la baja de cuenta (2026-08-09) agregó `countUpcomingAppointments` y
+`deactivateOwnAccount` a `IDoctorProfileRepository` y **no actualizó los mocks de los demás
+specs**: 16 suites quedaron rojas y el lote se mergeó igual a `develop` y `staging`.
+
+**El workflow de deploy corre migraciones y build, NO tests.** Nada avisa. La única barrera
+es el hook de pre-commit de `develop`/`main`, y se venía usando `--no-verify`.
+Arreglado: 13 mocks del puerto + el use case nuevo en el módulo de prueba del controller +
+3 campos en los literales `DoctorDetail` de admin. **392 suites / 3763 tests en verde.**
+
+### Bugs de onboarding (los dos silenciosos)
+
+1. **`updateRegistration` marcaba `onboardingCompleted = true` en el PASO 1.** El guard del
+   portal lee ese booleano → quien completaba solo sus datos personales y navegaba a
+   `/doctor` **entraba sin consultorio ni servicio**: el onboarding obligatorio dejaba de
+   serlo. Ahora lo marca solo `markOnboardingCompleted`, que exige ≥1 consultorio y ≥1
+   servicio activos.
+2. **Reentrar al wizard des-verificaba al especialista.** `verificationStatus` volvía a
+   `'pending'` y `verified_at` se borraba SIEMPRE. Ahora solo si cambió cédula, MPPS o
+   colegiado (`resetVerification`, decidido en el use case que tiene el estado previo).
+   La comparación normaliza `null`/`undefined`/`''` al mismo valor: el cliente manda `''`
+   para un opcional sin llenar y comparado crudo se leía como cambio. **+4 tests.**
+
+### Lote de mejoras pedido
+
+- **Lámina de bienvenida** (`OnboardingWelcome.tsx`) antes del paso 1. Solo para quien
+  arranca de cero — si el wizard lo dejó en el paso 2 o 3, no se muestra.
+- **Varios bloques por día** en el paso del consultorio. La lógica estaba **duplicada** entre
+  `/doctor/offices` y el onboarding, y la copia del onboarding se quedó atrás (un bloque por
+  día). Se extrajo a `lib/schedule-utils` como funciones puras: **ahora las dos pantallas
+  usan lo mismo y no pueden volver a divergir.**
+- **QA (nota de voz):** el paso 3 creaba la consulta con `type: 'service'` = "Servicio extra"
+  (limpieza, examen). Lo correcto es `type: 'plan'` = "Plan de consulta". Se corrigieron
+  también los textos, que decían "servicio" en todo el paso — la confusión de vocabulario
+  era la misma que producía el bug.
+- **Duración por servicio de vuelta en `/doctor/services`** (se había quitado el 12-07).
+  **NO cambia cómo se generan los turnos** — el booking sigue usando `slot_duration` del
+  consultorio. Condiciona la ASOCIACIÓN: un servicio de 45 min no entra en un consultorio de
+  30. Los que no lo soportan salen deshabilitados con el motivo a la vista. Un servicio
+  "General" solo se permite si entra en TODOS (decisión del dueño).
+- **Instrucciones de pago en viñetas** (`PaymentInstructions.tsx` + migración
+  `20260810000001`). El texto lo edita el super admin desde `/admin/settings`, así que la
+  migración **solo reescribe si sigue siendo el sembrado** y el parser **degrada a párrafo**
+  con el texto viejo. El beneficiario NO se tocó: es el titular de una cuenta real.
+- Fuera "Medical CRM" del encabezado del onboarding.
+
+### La guarda de scheduler nunca había verificado nada — RESUELTO
+
+La guarda "Verify no scheduler targets staging" (agregada el 09/08) **fallaba ABIERTA**: si
+`gcloud` fallaba, el `grep` no encontraba nada y el deploy seguía igual. Se corrigió a
+fail-closed y ahí se descubrió que **`delta-deployer-sa` no tenía `cloudscheduler.jobs.list`**
+→ o sea que el deploy del 09/08 pasó por casualidad, no porque la verificación diera bien.
+
+Resuelto otorgando **`roles/cloudscheduler.viewer`** al deployer SA (read-only). ⚠️ La
+propagación de IAM tardó **varios minutos**: los dos primeros reintentos siguieron dando
+`PERMISSION_DENIED`. Si vuelve a pasar, esperar y reintentar antes de sospechar del rol.
+⚠️ Y OJO: `--impersonate-service-account` NO sirve para probarlo desde la cuenta de Lucas
+(falta `iam.serviceAccounts.getAccessToken`) — el error engaña, parece del rol y es de la
+impersonación. La prueba real es relanzar el deploy.
+
+⚠️ Recordatorio: staging manda **correo REAL al destinatario REAL** sobre una BD clon de
+prod. Para probar correo, usar pacientes de prueba creados a mano.
+
+### 🔜 PENDIENTE al retomar (sesión pausada 2026-08-10)
+
+1. **QA visual del dueño en `staging.deltasalud.app`** — es lo único que falta de este lote.
+   Guion sugerido: (a) onboarding completo de cero → ver la lámina de bienvenida, partir un
+   día en dos bloques, y confirmar que la consulta creada aparece como **"Plan"** y NO como
+   "Servicio" en `/doctor/services`; (b) crear un servicio de 45 min y verificar que un
+   consultorio de 30 sale deshabilitado y que "General" se bloquea; (c) abrir el modal de
+   pago de plan y ver las instrucciones en viñetas.
+   Para reponer el onboarding en una cuenta ya usada, ver la memoria `qa-reponer-onboarding`:
+   bajar `onboarding_completed` NO alcanza, hay que desactivar consultorio y servicio.
+2. **Promover a `main`** una vez validado. `main` está muy atrás — arrastra también el lote
+   de agosto y la baja de cuenta, que siguen sin validar. Al promover: **despausar el cron**
+   `gcloud scheduler jobs resume doctor-inactivity-notices --location=us-east1`.
+3. **Agujero de proceso abierto:** el workflow de deploy **no corre tests**. La suite estuvo
+   roja 16 suites desde el 09/08 sin que nada avisara. Evaluar agregar un paso de test al CI
+   (o al menos a la rama `staging`), porque hoy la única barrera es el hook de pre-commit y
+   se viene saltando con `--no-verify`.
+4. **Investigado pero SIN implementar:** odontograma, esquema oftálmico y el congelamiento de
+   la especialidad. Informe completo en el artifact y en las memorias
+   `gating-por-especialidad` / `odontograma-y-oftalmologia`. Lo primero de esa línea NO es el
+   odontograma: es el endpoint de admin para corregir la especialidad, porque 5 de 16
+   especialistas quedarían encerrados el día que se congele.
+5. **Menor:** el beneficiario de las instrucciones de pago sigue siendo "Delta Medical CRM,
+   C.A." con un RIF de ejemplo (`J-000000000-0`). Si la cuenta bancaria real tiene otro
+   titular, hay que actualizarlo desde `/admin/settings` — NO por migración, para no pisar
+   una personalización del admin.
+
 ## 2026-08-09 — Baja de cuenta por el especialista + staging con correo real ⏳ EN STAGING
 
 Cadena `feature/baja-de-cuenta` → `develop` (`989816d`) → `staging` (`ac4fe4c`).

@@ -546,3 +546,31 @@ A quien se dio de baja solo NO se le dice que "fue bloqueado": se lee como sanci
 **`app/admin/verifications/VerificationsClient.tsx`** — badge ámbar "Se dio de baja"
 contra el rojo "Acceso bloqueado", y el botón pasa a "Reactivar cuenta". El admin
 necesita saber qué está reactivando antes de tocarlo.
+
+### Onboarding y servicios (2026-08-10)
+
+**`app/doctor/onboarding/OnboardingWelcome.tsx`** — lámina de bienvenida previa al paso 1.
+Solo se muestra si `initialStep === 1`: a quien el wizard dejó en el paso 2 o 3 darle la
+bienvenida se lee como que perdió el avance.
+
+**`lib/schedule-utils.ts` — ahora tiene las operaciones de bloques** (`toggleDay`, `addBlock`,
+`removeBlock`, `updateBlock`, `suggestNextStart`, `suggestNextEnd`) como **funciones puras**
+`(schedule, …) => nuevoSchedule`. Vivían duplicadas en `/doctor/offices/page.tsx`, y la copia
+del onboarding se quedó atrás admitiendo **un solo bloque por día**. **REGLA: cualquier cambio
+de horario va acá, no en una pantalla.**
+
+**Vocabulario de servicios — origen de un bug de QA.** `type: 'plan'` = **"Plan de consulta"**
+(una consulta) · `type: 'service'` = **"Servicio extra"** (limpieza, examen). El paso 3 del
+onboarding mandaba `'service'` mientras se titulaba "Tu primer servicio" y sugería "Consulta
+general". Al nombrar las cosas mal en la UI, el tipo equivocado pasó desapercibido.
+
+**Duración de servicio ↔ consultorio (`/doctor/services`).** La duración volvió (se había
+quitado el 12-07). **NO cambia el motor de turnos**: el booking usa `slot_duration` del
+consultorio. Condiciona la asociación — `officeFits = slot_duration >= duration_minutes`.
+Un servicio "General" debe entrar en TODOS los consultorios. Hay guarda al guardar porque la
+duración se puede cambiar DESPUÉS de elegir consultorio.
+
+**`components/doctor/PaymentInstructions.tsx`** — pinta `app_settings.platform_payment_instructions`
+en viñetas. El texto lo edita el super admin sin pasar por deploy, así que el parser es
+tolerante: líneas con `-`/`•`/`·` son ítems, una línea terminada en `:` es título, el resto
+párrafos, y un texto corrido **degrada a párrafo sin romperse**.

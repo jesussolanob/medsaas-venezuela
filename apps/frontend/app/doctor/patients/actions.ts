@@ -49,7 +49,11 @@ import {
 // Pagination constants
 // ---------------------------------------------------------------------------
 
-const PATIENTS_PAGE_SIZE = 200; // Single-doctor list; backend max is 100 per request
+// El backend limita cada request a 100 (Math.min(100, limit) en patients.controller).
+// Pedir más NO trae más: devuelve 100 y el resto desaparece sin aviso. Para traer
+// el listado completo hay que paginar de a 100 (ver getPatients).
+const PATIENTS_REQUEST_LIMIT = 100; // tope duro del backend por request
+const PATIENTS_MAX_PAGES = 50; // corta en 5.000 pacientes: evita un bucle infinito si `total` miente
 const CONSULTATIONS_PAGE_SIZE = 100; // Per-patient history
 const ALL_CONSULTATIONS_PAGE_SIZE = 500; // Doctor-wide list for reporting
 
@@ -258,20 +262,40 @@ export async function getDoctorId(): Promise<string | null> {
  *   doctor_id from x-dev-user-id header, anti-IDOR).
  */
 export async function getPatients(_doctorId: string): Promise<Patient[]> {
-  const result = await backendGet<BackendPatientListItem[]>(
-    `/api/patients?page=1&limit=${PATIENTS_PAGE_SIZE}`,
-  );
+  const collected: BackendPatientListItem[] = [];
 
-  if (!result.ok) {
-    log.error('[getPatients] backend error', {
-      code: result.error.code,
-      status: result.error.status,
-    });
-    return [];
+  // Pagina de a 100 (tope del backend) hasta juntar `total`. Antes pedía limit=200
+  // de una sola vez: el backend recortaba a 100 y los pacientes 101+ no existían
+  // para el dashboard ni para finanzas, sin error ni aviso.
+  for (let page = 1; page <= PATIENTS_MAX_PAGES; page++) {
+    const result = await backendGetPaged<BackendPatientListItem>(
+      `/api/patients?page=${page}&limit=${PATIENTS_REQUEST_LIMIT}`,
+    );
+
+    if (!result.ok) {
+      log.error('[getPatients] backend error', {
+        code: result.error.code,
+        status: result.error.status,
+        page,
+      });
+      // Devuelve lo que sí se pudo traer; una página rota no debe vaciar la lista.
+      break;
+    }
+
+    collected.push(...result.value.items);
+
+    if (result.value.items.length < PATIENTS_REQUEST_LIMIT) break;
+    if (collected.length >= result.value.total) break;
+
+    if (page === PATIENTS_MAX_PAGES) {
+      log.error('[getPatients] tope de paginación alcanzado', {
+        collected: collected.length,
+        total: result.value.total,
+      });
+    }
   }
 
-  const items = Array.isArray(result.value) ? result.value : [];
-  return items.map(mapListItemToPatient);
+  return collected.map(mapListItemToPatient);
 }
 
 /**
