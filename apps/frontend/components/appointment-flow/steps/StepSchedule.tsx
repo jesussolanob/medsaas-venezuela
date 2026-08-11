@@ -27,6 +27,19 @@ type Props = {
 
 const PAGE_SIZE = 5;
 const HORIZON_DAYS = 60;
+/**
+ * Días hacia atrás que puede recorrer el especialista.
+ *
+ * Este flujo es SOLO del especialista (NewAppointmentFlow); el booking público
+ * del paciente vive en app/book/[doctorId] y no usa este componente, así que
+ * abrir el pasado acá no le habilita al paciente agendar hacia atrás.
+ *
+ * Por qué: si atendió a alguien ayer (por ejemplo, se fue la luz y no pudo
+ * cargarlo en el momento), tiene que poder dejar el registro con la fecha real
+ * en vez de inventar una de hoy.
+ */
+const PAST_DAYS = 30;
+const PAST_PAGES = Math.ceil(PAST_DAYS / PAGE_SIZE);
 
 function fmtDateTime(iso: string): string {
   if (!iso) return '';
@@ -49,11 +62,13 @@ export default function StepSchedule({
   loadingSlots,
   scheduledAt,
 }: Props) {
-  // Build 60-day array with enabled/disabled status based on office schedule
+  // Arranca PAST_DAYS antes de hoy y llega hasta HORIZON_DAYS: el índice de hoy
+  // es PAST_DAYS, así que weekOffset=0 sigue mostrando la página que empieza hoy
+  // (la vista por defecto no cambia) y un offset negativo retrocede al pasado.
   const days: DayInfo[] = useMemo(() => {
     const today = new Date();
     const result: DayInfo[] = [];
-    for (let i = 0; i < HORIZON_DAYS; i++) {
+    for (let i = -PAST_DAYS; i < HORIZON_DAYS; i++) {
       const d = new Date(today);
       d.setDate(today.getDate() + i);
       const yyyy = d.getFullYear();
@@ -80,9 +95,12 @@ export default function StepSchedule({
     return result;
   }, [selectedOffice]);
 
-  const visibleDays = days.slice(weekOffset * PAGE_SIZE, weekOffset * PAGE_SIZE + PAGE_SIZE);
-  const canPrev = weekOffset > 0;
-  const canNext = (weekOffset + 1) * PAGE_SIZE < days.length;
+  // weekOffset 0 = la página que empieza hoy; negativo = semanas hacia atrás.
+  const todayPageStart = PAST_PAGES * PAGE_SIZE;
+  const windowStart = todayPageStart + weekOffset * PAGE_SIZE;
+  const visibleDays = days.slice(windowStart, windowStart + PAGE_SIZE);
+  const canPrev = weekOffset > -PAST_PAGES;
+  const canNext = windowStart + PAGE_SIZE < days.length;
   const rangeLabel =
     visibleDays.length > 0
       ? `${visibleDays[0].dayNum} ${visibleDays[0].month} — ${visibleDays[visibleDays.length - 1].dayNum} ${visibleDays[visibleDays.length - 1].month}`
@@ -140,7 +158,7 @@ export default function StepSchedule({
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={() => setWeekOffset(Math.max(0, weekOffset - 1))}
+              onClick={() => setWeekOffset(Math.max(-PAST_PAGES, weekOffset - 1))}
               disabled={!canPrev}
               className="w-8 h-8 rounded-xl bg-white border border-slate-200 hover:border-teal-300 hover:bg-teal-50 disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center transition-colors"
               aria-label="Semana anterior"
@@ -165,6 +183,7 @@ export default function StepSchedule({
         <div className="grid grid-cols-5 gap-2">
           {visibleDays.map((d) => {
             const isActive = selectedDate === d.date;
+            const isPastDay = d.date < todayCaracas;
             return (
               <button
                 key={d.date}
@@ -175,12 +194,17 @@ export default function StepSchedule({
                     setSelectedDate(d.date);
                   }
                 }}
+                title={
+                  isPastDay ? 'Día pasado — para registrar una atención ya ocurrida' : undefined
+                }
                 className={`flex flex-col items-center justify-center h-20 rounded-xl border-2 transition-all ${
                   !d.enabled
                     ? 'bg-slate-100 border-slate-100 opacity-40 cursor-not-allowed'
                     : isActive
                       ? 'bg-teal-500 text-white border-teal-500 shadow-md'
-                      : 'bg-white text-slate-700 border-slate-200 hover:border-teal-300'
+                      : isPastDay
+                        ? 'bg-white text-slate-500 border-dashed border-slate-300 hover:border-teal-300'
+                        : 'bg-white text-slate-700 border-slate-200 hover:border-teal-300'
                 }`}
               >
                 <span
@@ -216,8 +240,11 @@ export default function StepSchedule({
           ) : (
             <div className="grid grid-cols-4 sm:grid-cols-6 gap-1.5">
               {timeSlots.map((t) => {
-                const isPast = isTodaySelected && t <= nowHHMM;
-                const isUnavailable = unavailableForDate.has(t) || isPast;
+                // El horario pasado se marca, pero NO se bloquea: el especialista
+                // puede estar registrando una atención de hace un rato o de ayer.
+                // Ocupado sí bloquea (ya hay otra cita en ese slot).
+                const isPast = (isTodaySelected && t <= nowHHMM) || selectedDate < todayCaracas;
+                const isUnavailable = unavailableForDate.has(t);
                 const isActive = selectedTime === t;
                 return (
                   <button
@@ -226,10 +253,10 @@ export default function StepSchedule({
                     disabled={isUnavailable}
                     onClick={() => selectTime(t)}
                     title={
-                      isPast
-                        ? 'Hora ya pasada'
-                        : isUnavailable
-                          ? 'Horario no disponible'
+                      isUnavailable
+                        ? 'Horario ocupado'
+                        : isPast
+                          ? 'Horario pasado — puedes registrar una atención ya ocurrida'
                           : undefined
                     }
                     className={`px-2 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
@@ -237,7 +264,9 @@ export default function StepSchedule({
                         ? 'bg-slate-100 text-slate-400 border-slate-200 line-through cursor-not-allowed'
                         : isActive
                           ? 'bg-teal-500 text-white border-teal-500'
-                          : 'bg-white text-slate-700 border-slate-200 hover:border-teal-300'
+                          : isPast
+                            ? 'bg-white text-slate-500 border-dashed border-slate-300 hover:border-teal-300'
+                            : 'bg-white text-slate-700 border-slate-200 hover:border-teal-300'
                     }`}
                   >
                     {t}
