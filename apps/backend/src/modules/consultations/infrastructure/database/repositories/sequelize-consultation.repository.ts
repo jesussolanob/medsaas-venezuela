@@ -50,6 +50,10 @@ interface ConsultationEnrichedRow {
   patient_full_name_enc: string | null;
   /** Status from the linked appointments row — null when consultation has no appointment. */
   appointment_status: string | null;
+  /** Nº de sesión dentro del combo (1-based). Null cuando la cita no es de un paquete. */
+  session_number: number | null;
+  /** Total de sesiones del paquete al que pertenece la cita. Null si no hay paquete. */
+  package_total_sessions: number | null;
 }
 
 /** Raw row returned by queries against consultation_extra_items. */
@@ -116,10 +120,13 @@ export class SequelizeConsultationRepository implements IConsultationRepository 
          c.payment_reference, c.payment_receipt_url,
          c.blocks_snapshot, c.blocks_structure, c.created_at, c.updated_at,
          p.full_name AS patient_full_name_enc,
-         a.status    AS appointment_status
+         a.status    AS appointment_status,
+         a.session_number,
+         pkg.total_sessions AS package_total_sessions
        FROM consultations c
-       LEFT JOIN patients     p ON p.id = c.patient_id
-       LEFT JOIN appointments a ON a.id = c.appointment_id
+       LEFT JOIN patients        p   ON p.id = c.patient_id
+       LEFT JOIN appointments    a   ON a.id = c.appointment_id
+       LEFT JOIN patient_packages pkg ON pkg.id = a.package_id
        WHERE c.id = :id AND c.doctor_id = :doctorId
        LIMIT 1`,
       { replacements: { id, doctorId }, type: QueryTypes.SELECT },
@@ -488,10 +495,13 @@ export class SequelizeConsultationRepository implements IConsultationRepository 
          c.payment_reference, c.payment_receipt_url,
          c.blocks_snapshot, c.blocks_structure, c.created_at, c.updated_at,
          p.full_name AS patient_full_name_enc,
-         a.status    AS appointment_status
+         a.status    AS appointment_status,
+         a.session_number,
+         pkg.total_sessions AS package_total_sessions
        FROM consultations c
-       LEFT JOIN patients     p ON p.id = c.patient_id
-       LEFT JOIN appointments a ON a.id = c.appointment_id
+       LEFT JOIN patients        p   ON p.id = c.patient_id
+       LEFT JOIN appointments    a   ON a.id = c.appointment_id
+       LEFT JOIN patient_packages pkg ON pkg.id = a.package_id
        WHERE ${where}
        ORDER BY ${orderBy}
        LIMIT :limit OFFSET :offset`,
@@ -679,10 +689,13 @@ export class SequelizeConsultationRepository implements IConsultationRepository 
            c.payment_reference, c.payment_receipt_url,
            c.blocks_snapshot, c.blocks_structure, c.created_at, c.updated_at,
            p.full_name AS patient_full_name_enc,
-           a.status    AS appointment_status
+           a.status    AS appointment_status,
+           a.session_number,
+           pkg.total_sessions AS package_total_sessions
          FROM consultations c
-         LEFT JOIN patients     p ON p.id = c.patient_id
-         LEFT JOIN appointments a ON a.id = c.appointment_id
+         LEFT JOIN patients        p   ON p.id = c.patient_id
+         LEFT JOIN appointments    a   ON a.id = c.appointment_id
+         LEFT JOIN patient_packages pkg ON pkg.id = a.package_id
          WHERE c.id = :id AND c.doctor_id = :doctorId
          LIMIT 1`,
         { replacements: { id, doctorId }, type: QueryTypes.SELECT, transaction: t },
@@ -897,6 +910,8 @@ export class SequelizeConsultationRepository implements IConsultationRepository 
       updatedAt: new Date(row.updated_at),
       patientName,
       appointmentStatus: row.appointment_status ?? null,
+      sessionNumber: row.session_number ?? null,
+      packageTotalSessions: row.package_total_sessions ?? null,
       extraItems: extras,
     });
   }

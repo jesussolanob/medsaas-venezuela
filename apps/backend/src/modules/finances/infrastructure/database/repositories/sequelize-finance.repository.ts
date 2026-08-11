@@ -375,8 +375,14 @@ export class SequelizeFinanceRepository implements IFinanceRepository {
 
     /**
      * UNION ALL of two income sources:
-     *  1) payments — consultation income (approved + pending)
+     *  1) payments — consultation income, SOLO las aprobadas
      *  2) financial_transactions (type='income') — manual income entries
+     *
+     * INGRESOS = PLATA COBRADA. Antes esta lista traía también los pagos
+     * `pending`, así que una consulta impaga engrosaba el total de "Ingresos"
+     * como si ya se hubiera cobrado. Lo pendiente se ve en Cobros y en el
+     * "Por ingresar" del resumen (getFinancialSummary.pendingTotal), que es
+     * justamente el lugar donde corresponde.
      *
      * Both branches project to the same 9 columns so the outer query can
      * ORDER BY date DESC and apply LIMIT/OFFSET uniformly.
@@ -407,6 +413,7 @@ export class SequelizeFinanceRepository implements IFinanceRepository {
         AND pt.doctor_id  = :doctorId
         AND pt.deleted_at IS NULL
       WHERE p.doctor_id = :doctorId
+        AND p.status = 'approved'
         ${monthWhereConsult}
 
       UNION ALL

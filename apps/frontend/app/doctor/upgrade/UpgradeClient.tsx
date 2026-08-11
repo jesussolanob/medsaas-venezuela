@@ -15,6 +15,7 @@ import {
   Zap,
   ArrowLeft,
   MessageCircle,
+  ChevronRight,
   Star,
   Lock,
   CreditCard,
@@ -607,25 +608,25 @@ export default function UpgradeClient({ plans, currentPlanKey }: UpgradeClientPr
         )}
       </div>
 
-      {/* Secondary support link */}
-      <div className="flex items-center gap-3 px-5 py-4 bg-slate-50 border border-slate-200 rounded-xl">
+      {/* Secondary support link — la tarjeta ENTERA es el enlace: antes solo la
+          palabra "WhatsApp" era clickeable y el resto parecía botón muerto. */}
+      <a
+        href={`https://wa.me/${WHATSAPP_NUMBER}?text=${WHATSAPP_MESSAGE}`}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="group flex items-center gap-3 px-5 py-4 bg-slate-50 border border-slate-200 rounded-xl transition-colors hover:bg-green-50 hover:border-green-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-500 focus-visible:ring-offset-2"
+      >
         <MessageCircle className="w-5 h-5 shrink-0 text-green-500" />
         <div>
           <p className="text-sm font-semibold text-slate-700">¿Necesitas ayuda?</p>
           <p className="text-xs text-slate-500">
             Escríbenos por{' '}
-            <a
-              href={`https://wa.me/${WHATSAPP_NUMBER}?text=${WHATSAPP_MESSAGE}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="font-semibold text-green-600 hover:underline"
-            >
-              WhatsApp
-            </a>{' '}
+            <span className="font-semibold text-green-600 group-hover:underline">WhatsApp</span>{' '}
             para cualquier consulta sobre tu plan.
           </p>
         </div>
-      </div>
+        <ChevronRight className="w-4 h-4 ml-auto shrink-0 text-slate-400 transition-transform group-hover:translate-x-0.5 group-hover:text-green-600" />
+      </a>
 
       {/* Payment modal */}
       {modalState && (
