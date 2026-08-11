@@ -52,7 +52,14 @@ interface ConsultationEnrichedRow {
   appointment_status: string | null;
   /** Nº de sesión dentro del combo (1-based). Null cuando la cita no es de un paquete. */
   session_number: number | null;
-  /** Total de sesiones del paquete al que pertenece la cita. Null si no hay paquete. */
+  /**
+   * Total de sesiones del combo. Sale del paquete del paciente cuando existe y,
+   * si no, del servicio contratado (`pricing_plans.sessions_count` por nombre).
+   * En la BD real `appointments.package_id` viene NULL y `patient_packages` está
+   * vacía: el total vive en el servicio, así que sin ese fallback el rótulo
+   * "2 de 3" no se mostraría nunca. Subconsulta escalar a propósito — un JOIN por
+   * nombre duplicaría la consulta si el especialista repite el nombre del servicio.
+   */
   package_total_sessions: number | null;
 }
 
@@ -122,10 +129,18 @@ export class SequelizeConsultationRepository implements IConsultationRepository 
          p.full_name AS patient_full_name_enc,
          a.status    AS appointment_status,
          a.session_number,
-         pkg.total_sessions AS package_total_sessions
+         COALESCE(
+           pkg.total_sessions,
+           (SELECT pp.sessions_count
+              FROM pricing_plans pp
+             WHERE pp.doctor_id = c.doctor_id
+               AND pp.name      = a.plan_name
+             ORDER BY pp.is_active DESC, pp.created_at DESC
+             LIMIT 1)
+         ) AS package_total_sessions
        FROM consultations c
-       LEFT JOIN patients        p   ON p.id = c.patient_id
-       LEFT JOIN appointments    a   ON a.id = c.appointment_id
+       LEFT JOIN patients         p   ON p.id  = c.patient_id
+       LEFT JOIN appointments     a   ON a.id  = c.appointment_id
        LEFT JOIN patient_packages pkg ON pkg.id = a.package_id
        WHERE c.id = :id AND c.doctor_id = :doctorId
        LIMIT 1`,
@@ -497,10 +512,18 @@ export class SequelizeConsultationRepository implements IConsultationRepository 
          p.full_name AS patient_full_name_enc,
          a.status    AS appointment_status,
          a.session_number,
-         pkg.total_sessions AS package_total_sessions
+         COALESCE(
+           pkg.total_sessions,
+           (SELECT pp.sessions_count
+              FROM pricing_plans pp
+             WHERE pp.doctor_id = c.doctor_id
+               AND pp.name      = a.plan_name
+             ORDER BY pp.is_active DESC, pp.created_at DESC
+             LIMIT 1)
+         ) AS package_total_sessions
        FROM consultations c
-       LEFT JOIN patients        p   ON p.id = c.patient_id
-       LEFT JOIN appointments    a   ON a.id = c.appointment_id
+       LEFT JOIN patients         p   ON p.id  = c.patient_id
+       LEFT JOIN appointments     a   ON a.id  = c.appointment_id
        LEFT JOIN patient_packages pkg ON pkg.id = a.package_id
        WHERE ${where}
        ORDER BY ${orderBy}
@@ -691,10 +714,18 @@ export class SequelizeConsultationRepository implements IConsultationRepository 
            p.full_name AS patient_full_name_enc,
            a.status    AS appointment_status,
            a.session_number,
-           pkg.total_sessions AS package_total_sessions
+           COALESCE(
+             pkg.total_sessions,
+             (SELECT pp.sessions_count
+                FROM pricing_plans pp
+               WHERE pp.doctor_id = c.doctor_id
+                 AND pp.name      = a.plan_name
+               ORDER BY pp.is_active DESC, pp.created_at DESC
+               LIMIT 1)
+           ) AS package_total_sessions
          FROM consultations c
-         LEFT JOIN patients        p   ON p.id = c.patient_id
-         LEFT JOIN appointments    a   ON a.id = c.appointment_id
+         LEFT JOIN patients         p   ON p.id  = c.patient_id
+         LEFT JOIN appointments     a   ON a.id  = c.appointment_id
          LEFT JOIN patient_packages pkg ON pkg.id = a.package_id
          WHERE c.id = :id AND c.doctor_id = :doctorId
          LIMIT 1`,
