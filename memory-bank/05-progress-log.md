@@ -3503,5 +3503,55 @@ correo, "tu primer servicio" y scroll al tope al continuar; y la baja de cuenta 
 respeta los días ya pagados (barrido diario colgado del cron existente) y se reactiva
 sola en plan gratuito cuando el especialista vuelve a entrar.
 
-**Pendiente de decisión:** modificar ingresos de consulta (los manuales YA se editan y
-borran) y duración de consulta por bloque del consultorio.
+Los dos que quedaban pendientes también entraron el 12/08:
+
+- **Duración por bloque del consultorio.** Cada bloque del horario acepta su propia
+  `slotDuration`/`bufferMinutes`; el que no las trae hereda las del consultorio, así que
+  **no hizo falta migrar** el JSONB y los horarios ya guardados siguen valiendo. El
+  editor tiene un selector por bloque con "aplicar a todos", y la regla de servicios
+  pasó de "el consultorio soporta X" a "**algún bloque** soporta X". Verificado punta a
+  punta en staging: lunes 45' / martes 20' → la agenda ofrece 08:00-08:45-09:30 y
+  08:00-08:20-08:40 respectivamente.
+- **Monto del cobro editable.** El backend YA aceptaba `amount` en
+  `PATCH /api/consultations/:id/payment-details` (ese use case está escrito a propósito
+  para permitir editar con el pago aprobado); lo que faltaba era el campo en la UI, que
+  solo mandaba método, referencia y comprobante. NO hay anulación de ingresos — el dueño
+  la descartó explícitamente. Verificado: $100 → $87.50 en BD sin tocar el estado del pago.
+
+### El patrón que se repitió TRES veces en este lote
+
+Un tipo escrito a mano en el frontend que declara una forma que el backend nunca manda,
+y TypeScript lo da por bueno porque nadie valida el wire:
+
+1. `PlanPaymentModal` leía `j.path`; el backend responde `{ data: { path } }` → botón muerto.
+2. La lista de ingresos y la tarjeta "Total ingresos" salían de consultas distintas con
+   criterios distintos → $65 arriba y $25 abajo en la misma pantalla.
+3. `/doctor/services` leía `slot_duration` de `GET /api/doctor/offices`, que devuelve la
+   entidad **en camelCase** (`slotDuration`) → el campo era siempre `undefined` y la regla
+   de compatibilidad servicio↔consultorio comparaba contra **30 minutos fijos para todos**,
+   sin importar la configuración real. Bug preexistente, encontrado al construir la
+   duración por bloque. Confirmado llamando al endpoint real desde staging.
+
+Vale la pena evaluar generar esos tipos desde el backend en vez de escribirlos a mano.
+
+### Estado y punto de retome
+
+TODO el lote está en **staging**, con `develop` y `staging` sincronizadas. **NADA promovido
+a producción** — espera la validación del dueño. Suite del backend en verde (392 suites,
+3765 tests) con tests nuevos para acentos, slots por bloque, reactivación y baja programada.
+
+Verificado en staging con navegador + BD: alta de paciente · listado con 105 fichas ·
+búsqueda sin acentos · comprobante PDF (2/4 → 3/4) · periodicidad recalculando · rótulo del
+combo · ingresos de julio (3 filas → 1; $0 cobrado / $510 por cobrar, sin perder un dólar) ·
+fechas pasadas · duración por bloque · monto editado. Los datos de prueba se limpiaron
+(100 pacientes sembrados borrados, monto y horarios restaurados).
+
+**NO verificado por falta de acceso:** (a) el onboarding, porque la cuenta de prueba ya lo
+tiene sellado y reponerlo exige apagar tres banderas de un doctor real del clon (ver la
+memoria `qa-reponer-onboarding`); (b) la baja de cuenta, que necesita un login real —
+`marcovillegas1197@gmail.com` está dada de baja por él mismo en staging y sirve de conejillo:
+al entrar debería quedar en plan gratuito y poder mejorar su plan.
+
+⚠️ Durante este lote se commiteó tres veces sobre `staging` en vez de una rama feature. Se
+corrigió por cherry-pick a `develop` y se verificó que el diff entre ambas quedó vacío, pero
+conviene mirar la rama activa después de cada merge a staging.

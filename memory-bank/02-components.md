@@ -574,3 +574,27 @@ duración se puede cambiar DESPUÉS de elegir consultorio.
 en viñetas. El texto lo edita el super admin sin pasar por deploy, así que el parser es
 tolerante: líneas con `-`/`•`/`·` son ítems, una línea terminada en `:` es título, el resto
 párrafos, y un texto corrido **degrada a párrafo sin romperse**.
+
+---
+
+## Componentes tocados en el lote de QA (2026-08-11/12)
+
+| Componente                                              | Qué cambió                                                                                                       |
+| ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `app/doctor/patients/page.tsx`                          | El guard `if (!doctorId) return` del alta ya no es mudo: avisa. Era la causa raíz del "guardé y se perdió"       |
+| `app/doctor/patients/actions.ts`                        | `getPatients` pagina de a 100 (tope real del backend) en vez de pedir 200 y perder el resto                      |
+| `app/doctor/agenda/page.tsx`                            | Se eliminaron `acceptAppointment`/`rejectAppointment`: código muerto que ningún botón llamaba                    |
+| `components/appointment-flow/steps/StepSchedule.tsx`    | 30 días hacia atrás para el especialista; el horario pasado se marca en punteado pero NO se bloquea              |
+| `components/doctor/PlanPaymentModal.tsx`                | Lee `data.path` (no `j.path`), acepta PDF sin MIME por extensión, y permite cambiar la periodicidad adentro      |
+| `app/doctor/consultations/ConsultationsClient.tsx`      | Rótulo "Consulta 2 de 3" (helper `sessionLabel`) y **monto del cobro editable** en el panel de pago              |
+| `app/doctor/offices/page.tsx` + `lib/schedule-utils.ts` | Selector de duración POR BLOQUE con "aplicar a todos" (`setBlockDuration` / `setDurationForAllBlocks`)           |
+| `app/doctor/services/page.tsx`                          | `maxSlotOf()`: el servicio entra si ALGÚN bloque lo sostiene. Además corrige la lectura camelCase del wire       |
+| `app/doctor/onboarding/*`                               | Isotipo real (`DeltaMark`), soporte por WhatsApp, "tu primer servicio", y `irAlPaso()` que sube la vista al tope |
+| `app/doctor/settings/DeactivateAccountCard.tsx`         | Cuando la baja queda programada muestra hasta cuándo conserva el plan, en vez de cerrar la sesión                |
+
+**Backend:** `SearchPatientsUseCase` (normaliza como el hash), `SequelizeConsultationRepository`
+(sesión del combo), `SequelizeFinanceRepository` + `SequelizePaymentRepository` (ingreso =
+confirmado y pagado), `DaySchedule` VO + `GetAvailableSlotsUseCase` (duración por bloque),
+`ProcessLoginTouchUseCase` (reactivación), `DeactivateOwnAccountUseCase` +
+`ApplyScheduledDeactivationsUseCase` (baja programada). `normalizeForSearch` se exporta desde
+`@delta/shared-crypto` para que la búsqueda parcial use el MISMO criterio que el hash.

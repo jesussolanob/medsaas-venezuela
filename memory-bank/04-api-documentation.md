@@ -684,8 +684,8 @@ Verifica server-side que el doctor tiene ≥1 consultorio activo Y ≥1 servicio
 
 ### `POST /api/doctor/account/deactivate` — endpoint nuevo (2026-08-09)
 
-| Endpoint                         | Método | Auth   | Body                        | Errores                                                                     |
-| -------------------------------- | ------ | ------ | --------------------------- | --------------------------------------------------------------------------- |
+| Endpoint                         | Método | Auth   | Body                        | Errores                                                                |
+| -------------------------------- | ------ | ------ | --------------------------- | ---------------------------------------------------------------------- |
 | `/api/doctor/account/deactivate` | POST   | doctor | `{ reason?: string\|null }` | `422 ACCOUNT_HAS_UPCOMING_APPOINTMENTS` · `422 CANNOT_DEACTIVATE_ROLE` |
 
 El especialista da de baja su **propia** cuenta desde Configuración → Mi perfil.
@@ -773,3 +773,51 @@ Cancelar una cita cuya consulta tiene el pago **aprobado** ahora falla:
   negocio, no de seguridad.
 - El BFF `POST /api/doctor/appointment-status` propaga el 409 con su `code` para que la UI
   abra el flujo de reagendar en vez de mostrar un error crudo.
+
+---
+
+## Cambios de contrato (2026-08-12)
+
+### `GET /api/doctor/offices` — el wire es camelCase, no snake_case
+
+El controller devuelve la **entidad tal cual**: `slotDuration`, `bufferMinutes`, `isActive`,
+`mapUrl`, `doctorId`. No hay mapper de presentación.
+
+⚠️ `/doctor/services` leía `slot_duration` (snake_case) y por eso el campo era SIEMPRE
+`undefined`: la regla de compatibilidad servicio↔consultorio comparaba contra 30 minutos fijos
+para todos los consultorios. Corregido el 2026-08-12. La página `/doctor/offices` nunca tuvo el
+problema porque consume el server action `listOffices()`, que sí mapea con `toView`.
+
+**Regla:** si consumís este endpoint por `fetch` directo desde el browser (thin-proxy), leé
+camelCase. Solo hay snake_case cuando pasás por un server action que mapea.
+
+### `DayScheduleSchema` — duración por bloque (opcional)
+
+Cada entrada de `schedule` acepta dos campos nuevos, ambos opcionales:
+
+| Campo           | Tipo                | Sin valor                     |
+| --------------- | ------------------- | ----------------------------- |
+| `slotDuration`  | int 5–480 (minutos) | hereda `office.slotDuration`  |
+| `bufferMinutes` | int 0–120 (minutos) | hereda `office.bufferMinutes` |
+
+Sin migración: los horarios ya guardados no traen los campos y siguen valiendo. Presente pero
+fuera de rango → el bloque entero se rechaza (`DaySchedule.validate` devuelve null). Ver ADR-028.
+
+### `GET /api/consultations` y `GET /api/consultations/:id` — sesión del combo
+
+La respuesta gana dos campos de solo lectura, poblados por JOIN:
+
+| Campo                    | De dónde sale                                                                                      |
+| ------------------------ | -------------------------------------------------------------------------------------------------- |
+| `session_number`         | `appointments.session_number` (null si la cita no es de un combo)                                  |
+| `package_total_sessions` | `patient_packages.total_sessions` y, si no hay, `pricing_plans.sessions_count` por nombre del plan |
+
+⚠️ En la BD real `appointments.package_id` viene **siempre NULL** y `patient_packages` está
+**vacía**: el total sale del SERVICIO. Se resuelve con **subconsulta escalar**, no con JOIN, porque
+un JOIN por nombre duplicaría la consulta si el especialista repite el nombre de un servicio.
+
+### `GET /api/finances/income` — solo lo efectivamente cobrado
+
+La rama de pagos ahora exige `status = 'approved'` **Y** cita confirmada/completada (o sin cita).
+Lo pendiente y lo aprobado-sin-confirmar viven en Cobros y en el "Por ingresar" del resumen. El
+filtro va con EXISTS (nunca JOIN) porque un pago puede cubrir varias citas. Ver ADR-029.
