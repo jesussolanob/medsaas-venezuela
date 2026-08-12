@@ -147,19 +147,22 @@ export class GetAvailableSlotsUseCase {
       const dayEntries = office.getEnabledSchedulesForDay(officeDay);
       if (dayEntries.length === 0) continue;
 
-      const step = office.slotDuration + office.bufferMinutes;
-      if (step <= 0) continue;
-
       for (const dayEntry of dayEntries) {
+        // Cada bloque puede tener su propio ritmo (mañana de 45', tarde de 20').
+        // Sin valores propios hereda los del consultorio — comportamiento previo.
+        const duracion = dayEntry.slotDuration ?? office.slotDuration;
+        const paso = duracion + (dayEntry.bufferMinutes ?? office.bufferMinutes);
+        if (duracion <= 0 || paso <= 0) continue;
+
         const startMin = this.parseMinutes(dayEntry.start);
         const endMin = this.parseMinutes(dayEntry.end);
 
         if (startMin >= endMin) continue;
 
         let current = startMin;
-        while (current + office.slotDuration <= endMin) {
+        while (current + duracion <= endMin) {
           timeSet.add(formatMinutes(current));
-          current += step;
+          current += paso;
         }
       }
     }

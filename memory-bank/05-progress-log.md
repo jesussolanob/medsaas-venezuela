@@ -46,8 +46,7 @@ Arreglado: 13 mocks del puerto + el use case nuevo en el módulo de prueba del c
   era la misma que producía el bug.
 - **Duración por servicio de vuelta en `/doctor/services`** (se había quitado el 12-07).
   **NO cambia cómo se generan los turnos** — el booking sigue usando `slot_duration` del
-  consultorio. Condiciona la ASOCIACIÓN: un servicio de 45 min no entra en un consultorio de
-  30. Los que no lo soportan salen deshabilitados con el motivo a la vista. Un servicio
+  consultorio. Condiciona la ASOCIACIÓN: un servicio de 45 min no entra en un consultorio de 30. Los que no lo soportan salen deshabilitados con el motivo a la vista. Un servicio
   "General" solo se permite si entra en TODOS (decisión del dueño).
 - **Instrucciones de pago en viñetas** (`PaymentInstructions.tsx` + migración
   `20260810000001`). El texto lo edita el super admin desde `/admin/settings`, así que la
@@ -3461,3 +3460,48 @@ backend, VERIFICAR la forma real; no confiar en el tipo declarado.
 sellaba `onboarding_completed_at` pero el guard leía `onboarding_completed`. Un test que
 mockea el repositorio NO lo agarra; hace falta un test que afirme sobre lo que realmente
 se le pasa al `update`.
+
+## 2026-08-11 — Lote de observaciones de QA (desplegado en staging)
+
+Arrancó con el caso "Ana Sweeney": la Dra. Solano reportó una paciente que había
+creado la semana pasada y ya no veía. **Veredicto: nunca existió.** Las 47 filas de
+`patients` descifradas no la tienen (ni prod ni staging), las 29 altas con `POST 201`
+de los últimos 60 días tienen todas su fila en la BD, no hubo un solo 4xx/5xx en el
+alta, nunca se ejecutó un DELETE y no hay filas huérfanas apuntando a un paciente
+inexistente. La telemetría de clics (`telemetry_sessions.journey`) muestra que abrió
+el formulario y lo abandonó más de una vez. Detalle y método en la memoria
+`auditar-reportes-de-datos-perdidos`.
+
+De esa auditoría salieron bugs reales, todos arreglados y verificados en staging:
+
+- **Alta muda:** `handlePatientSubmit` hacía `return` sin request, sin error y sin
+  toast cuando `doctorId` aún no había resuelto. Es exactamente la forma de "le di
+  guardar y se perdió".
+- **Listado cortado en 100:** `getPatients` pedía `limit=200` y el backend recorta a
+  100 (`Math.min(100, …)`). Del paciente 101 en adelante no existían para el
+  dashboard ni para finanzas. Ahora pagina de a 100. Verificado con 105 pacientes
+  sembrados en staging.
+- **Búsqueda sin normalizar:** "maria jose" no encontraba a "María José". Ahora usa
+  la misma normalización que el hash (`normalizeForSearch`, exportada de
+  shared-crypto).
+- **Aceptar/rechazar cita de la agenda:** código muerto (ningún botón lo llamaba) que
+  además mandaba el cuerpo en camelCase contra un DTO `.strict()` → 400 seguro el día
+  que alguien lo cableara. Eliminado.
+- **Comprobante de pago del plan (bloqueante):** el modal leía `j.path` y el backend
+  responde `{ data: { path } }` → el path quedaba `undefined`, la subida se daba por
+  fallida SIN mensaje y el botón no hacía nada. Mismo patrón que
+  `tipos-que-mienten-sobre-la-api`.
+
+Y las mejoras pedidas por el dueño: rótulo "Consulta 2 de 3" en las consultas de un
+combo (⚠️ el total NO sale de `patient_packages` —está vacía y `appointments.package_id`
+viene siempre NULL— sino de `pricing_plans.sessions_count`); el especialista puede
+agendar hasta 30 días hacia atrás (el booking público NO cambia, usa otro componente);
+ingresos = confirmado Y pagado, aplicado en las TRES consultas que alimentan la
+pantalla para que no se contradigan; periodicidad editable dentro del modal de pago;
+tarjeta de ayuda clickeable entera; onboarding con el isotipo real, WhatsApp en vez de
+correo, "tu primer servicio" y scroll al tope al continuar; y la baja de cuenta ahora
+respeta los días ya pagados (barrido diario colgado del cron existente) y se reactiva
+sola en plan gratuito cuando el especialista vuelve a entrar.
+
+**Pendiente de decisión:** modificar ingresos de consulta (los manuales YA se editan y
+borran) y duración de consulta por bloque del consultorio.

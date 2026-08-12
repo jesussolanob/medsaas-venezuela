@@ -9,6 +9,13 @@ export const DayScheduleSchema = z.object({
   enabled: z.boolean(),
   start: z.string().regex(/^\d{2}:\d{2}$/, 'start must be in HH:MM format'),
   end: z.string().regex(/^\d{2}:\d{2}$/, 'end must be in HH:MM format'),
+  /**
+   * Duración y separación PROPIAS del bloque, en minutos. Opcionales: sin ellas
+   * el bloque hereda las del consultorio, que es como venía funcionando, así que
+   * los horarios ya guardados siguen siendo válidos sin migrar nada.
+   */
+  slotDuration: z.number().int().min(5).max(480).optional(),
+  bufferMinutes: z.number().int().min(0).max(120).optional(),
 });
 export type DayScheduleDto = z.infer<typeof DayScheduleSchema>;
 

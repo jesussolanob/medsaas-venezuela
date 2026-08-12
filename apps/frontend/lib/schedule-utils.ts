@@ -11,6 +11,14 @@ export type DaySchedule = {
   enabled: boolean;
   start: string; // HH:MM
   end: string; // HH:MM
+  /**
+   * Duración de la consulta EN ESTE BLOQUE (minutos). Sin valor, el bloque
+   * hereda la del consultorio — que es como funcionaba antes de que existiera
+   * este campo, así que los horarios ya guardados siguen valiendo.
+   */
+  slotDuration?: number | null;
+  /** Minutos entre consultas en este bloque. Sin valor, hereda los del consultorio. */
+  bufferMinutes?: number | null;
 };
 
 export type OverlapError = {
@@ -108,6 +116,26 @@ export function updateBlock(
   value: string,
 ): DaySchedule[] {
   return schedule.map((b, i) => (i === blockIndex ? { ...b, [field]: value } : b));
+}
+
+/**
+ * Fija (o limpia, con null) la duración propia de un bloque.
+ * Separada de `updateBlock` porque ésa maneja horas en texto y ésta minutos.
+ */
+export function setBlockDuration(
+  schedule: DaySchedule[],
+  blockIndex: number,
+  slotDuration: number | null,
+): DaySchedule[] {
+  return schedule.map((b, i) => (i === blockIndex ? { ...b, slotDuration } : b));
+}
+
+/** Aplica la misma duración a TODOS los bloques (el "aplicar a todos" de la UI). */
+export function setDurationForAllBlocks(
+  schedule: DaySchedule[],
+  slotDuration: number | null,
+): DaySchedule[] {
+  return schedule.map((b) => ({ ...b, slotDuration }));
 }
 
 /** Removes a block by index. If it was the day's only one, the day ends up with none. */

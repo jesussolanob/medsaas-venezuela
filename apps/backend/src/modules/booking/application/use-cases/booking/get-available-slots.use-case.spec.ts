@@ -789,4 +789,51 @@ describe('GetAvailableSlotsUseCase (offices-based + availability blocks)', () =>
       );
     });
   });
+
+  // ─── Duración propia de cada bloque ───────────────────────────────────────
+
+  describe('duración propia de cada bloque', () => {
+    it('usa la duración del BLOQUE cuando la tiene, y la del consultorio cuando no', async () => {
+      // Lunes: 08:00–09:30 en bloques de 45' (propios) → 08:00 y 08:45.
+      //        14:00–15:00 sin duración propia → hereda los 30' del consultorio.
+      const office = makeOffice({
+        slotDuration: 30,
+        bufferMinutes: 0,
+        schedule: [
+          { day: 0, enabled: true, start: '08:00', end: '09:30', slotDuration: 45 },
+          { day: 0, enabled: true, start: '14:00', end: '15:00' },
+        ],
+      });
+      officeRepo = makeOfficeRepo([office]);
+      useCase = makeUseCase(doctorLoader, officeRepo, appointmentRepo, blockRepo, scheduleRepo);
+
+      const result = await useCase.execute(DOCTOR_ID, DATE_STR);
+
+      expect(result.slots.map((s) => s.time)).toEqual(['08:00', '08:45', '14:00', '14:30']);
+    });
+
+    it('respeta la separación propia del bloque', async () => {
+      // 08:00–10:00, consultas de 30' con 30' de separación → 08:00 y 09:00.
+      const office = makeOffice({
+        slotDuration: 30,
+        bufferMinutes: 0,
+        schedule: [
+          {
+            day: 0,
+            enabled: true,
+            start: '08:00',
+            end: '10:00',
+            slotDuration: 30,
+            bufferMinutes: 30,
+          },
+        ],
+      });
+      officeRepo = makeOfficeRepo([office]);
+      useCase = makeUseCase(doctorLoader, officeRepo, appointmentRepo, blockRepo, scheduleRepo);
+
+      const result = await useCase.execute(DOCTOR_ID, DATE_STR);
+
+      expect(result.slots.map((s) => s.time)).toEqual(['08:00', '09:00']);
+    });
+  });
 });
