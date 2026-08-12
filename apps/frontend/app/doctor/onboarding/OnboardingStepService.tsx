@@ -156,11 +156,10 @@ export default function OnboardingStepService({
               className="font-bold text-lg leading-tight"
               style={{ color: 'var(--dh-ink)', fontFamily: 'var(--dh-font-display)' }}
             >
-              Tu primera consulta
+              Tu primer servicio
             </h2>
             <p className="text-xs mt-0.5" style={{ color: 'var(--dh-gray-400)' }}>
-              Define la consulta que ofrecerás — luego podrás agregar más y también servicios extras
-              desde Servicios
+              Define el servicio que ofrecerás — luego podrás agregar más desde Servicios
             </p>
           </div>
         </div>

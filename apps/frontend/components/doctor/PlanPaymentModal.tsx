@@ -99,6 +99,10 @@ function ModalStep({ current, label }: { current: number; label: string }) {
 
 export default function PlanPaymentModal({ planKey, planName, period, onClose, onSuccess }: Props) {
   const [modalStep, setModalStep] = useState<1 | 2 | 3 | 4 | 'success'>(1);
+  // La periodicidad también se elige acá dentro: antes solo podía cambiarse en la
+  // pantalla de atrás, así que el especialista tenía que cerrar el modal para
+  // pasar de mensual a anual. Arranca con la que venía seleccionada.
+  const [periodoElegido, setPeriodoElegido] = useState<Period>(period);
   const [checkoutInfo, setCheckoutInfo] = useState<CheckoutInfo | null>(null);
   const [loadingInfo, setLoadingInfo] = useState(true);
   const [infoError, setInfoError] = useState<string | null>(null);
@@ -130,7 +134,7 @@ export default function PlanPaymentModal({ planKey, planName, period, onClose, o
     // loadingInfo starts as true and infoError as null — no sync setState needed here.
 
     fetch(
-      `/api/doctor/subscription-payments/checkout-info?planKey=${encodeURIComponent(planKey)}&period=${encodeURIComponent(period)}`,
+      `/api/doctor/subscription-payments/checkout-info?planKey=${encodeURIComponent(planKey)}&period=${encodeURIComponent(periodoElegido)}`,
     )
       .then(async (r) => {
         if (cancelled) return;
@@ -149,7 +153,7 @@ export default function PlanPaymentModal({ planKey, planName, period, onClose, o
     return () => {
       cancelled = true;
     };
-  }, [planKey, period]);
+  }, [planKey, periodoElegido]);
 
   // Clean up object URL on unmount
   useEffect(() => {
@@ -167,7 +171,14 @@ export default function PlanPaymentModal({ planKey, planName, period, onClose, o
     if (!file) return;
     setFileError(null);
 
-    if (!ALLOWED_MIME.includes(file.type)) {
+    // Algunos navegadores/sistemas entregan `type` vacío (o genérico) para un PDF
+    // cuando el MIME no está registrado en el equipo. Con la comprobación a secas
+    // el archivo quedaba rechazado como "formato no permitido" aunque fuera un PDF
+    // válido, así que se cae a la extensión antes de rechazarlo.
+    const tipoOk =
+      ALLOWED_MIME.includes(file.type) ||
+      (!file.type && /\.(jpe?g|png|webp|gif|pdf)$/i.test(file.name));
+    if (!tipoOk) {
       setFileError('Formato no permitido. Usa JPEG, PNG, WebP, GIF o PDF.');
       return;
     }
@@ -199,8 +210,16 @@ export default function PlanPaymentModal({ planKey, planName, period, onClose, o
       form.append('kind', 'receipt');
       const r = await fetch('/api/storage/upload', { method: 'POST', body: form });
       const j = await r.json();
-      if (!r.ok) throw new Error(j.error || 'Error al subir el comprobante');
-      const path = j.path as string;
+      if (!r.ok) {
+        throw new Error(j?.error?.message ?? j?.error ?? 'Error al subir el comprobante');
+      }
+      // El backend responde { success, data: { url, path } }. Antes esto leía
+      // `j.path` (que nunca existe): el path quedaba undefined, la subida se daba
+      // por fallida sin mensaje y el botón "Continuar" no hacía absolutamente nada.
+      const path = (j?.data?.path ?? j?.path) as string | undefined;
+      if (!path) {
+        throw new Error('El servidor no devolvió el comprobante subido. Intenta de nuevo.');
+      }
       setUploadedPath(path);
       return path;
     } catch (e: unknown) {
@@ -248,7 +267,7 @@ export default function PlanPaymentModal({ planKey, planName, period, onClose, o
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           planKey,
-          period,
+          period: periodoElegido,
           bankCode,
           referenceNumber: referenceNumber.trim(),
           receiptPath: uploadedPath,
@@ -345,8 +364,42 @@ export default function PlanPaymentModal({ planKey, planName, period, onClose, o
                         className="text-sm font-semibold"
                         style={{ color: 'var(--dh-turquoise-700)' }}
                       >
-                        {planName} — ciclo {PERIOD_LABELS[period] ?? period}
+                        {planName} — ciclo {PERIOD_LABELS[periodoElegido] ?? periodoElegido}
                       </span>
+                    </div>
+
+                    {/* Cambiar la periodicidad sin salir del modal. El monto y la
+                        tasa se recalculan solos porque checkout-info depende de
+                        `periodoElegido`. */}
+                    <div>
+                      <p
+                        className="text-[11px] font-semibold uppercase tracking-wide mb-1.5"
+                        style={{ color: 'var(--dh-gray-400)' }}
+                      >
+                        Periodicidad
+                      </p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {(Object.keys(PERIOD_LABELS) as Period[]).map((p) => {
+                          const activo = p === periodoElegido;
+                          return (
+                            <button
+                              key={p}
+                              type="button"
+                              onClick={() => {
+                                if (p !== periodoElegido) setPeriodoElegido(p);
+                              }}
+                              aria-pressed={activo}
+                              className={`px-3 py-1.5 rounded-lg text-xs font-bold border-2 capitalize transition-colors ${
+                                activo
+                                  ? 'bg-teal-500 text-white border-teal-500'
+                                  : 'bg-white text-slate-600 border-slate-200 hover:border-teal-300'
+                              }`}
+                            >
+                              {PERIOD_LABELS[p]}
+                            </button>
+                          );
+                        })}
+                      </div>
                     </div>
                     <div className="flex items-end gap-3">
                       <div>
