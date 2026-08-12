@@ -24,7 +24,7 @@ export async function POST(request: Request) {
     // No body, or not JSON — the reason is optional, so proceed without it.
   }
 
-  const result = await backendPost<{ success: boolean; data: { deactivated: boolean } }>(
+  const result = await backendPost<{ deactivated: boolean; activeUntil: string | null }>(
     '/api/doctor/account/deactivate',
     { reason },
   );
@@ -36,5 +36,8 @@ export async function POST(request: Request) {
     );
   }
 
-  return NextResponse.json({ success: true });
+  // `activeUntil` viaja al cliente: cuando la baja queda programada porque al
+  // especialista le quedan días pagos, la tarjeta lo dice en vez de cerrarle la
+  // sesión como si ya estuviera apagada.
+  return NextResponse.json({ success: true, activeUntil: result.value?.activeUntil ?? null });
 }

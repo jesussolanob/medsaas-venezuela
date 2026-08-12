@@ -29,6 +29,8 @@ export default function DeactivateAccountCard() {
   const [reason, setReason] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** Fecha hasta la que conserva el plan cuando la baja quedó programada. */
+  const [programada, setProgramada] = useState<string | null>(null);
 
   const canConfirm = phrase.trim().toUpperCase() === CONFIRM_PHRASE && !submitting;
 
@@ -61,6 +63,23 @@ export default function DeactivateAccountCard() {
         return;
       }
 
+      const body = (await res.json().catch(() => ({}))) as { activeUntil?: string | null };
+
+      // Baja PROGRAMADA: todavía le quedan días de un plan que pagó, así que la
+      // cuenta sigue encendida hasta esa fecha. Cerrarle la sesión acá sería
+      // mentirle: puede seguir trabajando hasta el vencimiento.
+      if (body.activeUntil) {
+        const hasta = new Date(body.activeUntil).toLocaleDateString('es-VE', {
+          day: 'numeric',
+          month: 'long',
+          year: 'numeric',
+        });
+        setProgramada(hasta);
+        setSubmitting(false);
+        setOpen(false);
+        return;
+      }
+
       // La cuenta ya está apagada: cualquier llamada siguiente daría 403.
       // Se cierra sesión de inmediato y el login explica qué pasó.
       await blockedLogoutAction(true);
@@ -78,6 +97,15 @@ export default function DeactivateAccountCard() {
             <AlertTriangle className="w-4.5 h-4.5 text-red-600" aria-hidden="true" />
           </div>
           <div className="min-w-0 flex-1">
+            {programada && (
+              <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+                <p className="text-xs text-amber-800">
+                  Registramos tu baja. Conservas tu plan actual y el acceso completo hasta el{' '}
+                  <strong>{programada}</strong>, porque ya lo pagaste. Ese día tu cuenta pasa al
+                  plan gratuito. Si cambias de idea, escríbenos antes de esa fecha.
+                </p>
+              </div>
+            )}
             <h3 className="text-sm font-bold text-slate-800">Dar de baja mi cuenta</h3>
             <p className="text-xs text-slate-500 mt-1 leading-relaxed">
               Tu cuenta queda desactivada y pierdes el acceso al portal. Tu enlace público deja de

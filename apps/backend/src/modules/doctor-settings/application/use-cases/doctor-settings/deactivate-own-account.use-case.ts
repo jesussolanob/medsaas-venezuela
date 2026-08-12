@@ -16,7 +16,15 @@ export interface DeactivateOwnAccountInput {
 
 export interface DeactivateOwnAccountOutput {
   deactivated: true;
+  /**
+   * Cuando la baja queda PROGRAMADA (al especialista le quedan días pagos), acá
+   * viaja la fecha hasta la que conserva su plan actual. Null = baja inmediata.
+   */
+  activeUntil: string | null;
 }
+
+/** Planes que no son de pago: darse de baja con uno de estos apaga la cuenta ya. */
+const NON_PAID_PLANS = new Set(['delta_free', 'free', 'free_trial', 'trial']);
 
 /**
  * DeactivateOwnAccountUseCase — a specialist switches their own account off
@@ -80,15 +88,33 @@ export class DeactivateOwnAccountUseCase {
       throw new AccountHasUpcomingAppointmentsError(upcoming);
     }
 
-    // 4. Switch off, recording that the owner did it.
+    // 4. Baja inmediata o programada.
+    //
+    //    Si todavía le quedan días de un plan que PAGÓ, apagarle la cuenta hoy
+    //    sería quedarse con plata por un servicio que no presta: conserva su
+    //    plan hasta el vencimiento y el barrido diario lo apaga ese día,
+    //    dejándolo en el plan gratuito.
     const reason = normaliseReason(input.reason);
+    const snapshot = await this.profileRepo.findPlanSnapshot(input.doctorId);
+    const vence = snapshot?.subscriptionExpiresAt ?? null;
+    const planPago = snapshot?.plan != null && !NON_PAID_PLANS.has(snapshot.plan);
+    const leQuedanDias = planPago && vence !== null && vence.getTime() > Date.now();
+
+    if (leQuedanDias) {
+      await this.profileRepo.scheduleOwnAccountDeactivation(input.doctorId, reason);
+      this.logger.log(
+        `[deactivation] scheduled doctorId="${input.doctorId}" activeUntil="${vence.toISOString()}"`,
+      );
+      return { deactivated: true, activeUntil: vence.toISOString() };
+    }
+
     await this.profileRepo.deactivateOwnAccount(input.doctorId, reason);
 
     // Deliberate: the id is not PII and this is the audit trail for a support
     // request that starts with "I can't get in".
     this.logger.log(`[deactivation] self doctorId="${input.doctorId}"`);
 
-    return { deactivated: true };
+    return { deactivated: true, activeUntil: null };
   }
 }
 

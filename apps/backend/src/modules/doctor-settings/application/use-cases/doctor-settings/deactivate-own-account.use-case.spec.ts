@@ -15,6 +15,15 @@ function makeRepo(overrides: Partial<IDoctorProfileRepository> = {}) {
     updateBlocksLayout: jest.fn(),
     countUpcomingAppointments: jest.fn().mockResolvedValue(0),
     deactivateOwnAccount: jest.fn().mockResolvedValue(undefined),
+    // Sin plan pago vigente → la baja es inmediata, que es lo que asumen los
+    // casos de abajo. Los casos de baja programada lo sobreescriben.
+    findPlanSnapshot: jest.fn().mockResolvedValue({
+      plan: 'delta_free',
+      subscriptionStatus: 'active',
+      subscriptionExpiresAt: null,
+    }),
+    scheduleOwnAccountDeactivation: jest.fn().mockResolvedValue(undefined),
+    applyExpiredScheduledDeactivations: jest.fn().mockResolvedValue(0),
     ...overrides,
   } as unknown as jest.Mocked<IDoctorProfileRepository>;
 }
@@ -38,7 +47,7 @@ describe('DeactivateOwnAccountUseCase', () => {
       reason: 'Me mudo de país',
     });
 
-    expect(result).toEqual({ deactivated: true });
+    expect(result).toEqual({ deactivated: true, activeUntil: null });
     expect(repo.deactivateOwnAccount).toHaveBeenCalledWith(DOCTOR_ID, 'Me mudo de país');
   });
 
@@ -164,5 +173,55 @@ describe('DeactivateOwnAccountUseCase', () => {
 
     expect(repo.countUpcomingAppointments).toHaveBeenCalledWith(DOCTOR_ID);
     expect(repo.deactivateOwnAccount).toHaveBeenCalledWith(DOCTOR_ID, null);
+  });
+});
+
+describe('DeactivateOwnAccountUseCase — baja con días ya pagados', () => {
+  it('programa la baja y NO apaga la cuenta cuando quedan días del plan pago', async () => {
+    const repo = makeRepo();
+    const enUnMes = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    repo.findPlanSnapshot.mockResolvedValue({
+      plan: 'delta_plus',
+      subscriptionStatus: 'active',
+      subscriptionExpiresAt: enUnMes,
+    });
+    const useCase = new DeactivateOwnAccountUseCase(repo);
+
+    const result = await useCase.execute({ doctorId: DOCTOR_ID, role: 'doctor' });
+
+    expect(repo.scheduleOwnAccountDeactivation).toHaveBeenCalledWith(DOCTOR_ID, null);
+    expect(repo.deactivateOwnAccount).not.toHaveBeenCalled();
+    expect(result.activeUntil).toBe(enUnMes.toISOString());
+  });
+
+  it('apaga la cuenta de una vez cuando el plan pago ya venció', async () => {
+    const repo = makeRepo();
+    repo.findPlanSnapshot.mockResolvedValue({
+      plan: 'delta_plus',
+      subscriptionStatus: 'active',
+      subscriptionExpiresAt: new Date(Date.now() - 24 * 60 * 60 * 1000),
+    });
+    const useCase = new DeactivateOwnAccountUseCase(repo);
+
+    const result = await useCase.execute({ doctorId: DOCTOR_ID, role: 'doctor' });
+
+    expect(repo.deactivateOwnAccount).toHaveBeenCalled();
+    expect(repo.scheduleOwnAccountDeactivation).not.toHaveBeenCalled();
+    expect(result.activeUntil).toBeNull();
+  });
+
+  it('apaga la cuenta de una vez en plan gratuito, aunque tenga fecha futura', async () => {
+    const repo = makeRepo();
+    repo.findPlanSnapshot.mockResolvedValue({
+      plan: 'delta_free',
+      subscriptionStatus: 'active',
+      subscriptionExpiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+    });
+    const useCase = new DeactivateOwnAccountUseCase(repo);
+
+    const result = await useCase.execute({ doctorId: DOCTOR_ID, role: 'doctor' });
+
+    expect(repo.deactivateOwnAccount).toHaveBeenCalled();
+    expect(result.activeUntil).toBeNull();
   });
 });

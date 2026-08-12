@@ -10,6 +10,8 @@ const DOCTOR_ID = PROFILE_ID; // doctor's profile id == doctor_id on subscriptio
 
 function makeRepo(): jest.Mocked<ILoginTouchRepository> {
   return {
+    findAccountState: jest.fn().mockResolvedValue({ isActive: true, deactivatedBy: null }),
+    reactivateAsFreeAndTouch: jest.fn(),
     findSubscriptionByDoctorId: jest.fn(),
     findPlanConfigByKey: jest.fn(),
     persistDowngradeAndTouch: jest.fn(),
@@ -265,5 +267,42 @@ describe('ProcessLoginTouchUseCase', () => {
 
     expect(repo.persistDowngradeAndTouch).toHaveBeenCalledWith(PROFILE_ID, DOCTOR_ID);
     expect(result).toEqual({ downgraded: true });
+  });
+});
+
+describe('ProcessLoginTouchUseCase — reingreso tras darse de baja', () => {
+  it('reactiva en plan gratuito la cuenta que el propio especialista dio de baja', async () => {
+    const repo = makeRepo();
+    repo.findAccountState.mockResolvedValue({ isActive: false, deactivatedBy: 'self' });
+    const useCase = new ProcessLoginTouchUseCase(repo);
+
+    const result = await useCase.execute({ profileId: PROFILE_ID, role: 'doctor' });
+
+    expect(repo.reactivateAsFreeAndTouch).toHaveBeenCalledWith(PROFILE_ID, 'delta_free');
+    expect(result.reactivated).toBe(true);
+    // No sigue con la lógica de vencimiento: la cuenta ya quedó en el plan gratuito.
+    expect(repo.findSubscriptionByDoctorId).not.toHaveBeenCalled();
+  });
+
+  it('NO reactiva una cuenta bloqueada por un administrador', async () => {
+    const repo = makeRepo();
+    repo.findAccountState.mockResolvedValue({ isActive: false, deactivatedBy: 'admin' });
+    const useCase = new ProcessLoginTouchUseCase(repo);
+
+    const result = await useCase.execute({ profileId: PROFILE_ID, role: 'doctor' });
+
+    expect(repo.reactivateAsFreeAndTouch).not.toHaveBeenCalled();
+    expect(result.reactivated).toBeUndefined();
+  });
+
+  it('no toca la cuenta de un paciente ni la de un admin', async () => {
+    const repo = makeRepo();
+    repo.findAccountState.mockResolvedValue({ isActive: false, deactivatedBy: 'self' });
+    const useCase = new ProcessLoginTouchUseCase(repo);
+
+    await useCase.execute({ profileId: PROFILE_ID, role: 'patient' });
+
+    expect(repo.reactivateAsFreeAndTouch).not.toHaveBeenCalled();
+    expect(repo.touchLastSignInAt).toHaveBeenCalledWith(PROFILE_ID);
   });
 });
