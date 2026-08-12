@@ -624,6 +624,13 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
   // Estado del panel de detalles de pago (método, referencia, comprobante)
   const [pagoMethod, setPagoMethod] = useState<string>('');
   const [pagoReference, setPagoReference] = useState<string>('');
+  /**
+   * Monto del cobro, editable. El especialista tiene que poder corregir lo que
+   * cobró (un descuento, un monto mal tipeado) sin anular nada: el backend ya
+   * aceptaba `amount` en payment-details incluso con el pago aprobado, pero la
+   * UI nunca lo mandaba. Vacío = no se toca el monto guardado.
+   */
+  const [pagoAmount, setPagoAmount] = useState<string>('');
   const [pagoReceiptPath, setPagoReceiptPath] = useState<string | null>(null);
   const [pagoReceiptUploading, setPagoReceiptUploading] = useState(false);
   const [pagoDetailsSaving, setPagoDetailsSaving] = useState(false);
@@ -1644,6 +1651,7 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
         // Inicializar estado del panel de detalles de pago
         setPagoMethod(fresh.payment_method ?? '');
         setPagoReference(fresh.payment_reference ?? '');
+        setPagoAmount(fresh.amount != null ? String(fresh.amount) : '');
         setPagoReceiptPath(fresh.payment_receipt_url ?? null);
         setConsultations((prev) => prev.map((x) => (x.id === fresh.id ? fresh : x)));
         // Appointment data for receipt — no backend endpoint in Etapa 1, stays null.
@@ -1665,6 +1673,7 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
         setReposoDiagnosis(cachedDiagnosis || '');
         setPagoMethod(c.payment_method ?? '');
         setPagoReference(c.payment_reference ?? '');
+        setPagoAmount(c.amount != null ? String(c.amount) : '');
         setPagoReceiptPath(c.payment_receipt_url ?? null);
         setAppointmentData(null);
       }
@@ -1685,6 +1694,7 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
       setReposoDiagnosis(cachedDiagnosisFallback || '');
       setPagoMethod(c.payment_method ?? '');
       setPagoReference(c.payment_reference ?? '');
+      setPagoAmount(c.amount != null ? String(c.amount) : '');
       setPagoReceiptPath(c.payment_receipt_url ?? null);
       setAppointmentData(null);
     }
@@ -5001,6 +5011,31 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                           </div>
                         </div>
 
+                        {/* Monto cobrado — editable */}
+                        <div>
+                          <label className="block text-[10px] text-slate-500 mb-1">
+                            Monto cobrado (USD)
+                          </label>
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            inputMode="decimal"
+                            value={pagoAmount}
+                            disabled={pagoDetailsSaving}
+                            onChange={(e) => setPagoAmount(e.target.value)}
+                            placeholder={
+                              selected.amount != null ? selected.amount.toFixed(2) : '0.00'
+                            }
+                            className="w-full text-xs border border-slate-200 rounded-lg py-1.5 px-2.5 outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-400 transition-all bg-white text-slate-700 placeholder:text-slate-400 disabled:text-slate-400 disabled:cursor-wait"
+                          />
+                          {bcvRate && pagoAmount.trim() !== '' && !isNaN(Number(pagoAmount)) && (
+                            <p className="mt-1 text-[10px] text-slate-400">
+                              {toBs(Number(pagoAmount))}
+                            </p>
+                          )}
+                        </div>
+
                         {/* Referencia */}
                         <div>
                           <label className="block text-[10px] text-slate-500 mb-1">
@@ -5220,10 +5255,17 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                           setPagoDetailsSaving(true);
                           try {
                             // 1. Guardar detalles (método/referencia/comprobante).
+                            const montoEditado =
+                              pagoAmount.trim() !== '' && !isNaN(Number(pagoAmount))
+                                ? Number(pagoAmount)
+                                : undefined;
                             const result = await updateConsultationPaymentDetails(selected.id, {
                               payment_method: pagoMethod || null,
                               payment_reference: pagoReference || null,
                               payment_receipt_url: pagoReceiptPath,
+                              // Solo viaja si el especialista escribió un monto:
+                              // sin esto se pisaría el guardado con un vacío.
+                              ...(montoEditado !== undefined ? { amount: montoEditado } : {}),
                             });
                             if (!result.success) {
                               showToast({
