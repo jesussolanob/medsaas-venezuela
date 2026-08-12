@@ -477,6 +477,19 @@ export default function OnboardingForm({
   // ---------------------------------------------------------------------------
   const [step, setStep] = useState<1 | 2 | 3>(initialStep);
   /**
+   * Cambia de paso y sube la vista al principio del formulario.
+   *
+   * Sin esto, al pulsar "Continuar" el paso siguiente se montaba con el scroll
+   * donde estaba: el especialista aterrizaba a mitad (o al pie) del formulario
+   * nuevo y parecía que no había pasado nada.
+   */
+  function irAlPaso(siguiente: 1 | 2 | 3) {
+    setStep(siguiente);
+    if (typeof window !== 'undefined') {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  }
+  /**
    * Lámina de bienvenida. Solo para quien arranca de cero: si el wizard lo dejó
    * en el paso 2 o 3 es porque ya avanzó, y darle la bienvenida ahí se leería
    * como que perdió lo hecho.
@@ -552,7 +565,7 @@ export default function OnboardingForm({
       }
 
       // Step 1 done — proceed to step 2
-      setStep(2);
+      irAlPaso(2);
     });
   }
 
@@ -635,11 +648,11 @@ export default function OnboardingForm({
       <div className="space-y-5">
         <WizardProgress current={2} />
         <OnboardingStepOffice
-          onBack={() => setStep(1)}
+          onBack={() => irAlPaso(1)}
           onSuccess={(id, slot) => {
             setOfficeId(id);
             setOfficeSlotDuration(slot);
-            setStep(3);
+            irAlPaso(3);
           }}
           existingOfficeId={officeId}
         />
@@ -655,7 +668,7 @@ export default function OnboardingForm({
         <OnboardingStepService
           officeId={officeId}
           officeSlotDuration={officeSlotDuration}
-          onBack={() => setStep(2)}
+          onBack={() => irAlPaso(2)}
           onSuccess={() => setWizardDone(true)}
         />
       </div>
