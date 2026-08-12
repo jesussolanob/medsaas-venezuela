@@ -38,9 +38,24 @@ type DoctorOffice = {
   name: string;
   modality: 'in_person' | 'online' | 'both';
   address?: string | null;
-  /** Duración del bloque de cita del consultorio, en minutos. El wire es
-   *  snake_case (verificado contra el consumo en /doctor/offices). */
+  /**
+   * Duración del bloque de cita del consultorio, en minutos.
+   *
+   * ⚠️ El wire de GET /api/doctor/offices es **camelCase**: el controller
+   * devuelve la entidad tal cual (`slotDuration`). Este archivo leía
+   * `slot_duration` y por eso SIEMPRE caía al default de 30 — la regla de
+   * compatibilidad servicio↔consultorio evaluaba 30 para todos, sin importar
+   * cómo tuviera configurado el consultorio. Se aceptan las dos formas por si
+   * algún consumidor viejo manda snake_case.
+   */
+  slotDuration?: number;
   slot_duration?: number;
+  /**
+   * Bloques del horario. Cada uno puede traer su propia `slotDuration`; los que
+   * no, van con la del consultorio. Se usa para saber si el consultorio tiene
+   * ALGÚN bloque capaz de sostener el servicio.
+   */
+  schedule?: Array<{ enabled?: boolean; slotDuration?: number | null }> | null;
 };
 
 /** Opciones de duración de un servicio, en minutos. */
@@ -137,10 +152,12 @@ export default function ServicesPage() {
   // ---------------------------------------------------------------------------
   // Compatibilidad servicio ↔ consultorio
   //
-  // La cita se agenda sobre el bloque del consultorio (`slot_duration`), así que
-  // un servicio de 45 min no entra en un consultorio que atiende de 30 en 30:
-  // quedaría pisando la cita siguiente. La regla es que el bloque del
-  // consultorio sea AL MENOS la duración del servicio.
+  // La cita se agenda sobre un bloque del horario, así que un servicio de 45 min
+  // no entra en un bloque que atiende de 30 en 30: pisaría la cita siguiente.
+  //
+  // Cada bloque puede tener su propia duración, así que alcanza con que UNO la
+  // sostenga: un consultorio con la mañana de 45' y la tarde de 20' sí admite un
+  // servicio de 45'. Los bloques sin duración propia usan la del consultorio.
   //
   // Un servicio "General" aparece en todos los consultorios, así que tiene que
   // entrar en todos.
@@ -149,9 +166,16 @@ export default function ServicesPage() {
   const durationMins = parseInt(durationMinutes) || DEFAULT_SLOT_DURATION;
 
   /** Duración del bloque de un consultorio, con default explícito. */
-  const slotOf = (o: DoctorOffice) => o.slot_duration ?? DEFAULT_SLOT_DURATION;
+  const slotOf = (o: DoctorOffice) => o.slotDuration ?? o.slot_duration ?? DEFAULT_SLOT_DURATION;
 
-  const officeFits = (o: DoctorOffice) => slotOf(o) >= durationMins;
+  /** Duración más larga que el consultorio puede sostener en alguno de sus bloques. */
+  const maxSlotOf = (o: DoctorOffice) => {
+    const bloques = (o.schedule ?? []).filter((b) => b?.enabled !== false);
+    if (bloques.length === 0) return slotOf(o);
+    return Math.max(...bloques.map((b) => b.slotDuration ?? slotOf(o)));
+  };
+
+  const officeFits = (o: DoctorOffice) => maxSlotOf(o) >= durationMins;
 
   /** Consultorios donde el servicio, con la duración elegida, NO entra. */
   const incompatibleOffices = useMemo(

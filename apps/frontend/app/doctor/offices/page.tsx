@@ -34,6 +34,8 @@ import {
   removeBlock as removeBlockIn,
   toggleDay as toggleDayIn,
   updateBlock as updateBlockIn,
+  setBlockDuration as setBlockDurationIn,
+  setDurationForAllBlocks as setDurationForAllBlocksIn,
 } from '@/lib/schedule-utils';
 
 type Office = {
@@ -67,9 +69,21 @@ type DaySchedule = {
   enabled: boolean;
   start: string; // HH:MM
   end: string; // HH:MM
+  /**
+   * Duración propia de la consulta en este bloque (minutos). Sin valor hereda
+   * la del consultorio, que es el default de todo bloque nuevo.
+   */
+  slotDuration?: number | null;
+  bufferMinutes?: number | null;
 };
 
 const DAYS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
+
+/**
+ * Duraciones ofrecidas por bloque. La opción vacía del selector significa
+ * "la del consultorio", que sigue siendo el default de todo bloque nuevo.
+ */
+const DURACIONES_BLOQUE = [15, 20, 30, 40, 45, 60, 90] as const;
 const DAYS_SHORT = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
 
 /** Un bloque de horario por día de la semana (lun-vie activo por defecto). */
@@ -281,6 +295,19 @@ export default function OfficesPage() {
   /** Actualiza un campo de un bloque puntual por su índice en el array plano. */
   function updateBlock(blockIndex: number, field: 'start' | 'end', value: string) {
     setSchedule((prev) => updateBlockIn(prev, blockIndex, field, value));
+  }
+
+  /**
+   * Fija la duración PROPIA de un bloque. `null` = vuelve a heredar la del
+   * consultorio, que es el estado por defecto de todos los bloques.
+   */
+  function setBlockDuration(blockIndex: number, minutos: number | null) {
+    setSchedule((prev) => setBlockDurationIn(prev, blockIndex, minutos));
+  }
+
+  /** Aplica la duración de un bloque a todos los demás, para no cargarla una por una. */
+  function applyDurationToAll(minutos: number | null) {
+    setSchedule((prev) => setDurationForAllBlocksIn(prev, minutos));
   }
 
   /** Elimina un bloque por su índice. Si era el único del día, deja el día sin bloques. */
@@ -864,6 +891,39 @@ export default function OfficesPage() {
                                           : 'border-slate-200 bg-white text-slate-800 hover:border-teal-400 focus:border-teal-500 focus:ring-teal-200'
                                       }`}
                                     />
+                                    {/* Duración propia del bloque. "Del consultorio"
+                                        (valor vacío) = hereda, que es el default. */}
+                                    <select
+                                      value={block.slotDuration ?? ''}
+                                      onChange={(e) =>
+                                        setBlockDuration(
+                                          globalIdx,
+                                          e.target.value === '' ? null : Number(e.target.value),
+                                        )
+                                      }
+                                      aria-label={`Duración de la consulta — ${dayName} bloque ${globalIdx + 1}`}
+                                      title="Cuánto dura cada consulta en este bloque"
+                                      className="shrink-0 text-xs px-2 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-700 hover:border-teal-400 focus:outline-none focus:ring-2 focus:ring-teal-200"
+                                    >
+                                      <option value="">{slotDuration} min (del consultorio)</option>
+                                      {DURACIONES_BLOQUE.map((min) => (
+                                        <option key={min} value={min}>
+                                          {min} min
+                                        </option>
+                                      ))}
+                                    </select>
+                                    {block.slotDuration != null && (
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          applyDurationToAll(block.slotDuration ?? null)
+                                        }
+                                        className="shrink-0 text-[10px] font-semibold text-teal-600 hover:text-teal-700 whitespace-nowrap"
+                                        title="Usar esta misma duración en todos los bloques"
+                                      >
+                                        aplicar a todos
+                                      </button>
+                                    )}
                                     {/* Quitar bloque */}
                                     <button
                                       type="button"
