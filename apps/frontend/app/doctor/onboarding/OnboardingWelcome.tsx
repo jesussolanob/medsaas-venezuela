@@ -29,8 +29,8 @@ const STEPS = [
   },
   {
     icon: Stethoscope,
-    title: 'Tu primera consulta',
-    body: 'Qué ofreces y a qué precio. Después podrás agregar más consultas y servicios.',
+    title: 'Tu primer servicio',
+    body: 'Qué ofreces y a qué precio. Después podrás agregar más servicios.',
   },
 ] as const;
 
