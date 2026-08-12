@@ -27,7 +27,27 @@ export interface LoginTouchPlanConfig {
   isPermanent: boolean;
 }
 
+/** Estado de encendido de la cuenta, para decidir si corresponde reactivarla. */
+export interface LoginTouchAccountState {
+  isActive: boolean;
+  /** 'self' = se dio de baja el propio especialista · 'admin' = lo bloquearon. */
+  deactivatedBy: string | null;
+}
+
 export interface ILoginTouchRepository {
+  /**
+   * Estado de encendido del perfil. Null si el perfil no existe.
+   */
+  findAccountState(profileId: string): Promise<LoginTouchAccountState | null>;
+
+  /**
+   * Vuelve a encender una cuenta que su propio dueño había dado de baja y la
+   * deja en el plan gratuito, tocando ademas last_sign_in_at.
+   *
+   * NO toca las cuentas bloqueadas por un admin: esa condición la evalúa el
+   * caso de uso antes de llamar acá.
+   */
+  reactivateAsFreeAndTouch(profileId: string, freePlanKey: string): Promise<void>;
   /**
    * Find the active/trial subscription for a doctor.
    * Returns null if the doctor has no subscription row.
