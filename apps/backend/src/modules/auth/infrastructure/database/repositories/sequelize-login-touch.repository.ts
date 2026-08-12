@@ -5,6 +5,7 @@ import type {
   ILoginTouchRepository,
   LoginTouchSubscription,
   LoginTouchPlanConfig,
+  LoginTouchAccountState,
 } from '../../../domain/repositories/login-touch.repository';
 
 interface RawSubscriptionRow {
@@ -33,6 +34,36 @@ interface RawPlanConfigRow {
 @Injectable()
 export class SequelizeLoginTouchRepository implements ILoginTouchRepository {
   constructor(private readonly sequelize: Sequelize) {}
+
+  async findAccountState(profileId: string): Promise<LoginTouchAccountState | null> {
+    const rows = await this.sequelize.query<{
+      is_active: boolean | null;
+      deactivated_by: string | null;
+    }>(`SELECT is_active, deactivated_by FROM profiles WHERE id = :profileId LIMIT 1`, {
+      type: QueryTypes.SELECT,
+      replacements: { profileId },
+    });
+    const row = rows[0];
+    if (!row) return null;
+    // is_active NULL cuenta como encendida (perfiles viejos, previos a la columna).
+    return { isActive: row.is_active !== false, deactivatedBy: row.deactivated_by ?? null };
+  }
+
+  async reactivateAsFreeAndTouch(profileId: string, freePlanKey: string): Promise<void> {
+    await this.sequelize.query(
+      `UPDATE profiles
+          SET is_active           = true,
+              deactivated_by      = NULL,
+              plan                = :freePlanKey,
+              subscription_status = 'active',
+              last_sign_in_at     = NOW(),
+              updated_at          = NOW()
+        WHERE id = :profileId
+          AND is_active = false
+          AND deactivated_by = 'self'`,
+      { type: QueryTypes.UPDATE, replacements: { profileId, freePlanKey } },
+    );
+  }
 
   async findSubscriptionByDoctorId(doctorId: string): Promise<LoginTouchSubscription | null> {
     const rows = await this.sequelize.query<RawSubscriptionRow>(

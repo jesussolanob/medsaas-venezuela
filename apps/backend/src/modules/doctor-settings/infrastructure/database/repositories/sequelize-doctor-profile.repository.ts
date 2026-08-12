@@ -4,9 +4,11 @@ import {
   DoctorProfile,
   type DoctorProfileUpdateParams,
 } from '../../../domain/entities/doctor-profile.entity';
+import { QueryTypes } from 'sequelize';
 import type {
   IDoctorProfileRepository,
   ExchangeRateUpdateParams,
+  DoctorPlanSnapshot,
 } from '../../../domain/repositories/doctor-profile.repository';
 import { DoctorProfileNotFoundError } from '../../../domain/errors/doctor-profile-not-found.error';
 import { DoctorProfileModel } from '../models/doctor-profile.model';
@@ -178,6 +180,57 @@ export class SequelizeDoctorProfileRepository implements IDoctorProfileRepositor
    * the portal shows "you deactivated your account" instead of "you were
    * blocked", and the admin knows what they are reactivating.
    */
+  async findPlanSnapshot(doctorId: string): Promise<DoctorPlanSnapshot | null> {
+    const rows = await this.model.sequelize!.query<{
+      plan: string | null;
+      subscription_status: string | null;
+      subscription_expires_at: Date | null;
+    }>(
+      `SELECT plan, subscription_status, subscription_expires_at
+         FROM profiles WHERE id = :doctorId LIMIT 1`,
+      { type: QueryTypes.SELECT, replacements: { doctorId } },
+    );
+    const row = rows[0];
+    if (!row) return null;
+    return {
+      plan: row.plan,
+      subscriptionStatus: row.subscription_status,
+      subscriptionExpiresAt: row.subscription_expires_at
+        ? new Date(row.subscription_expires_at)
+        : null,
+    };
+  }
+
+  async scheduleOwnAccountDeactivation(doctorId: string, reason: string | null): Promise<void> {
+    // La cuenta sigue ENCENDIDA: el especialista pagó esos días y los usa. Queda
+    // anotado quién y cuándo pidió la baja, y la suscripción marcada como
+    // cancelada para que no se renueve. El barrido la apaga al vencer.
+    await this.model.update(
+      {
+        deactivatedAt: new Date(),
+        deactivatedBy: 'self',
+        deactivationReason: reason,
+        subscriptionStatus: 'cancelled',
+      } as Record<string, unknown>,
+      { where: { id: doctorId } },
+    );
+  }
+
+  async applyExpiredScheduledDeactivations(freePlanKey: string): Promise<number> {
+    const [, affected] = await this.model.sequelize!.query(
+      `UPDATE profiles
+          SET is_active  = false,
+              plan       = :freePlanKey,
+              updated_at = NOW()
+        WHERE deactivated_by = 'self'
+          AND is_active = true
+          AND subscription_expires_at IS NOT NULL
+          AND subscription_expires_at < NOW()`,
+      { type: QueryTypes.UPDATE, replacements: { freePlanKey } },
+    );
+    return typeof affected === 'number' ? affected : 0;
+  }
+
   async deactivateOwnAccount(doctorId: string, reason: string | null): Promise<void> {
     await this.model.update(
       {

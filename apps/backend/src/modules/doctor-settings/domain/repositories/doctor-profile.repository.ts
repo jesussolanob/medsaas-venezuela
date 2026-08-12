@@ -1,5 +1,12 @@
 import type { DoctorProfile, DoctorProfileUpdateParams } from '../entities/doctor-profile.entity';
 
+/** Estado de plan usado para decidir el tipo de baja. */
+export interface DoctorPlanSnapshot {
+  plan: string | null;
+  subscriptionStatus: string | null;
+  subscriptionExpiresAt: Date | null;
+}
+
 export const DOCTOR_PROFILE_REPOSITORY = Symbol('IDoctorProfileRepository');
 
 export interface ExchangeRateUpdateParams {
@@ -46,4 +53,22 @@ export interface IDoctorProfileRepository {
    * where it is, and a super_admin can switch the account back on.
    */
   deactivateOwnAccount(doctorId: string, reason: string | null): Promise<void>;
+
+  /**
+   * Plan vigente del especialista, para decidir si la baja es inmediata o si
+   * hay que respetarle los días que ya pagó.
+   */
+  findPlanSnapshot(doctorId: string): Promise<DoctorPlanSnapshot | null>;
+
+  /**
+   * Baja PROGRAMADA: deja la cuenta encendida y el plan como está, pero anota
+   * que el dueño se dio de baja. El barrido la apaga el día del vencimiento.
+   */
+  scheduleOwnAccountDeactivation(doctorId: string, reason: string | null): Promise<void>;
+
+  /**
+   * Apaga las cuentas con baja programada cuyo plan ya venció y las deja en el
+   * plan gratuito. Devuelve cuántas apagó.
+   */
+  applyExpiredScheduledDeactivations(freePlanKey: string): Promise<number>;
 }
