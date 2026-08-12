@@ -16,6 +16,13 @@ export type ScheduleDay = {
   start: string; // HH:MM
   end: string; // HH:MM
   enabled: boolean;
+  /**
+   * Duración y separación PROPIAS del bloque, en minutos. Cuando no vienen, el
+   * bloque hereda las del consultorio (comportamiento previo). Permiten que un
+   * mismo consultorio tenga la mañana de 45' y la tarde de 20'.
+   */
+  slotDuration?: number | null;
+  bufferMinutes?: number | null;
 };
 
 export type DoctorOffice = {
@@ -166,11 +173,12 @@ export function getTimeSlotsForDate(
   if (scheds.length === 0) return [];
   const all = new Set<string>();
   for (const s of scheds) {
+    // Cada bloque manda sobre el consultorio cuando trae su propia duración.
     for (const t of timesBetween(
       s.start,
       s.end,
-      office.slot_duration ?? 30,
-      office.buffer_minutes ?? 0,
+      s.slotDuration ?? office.slot_duration ?? 30,
+      s.bufferMinutes ?? office.buffer_minutes ?? 0,
     )) {
       all.add(t);
     }
