@@ -381,6 +381,25 @@ consultations}` (+ Consultorios/Plantillas sin moduleKey); deshabilitados agenda
   puramente del frontend. Se sigue rechazando el solapamiento (el pedido es ocupar un hueco, no
   encimar) y se permite fuera del horario del consultorio.
 
+- **ADR-034 (2026-08-16):** **La divisa del portal es del ESPECIALISTA y solo cambia lo que se
+  MUESTRA.** Si elige la tasa en euros, sus precios se muestran con `€` en vez de `$`: es el MISMO
+  número, no hay conversión. Lo único que cambia de fondo es la tasa con la que se calcula el
+  equivalente en bolívares. Se propaga desde `useBcvRate()`, que ya conocía el modo
+  (`profiles.currency_mode`) y ya estaba enganchado en las pantallas con plata.
+  (1) **NO cambia lo que se GUARDA**: los importes se siguen persistiendo igual (`currency: 'USD'`
+  en ingresos manuales) porque no hay conversión de por medio. Nadie debe leer esos datos después
+  como si fueran euros. (2) **El plan que el especialista le paga a Delta es SIEMPRE USD** — lo
+  fijan los administradores y no sigue la divisa con la que él le cobra a sus pacientes. Quedan
+  afuera el panel de suscripción, el modal de pago del plan, `/doctor/upgrade` y todo `/admin`.
+  ⚠️ Ahí había un bug: el panel de suscripción convertía el precio del plan Delta a bolívares con
+  la tasa DEL ESPECIALISTA, y ese es el monto que transfiere al pagar con un método en bolívares —
+  uno en modo euro veía y podía pagar una cifra equivocada. Ahora fuerza la tasa oficial del dólar.
+  (3) **El paciente ve la misma divisa que el especialista.** Como `/book/:doctorId` no tiene
+  sesión, `GET /api/booking/:doctorId/info` expone `currencyMode` y `customRate` (camelCase) y la
+  preferencia baja por props hasta el hook; antes el endpoint autenticado daba 401 y la página caía
+  a dólar oficial. `customRate` solo se expone cuando el modo es `custom`. (4) Los métodos de pago
+  tipo "Efectivo USD" NO se tocan: describen qué billete recibe, no la divisa de sus precios.
+
 - **Terminología (2026-07-23):** "médico" (SUSTANTIVO que nombra al usuario) → **"especialista"** en UI/correos/guías;
   se conservan adjetivos ("informe/reposo/insumos/datos médicos") y honoríficos Dr./Dra. Plantillas de email sembradas se
   actualizan en BD vía mig `20260723000001` (REPLACE de frases sustantivas; `REPLACE` no toca adjetivos).

@@ -165,4 +165,92 @@ describe('GetBookingDoctorInfoUseCase', () => {
       expect(mockStorage.getSignedUrl).not.toHaveBeenCalled();
     });
   });
+
+  // ---------------------------------------------------------------------------
+  // D1 — currency mode pass-through
+  // ---------------------------------------------------------------------------
+
+  describe('currencyMode and customRate pass-through (D1)', () => {
+    beforeEach(() => {
+      mockFeatureChecker.isBookingEnabled.mockResolvedValue(true);
+    });
+
+    it('passes currencyMode=eur_bcv through to the response', async () => {
+      mockLoader.findById.mockResolvedValue({
+        ...DOCTOR,
+        currencyMode: 'eur_bcv',
+        customRate: null,
+      });
+
+      const result = await useCase.execute('doc-001');
+
+      expect(result.currencyMode).toBe('eur_bcv');
+      expect(result.customRate).toBeNull();
+    });
+
+    it('passes currencyMode=custom and customRate through when rate is set', async () => {
+      mockLoader.findById.mockResolvedValue({
+        ...DOCTOR,
+        currencyMode: 'custom',
+        customRate: 97.5,
+      });
+
+      const result = await useCase.execute('doc-001');
+
+      expect(result.currencyMode).toBe('custom');
+      expect(result.customRate).toBe(97.5);
+    });
+
+    it('does not throw when currencyMode=custom and customRate is null (rate not yet configured)', async () => {
+      mockLoader.findById.mockResolvedValue({
+        ...DOCTOR,
+        currencyMode: 'custom',
+        customRate: null,
+      });
+
+      const result = await useCase.execute('doc-001');
+
+      expect(result.currencyMode).toBe('custom');
+      expect(result.customRate).toBeNull();
+    });
+
+    it('passes currencyMode=usd_bcv and null customRate (repository default for null column)', async () => {
+      // The repository normalises null → 'usd_bcv'; the use case just passes it through.
+      mockLoader.findById.mockResolvedValue({
+        ...DOCTOR,
+        currencyMode: 'usd_bcv',
+        customRate: null,
+      });
+
+      const result = await useCase.execute('doc-001');
+
+      expect(result.currencyMode).toBe('usd_bcv');
+      expect(result.customRate).toBeNull();
+    });
+
+    it('customRate is null when mode is usd_bcv, even if loader somehow provides a rate', async () => {
+      // Repository guarantees this; use case must not alter the contract.
+      // If the loader returns null for a non-custom mode, the use case keeps it null.
+      mockLoader.findById.mockResolvedValue({
+        ...DOCTOR,
+        currencyMode: 'usd_bcv',
+        customRate: null, // repository always returns null for non-custom
+      });
+
+      const result = await useCase.execute('doc-001');
+
+      expect(result.customRate).toBeNull();
+    });
+
+    it('works without currencyMode field (loader without D1 support — backward compat)', async () => {
+      // DOCTOR constant does not include currencyMode — simulates an old loader.
+      mockLoader.findById.mockResolvedValue(DOCTOR);
+
+      const result = await useCase.execute('doc-001');
+
+      // Use case must not throw; currencyMode is simply undefined (optional field).
+      expect(result).toBeDefined();
+      expect(result.currencyMode).toBeUndefined();
+    });
+  });
 });

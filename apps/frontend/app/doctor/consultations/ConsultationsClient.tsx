@@ -409,7 +409,7 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
   const router = useRouter();
   const pathname = usePathname();
   const openId = searchParams.get('open');
-  const { rate: bcvRate, toBs } = useBcvRate();
+  const { rate: bcvRate, toBs, format, currencyCode } = useBcvRate();
   const { features: planFeatures, loading: planLoading } = useDoctorFeatures();
 
   const [view, setView] = useState<ViewMode>('list');
@@ -4972,7 +4972,7 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                                 <span className="text-slate-500">Monto:</span>
                                 <div className="text-right">
                                   <span className="font-semibold text-slate-800">
-                                    ${appointmentData.plan_price.toFixed(2)}
+                                    {format(appointmentData.plan_price)}
                                   </span>
                                   {bcvRate && (
                                     <span className="block text-[10px] text-slate-400">
@@ -5048,7 +5048,7 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                         {/* Monto cobrado — editable */}
                         <div>
                           <label className="block text-[10px] text-slate-500 mb-1">
-                            Monto cobrado (USD)
+                            Monto cobrado ({currencyCode})
                           </label>
                           <input
                             type="number"
@@ -5229,14 +5229,14 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                             Total cobrado
                           </p>
                           <p className="text-sm font-extrabold text-emerald-700">
-                            ${Number(selected.amount).toFixed(2)}
+                            {format(Number(selected.amount))}
                           </p>
                           {selected.extra_items && selected.extra_items.length > 0 && (
                             <div className="pt-1 space-y-0.5">
                               {selected.base_amount != null && (
                                 <div className="flex justify-between text-[10px] text-emerald-600">
                                   <span>Consulta base</span>
-                                  <span>${Number(selected.base_amount).toFixed(2)}</span>
+                                  <span>{format(Number(selected.base_amount))}</span>
                                 </div>
                               )}
                               {selected.extra_items.map((ei, idx) => (
@@ -5245,9 +5245,7 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                                   className="flex justify-between text-[10px] text-emerald-600"
                                 >
                                   <span className="truncate mr-2">{ei.description}</span>
-                                  <span className="shrink-0">
-                                    ${Number(ei.amount_usd).toFixed(2)}
-                                  </span>
+                                  <span className="shrink-0">{format(Number(ei.amount_usd))}</span>
                                 </div>
                               ))}
                             </div>
@@ -6805,7 +6803,7 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                             </span>
                             <div className="text-right">
                               <span className="text-sm font-bold text-teal-600">
-                                ${plan.price_usd.toFixed(2)}
+                                {format(plan.price_usd)}
                               </span>
                               {bcvRate && (
                                 <span className="block text-[11px] text-slate-400">

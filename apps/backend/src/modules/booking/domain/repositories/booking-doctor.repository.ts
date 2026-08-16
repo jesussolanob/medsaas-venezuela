@@ -22,6 +22,21 @@ export interface DoctorPublicInfo {
    * Sourced from doctor_schedules.booking_horizon_weeks (default 8).
    */
   bookingHorizonWeeks?: number;
+  /**
+   * Currency mode chosen by the doctor in Settings → Payment methods.
+   * Controls which exchange rate is used to display prices in bolívares.
+   *
+   * Default: 'usd_bcv' when profiles.currency_mode is null (most profiles).
+   * Exposed to the public booking widget so the patient sees the same
+   * currency symbol and bolívar amount as the doctor.
+   */
+  currencyMode?: 'usd_bcv' | 'eur_bcv' | 'custom';
+  /**
+   * Doctor's personal exchange rate (bolívares per unit).
+   * Only populated when currencyMode === 'custom'; null otherwise.
+   * Not sensitive — the patient already sees the result of this calculation.
+   */
+  customRate?: number | null;
 }
 
 export interface IBookingDoctorLoader {

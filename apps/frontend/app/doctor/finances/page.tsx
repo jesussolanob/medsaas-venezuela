@@ -7,7 +7,7 @@
 // consultations via /api/consultations. Realtime Supabase eliminado (Fase 5).
 import { useState, useEffect, useMemo } from 'react';
 import { useBcvRate } from '@/lib/useBcvRate';
-import { formatUsd, formatBs } from '@/lib/finances';
+import { formatBs } from '@/lib/finances';
 import { getPayments } from './payments-actions';
 import { getPatients, getDoctorId, addPatient, type Patient } from '../patients/actions';
 import type { PatientFormData } from '@/components/patient/PatientForm';
@@ -137,7 +137,7 @@ function parseDateLocal(dateStr: string): Date {
 }
 
 export default function FinancesPage() {
-  const { rate: bcvRate, toBs } = useBcvRate();
+  const { rate: bcvRate, toBs, format, currencyCode, symbol } = useBcvRate();
   const [incomes, setIncomes] = useState<Income[]>([]);
   // Cuentas por cobrar: pagos aún 'pending' (no aprobados). Se muestran como "Por ingresar".
   const [pendingIncomes, setPendingIncomes] = useState<Income[]>([]);
@@ -713,7 +713,7 @@ export default function FinancesPage() {
       'Status Consulta',
       'Status Pago',
       'Duración',
-      'Monto USD',
+      `Monto ${currencyCode}`,
       'Diagnóstico',
     ];
     const lines: string[] = [headers.join(',')];
@@ -778,7 +778,7 @@ export default function FinancesPage() {
     let csv = '';
     if (type === 'all') {
       // Unified table with all movements
-      csv = 'Tipo,Descripción,Detalle,Monto USD,Método/Categoría,Fecha,Estado\n';
+      csv = `Tipo,Descripción,Detalle,Monto ${currencyCode},Método/Categoría,Fecha,Estado\n`;
       const incRows = tab === 'income' ? incomes : filteredData.filteredIncomes;
       const expRows = tab === 'expenses' ? expenses : filteredData.filteredExpenses;
       // manualRows: filteredManual viene del período activo; en tab 'income' usamos
@@ -841,7 +841,7 @@ export default function FinancesPage() {
       csv += `"","","TOTAL EGRESOS",-${totalExp},"","",""\n`;
       csv += `"","","BALANCE",${totalInc - totalExp},"","",""\n`;
     } else if (type === 'income') {
-      csv = 'Paciente,Monto USD,Método de pago,Fecha,Código\n';
+      csv = `Paciente,Monto ${currencyCode},Método de pago,Fecha,Código\n`;
       const rows = tab === 'income' ? incomes : filteredData.filteredIncomes;
       rows.forEach((i) => {
         csv += `"${i.patient_name}",${i.amount_usd},"${i.payment_method}","${new Date(i.date).toLocaleDateString('es-VE')}","${i.consultation_code || ''}"\n`;
@@ -1182,7 +1182,7 @@ export default function FinancesPage() {
               </p>
             </div>
             <p className="text-2xl font-bold text-emerald-600">
-              {formatUsd(filteredData.totalIncome)}
+              {format(filteredData.totalIncome)}
             </p>
             {bcvRate && (
               <p className="text-sm text-emerald-400 font-semibold">
@@ -1199,9 +1199,7 @@ export default function FinancesPage() {
                 Por ingresar
               </p>
             </div>
-            <p className="text-2xl font-bold text-amber-600">
-              {formatUsd(filteredData.pendingTotal)}
-            </p>
+            <p className="text-2xl font-bold text-amber-600">{format(filteredData.pendingTotal)}</p>
             {bcvRate && (
               <p className="text-sm text-amber-400 font-semibold">
                 {toBs(filteredData.pendingTotal)}
@@ -1215,9 +1213,7 @@ export default function FinancesPage() {
               </div>
               <p className="text-xs font-medium text-slate-400 uppercase tracking-wider">Gastos</p>
             </div>
-            <p className="text-2xl font-bold text-red-500">
-              {formatUsd(filteredData.totalExpenses)}
-            </p>
+            <p className="text-2xl font-bold text-red-500">{format(filteredData.totalExpenses)}</p>
             {bcvRate && (
               <p className="text-sm text-red-300 font-semibold">
                 {toBs(filteredData.totalExpenses)}
@@ -1238,7 +1234,7 @@ export default function FinancesPage() {
             <p
               className={`text-2xl font-bold ${filteredData.balance >= 0 ? 'text-teal-600' : 'text-amber-600'}`}
             >
-              {formatUsd(filteredData.balance)}
+              {format(filteredData.balance)}
             </p>
             {bcvRate && (
               <p
@@ -1266,7 +1262,7 @@ export default function FinancesPage() {
                 </p>
               </div>
               <p className="text-xl font-bold text-emerald-600">
-                {formatUsd(filteredData.totalIncome)}
+                {format(filteredData.totalIncome)}
               </p>
               {bcvRate && (
                 <p className="text-xs text-emerald-400 font-semibold mt-0.5">
@@ -1283,9 +1279,7 @@ export default function FinancesPage() {
                   Total gastos
                 </p>
               </div>
-              <p className="text-xl font-bold text-red-500">
-                {formatUsd(filteredData.totalExpenses)}
-              </p>
+              <p className="text-xl font-bold text-red-500">{format(filteredData.totalExpenses)}</p>
               {bcvRate && (
                 <p className="text-xs text-red-300 font-semibold mt-0.5">
                   {toBs(filteredData.totalExpenses)}
@@ -1308,7 +1302,7 @@ export default function FinancesPage() {
               <p
                 className={`text-xl font-bold ${filteredData.balance >= 0 ? 'text-teal-600' : 'text-amber-600'}`}
               >
-                {formatUsd(filteredData.balance)}
+                {format(filteredData.balance)}
               </p>
               {bcvRate && (
                 <p
@@ -1351,7 +1345,7 @@ export default function FinancesPage() {
                   className={`rounded-xl border border-slate-100 p-4 ${item.bg}`}
                 >
                   <p className="text-xs font-semibold text-slate-500 mb-1">{item.label}</p>
-                  <p className={`text-lg font-bold ${item.color}`}>{formatUsd(item.value)}</p>
+                  <p className={`text-lg font-bold ${item.color}`}>{format(item.value)}</p>
                   {bcvRate && <p className="text-xs text-slate-400 mt-0.5">{toBs(item.value)}</p>}
                 </div>
               ))}
@@ -1372,7 +1366,7 @@ export default function FinancesPage() {
                 return (
                   <div key={cat.value} className="rounded-xl border border-slate-100 bg-red-50 p-3">
                     <p className="text-[10px] font-semibold text-slate-500 mb-1">{cat.label}</p>
-                    <p className="text-sm font-bold text-red-600">{formatUsd(val)}</p>
+                    <p className="text-sm font-bold text-red-600">{format(val)}</p>
                     {bcvRate && <p className="text-[10px] text-slate-400 mt-0.5">{toBs(val)}</p>}
                   </div>
                 );
@@ -1408,7 +1402,7 @@ export default function FinancesPage() {
                   <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#64748b' }} />
                   <YAxis tick={{ fontSize: 11, fill: '#64748b' }} />
                   <RTooltip
-                    formatter={(v) => `$${Number(v ?? 0).toFixed(2)}`}
+                    formatter={(v) => `${symbol}${Number(v ?? 0).toFixed(2)}`}
                     contentStyle={{ borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 12 }}
                   />
                   <Legend wrapperStyle={{ fontSize: 12 }} />
@@ -1454,14 +1448,19 @@ export default function FinancesPage() {
                       <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#64748b' }} />
                       <YAxis tick={{ fontSize: 11, fill: '#64748b' }} />
                       <RTooltip
-                        formatter={(v) => `$${Number(v ?? 0).toFixed(2)}`}
+                        formatter={(v) => `${symbol}${Number(v ?? 0).toFixed(2)}`}
                         contentStyle={{
                           borderRadius: 8,
                           border: '1px solid #e2e8f0',
                           fontSize: 12,
                         }}
                       />
-                      <Bar dataKey="valor" name="Monto USD" fill="#10b981" radius={[6, 6, 0, 0]} />
+                      <Bar
+                        dataKey="valor"
+                        name={`Monto ${currencyCode}`}
+                        fill="#10b981"
+                        radius={[6, 6, 0, 0]}
+                      />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
@@ -1502,14 +1501,19 @@ export default function FinancesPage() {
                       <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#64748b' }} />
                       <YAxis tick={{ fontSize: 11, fill: '#64748b' }} />
                       <RTooltip
-                        formatter={(v) => `$${Number(v ?? 0).toFixed(2)}`}
+                        formatter={(v) => `${symbol}${Number(v ?? 0).toFixed(2)}`}
                         contentStyle={{
                           borderRadius: 8,
                           border: '1px solid #e2e8f0',
                           fontSize: 12,
                         }}
                       />
-                      <Bar dataKey="valor" name="Monto USD" fill="#ef4444" radius={[6, 6, 0, 0]} />
+                      <Bar
+                        dataKey="valor"
+                        name={`Monto ${currencyCode}`}
+                        fill="#ef4444"
+                        radius={[6, 6, 0, 0]}
+                      />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
@@ -1634,7 +1638,7 @@ export default function FinancesPage() {
                     <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#64748b' }} />
                     <YAxis tick={{ fontSize: 11, fill: '#64748b' }} />
                     <RTooltip
-                      formatter={(v) => `$${Number(v ?? 0).toFixed(2)}`}
+                      formatter={(v) => `${symbol}${Number(v ?? 0).toFixed(2)}`}
                       contentStyle={{ borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 12 }}
                     />
                     <Legend wrapperStyle={{ fontSize: 12 }} />
@@ -1763,7 +1767,7 @@ export default function FinancesPage() {
                                   </span>
                                 </td>
                                 <td className="px-3 py-2 text-xs text-right font-semibold text-slate-700 whitespace-nowrap">
-                                  {r.amount_usd != null ? formatUsd(r.amount_usd) : '—'}
+                                  {r.amount_usd != null ? format(r.amount_usd) : '—'}
                                 </td>
                                 <td className="px-3 py-2 text-xs text-right">
                                   <button
@@ -1835,16 +1839,20 @@ export default function FinancesPage() {
                       <table className="w-full text-sm">
                         <thead>
                           <tr className="bg-slate-50 border-b border-slate-200">
-                            {['Fecha', 'Descripción', 'Paciente', 'Monto USD', 'Monto Bs'].map(
-                              (h) => (
-                                <th
-                                  key={h}
-                                  className="text-left px-3 py-2 text-[10px] font-semibold text-slate-400 uppercase tracking-wider"
-                                >
-                                  {h}
-                                </th>
-                              ),
-                            )}
+                            {[
+                              'Fecha',
+                              'Descripción',
+                              'Paciente',
+                              `Monto ${currencyCode}`,
+                              'Monto Bs',
+                            ].map((h) => (
+                              <th
+                                key={h}
+                                className="text-left px-3 py-2 text-[10px] font-semibold text-slate-400 uppercase tracking-wider"
+                              >
+                                {h}
+                              </th>
+                            ))}
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
@@ -1864,7 +1872,7 @@ export default function FinancesPage() {
                                 {m.patientName ?? '—'}
                               </td>
                               <td className="px-3 py-2 text-xs font-bold text-emerald-600 whitespace-nowrap">
-                                +{formatUsd(m.amount)}
+                                +{format(m.amount)}
                               </td>
                               <td className="px-3 py-2 text-xs text-slate-400 whitespace-nowrap">
                                 {bcvRate ? toBs(m.amount) : '—'}
@@ -1926,16 +1934,20 @@ export default function FinancesPage() {
                       <table className="w-full text-sm">
                         <thead>
                           <tr className="bg-slate-50 border-b border-slate-200">
-                            {['Fecha', 'Categoría', 'Descripción', 'Monto USD', 'Monto Bs'].map(
-                              (h) => (
-                                <th
-                                  key={h}
-                                  className="text-left px-3 py-2 text-[10px] font-semibold text-slate-400 uppercase tracking-wider"
-                                >
-                                  {h}
-                                </th>
-                              ),
-                            )}
+                            {[
+                              'Fecha',
+                              'Categoría',
+                              'Descripción',
+                              `Monto ${currencyCode}`,
+                              'Monto Bs',
+                            ].map((h) => (
+                              <th
+                                key={h}
+                                className="text-left px-3 py-2 text-[10px] font-semibold text-slate-400 uppercase tracking-wider"
+                              >
+                                {h}
+                              </th>
+                            ))}
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
@@ -1956,7 +1968,7 @@ export default function FinancesPage() {
                                   {e.concept}
                                 </td>
                                 <td className="px-3 py-2 text-xs font-bold text-red-500 whitespace-nowrap">
-                                  -{formatUsd(e.amount)}
+                                  -{format(e.amount)}
                                 </td>
                                 <td className="px-3 py-2 text-xs text-slate-400 whitespace-nowrap">
                                   {bcvRate ? toBs(e.amount) : '—'}
@@ -2150,7 +2162,7 @@ export default function FinancesPage() {
                               )}
                             </td>
                             <td className="px-5 py-3 text-sm font-bold text-emerald-600 text-right">
-                              +{formatUsd(item.amount_usd)}
+                              +{format(item.amount_usd)}
                             </td>
                             <td className="px-5 py-3 text-xs text-slate-400 text-right">
                               {bcvRate ? toBs(item.amount_usd) : '—'}
@@ -2199,7 +2211,7 @@ export default function FinancesPage() {
                             Total en esta página
                           </td>
                           <td className="px-5 py-3 text-sm font-bold text-emerald-600 text-right">
-                            {formatUsd(pageTotal)}
+                            {format(pageTotal)}
                           </td>
                           <td className="px-5 py-3 text-xs font-bold text-slate-500 text-right">
                             {bcvRate ? toBs(pageTotal) : '—'}
@@ -2547,7 +2559,7 @@ export default function FinancesPage() {
                               )}
                             </td>
                             <td className="px-5 py-3 text-sm font-bold text-red-500 text-right">
-                              -{formatUsd(exp.amount)}
+                              -{format(exp.amount)}
                             </td>
                             <td className="px-5 py-3 text-xs text-slate-400 text-right">
                               {bcvRate ? toBs(exp.amount || 0) : '—'}
@@ -2591,7 +2603,7 @@ export default function FinancesPage() {
                             Total en esta página
                           </td>
                           <td className="px-5 py-3 text-sm font-bold text-red-500 text-right">
-                            -{formatUsd(pageTotal)}
+                            -{format(pageTotal)}
                           </td>
                           <td className="px-5 py-3 text-xs font-bold text-slate-500 text-right">
                             {bcvRate ? toBs(pageTotal) : '—'}
@@ -2644,6 +2656,10 @@ function ConsultationDetailModal({
   paymentStatusLabel: (s: string | null) => string;
   formatDurationCell: (m: number | null | undefined) => string;
 }) {
+  // La divisa la decide el especialista en Configuración; el modal la lee del
+  // mismo hook que el resto de la pantalla para no mostrar otro símbolo.
+  const { format } = useBcvRate();
+
   // Helper: obtener valor del bloque desde blocks_data
   const getBlockValue = (key: string): string | null => {
     if (!row.blocks_data) return null;
@@ -2839,7 +2855,7 @@ function ConsultationDetailModal({
                   Monto
                 </p>
                 <p className="text-slate-800 font-bold text-base">
-                  {row.amount_usd != null ? formatUsd(row.amount_usd) : '—'}
+                  {row.amount_usd != null ? format(row.amount_usd) : '—'}
                 </p>
               </div>
               <div>

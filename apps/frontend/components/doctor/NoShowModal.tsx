@@ -32,6 +32,7 @@
 import { useEffect, useState } from 'react';
 import { X, UserX, Loader2, AlertCircle } from 'lucide-react';
 import RescheduleModal from '@/components/doctor/RescheduleModal';
+import { useBcvRate } from '@/lib/useBcvRate';
 import { showToast } from '@/components/ui/Toaster';
 import {
   getConsultation,
@@ -62,10 +63,6 @@ export interface NoShowModalProps {
   onDone: (result: NoShowResult) => void;
 }
 
-function formatUsd(n: number): string {
-  return `$${n.toFixed(2)}`;
-}
-
 export default function NoShowModal({
   consultationId,
   appointmentId,
@@ -74,6 +71,9 @@ export default function NoShowModal({
   onClose,
   onDone,
 }: NoShowModalProps) {
+  // La divisa la elige el especialista en Configuración (puede ser $ o €).
+  const { format: money } = useBcvRate();
+
   // Datos frescos de la consulta. NO se reciben por props a propósito: la agenda
   // solo conoce `plan_price`, que desde que el monto es editable puede diferir
   // del costo real. Leer el valor equivocado y sumarle la multa daría un total
@@ -252,13 +252,13 @@ export default function NoShowModal({
               >
                 {isPaid ? (
                   <>
-                    Esta consulta ya está <strong>pagada ({formatUsd(currentAmount)})</strong>. El
-                    monto cobrado se mantiene: por el portal no hay devolución.
+                    Esta consulta ya está <strong>pagada ({money(currentAmount)})</strong>. El monto
+                    cobrado se mantiene: por el portal no hay devolución.
                   </>
                 ) : (
                   <>
-                    Esta consulta está <strong>impaga ({formatUsd(currentAmount)})</strong>. Si el
-                    paciente no reagenda, el costo pasa a {formatUsd(fine)} y sale de{' '}
+                    Esta consulta está <strong>impaga ({money(currentAmount)})</strong>. Si el
+                    paciente no reagenda, el costo pasa a {money(fine)} y sale de{' '}
                     <strong>Por cobrar</strong>.
                   </>
                 )}
@@ -302,7 +302,7 @@ export default function NoShowModal({
                       <div className="flex items-start gap-2 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-800">
                         <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
                         <span>
-                          El costo pasa a {formatUsd(currentAmount + fine)} y la consulta vuelve a{' '}
+                          El costo pasa a {money(currentAmount + fine)} y la consulta vuelve a{' '}
                           <strong>Por cobrar</strong> por el total. Cuando cobres la diferencia,
                           aprobá el pago de nuevo.
                         </span>
