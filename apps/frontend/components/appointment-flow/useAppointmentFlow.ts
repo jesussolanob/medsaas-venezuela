@@ -11,12 +11,20 @@ import {
   NewPatientForm,
   GENERIC_PLAN,
   METHODS_WITH_RECEIPT,
+  fetchDoctorOffices,
   getTimeSlotsForDate,
+  getTimeSlotsWithDuration,
   isoToCaracasHHMM,
   normalizePatient,
   normalizeService,
 } from './appointment-flow.utils';
 import type { AppointmentContext } from './NewAppointmentFlow';
+import {
+  blockedTimes,
+  hhmmToMinutes,
+  DEFAULT_APPOINTMENT_MINUTES,
+  type BookedInterval,
+} from '@/lib/slot-availability';
 
 // ---------------------------------------------------------------------------
 // Fallback doctor UUID (Etapa 1 dev-stub)
@@ -336,25 +344,8 @@ export function useAppointmentFlow(
   useEffect(() => {
     if (!open) return;
     setLoadingOffices(true);
-    fetch('/api/doctor/offices', { cache: 'no-store' })
-      .then((r) => (r.ok ? r.json() : { data: [] }))
-      .then((json) => {
-        // El backend devuelve camelCase (slotDuration/bufferMinutes); el resto del
-        // flujo lee snake_case (slot_duration/buffer_minutes). Sin este mapeo, el
-        // buffer entre consultas quedaba en undefined→0 y los slots salían cada
-        // slot_duration en vez de slot_duration+buffer (p.ej. 9:00,9:30 en vez de 9:00,9:40).
-        const raw = Array.isArray(json.data) ? (json.data as Array<Record<string, unknown>>) : [];
-        const list: DoctorOffice[] = raw.map((o) => ({
-          ...(o as unknown as DoctorOffice),
-          slot_duration:
-            (o.slot_duration as number | null | undefined) ??
-            (o.slotDuration as number | null | undefined) ??
-            30,
-          buffer_minutes:
-            (o.buffer_minutes as number | null | undefined) ??
-            (o.bufferMinutes as number | null | undefined) ??
-            0,
-        }));
+    fetchDoctorOffices()
+      .then((list) => {
         setOffices(list);
         // Si el doctor tiene consultorios, auto-seleccionar el primero (ya no existe
         // la opción "Sin consultorio específico"). Solo si aún no hay uno elegido.
@@ -490,15 +481,24 @@ export function useAppointmentFlow(
       setLoadingSlots(true);
       const blocked = new Set<string>();
 
-      // Citas ya ocupadas para esa fecha
+      // Citas ya ocupadas para esa fecha.
+      // Se cruza por INTERVALO, no por hora de inicio: una cita de 45' a las
+      // 08:00 tiene que bloquear también el slot de las 08:30, y una cita a
+      // una hora libre (14:37) no aparece en la grilla pero igual ocupa.
+      const daySlots = getTimeSlotsWithDuration(selectedDate, selectedOffice);
       try {
         const apptRes = await fetch(
           `/api/doctor/appointments?date=${encodeURIComponent(selectedDate)}`,
         );
         if (apptRes.ok) {
-          const apptJson = (await apptRes.json()) as { data?: { bookedAt?: string[] } };
-          const bookedAt = apptJson?.data?.bookedAt ?? [];
-          bookedAt.forEach((iso) => blocked.add(isoToCaracasHHMM(iso)));
+          const apptJson = (await apptRes.json()) as {
+            data?: { booked?: { at: string; durationMinutes: number | null }[] };
+          };
+          const intervals: BookedInterval[] = (apptJson?.data?.booked ?? []).map((b) => ({
+            startMin: hhmmToMinutes(isoToCaracasHHMM(b.at)),
+            durationMin: b.durationMinutes ?? DEFAULT_APPOINTMENT_MINUTES,
+          }));
+          blockedTimes(daySlots, intervals).forEach((t) => blocked.add(t));
         }
       } catch {
         /* silent */
@@ -515,8 +515,7 @@ export function useAppointmentFlow(
           };
           const blockList = blocksJson?.data ?? [];
           // Verificar cada slot del día contra los bloques
-          const daySlots = getTimeSlotsForDate(selectedDate, selectedOffice);
-          daySlots.forEach((slotTime) => {
+          daySlots.forEach(({ time: slotTime }) => {
             const slotISO = new Date(`${selectedDate}T${slotTime}:00-04:00`);
             if (
               blockList.some(

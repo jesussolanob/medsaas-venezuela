@@ -400,6 +400,35 @@ consultations}` (+ Consultorios/Plantillas sin moduleKey); deshabilitados agenda
   a dólar oficial. `customRate` solo se expone cuando el modo es `custom`. (4) Los métodos de pago
   tipo "Efectivo USD" NO se tocan: describen qué billete recibe, no la divisa de sus precios.
 
+- **ADR-035 (2026-08-16):** **Un turno ocupa el TIEMPO QUE DURA, no un punto en el reloj.** Los
+  horarios ocupados se marcaban con la hora de INICIO de cada cita, así que una cita de 45' a las
+  08:00 en una grilla de 30' dejaba el 08:30 **ofrecido** en el booking público: el paciente lo
+  elegía, llenaba el formulario y recién ahí el backend lo rechazaba por solapamiento. Y una cita a
+  una hora libre (14:37) no bloqueaba nada porque esa hora no existe en la grilla. Ahora un slot
+  está ocupado cuando su intervalo se CRUZA con el de una cita: `slot [s, s+durSlot)` vs
+  `cita [a, a+durCita)`. Los extremos no cuentan (una cita que termina 08:45 deja libre el slot de
+  las 08:45). `durSlot` es la del BLOQUE (ADR-028) y si dos bloques dan el mismo horario con
+  duraciones distintas se conserva la MAYOR; `durCita` null en filas viejas → 30, igual que el
+  COALESCE de `hasOverlap`. Aplica a los TRES lugares: booking público, flujo del especialista y
+  modal de reagendar. ⚠️ El modal de reagendar además **nunca** había marcado un horario como
+  ocupado: leía `json.bookedAt` cuando el endpoint responde `{ success, data: { … } }`.
+- **ADR-036 (2026-08-16):** **Consulta inmediata: nunca se solapa y nunca se rechaza.** Para el
+  paciente que llega sin cita, la duración es `mínimo(duración del servicio, minutos hasta la
+próxima cita)` — si el bloque siguiente está libre ocupa lo que dura, y si no, se acorta
+  (decisión del dueño). Consecuencias de diseño: (1) la hora la pone el **SERVIDOR**; si el cliente
+  pudiera mandarla, "inmediata" sería un atajo para crear citas a cualquier hora salteándose
+  validaciones. (2) La duración se **recalcula al guardar** aunque el modal ya haya visto la
+  ventana: entre abrir y confirmar puede entrar otra cita. (3) El único caso sin salida —próxima
+  cita en menos de 5 minutos— se avisa y decide el especialista (`force`), y esa es la **única**
+  puerta que admite solapar; aun así el chequeo de solapamiento **del paciente** (cruza doctores)
+  nunca se saltea. (4) Consumir una sesión ya pagada pasa por el MISMO camino
+  (`pending_consultation_id`): el endpoint que existía hace su propio chequeo y rechazaría justo en
+  el caso normal. La fila pendiente se marca como agendada **solo después** de que la cita existe —
+  si falla antes, el paciente no pierde una sesión que pagó.
+  ⚠️ `CreateBookingUseCase` descartaba el id de la consulta que crea, y `appointment.consultationId`
+  viene null porque el FK se actualiza en la BD después de construir la entidad: hay que leerlo del
+  RESULTADO. Sin eso el botón no podía abrir la consulta y la sesión del combo quedaba sin enlazar.
+
 - **Terminología (2026-07-23):** "médico" (SUSTANTIVO que nombra al usuario) → **"especialista"** en UI/correos/guías;
   se conservan adjetivos ("informe/reposo/insumos/datos médicos") y honoríficos Dr./Dra. Plantillas de email sembradas se
   actualizan en BD vía mig `20260723000001` (REPLACE de frases sustantivas; `REPLACE` no toca adjetivos).
