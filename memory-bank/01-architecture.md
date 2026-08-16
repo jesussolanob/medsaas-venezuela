@@ -305,6 +305,67 @@ consultations}` (+ Consultorios/Plantillas sin moduleKey); deshabilitados agenda
   **Google aprobó la verificación el 2026-07-27 → `REVIEWER_ACCESS_ENABLED=false` en prod** (redeploy por
   `workflow_dispatch` sobre `main`, sin promover código). `staging.yml` tenía la bandera **hardcodeada en
   `true`**; ahora lee la variable del repo, igual que prod. ⚠️ Prod y staging **comparten** esa variable.
+- **ADR-028 (2026-08-12):** **La duración de la consulta vive en el BLOQUE del horario, no en el
+  consultorio.** `doctor_offices.schedule` (JSONB, `DayScheduleParams[]`) gana dos campos
+  OPCIONALES por bloque: `slotDuration` y `bufferMinutes`. Sin valor, el bloque hereda los del
+  consultorio (`office.slotDuration` / `bufferMinutes`) — que es el comportamiento previo, así que
+  **no hay migración** y todo horario ya guardado sigue siendo válido. Motivo: un mismo consultorio
+  puede tener bloques con ritmos distintos (primeras consultas de 45' en la mañana, controles de 20'
+  en la tarde). Consecuencia en el negocio: un servicio se puede asociar a un consultorio cuando
+  **ALGÚN bloque** sostiene su duración (antes se comparaba contra la única duración del
+  consultorio). Validación en `DaySchedule.validate`: el override ausente es normal, pero presente e
+  inválido invalida el bloque entero (no se guarda una duración imposible). `get-available-slots`
+  calcula duración y paso POR BLOQUE. Frontend: `getTimeSlotsForDate` hace el mismo fallback y el
+  editor de consultorios ofrece un selector por bloque + "aplicar a todos".
+- **ADR-029 (2026-08-12):** **Ingreso = pago aprobado Y cita confirmada.** Una consulta impaga, o
+  pagada pero con la cita todavía "por confirmar", NO cuenta como ingreso: suma en "Por ingresar" /
+  Cobros. La regla se aplica en las **TRES** consultas que alimentan la pantalla de finanzas —
+  la lista de ingresos (`/api/finances/income`), el resumen (`getFinancialSummary`) y los totales de
+  pagos (`listForDoctor` + `totalsForDoctor`)— porque cada una salía de un lugar distinto y aplicarla
+  en una sola dejó la tarjeta "Total ingresos" contradiciendo a la tabla de abajo. El filtro va con
+  **EXISTS y nunca con JOIN**: un mismo pago puede cubrir varias citas de un combo y un JOIN
+  duplicaría la fila del ingreso. Regla de oro al tocar esto: la plata que sale de Ingresos tiene que
+  aparecer en Por cobrar — que ningún importe quede fuera de los dos lados.
+- **ADR-030 (2026-08-12):** **Ciclo de la baja de cuenta: se respetan los días pagados y volver a
+  entrar reactiva.** (1) Si al darse de baja al especialista le quedan días de un plan PAGO, la cuenta
+  NO se apaga: conserva su plan hasta `subscription_expires_at` y queda anotada la intención
+  (`deactivated_by='self'` + `subscription_status='cancelled'`, con `is_active` todavía en true).
+  (2) Un **barrido diario** colgado del cron que ya existe (`/api/cron/appointment-reminders`,
+  `ApplyScheduledDeactivationsUseCase`) apaga ese día las cuentas vencidas y las deja en `delta_free`.
+  Va como barrido y no solo al iniciar sesión porque con la cuenta encendida su página pública sigue
+  tomando citas. (3) Al **volver a entrar**, una cuenta apagada POR SU PROPIO DUEÑO se reactiva sola
+  en plan gratuito (`ProcessLoginTouchUseCase`, que corre en el `resolve-identity` no guardado) y puede
+  mejorar su plan sin pedirle nada a un admin. Un bloqueo hecho por un admin (`deactivated_by='admin'`)
+  sigue necesitando al admin: esa distinción es la salvaguarda y no debe borrarse.
+- **ADR-031 (2026-08-16):** **La inasistencia es un estado RESUELTO, y se resuelve con multa y/o
+  reagenda en un solo paso.** Tres decisiones que van juntas:
+  (1) **`no_show` cuenta como cita resuelta en finanzas** (se suma a `confirmed`/`completed` en el
+  criterio COBRADA). Antes una consulta PAGADA cuya cita quedó en no_show caía en "Por ingresar":
+  plata ya cobrada mostrada como pendiente de cobro. Un no_show no espera confirmación de nada —
+  ya ocurrió. Si estaba pagado es ingreso (**por el portal no hay devolución**); si no, el monto
+  queda en 0 y no suma de ningún lado. ⚠️ El criterio vivía **inline en SEIS lugares**, no en los
+  tres que decía el ADR-029 — al tocarlo hay que peinarlos todos o la pantalla se contradice sola.
+  Además una consulta pendiente con monto efectivo 0 **no se lista en cobros**
+  (`COALESCE(c.amount, a.plan_price, 0) > 0`): si no hay nada que cobrar, no es un cobro.
+  (2) **Matriz de la plata al marcar inasistencia** (decisión del dueño): impaga y no reagenda →
+  el costo pasa a la multa (0 por defecto) y sale de Por cobrar; impaga y reagenda → sigue el flujo
+  completo y la multa se suma; pagada → el monto cobrado se mantiene; pagada + multa → el costo sube
+  y **el pago vuelve a `pending` por el TOTAL**, porque no existen pagos parciales (el enum es
+  `pending|approved` y nada más), y al cobrar la diferencia se aprueba de nuevo. La multa es
+  **siempre opcional y arranca en $0**. Si el especialista devuelve plata, corrige el monto a mano.
+  (3) **Reagendar desde `no_show` está permitido** y devuelve la cita a un estado vigente con la
+  misma regla de 3 días de la creación; `cancelled` y `completed` siguen bloqueados. El log de
+  auditoría guarda la transición REAL (`no_show → confirmed/scheduled`): como el estado deja de ser
+  no_show, ese log es el **único rastro** de que el paciente faltó.
+- **ADR-032 (2026-08-16):** **Una cita con fecha pasada creada por el especialista nace `completed`,
+  y no hay tope hacia atrás.** El especialista atiende y a veces carga la consulta después (se fue la
+  luz, se le hizo tarde): tiene que poder dejarla con la fecha REAL y que quede atendida de una vez,
+  sin un segundo paso que se olvida. Se resuelve en `computeInitialStatus` y no en la UI porque la
+  consulta **no tiene columna `status` propia** — su estado se deriva del de la cita, así que basta
+  con que la cita nazca `completed`. Solo aplica a actor `doctor`/`admin`: un booking público con
+  fecha pasada sigue siendo `scheduled` (y de todos modos no puede mandarla). El backend **nunca
+  validó fechas pasadas**, así que quitar el tope de 30 días fue puramente de frontend.
+
 - **Terminología (2026-07-23):** "médico" (SUSTANTIVO que nombra al usuario) → **"especialista"** en UI/correos/guías;
   se conservan adjetivos ("informe/reposo/insumos/datos médicos") y honoríficos Dr./Dra. Plantillas de email sembradas se
   actualizan en BD vía mig `20260723000001` (REPLACE de frases sustantivas; `REPLACE` no toca adjetivos).

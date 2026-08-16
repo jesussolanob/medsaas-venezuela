@@ -14,6 +14,7 @@ import { SchedulePendingConsultationUseCase } from './application/use-cases/sche
 import { GetPendingConsultationByTokenUseCase } from './application/use-cases/get-pending-consultation-by-token.use-case';
 import { SchedulePendingConsultationByTokenUseCase } from './application/use-cases/schedule-pending-consultation-by-token.use-case';
 import { CreateDoctorPendingConsultationsUseCase } from './application/use-cases/create-doctor-pending-consultations.use-case';
+import { GetPackageUsageUseCase } from './application/use-cases/get-package-usage.use-case';
 import { DispatchPendingConsultationRemindersUseCase } from './application/use-cases/dispatch-pending-consultation-reminders.use-case';
 
 // Infrastructure service
@@ -86,6 +87,7 @@ import { EmailModule } from '../email/email.module';
     GetPendingConsultationByTokenUseCase,
     SchedulePendingConsultationByTokenUseCase,
     DispatchPendingConsultationRemindersUseCase,
+    GetPackageUsageUseCase,
   ],
   // Export use cases and repository so consuming modules (BookingModule, RemindersModule)
   // can inject them without re-registering providers.

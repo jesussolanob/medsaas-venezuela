@@ -56,14 +56,21 @@ interface UnifiedIncomeRow {
 
 /** Raw row returned by the unified income COUNT query. */
 /**
- * Una consulta cuenta como COBRADA cuando su cita está confirmada o ya se
- * atendió. Sin cita asociada (ingreso suelto, consulta cargada a mano) también
- * cuenta: no hay nada que confirmar.
+ * Una consulta cuenta como COBRADA cuando su cita está en un estado RESUELTO
+ * (confirmada, atendida o no-asistió) o cuando no tiene cita asociada (ingreso
+ * suelto, consulta cargada a mano).
+ *
+ * 'no_show' se incluye porque es un estado terminal: la cita ya ocurrió (aunque
+ * el paciente no fue), no hay nada pendiente de confirmación.  Si el pago estaba
+ * aprobado, es un ingreso cobrado (el portal no emite devoluciones).  Si el monto
+ * quedó en 0 tras la inasistencia, la consulta no suma nada en ningún lado y el
+ * filtro `COALESCE(c.amount, a.plan_price, 0) > 0` la excluye del listado de
+ * cobros antes de que COBRADA entre en juego.
  *
  * Se usa como fragmento SQL sobre el alias `a` (appointments) — no lleva valores
  * del usuario, así que no hay riesgo de inyección.
  */
-const COBRADA = "(a.id IS NULL OR a.status IN ('confirmed', 'completed'))";
+const COBRADA = "(a.id IS NULL OR a.status IN ('confirmed', 'completed', 'no_show'))";
 
 interface CountRow {
   total: string;
@@ -428,16 +435,18 @@ export class SequelizeFinanceRepository implements IFinanceRepository {
         AND pt.deleted_at IS NULL
       WHERE p.doctor_id = :doctorId
         AND p.status = 'approved'
-        -- Y con la cita confirmada: un pago aprobado cuya cita sigue "por
-        -- confirmar" todavía no es ingreso. EXISTS y no JOIN a propósito —
-        -- un mismo pago puede cubrir varias citas (combo) y un JOIN
-        -- duplicaría la fila del ingreso tantas veces como citas tenga.
+        -- La cita tiene que estar en estado resuelto: un pago aprobado cuya
+        -- cita sigue "por confirmar" todavía no es ingreso. 'no_show' se
+        -- incluye porque es un estado terminal; si el pago está aprobado ya
+        -- es un ingreso (el portal no emite devoluciones).
+        -- EXISTS y no JOIN: un mismo pago puede cubrir varias citas (combo)
+        -- y un JOIN duplicaría la fila del ingreso tantas veces como citas.
         AND (
           NOT EXISTS (SELECT 1 FROM appointments ap WHERE ap.payment_id = p.id)
           OR EXISTS (
             SELECT 1 FROM appointments ap
              WHERE ap.payment_id = p.id
-               AND ap.status IN ('confirmed', 'completed')
+               AND ap.status IN ('confirmed', 'completed', 'no_show')
           )
         )
         ${monthWhereConsult}
@@ -532,8 +541,11 @@ export class SequelizeFinanceRepository implements IFinanceRepository {
         approved_total: string | null;
         pending_total: string | null;
       }>(
+        // approved_total usa COBRADA igual que getConsultationSummary para que
+        // ambas fuentes muestren el mismo número de "ingresos de consultas" en
+        // la UI (evita que dos tarjetas de la misma pantalla se contradigan).
         `SELECT
-           COALESCE(SUM(CASE WHEN c.payment_status = 'approved' THEN c.amount ELSE 0 END), 0) AS approved_total,
+           COALESCE(SUM(CASE WHEN c.payment_status = 'approved' AND ${COBRADA} THEN c.amount ELSE 0 END), 0) AS approved_total,
            COALESCE(SUM(CASE WHEN c.payment_status = 'pending'  THEN COALESCE(c.amount, a.plan_price, 0) ELSE 0 END), 0) AS pending_total
          FROM consultations c
          LEFT JOIN appointments a ON a.id = c.appointment_id

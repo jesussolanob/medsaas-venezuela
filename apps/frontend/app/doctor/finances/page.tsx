@@ -2157,7 +2157,10 @@ export default function FinancesPage() {
                             </td>
                             <td className="px-2 py-3">
                               {item.source === 'manual' && (
-                                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                                // Siempre visibles: con `opacity-0 group-hover` no existían
+                                // en tablet ni telefono (no hay hover) y pasaban
+                                // desapercibidos en escritorio.
+                                <div className="flex items-center gap-1">
                                   {/* Editar ingreso manual */}
                                   <button
                                     onClick={() => {
@@ -2171,7 +2174,7 @@ export default function FinancesPage() {
                                         conceptId: '',
                                       });
                                     }}
-                                    className="p-1 rounded-lg text-slate-300 hover:text-teal-600 hover:bg-teal-50"
+                                    className="p-1 rounded-lg text-slate-400 hover:text-teal-600 hover:bg-teal-50"
                                     title="Editar ingreso"
                                   >
                                     <Pencil className="w-3.5 h-3.5" />
@@ -2179,7 +2182,7 @@ export default function FinancesPage() {
                                   {/* Borrar ingreso manual */}
                                   <button
                                     onClick={() => handleDeleteIncome(item.id)}
-                                    className="p-1 rounded-lg text-slate-300 hover:text-red-500 hover:bg-red-50"
+                                    className="p-1 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50"
                                     title="Eliminar ingreso"
                                   >
                                     <Trash2 className="w-3.5 h-3.5" />
@@ -2550,7 +2553,8 @@ export default function FinancesPage() {
                               {bcvRate ? toBs(exp.amount || 0) : '—'}
                             </td>
                             <td className="px-2 py-3">
-                              <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                              {/* Siempre visibles — mismo criterio que la tabla de ingresos. */}
+                              <div className="flex items-center gap-1">
                                 {/* #7 — Editar gasto */}
                                 <button
                                   onClick={() => {
@@ -2564,14 +2568,14 @@ export default function FinancesPage() {
                                       conceptId: '',
                                     });
                                   }}
-                                  className="p-1 rounded-lg text-slate-300 hover:text-teal-600 hover:bg-teal-50"
+                                  className="p-1 rounded-lg text-slate-400 hover:text-teal-600 hover:bg-teal-50"
                                   title="Editar gasto"
                                 >
                                   <Pencil className="w-3.5 h-3.5" />
                                 </button>
                                 <button
                                   onClick={() => handleDeleteExpense(exp.id)}
-                                  className="p-1 rounded-lg text-slate-300 hover:text-red-500 hover:bg-red-50"
+                                  className="p-1 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50"
                                   title="Eliminar gasto"
                                 >
                                   <Trash2 className="w-3.5 h-3.5" />

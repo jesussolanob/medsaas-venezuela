@@ -1,6 +1,69 @@
 # 05 — Progress Log
 
 > Registro cronológico. Una entrada por fase/hito completado.
+> ⚠️ Orden: **la entrada más nueva va ARRIBA**. La del 2026-08-11 quedó al final
+> del archivo por error; no se movió para no ensuciar el diff.
+
+## 2026-08-16 — Lote de la fundadora (13/08): inasistencia, consulta retroactiva y botones
+
+Rama `feature/qa-agosto-13` desde `develop`. Sin desplegar todavía. Nace de una lista de
+12 observaciones que pasó una de las fundadoras; el dueño confirmó cuáles atacar ahora y
+dejó **en pausa** la moneda del portal (USD/Euro), la consulta inmediata, el agendado
+cruzando bloques y todo el módulo de ventas.
+
+### Lo que se hizo
+
+- **Botones de editar/borrar ingresos** (`debc6d2`). **Ya existían**: el problema era
+  `opacity-0 group-hover:opacity-100` — sin hover no existen, así que en tablet y teléfono
+  no había forma de llegar a ellos. La fundadora los pidió como si no estuvieran, y para
+  ella no estaban. Ahora siempre visibles en las DOS tablas (ingresos y gastos).
+- **Consulta del pasado sin tope y ya atendida** (`9ab143c`). El selector de día se
+  calculaba contra un arreglo fijo de 30 días hacia atrás; ahora la ventana se deriva del
+  offset y retrocede sin límite, con un selector de fecha para saltar lejos. Y una cita con
+  fecha pasada creada por el especialista **nace `completed`** (la consulta no tiene columna
+  `status` propia: se deriva de la cita). La regla de auto-confirmación de 3 días se extrajo
+  a `domain/policies/appointment-status.policy` porque ahora la usan dos casos de uso.
+- **Inasistencia con multa y reagenda** (`a3a6da5`). Ver ADR-031.
+
+### Tres cosas rotas que aparecieron al construir la inasistencia
+
+1. **Una cita en `no_show` no se podía reagendar.** `RESCHEDULABLE_STATUSES` solo tenía
+   `scheduled|confirmed` y devolvía "esta cita ya fue cancelada o atendida". O sea que el
+   flujo que pidió la fundadora era **literalmente imposible** hasta ahora.
+2. **Una consulta PAGADA cuya cita quedó en `no_show` figuraba en "Por ingresar"** —
+   plata ya cobrada contada como pendiente de cobro, porque `no_show` no estaba en la lista
+   de estados resueltos.
+3. **El criterio de "cita resuelta" estaba escrito en SEIS lugares, no en los tres** que
+   documenta el ADR-029: los tres conocidos más `listForDoctor`, `totalsForDoctor` y
+   `listIncomePaginated`, cada uno con la lista inline. Y `getIncomeBreakdown` no lo
+   aplicaba mientras `getConsultationSummary` sí → **la misma pantalla mostraba dos números
+   distintos para el mismo concepto**, que es exactamente el bug del 12/08 en otra esquina.
+   Los seis quedaron alineados.
+
+⚠️ **Al validar en staging:** los totales de meses ya cerrados se MUEVEN. Una consulta
+pagada con inasistencia que antes figuraba en "Por ingresar" ahora suma en Ingresos. Es la
+corrección de una clasificación equivocada, no plata nueva — pero no va a coincidir con una
+captura vieja.
+
+### Código muerto encontrado (no tocado)
+
+- El modal de la agenda para marcar atendida/cancelada/no-asistió: **nada lo abre**
+  (`setStatusAction` solo se llama con `null`). La agenda dice explícitamente "el estado de
+  la consulta y del pago se gestionan en Ir a consulta". Son ~100 líneas. Mismo caso del
+  aceptar/rechazar borrado el 11/08. **Pendiente de decisión del dueño.**
+- El modal de reagendar arrancaba en **mañana**, así que no dejaba reagendar para hoy — el
+  caso más común de una inasistencia ("no vino a las 9, viene a las 4"). Corregido.
+- `RescheduleModal` genera sus slots con un `slot_duration` GLOBAL de `/api/doctor/schedule`:
+  es una TERCERA implementación de la grilla de horarios que no conoce la duración por bloque
+  (ADR-028) ni el consultorio. No se tocó. **Deuda anotada.**
+
+### Verificación
+
+Build backend ✅ · build frontend ✅ · **393 suites / 3785 tests en verde**, corridos por el
+lead sin caché (`--skip-nx-cache`). `nx lint backend` se cae por OOM en esta máquina
+(pre-existente): los archivos tocados se pasaron por ESLint uno por uno. Los 7 errores de
+ESLint del frontend son **pre-existentes en `develop`** (verificado comparando con y sin los
+cambios). **Falta el QA visual.**
 
 ## 2026-08-10 — Mejoras de onboarding y servicios ✅ DESPLEGADO EN STAGING
 
@@ -3503,5 +3566,55 @@ correo, "tu primer servicio" y scroll al tope al continuar; y la baja de cuenta 
 respeta los días ya pagados (barrido diario colgado del cron existente) y se reactiva
 sola en plan gratuito cuando el especialista vuelve a entrar.
 
-**Pendiente de decisión:** modificar ingresos de consulta (los manuales YA se editan y
-borran) y duración de consulta por bloque del consultorio.
+Los dos que quedaban pendientes también entraron el 12/08:
+
+- **Duración por bloque del consultorio.** Cada bloque del horario acepta su propia
+  `slotDuration`/`bufferMinutes`; el que no las trae hereda las del consultorio, así que
+  **no hizo falta migrar** el JSONB y los horarios ya guardados siguen valiendo. El
+  editor tiene un selector por bloque con "aplicar a todos", y la regla de servicios
+  pasó de "el consultorio soporta X" a "**algún bloque** soporta X". Verificado punta a
+  punta en staging: lunes 45' / martes 20' → la agenda ofrece 08:00-08:45-09:30 y
+  08:00-08:20-08:40 respectivamente.
+- **Monto del cobro editable.** El backend YA aceptaba `amount` en
+  `PATCH /api/consultations/:id/payment-details` (ese use case está escrito a propósito
+  para permitir editar con el pago aprobado); lo que faltaba era el campo en la UI, que
+  solo mandaba método, referencia y comprobante. NO hay anulación de ingresos — el dueño
+  la descartó explícitamente. Verificado: $100 → $87.50 en BD sin tocar el estado del pago.
+
+### El patrón que se repitió TRES veces en este lote
+
+Un tipo escrito a mano en el frontend que declara una forma que el backend nunca manda,
+y TypeScript lo da por bueno porque nadie valida el wire:
+
+1. `PlanPaymentModal` leía `j.path`; el backend responde `{ data: { path } }` → botón muerto.
+2. La lista de ingresos y la tarjeta "Total ingresos" salían de consultas distintas con
+   criterios distintos → $65 arriba y $25 abajo en la misma pantalla.
+3. `/doctor/services` leía `slot_duration` de `GET /api/doctor/offices`, que devuelve la
+   entidad **en camelCase** (`slotDuration`) → el campo era siempre `undefined` y la regla
+   de compatibilidad servicio↔consultorio comparaba contra **30 minutos fijos para todos**,
+   sin importar la configuración real. Bug preexistente, encontrado al construir la
+   duración por bloque. Confirmado llamando al endpoint real desde staging.
+
+Vale la pena evaluar generar esos tipos desde el backend en vez de escribirlos a mano.
+
+### Estado y punto de retome
+
+TODO el lote está en **staging**, con `develop` y `staging` sincronizadas. **NADA promovido
+a producción** — espera la validación del dueño. Suite del backend en verde (392 suites,
+3765 tests) con tests nuevos para acentos, slots por bloque, reactivación y baja programada.
+
+Verificado en staging con navegador + BD: alta de paciente · listado con 105 fichas ·
+búsqueda sin acentos · comprobante PDF (2/4 → 3/4) · periodicidad recalculando · rótulo del
+combo · ingresos de julio (3 filas → 1; $0 cobrado / $510 por cobrar, sin perder un dólar) ·
+fechas pasadas · duración por bloque · monto editado. Los datos de prueba se limpiaron
+(100 pacientes sembrados borrados, monto y horarios restaurados).
+
+**NO verificado por falta de acceso:** (a) el onboarding, porque la cuenta de prueba ya lo
+tiene sellado y reponerlo exige apagar tres banderas de un doctor real del clon (ver la
+memoria `qa-reponer-onboarding`); (b) la baja de cuenta, que necesita un login real —
+`marcovillegas1197@gmail.com` está dada de baja por él mismo en staging y sirve de conejillo:
+al entrar debería quedar en plan gratuito y poder mejorar su plan.
+
+⚠️ Durante este lote se commiteó tres veces sobre `staging` en vez de una rama feature. Se
+corrigió por cherry-pick a `develop` y se verificó que el diff entre ambas quedó vacío, pero
+conviene mirar la rama activa después de cada merge a staging.

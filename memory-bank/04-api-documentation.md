@@ -684,8 +684,8 @@ Verifica server-side que el doctor tiene ≥1 consultorio activo Y ≥1 servicio
 
 ### `POST /api/doctor/account/deactivate` — endpoint nuevo (2026-08-09)
 
-| Endpoint                         | Método | Auth   | Body                        | Errores                                                                     |
-| -------------------------------- | ------ | ------ | --------------------------- | --------------------------------------------------------------------------- |
+| Endpoint                         | Método | Auth   | Body                        | Errores                                                                |
+| -------------------------------- | ------ | ------ | --------------------------- | ---------------------------------------------------------------------- |
 | `/api/doctor/account/deactivate` | POST   | doctor | `{ reason?: string\|null }` | `422 ACCOUNT_HAS_UPCOMING_APPOINTMENTS` · `422 CANNOT_DEACTIVATE_ROLE` |
 
 El especialista da de baja su **propia** cuenta desde Configuración → Mi perfil.
@@ -773,3 +773,129 @@ Cancelar una cita cuya consulta tiene el pago **aprobado** ahora falla:
   negocio, no de seguridad.
 - El BFF `POST /api/doctor/appointment-status` propaga el 409 con su `code` para que la UI
   abra el flujo de reagendar en vez de mostrar un error crudo.
+
+---
+
+## Cambios de contrato (2026-08-12)
+
+### `GET /api/doctor/offices` — el wire es camelCase, no snake_case
+
+El controller devuelve la **entidad tal cual**: `slotDuration`, `bufferMinutes`, `isActive`,
+`mapUrl`, `doctorId`. No hay mapper de presentación.
+
+⚠️ `/doctor/services` leía `slot_duration` (snake_case) y por eso el campo era SIEMPRE
+`undefined`: la regla de compatibilidad servicio↔consultorio comparaba contra 30 minutos fijos
+para todos los consultorios. Corregido el 2026-08-12. La página `/doctor/offices` nunca tuvo el
+problema porque consume el server action `listOffices()`, que sí mapea con `toView`.
+
+**Regla:** si consumís este endpoint por `fetch` directo desde el browser (thin-proxy), leé
+camelCase. Solo hay snake_case cuando pasás por un server action que mapea.
+
+### `DayScheduleSchema` — duración por bloque (opcional)
+
+Cada entrada de `schedule` acepta dos campos nuevos, ambos opcionales:
+
+| Campo           | Tipo                | Sin valor                     |
+| --------------- | ------------------- | ----------------------------- |
+| `slotDuration`  | int 5–480 (minutos) | hereda `office.slotDuration`  |
+| `bufferMinutes` | int 0–120 (minutos) | hereda `office.bufferMinutes` |
+
+Sin migración: los horarios ya guardados no traen los campos y siguen valiendo. Presente pero
+fuera de rango → el bloque entero se rechaza (`DaySchedule.validate` devuelve null). Ver ADR-028.
+
+### `GET /api/consultations` y `GET /api/consultations/:id` — sesión del combo
+
+La respuesta gana dos campos de solo lectura, poblados por JOIN:
+
+| Campo                    | De dónde sale                                                                                      |
+| ------------------------ | -------------------------------------------------------------------------------------------------- |
+| `session_number`         | `appointments.session_number` (null si la cita no es de un combo)                                  |
+| `package_total_sessions` | `patient_packages.total_sessions` y, si no hay, `pricing_plans.sessions_count` por nombre del plan |
+
+⚠️ En la BD real `appointments.package_id` viene **siempre NULL** y `patient_packages` está
+**vacía**: el total sale del SERVICIO. Se resuelve con **subconsulta escalar**, no con JOIN, porque
+un JOIN por nombre duplicaría la consulta si el especialista repite el nombre de un servicio.
+
+### `GET /api/finances/income` — solo lo efectivamente cobrado
+
+La rama de pagos ahora exige `status = 'approved'` **Y** cita confirmada/completada (o sin cita).
+Lo pendiente y lo aprobado-sin-confirmar viven en Cobros y en el "Por ingresar" del resumen. El
+filtro va con EXISTS (nunca JOIN) porque un pago puede cubrir varias citas. Ver ADR-029.
+
+## Cambios de contrato del lote de la fundadora (2026-08-16)
+
+### `PUT /api/appointments/:id/reschedule` — ahora acepta una cita en `no_show`
+
+`RESCHEDULABLE_STATUSES` pasa de `{scheduled, confirmed}` a `{scheduled, confirmed, no_show}`.
+`cancelled` y `completed` siguen dando `APPOINTMENT_NOT_RESCHEDULABLE` (409).
+
+Al reagendar desde `no_show` la cita **vuelve a un estado vigente** con la misma regla de 3 días
+de la creación: `confirmed` si la nueva fecha está a menos de 3 días, `scheduled` si no. En los
+demás casos el estado no se toca. El `appointment_changes_log` guarda la transición REAL
+(`no_show → confirmed|scheduled`), que es el único rastro de que el paciente faltó.
+
+### `POST /api/appointments` — fecha pasada creada por el especialista nace `completed`
+
+`computeInitialStatus` gana una rama previa a la auto-confirmación: actor `doctor`/`admin` +
+`scheduled_at` anterior a ahora → `completed`. El booking público no cambia (siempre `scheduled`).
+El backend nunca validó fechas pasadas, así que no hay validación nueva que sortear. Ver ADR-032.
+
+### Finanzas — `no_show` cuenta como cita RESUELTA
+
+El criterio COBRADA pasa a `a.status IN ('confirmed','completed','no_show')` en **los seis**
+lugares que lo arman: `COBRADA` (constante), `getIncomeBreakdown`, `listIncomePaginated`,
+la rama de aprobados de `listForDoctor`, `citaConfirmada` de `totalsForDoctor` y el resumen.
+Antes solo estaban documentados tres (ADR-029) y los otros tres tenían la lista inline.
+
+Además, la rama UNION de consultas pendientes sin fila en `payments` suma
+`AND COALESCE(c.amount, a.plan_price, 0) > 0`: una consulta de monto 0 no tiene nada que cobrar
+y no debe figurar en "Por cobrar". Ojo: `c.amount IS NULL` cae a `a.plan_price`, que sí puede ser
+mayor a 0 y tiene que seguir apareciendo.
+
+### `GET /api/doctor/pending-consultations/usage[?patient_id=]` — consumo de combos (NUEVO)
+
+Solo lectura. Devuelve, por paciente y por servicio, cuánto se atendió y cuánto falta.
+`patient_id` es **opcional**: sin él trae todos los pacientes del doctor en UNA consulta
+agrupada (la lista de pacientes pinta una insignia por fila y trae hasta 100 por página —
+de a uno sería un N+1). Con él, valida ownership del paciente (`PatientNotOwnedError`).
+
+⚠️ **El wire de este módulo es `snake_case`** (mirá `toResponse` en su controller), a
+diferencia de `offices` que manda camelCase. La mezcla de convenciones entre módulos es real:
+**mirá el controller antes de escribir el tipo del cliente**, no asumas.
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "patient_id": "…",
+      "plan_name": "Terapia Completa",
+      "total_sessions": 6,
+      "attended": 2,
+      "scheduled": 1,
+      "no_show": 1,
+      "pending_scheduling": 2
+    }
+  ]
+}
+```
+
+| Campo                | Significado                                                          |
+| -------------------- | -------------------------------------------------------------------- |
+| `total_sessions`     | `pricing_plans.sessions_count`; **null** si el servicio ya no existe |
+| `attended`           | citas `completed` — **lo único que consume sesión**                  |
+| `scheduled`          | citas `scheduled`/`confirmed` (todavía no ocurrieron)                |
+| `no_show`            | inasistencias; **NO consumen**, van en su propio balde               |
+| `pending_scheduling` | filas de `pending_consultations` sin agendar                         |
+
+Detalles que NO hay que romper:
+
+- Las citas `cancelled` no cuentan en ningún balde, y las filas `scheduled` de
+  `pending_consultations` tampoco: ya tienen su cita y se contarían **dos veces**.
+- Se agrupa por `(patient_id, plan_name)` y **no** por `payment_id`, que llega null cuando el
+  paquete lo carga el especialista a mano. Dos compras del mismo combo se suman en una fila.
+- El total sale de una **subconsulta escalar**, no de un JOIN: el especialista puede repetir
+  el nombre de un servicio y un JOIN por nombre duplicaría la fila (mismo criterio que ya usa
+  el repositorio de consultas para este dato).
+- Solo se devuelven combos de verdad (`sessions_count > 1` o con filas por agendar). Si no,
+  cinco consultas sueltas de "Consulta general" saldrían como "5 atendidas de 1".
