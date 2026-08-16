@@ -366,6 +366,21 @@ consultations}` (+ Consultorios/Plantillas sin moduleKey); deshabilitados agenda
   fecha pasada sigue siendo `scheduled` (y de todos modos no puede mandarla). El backend **nunca
   validó fechas pasadas**, así que quitar el tope de 30 días fue puramente de frontend.
 
+- **ADR-033 (2026-08-16):** **La duración de una cita se resuelve por BLOQUE al crearla, y el
+  especialista puede agendar a una hora libre.** (1) El ADR-028 dio duración propia a cada bloque,
+  pero solo los slots OFRECIDOS la respetaban: al crear la cita se persistía `office.slotDuration`,
+  así que una cita de un bloque de 45' quedaba guardada como de 30' y el solapamiento se calculaba
+  con la duración equivocada. Ahora los dos caminos de creación (`CreateBookingUseCase`, que es por
+  donde pasa el flujo del especialista, y `CreateAppointmentUseCase`) preguntan
+  `office.slotDurationAt(scheduledAt)`. (2) La conversión UTC → hora de Caracas vive en UN solo
+  lugar (`src/domain/caracas-time`): el bug nació de tener dos formas de calcular la misma hora, así
+  que unificarla es parte del arreglo. (3) `duration_minutes` (5–480) opcional en el DTO del booking
+  —obligatorio agregarlo porque el schema es `.strict()`— **solo se honra en el camino del
+  especialista**; el booking público lo ignora aunque venga en el cuerpo, porque un paciente no
+  elige cuánto dura su consulta. El backend NUNCA exigió que la hora caiga en un slot: la reja era
+  puramente del frontend. Se sigue rechazando el solapamiento (el pedido es ocupar un hueco, no
+  encimar) y se permite fuera del horario del consultorio.
+
 - **Terminología (2026-07-23):** "médico" (SUSTANTIVO que nombra al usuario) → **"especialista"** en UI/correos/guías;
   se conservan adjetivos ("informe/reposo/insumos/datos médicos") y honoríficos Dr./Dra. Plantillas de email sembradas se
   actualizan en BD vía mig `20260723000001` (REPLACE de frases sustantivas; `REPLACE` no toca adjetivos).

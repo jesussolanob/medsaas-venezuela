@@ -124,6 +124,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     packageId?: string;
     officeId?: string;
     receiptUrl?: string | null;
+    /** Solo cuando el especialista agenda a una hora libre (fuera de la grilla). */
+    durationMinutes?: number;
   };
 
   const {
@@ -143,6 +145,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     packageId,
     officeId,
     receiptUrl,
+    durationMinutes,
   } = body;
 
   if (!doctorId || !scheduledAt) {
@@ -185,6 +188,9 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     package_id: packageId || null,
     office_id: officeId || null,
     ...(receiptUrl ? { receipt_url: receiptUrl } : {}),
+    // Se omite salvo hora libre: ausente, el backend usa la duración del bloque
+    // del consultorio. El DTO del backend es snake_case.
+    ...(typeof durationMinutes === 'number' ? { duration_minutes: durationMinutes } : {}),
   };
 
   const result = await backendPost<{
