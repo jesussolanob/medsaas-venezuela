@@ -77,7 +77,7 @@ export default function BillingPage() {
     { id: '1', description: 'Honorarios médicos', qty: 1, unit_price: 20 },
   ]);
   const [notes, setNotes] = useState('');
-  const { rate: bcvRate } = useBcvRate();
+  const { rate: bcvRate, format, currencyCode } = useBcvRate();
   const [loading, setLoading] = useState(true);
   const [services, setServices] = useState<Service[]>([]);
   const [docStats, setDocStats] = useState({
@@ -281,7 +281,7 @@ export default function BillingPage() {
     saveDocumentToDB(); // Save to DB when sending
     const phone = (effectivePatient?.phone ?? '').replace(/\D/g, '');
     if (!phone) return;
-    const text = `Hola ${effectivePatient?.name}, te enviamos tu ${docType === 'receipt' ? 'recibo' : 'presupuesto'} N° ${currentDocNumber}.\n\nTotal: $${subtotal.toFixed(2)} USD${bcvRate ? ` (Bs. ${(subtotal * bcvRate).toLocaleString('es-VE', { maximumFractionDigits: 0 })})` : ''}\n\nGracias por su preferencia. Delta`;
+    const text = `Hola ${effectivePatient?.name}, te enviamos tu ${docType === 'receipt' ? 'recibo' : 'presupuesto'} N° ${currentDocNumber}.\n\nTotal: ${format(subtotal)}${bcvRate ? ` (Bs. ${(subtotal * bcvRate).toLocaleString('es-VE', { maximumFractionDigits: 0 })})` : ''}\n\nGracias por su preferencia. Delta`;
     window.open(`https://wa.me/${phone}?text=${encodeURIComponent(text)}`, '_blank');
   }
 
@@ -725,7 +725,7 @@ export default function BillingPage() {
                           {item.qty}
                         </td>
                         <td style={{ padding: '10px 12px', fontSize: 12, color: '#475569' }}>
-                          ${item.unit_price.toFixed(2)}
+                          {format(item.unit_price)}
                         </td>
                         <td
                           style={{
@@ -757,7 +757,7 @@ export default function BillingPage() {
                       }}
                     >
                       <span>Subtotal</span>
-                      <span>${subtotal.toFixed(2)}</span>
+                      <span>{format(subtotal)}</span>
                     </div>
                     <div
                       style={{
@@ -781,7 +781,7 @@ export default function BillingPage() {
                       >
                         <span style={{ fontWeight: 700, fontSize: 13 }}>Total</span>
                         <span style={{ fontWeight: 800, fontSize: 18 }}>
-                          ${subtotal.toFixed(2)} USD
+                          {format(subtotal)} {currencyCode}
                         </span>
                       </div>
                       {bcvRate && (
@@ -860,7 +860,7 @@ export default function BillingPage() {
                         <option value="">+ Agregar servicio</option>
                         {services.map((s) => (
                           <option key={s.id} value={s.id}>
-                            {s.name} (${s.price_usd.toFixed(2)})
+                            {s.name} ({format(s.price_usd)})
                           </option>
                         ))}
                       </select>
@@ -994,7 +994,9 @@ export default function BillingPage() {
               <span className="text-xs font-bold text-slate-400 uppercase">Recibos</span>
             </div>
             <p className="text-2xl font-bold text-slate-900">{docStats.recibos}</p>
-            <p className="text-xs text-slate-500 mt-1">${docStats.totalRecibos.toFixed(2)} USD</p>
+            <p className="text-xs text-slate-500 mt-1">
+              {format(docStats.totalRecibos)} {currencyCode}
+            </p>
           </div>
 
           <div className="bg-white border border-slate-200 rounded-xl p-5 hover:shadow-md transition-all">
@@ -1006,7 +1008,7 @@ export default function BillingPage() {
             </div>
             <p className="text-2xl font-bold text-slate-900">{docStats.presupuestos}</p>
             <p className="text-xs text-slate-500 mt-1">
-              ${docStats.totalPresupuestos.toFixed(2)} USD
+              {format(docStats.totalPresupuestos)} {currencyCode}
             </p>
           </div>
 
@@ -1018,7 +1020,9 @@ export default function BillingPage() {
               <span className="text-xs font-bold text-slate-400 uppercase">Facturas</span>
             </div>
             <p className="text-2xl font-bold text-slate-900">{docStats.facturas}</p>
-            <p className="text-xs text-slate-500 mt-1">${docStats.totalFacturas.toFixed(2)} USD</p>
+            <p className="text-xs text-slate-500 mt-1">
+              {format(docStats.totalFacturas)} {currencyCode}
+            </p>
           </div>
         </div>
 

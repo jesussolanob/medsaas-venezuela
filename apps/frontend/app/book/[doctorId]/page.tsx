@@ -48,6 +48,10 @@ interface DoctorInfo {
   // Configuración de restricciones de booking
   requireReason?: boolean | null;
   minLeadDays?: number | null;
+  /** Divisa que eligió el especialista: 'usd_bcv' | 'eur_bcv' | 'custom'. */
+  currencyMode?: string | null;
+  /** Tasa personalizada; solo viene cuando el modo es 'custom'. */
+  customRate?: number | null;
 }
 
 interface PricingPlan {
@@ -216,6 +220,8 @@ export default async function PublicBookingPage({
       initialOffices={offices}
       requireReason={doctorInfo.requireReason ?? false}
       minLeadDays={doctorInfo.minLeadDays ?? 0}
+      currencyMode={doctorInfo.currencyMode ?? null}
+      customRate={doctorInfo.customRate ?? null}
     />
   );
 }

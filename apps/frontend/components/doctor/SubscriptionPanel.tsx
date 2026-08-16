@@ -352,12 +352,18 @@ function CheckoutModal({ data, onClose }: { data: SubscriptionData; onClose: () 
   const [success, setSuccess] = useState(false);
 
   // Tasa BCV — solo se usa cuando el método de pago es en Bs.
+  // El plan que el especialista le paga a Delta lo fijan los administradores y
+  // es SIEMPRE en dólares: no sigue la divisa que el especialista eligió para
+  // cobrarle a SUS pacientes. Por eso se fuerza 'usd_bcv' en vez de leer su
+  // preferencia — antes, un especialista en modo euro veía el precio de su
+  // propio plan convertido a bolívares con la tasa del euro, y ese es el monto
+  // que iba a transferir.
   const {
     rate: bcvRate,
     dateLabel: bcvDate,
     loading: bcvLoading,
     refresh: refreshBcv,
-  } = useBcvRate();
+  } = useBcvRate({ mode: 'usd_bcv' });
 
   const config = data.payment_methods.config[method] || {};
   const isBsMethod = BS_METHODS.has(method);
