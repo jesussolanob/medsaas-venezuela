@@ -635,3 +635,14 @@ equivocado daría un total falso. Es el mismo patrón de `tipos-que-mienten-sobr
 `POST /api/packages`) y **sigue sin que nadie la escriba**. La agenda todavía la lee para
 enriquecer `total_sessions` de las citas pendientes — otro consumidor muerto. Limpiar eso es
 un lote aparte que hay que decidir: o se llena de verdad, o se borra.
+
+### Hora libre y duración por bloque (2026-08-16)
+
+| Componente                                           | Qué cambió                                                                                      |
+| ---------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `components/appointment-flow/steps/StepSchedule.tsx` | Desplegable "Otra hora": hora + duración libres, fuera de la grilla del consultorio             |
+| `components/appointment-flow/useAppointmentFlow.ts`  | `customDuration` + `selectCustomSlot`; elegir de la grilla la descarta para que no quede pegada |
+| `app/api/doctor/appointments/route.ts`               | Reenvía `durationMinutes` como `duration_minutes` (el DTO es `.strict()`)                       |
+
+**Backend:** `src/domain/caracas-time` (conversión UTC→Caracas en un solo lugar),
+`Office.slotDurationAt()`, y los dos use cases de creación usándolo. Ver ADR-033.
