@@ -57,6 +57,21 @@ export const CreateImmediateAppointmentDtoSchema = z
     plan_id: z.string().uuid().nullable().optional(),
 
     /**
+     * When provided, the walk-in consumes a pre-paid session from this pending
+     * consultation instead of creating a new standalone appointment.
+     *
+     * Security (anti-IDOR double check):
+     *   - The pending consultation must belong to the authenticated doctor.
+     *   - The pending consultation must also belong to the same patient_id.
+     *   - It must be in 'pending_scheduling' status and not expired.
+     *
+     * When present, plan_name and plan_price are taken from the pending consultation
+     * row, NOT from the client request. Any plan_name / plan_price in the body is
+     * silently ignored.
+     */
+    pending_consultation_id: z.string().uuid().optional(),
+
+    /**
      * When true, the specialist acknowledges that an appointment overlap may
      * occur and explicitly accepts it. The full `duration_minutes` is used
      * (no truncation), and the doctor's own overlap check is bypassed.

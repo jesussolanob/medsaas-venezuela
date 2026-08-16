@@ -128,6 +128,69 @@ export function jsDayToScheduleDay(jsDay: number): number {
 }
 
 // ---------------------------------------------------------------------------
+// Carga de consultorios
+// ---------------------------------------------------------------------------
+
+/**
+ * Trae los consultorios del especialista ya normalizados.
+ *
+ * El backend responde camelCase (`slotDuration`/`bufferMinutes`) y el resto del
+ * frontend lee snake_case. Sin este mapeo el buffer entre consultas quedaba en
+ * undefined→0 y los turnos salían cada `slot_duration` en vez de
+ * `slot_duration + buffer` (9:00, 9:30 en vez de 9:00, 9:40).
+ *
+ * Vive acá para que exista UNA sola traducción: es el mismo wire que ya nos
+ * mordió en /doctor/services leyendo `slot_duration` de una respuesta camelCase.
+ */
+export async function fetchDoctorOffices(): Promise<DoctorOffice[]> {
+  const res = await fetch('/api/doctor/offices', { cache: 'no-store' });
+  if (!res.ok) return [];
+  const json = (await res.json()) as { data?: unknown };
+  const raw = Array.isArray(json.data) ? (json.data as Array<Record<string, unknown>>) : [];
+  return raw.map((o) => ({
+    ...(o as unknown as DoctorOffice),
+    slot_duration:
+      (o.slot_duration as number | null | undefined) ??
+      (o.slotDuration as number | null | undefined) ??
+      30,
+    buffer_minutes:
+      (o.buffer_minutes as number | null | undefined) ??
+      (o.bufferMinutes as number | null | undefined) ??
+      0,
+  }));
+}
+
+/**
+ * Consultorios cuyo horario cubre ESTE momento (hora de Caracas).
+ *
+ * Es lo que responde "¿en qué consultorio está ahora?" para la consulta
+ * inmediata. Vacío = está fuera de horario y hay que preguntarle.
+ */
+export function officesOpenAt(offices: DoctorOffice[], when: Date): DoctorOffice[] {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Caracas',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).formatToParts(when);
+  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? '';
+  const hour = get('hour') === '24' ? '00' : get('hour');
+  const nowHHMM = `${hour}:${get('minute')}`;
+  // El día se saca de la fecha de Caracas, no de la del navegador.
+  const caracasDay = new Date(`${get('year')}-${get('month')}-${get('day')}T12:00:00`).getDay();
+  const schedDay = jsDayToScheduleDay(caracasDay);
+
+  return offices.filter((o) =>
+    (o.schedule ?? []).some(
+      (s) => s.day === schedDay && s.enabled && s.start <= nowHHMM && nowHHMM < s.end,
+    ),
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Slot generation
 // ---------------------------------------------------------------------------
 

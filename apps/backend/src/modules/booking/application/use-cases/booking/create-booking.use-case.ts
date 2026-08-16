@@ -59,6 +59,15 @@ export interface CreateBookingResult {
   appointmentCode: string;
   /** Meet link for online appointments (Google Meet or Jitsi). Null for in-person. */
   meetLink: string | null;
+  /**
+   * Consulta creada junto con la cita, si se pudo crear.
+   *
+   * NO se puede leer de `appointment.consultationId`: el FK se actualiza en la
+   * BD después de construir la entidad, así que la que se devuelve todavía lo
+   * tiene en null. Quien necesite abrir la consulta recién creada (el botón de
+   * consulta inmediata) tiene que leerlo de acá.
+   */
+  consultationId: string | null;
 }
 
 /**
@@ -581,6 +590,7 @@ export class CreateBookingUseCase {
     // --- Step 8: Auto-create consultation (best-effort — must NOT break booking) ---
     // A failure here only means the consultation will be absent from the list;
     // the booking appointment itself is fully persisted and confirmed.
+    let createdConsultationId: string | null = savedAppointment.consultationId ?? null;
     if (this.createConsultationUC && !savedAppointment.consultationId) {
       try {
         const consultation = await this.createConsultationUC.execute({
@@ -592,6 +602,7 @@ export class CreateBookingUseCase {
           amount: dto.plan_price ?? null,
         });
         await this.appointmentRepo.updateConsultationId(savedAppointment.id, consultation.id);
+        createdConsultationId = consultation.id;
       } catch (err: unknown) {
         // Non-fatal. Log el MENSAJE del error (código/DB — NO contiene PII) para
         // poder diagnosticar por qué no se creó la consulta.
@@ -600,7 +611,13 @@ export class CreateBookingUseCase {
       }
     }
 
-    return { appointment: savedAppointment, patient, appointmentCode, meetLink };
+    return {
+      appointment: savedAppointment,
+      patient,
+      appointmentCode,
+      meetLink,
+      consultationId: createdConsultationId,
+    };
   }
 
   // ---------------------------------------------------------------------------

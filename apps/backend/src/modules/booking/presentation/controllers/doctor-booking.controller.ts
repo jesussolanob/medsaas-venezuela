@@ -21,8 +21,13 @@ interface SuccessResponse<T> {
 }
 
 /** Query-string schema for GET /api/doctor/appointments/immediate-window */
+/**
+ * La ventana es del ESPECIALISTA, no de un consultorio: su próxima cita lo
+ * ocupa físicamente atienda donde atienda. Por eso no recibe `office_id` —
+ * pedirlo obligaría al modal a elegir consultorio antes de poder avisar que no
+ * queda espacio, y sería un parámetro que el caso de uso ni mira.
+ */
 const ImmediateWindowQuerySchema = z.object({
-  office_id: z.string().uuid(),
   duration_minutes: z.coerce.number().int().min(5).max(480),
 });
 
@@ -162,6 +167,7 @@ export class DoctorBookingController {
         scheduledAt: result.scheduledAt,
         effectiveDuration: result.effectiveDuration,
         meetLink: result.meetLink,
+        consultationId: result.consultationId,
       },
     };
   }
