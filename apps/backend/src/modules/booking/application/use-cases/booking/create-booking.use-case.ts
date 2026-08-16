@@ -51,6 +51,7 @@ import {
   type IPricingPlanRepository,
 } from '../../../../packages/domain/repositories/pricing-plan.repository';
 import { CreatePendingConsultationsUseCase } from '../../../../pending-consultations/application/use-cases/create-pending-consultations.use-case';
+import { CARACAS_OFFSET } from '../../../../../domain/caracas-time';
 
 export interface CreateBookingResult {
   appointment: Appointment;
@@ -212,6 +213,10 @@ export class CreateBookingUseCase {
       }
     }
 
+    // scheduledAt is parsed once here and shared across all downstream steps
+    // (office block resolution, lead-time validation, overlap detection).
+    const scheduledAt = new Date(dto.scheduled_at);
+
     // --- Step 2b: Validate office modality (if office_id provided) ---
     let officeAddress: string | undefined;
     let officeName: string | undefined;
@@ -227,13 +232,18 @@ export class CreateBookingUseCase {
         officeAddress = office.address || undefined;
         officeName = office.name;
         officeMapUrl = office.mapUrl ?? undefined;
-        officeDuration = office.slotDuration;
+        // C1: resolve the duration of the block that contains scheduledAt,
+        // not the office-wide default (which ignores per-block overrides).
+        officeDuration = office.slotDurationAt(scheduledAt);
       }
     }
 
-    // scheduledAt is computed here so that step 2c (lead-time validation) and
-    // step 3 (overlap detection) can share the same parsed Date instance.
-    const scheduledAt = new Date(dto.scheduled_at);
+    // C2: explicit duration from the doctor's "otra hora" flow.
+    // Only honoured on the authenticated doctor path (skipPatientBookingRules=true).
+    // A patient cannot choose their own appointment duration via the public form.
+    if (options?.skipPatientBookingRules && dto.duration_minutes) {
+      officeDuration = dto.duration_minutes;
+    }
 
     // --- Step 2c: Validate patient booking rules (require_reason + lead_time) ---
     // These restrictions apply to public bookings only. When the doctor schedules
@@ -250,7 +260,6 @@ export class CreateBookingUseCase {
       // Validate minimum lead time
       const minLeadDays = schedule?.bookingMinLeadDays ?? 0;
       if (minLeadDays > 0) {
-        const CARACAS_OFFSET = '-04:00';
         const nowCaracasDateStr = new Intl.DateTimeFormat('en-CA', {
           timeZone: 'America/Caracas',
           year: 'numeric',

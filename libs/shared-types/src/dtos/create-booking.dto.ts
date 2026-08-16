@@ -92,6 +92,21 @@ export const CreateBookingDtoSchema = z
         }),
       )
       .optional(),
+
+    /**
+     * Duración explícita de la consulta, en minutos (5–480).
+     *
+     * Solo se aplica al camino del especialista (DoctorBookingController →
+     * CreateBookingUseCase con skipPatientBookingRules=true). En el booking
+     * público el campo se ignora aunque venga en el body, porque un paciente
+     * no puede elegir cuánto dura su propia consulta.
+     *
+     * Caso de uso: "hora libre" — el especialista agenda una cita de 9:30 a
+     * 10:30 porque tiene dos bloques vacíos y quiere ocuparlos con un servicio
+     * de 60'. El solapamiento se detecta con esta duración, de modo que los
+     * slots de 9:00 y 10:00 quedan bloqueados correctamente.
+     */
+    duration_minutes: z.number().int().min(5).max(480).optional(),
   })
   .strict();
 

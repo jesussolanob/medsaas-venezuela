@@ -81,7 +81,9 @@ export class CreateAppointmentUseCase {
       if (!office.supportsModality(dto.appointment_mode)) {
         throw new AppointmentOfficeInvalidError('modality_mismatch');
       }
-      slotDuration = office.slotDuration;
+      // C1: use the block's own duration, not the office default.
+      // Falls back to office.slotDuration when scheduledAt is outside any block.
+      slotDuration = office.slotDurationAt(scheduledAt);
     }
 
     // 2. Guard: same patient already has an overlapping appointment (cross-doctor).

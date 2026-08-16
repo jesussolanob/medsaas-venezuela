@@ -126,6 +126,10 @@ export type AppointmentFlowState = {
   setWeekOffset: (n: number) => void;
   unavailableTimes: Map<string, Set<string>>;
   loadingSlots: boolean;
+  /** Duración a medida para una hora libre. null = la decide el bloque. */
+  customDuration: number | null;
+  /** Fija hora y duración de una vez cuando se agenda fuera de la grilla. */
+  selectCustomSlot: (time: string, durationMinutes: number) => void;
 
   // Step 5 — Pago
   profilePaymentMethods: string[];
@@ -204,6 +208,12 @@ export function useAppointmentFlow(
   const [weekOffset, setWeekOffset] = useState(0);
   const [unavailableTimes, setUnavailableTimes] = useState<Map<string, Set<string>>>(new Map());
   const [loadingSlots, setLoadingSlots] = useState(false);
+  /**
+   * Duración elegida a mano cuando el especialista agenda a una hora libre
+   * (ej. 9:30 a 10:30 pisando dos bloques vacíos). null = la manda el bloque
+   * del consultorio, que es el caso normal.
+   */
+  const [customDuration, setCustomDuration] = useState<number | null>(null);
 
   // Step 5 — Pago
   const [profilePaymentMethods, setProfilePaymentMethods] = useState<string[]>([]);
@@ -556,7 +566,21 @@ export function useAppointmentFlow(
 
   function selectTime(t: string) {
     setSelectedTime(t);
+    // Elegir de la grilla vuelve a la duración del bloque: si antes se había
+    // usado una hora libre, esa duración no debe quedar pegada.
+    setCustomDuration(null);
     // Auto-advance to step 5 after time selection
+    setCurrentStep(5);
+  }
+
+  /**
+   * Hora libre: el especialista escribe la hora y cuánto dura, sin atarse a la
+   * grilla del consultorio. El backend nunca exigió que la hora caiga en un
+   * slot — solo valida que no pise otra cita.
+   */
+  function selectCustomSlot(time: string, durationMinutes: number) {
+    setSelectedTime(time);
+    setCustomDuration(durationMinutes);
     setCurrentStep(5);
   }
 
@@ -681,6 +705,9 @@ export function useAppointmentFlow(
           // siempre en null → el consultorio del paso 2 no se vinculaba a la cita.
           officeId: selectedOffice?.id ?? null,
           packageId: usePackage,
+          // Solo viaja cuando se agendó a una hora libre. Sin esto el backend
+          // deriva la duración del bloque del consultorio, que es lo normal.
+          durationMinutes: customDuration ?? undefined,
         }),
       });
       const j = (await r.json()) as {
@@ -808,6 +835,8 @@ export function useAppointmentFlow(
     setSelectedDate,
     selectedTime,
     selectTime,
+    customDuration,
+    selectCustomSlot,
     weekOffset,
     setWeekOffset,
     unavailableTimes,

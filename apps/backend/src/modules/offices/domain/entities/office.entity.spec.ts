@@ -234,6 +234,81 @@ describe('Office entity', () => {
     });
   });
 
+  /**
+   * slotDurationAt tests use real UTC timestamps that map to known Caracas
+   * wall-clock times (Venezuela is UTC-04:00 fixed, no DST):
+   *
+   *   2026-01-05 = Monday   (Jan 1 = Thu, Jan 5 = Mon)
+   *   2026-01-06 = Tuesday
+   *   2026-01-07 = Wednesday
+   *
+   *   09:30 Caracas = 13:30 UTC  (2026-01-05T13:30:00Z = Monday morning)
+   *   15:00 Caracas = 19:00 UTC  (2026-01-05T19:00:00Z = Monday afternoon)
+   *   14:00 Caracas = 18:00 UTC  (2026-01-06T18:00:00Z = Tuesday afternoon)
+   *   10:00 Caracas = 14:00 UTC  (2026-01-07T14:00:00Z = Wednesday, no block)
+   */
+  describe('slotDurationAt', () => {
+    /** Office with two Monday blocks and one Tuesday block (ADR-028 setup). */
+    function makeBlockOffice(): Office {
+      return makeOffice({
+        slotDuration: 30, // office-wide default
+        schedule: [
+          // Monday morning: 45-min override (ADR-028 example)
+          { day: 0, enabled: true, start: '08:00', end: '12:00', slotDuration: 45 },
+          // Monday afternoon: no per-block override → inherits office default
+          { day: 0, enabled: true, start: '14:00', end: '18:00' },
+          // Tuesday afternoon: 20-min override (ADR-028 example)
+          { day: 1, enabled: true, start: '13:00', end: '18:00', slotDuration: 20 },
+        ],
+      });
+    }
+
+    it('returns block slotDuration when the block has its own override', () => {
+      const office = makeBlockOffice();
+      // Monday 09:30 Caracas (inside 08:00-12:00 block with slotDuration=45)
+      expect(office.slotDurationAt(new Date('2026-01-05T13:30:00Z'))).toBe(45);
+    });
+
+    it('returns office.slotDuration when the block has no override', () => {
+      const office = makeBlockOffice();
+      // Monday 15:00 Caracas (inside 14:00-18:00 block with no slotDuration)
+      expect(office.slotDurationAt(new Date('2026-01-05T19:00:00Z'))).toBe(30);
+    });
+
+    it('returns office.slotDuration when scheduledAt falls outside every block', () => {
+      const office = makeBlockOffice();
+      // Wednesday 10:00 Caracas — no block defined for Wednesday (office day 2)
+      expect(office.slotDurationAt(new Date('2026-01-07T14:00:00Z'))).toBe(30);
+    });
+
+    it('returns office.slotDuration when the office has no schedule at all', () => {
+      const office = makeOffice({ slotDuration: 25, schedule: [] });
+      expect(office.slotDurationAt(new Date('2026-01-05T13:30:00Z'))).toBe(25);
+    });
+
+    it('ADR-028 end-to-end: Monday 45-min and Tuesday 20-min resolve independently', () => {
+      const office = makeBlockOffice();
+      // Monday morning 09:30 Caracas → 45-min block
+      const mondayAppt = new Date('2026-01-05T13:30:00Z');
+      // Tuesday afternoon 14:00 Caracas → 20-min block
+      const tuesdayAppt = new Date('2026-01-06T18:00:00Z');
+
+      expect(office.slotDurationAt(mondayAppt)).toBe(45);
+      expect(office.slotDurationAt(tuesdayAppt)).toBe(20);
+    });
+
+    it('respects the [start, end) boundary — exact start is inside, exact end is outside', () => {
+      const office = makeOffice({
+        slotDuration: 30,
+        schedule: [{ day: 0, enabled: true, start: '08:00', end: '12:00', slotDuration: 45 }],
+      });
+      // Monday 08:00 Caracas (exact start = inside) → 12:00 UTC
+      expect(office.slotDurationAt(new Date('2026-01-05T12:00:00Z'))).toBe(45);
+      // Monday 12:00 Caracas (exact end = outside) → 16:00 UTC
+      expect(office.slotDurationAt(new Date('2026-01-05T16:00:00Z'))).toBe(30);
+    });
+  });
+
   describe('supportsModality', () => {
     it('in_person office only supports in_person', () => {
       const office = makeOffice({ modality: 'in_person' });

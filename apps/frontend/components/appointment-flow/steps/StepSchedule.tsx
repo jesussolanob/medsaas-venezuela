@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useMemo } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight, CheckCircle2, Loader2 } from 'lucide-react';
 import { DoctorOffice, getTimeSlotsForDate, jsDayToScheduleDay } from '../appointment-flow.utils';
 
@@ -23,6 +23,10 @@ type Props = {
   unavailableTimes: Map<string, Set<string>>;
   loadingSlots: boolean;
   scheduledAt: string;
+  /** Duración elegida a mano. null = la manda el bloque del consultorio. */
+  customDuration: number | null;
+  /** Fija hora y duración fuera de la grilla. */
+  selectCustomSlot: (time: string, durationMinutes: number) => void;
 };
 
 const PAGE_SIZE = 5;
@@ -81,7 +85,13 @@ export default function StepSchedule({
   unavailableTimes,
   loadingSlots,
   scheduledAt,
+  customDuration,
+  selectCustomSlot,
 }: Props) {
+  const [showCustom, setShowCustom] = useState(false);
+  const [customTime, setCustomTime] = useState('');
+  const [customMinutes, setCustomMinutes] = useState('60');
+
   // Un día está habilitado si el consultorio atiende ese día de la semana.
   // Sin horario cargado se habilitan todos (el flujo cae a horarios genéricos).
   const isDayEnabled = useCallback(
@@ -318,13 +328,81 @@ export default function StepSchedule({
         </div>
       )}
 
+      {/* Hora libre: para encajar una consulta en un hueco que la grilla no
+          ofrece (ej. 9:30 a 10:30 cuando los bloques son de 8-9, 9-10, 10-11).
+          El backend no exige que la hora caiga en un slot: solo rechaza si
+          pisa otra cita, y ahí sí avisa. */}
+      {selectedDate && (
+        <div className="border border-slate-200 rounded-lg">
+          <button
+            type="button"
+            onClick={() => setShowCustom((v) => !v)}
+            className="w-full flex items-center justify-between px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition-colors"
+          >
+            <span>Otra hora</span>
+            <span className="text-slate-400 font-normal">
+              {customDuration ? `${customDuration} min` : 'fuera de la grilla'}
+            </span>
+          </button>
+
+          {showCustom && (
+            <div className="px-3 pb-3 space-y-2">
+              <p className="text-[11px] text-slate-500">
+                Para encajar una consulta entre horarios. Si se cruza con una cita ya agendada, no
+                se va a poder guardar.
+              </p>
+              <div className="flex flex-wrap items-end gap-2">
+                <label className="flex flex-col gap-1">
+                  <span className="text-[10px] font-semibold text-slate-500 uppercase">Hora</span>
+                  <input
+                    type="time"
+                    value={customTime}
+                    onChange={(e) => setCustomTime(e.target.value)}
+                    className="px-2 py-1.5 border border-slate-200 rounded-lg text-sm focus:border-teal-400 outline-none"
+                  />
+                </label>
+                <label className="flex flex-col gap-1">
+                  <span className="text-[10px] font-semibold text-slate-500 uppercase">
+                    Duración
+                  </span>
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="number"
+                      min="5"
+                      max="480"
+                      step="5"
+                      value={customMinutes}
+                      onChange={(e) => setCustomMinutes(e.target.value)}
+                      className="w-20 px-2 py-1.5 border border-slate-200 rounded-lg text-sm focus:border-teal-400 outline-none"
+                    />
+                    <span className="text-xs text-slate-400">min</span>
+                  </div>
+                </label>
+                <button
+                  type="button"
+                  disabled={!customTime || !(Number(customMinutes) >= 5)}
+                  onClick={() => selectCustomSlot(customTime, Number(customMinutes))}
+                  className="px-3 py-1.5 bg-teal-500 text-white rounded-lg text-xs font-semibold hover:bg-teal-600 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  Usar esta hora
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {scheduledAt && (
-        <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2 flex items-center gap-2">
+        <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2 flex items-center gap-2 flex-wrap">
           <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
           <span className="text-xs font-semibold text-emerald-800">{fmtDateTime(scheduledAt)}</span>
-          <span className="text-xs text-emerald-600 ml-1">
-            — al seleccionar la hora avanzas automáticamente
-          </span>
+          {customDuration ? (
+            <span className="text-xs text-emerald-600 ml-1">— {customDuration} minutos</span>
+          ) : (
+            <span className="text-xs text-emerald-600 ml-1">
+              — al seleccionar la hora avanzas automáticamente
+            </span>
+          )}
         </div>
       )}
 

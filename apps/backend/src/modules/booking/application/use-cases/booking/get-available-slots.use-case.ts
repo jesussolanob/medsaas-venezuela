@@ -19,6 +19,7 @@ import {
   DOCTOR_SCHEDULE_REPOSITORY,
   type IDoctorScheduleRepository,
 } from '../../../../doctor-settings/domain/repositories/doctor-schedule.repository';
+import { CARACAS_OFFSET, toCaracasHHMM } from '../../../../../domain/caracas-time';
 
 export interface AvailableSlot {
   time: string; // HH:MM
@@ -28,24 +29,6 @@ export interface AvailableSlot {
 export interface DoctorSlotsResult {
   date: string; // YYYY-MM-DD (echo of the requested date)
   slots: AvailableSlot[];
-}
-
-/**
- * Venezuela uses America/Caracas (UTC-04:00 fixed, no DST since 2016).
- * All "wall-clock day" boundaries and HH:MM derivations from stored TIMESTAMPTZ
- * must use this offset so that a 20:00 Caracas slot is never misattributed to
- * the following UTC day.
- */
-const CARACAS_OFFSET = '-04:00';
-
-/** Formats a Date as "HH:MM" in America/Caracas local time (wall clock). */
-function toHHMMCaracas(d: Date): string {
-  return new Intl.DateTimeFormat('en-GB', {
-    timeZone: 'America/Caracas',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  }).format(d);
 }
 
 /**
@@ -187,7 +170,7 @@ export class GetAvailableSlotsUseCase {
     // Appointments are stored as UTC TIMESTAMPTZ; convert to Caracas wall-clock
     // time to match the slot HH:MM strings (which are also Caracas wall-clock).
     const occupiedTimes = new Set<string>(
-      occupied.map((appt: { scheduledAt: Date }) => toHHMMCaracas(appt.scheduledAt)),
+      occupied.map((appt: { scheduledAt: Date }) => toCaracasHHMM(appt.scheduledAt)),
     );
 
     // 8. Load availability blocks overlapping this day

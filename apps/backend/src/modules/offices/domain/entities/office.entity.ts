@@ -1,4 +1,5 @@
 import type { DayScheduleParams } from '../value-objects/day-schedule.vo';
+import { toCaracasHHMM, toCaracasOfficeDay } from '../../../../domain/caracas-time';
 
 /** Modality options for a doctor office. */
 export type OfficeModality = 'in_person' | 'online' | 'both';
@@ -112,6 +113,40 @@ export class Office {
   }
 
   /**
+   * Returns the effective slot duration (minutes) for the schedule block that
+   * contains the given UTC instant, in America/Caracas local time.
+   *
+   * Resolution order:
+   *   1. Find enabled blocks for the Caracas weekday of `scheduledAt`.
+   *   2. Return the first block whose [start, end) window contains the Caracas
+   *      wall-clock HH:MM of `scheduledAt`, using that block's `slotDuration`
+   *      when set, or `this.slotDuration` when the block has no override.
+   *   3. If no block contains the instant (e.g. an appointment booked by the
+   *      doctor outside regular hours), fall back to `this.slotDuration`.
+   *
+   * Timezone: always uses America/Caracas (UTC-04:00, no DST) via the shared
+   * helpers in `src/domain/caracas-time.ts` — the same criterion used by
+   * GetAvailableSlotsUseCase — so that a 20:00 Caracas appointment is never
+   * misattributed to the following UTC calendar day.
+   */
+  slotDurationAt(scheduledAt: Date): number {
+    const officeDay = toCaracasOfficeDay(scheduledAt);
+    const scheduledMinutes = this.parseHHMM(toCaracasHHMM(scheduledAt));
+
+    const blocks = this.getEnabledSchedulesForDay(officeDay);
+    for (const block of blocks) {
+      const startMin = this.parseHHMM(block.start);
+      const endMin = this.parseHHMM(block.end);
+      if (scheduledMinutes >= startMin && scheduledMinutes < endMin) {
+        return block.slotDuration ?? this.slotDuration;
+      }
+    }
+
+    // Outside every enabled block — fall back to the office default.
+    return this.slotDuration;
+  }
+
+  /**
    * Returns a new Office with isActive toggled (immutable pattern).
    */
   toggleActive(): Office {
@@ -121,6 +156,12 @@ export class Office {
   /** Factory — creates an Office from raw params. Does not persist. */
   static create(params: OfficeCreateParams): Office {
     return new Office(params);
+  }
+
+  /** Parses "HH:MM" into total minutes from midnight. */
+  private parseHHMM(time: string): number {
+    const parts = time.split(':');
+    return parseInt(parts[0] ?? '0', 10) * 60 + parseInt(parts[1] ?? '0', 10);
   }
 
   private toParams(): OfficeCreateParams {
