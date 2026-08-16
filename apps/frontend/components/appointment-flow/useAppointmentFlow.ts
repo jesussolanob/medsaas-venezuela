@@ -12,11 +12,18 @@ import {
   GENERIC_PLAN,
   METHODS_WITH_RECEIPT,
   getTimeSlotsForDate,
+  getTimeSlotsWithDuration,
   isoToCaracasHHMM,
   normalizePatient,
   normalizeService,
 } from './appointment-flow.utils';
 import type { AppointmentContext } from './NewAppointmentFlow';
+import {
+  blockedTimes,
+  hhmmToMinutes,
+  DEFAULT_APPOINTMENT_MINUTES,
+  type BookedInterval,
+} from '@/lib/slot-availability';
 
 // ---------------------------------------------------------------------------
 // Fallback doctor UUID (Etapa 1 dev-stub)
@@ -490,15 +497,24 @@ export function useAppointmentFlow(
       setLoadingSlots(true);
       const blocked = new Set<string>();
 
-      // Citas ya ocupadas para esa fecha
+      // Citas ya ocupadas para esa fecha.
+      // Se cruza por INTERVALO, no por hora de inicio: una cita de 45' a las
+      // 08:00 tiene que bloquear también el slot de las 08:30, y una cita a
+      // una hora libre (14:37) no aparece en la grilla pero igual ocupa.
+      const daySlots = getTimeSlotsWithDuration(selectedDate, selectedOffice);
       try {
         const apptRes = await fetch(
           `/api/doctor/appointments?date=${encodeURIComponent(selectedDate)}`,
         );
         if (apptRes.ok) {
-          const apptJson = (await apptRes.json()) as { data?: { bookedAt?: string[] } };
-          const bookedAt = apptJson?.data?.bookedAt ?? [];
-          bookedAt.forEach((iso) => blocked.add(isoToCaracasHHMM(iso)));
+          const apptJson = (await apptRes.json()) as {
+            data?: { booked?: { at: string; durationMinutes: number | null }[] };
+          };
+          const intervals: BookedInterval[] = (apptJson?.data?.booked ?? []).map((b) => ({
+            startMin: hhmmToMinutes(isoToCaracasHHMM(b.at)),
+            durationMin: b.durationMinutes ?? DEFAULT_APPOINTMENT_MINUTES,
+          }));
+          blockedTimes(daySlots, intervals).forEach((t) => blocked.add(t));
         }
       } catch {
         /* silent */
@@ -515,8 +531,7 @@ export function useAppointmentFlow(
           };
           const blockList = blocksJson?.data ?? [];
           // Verificar cada slot del día contra los bloques
-          const daySlots = getTimeSlotsForDate(selectedDate, selectedOffice);
-          daySlots.forEach((slotTime) => {
+          daySlots.forEach(({ time: slotTime }) => {
             const slotISO = new Date(`${selectedDate}T${slotTime}:00-04:00`);
             if (
               blockList.some(

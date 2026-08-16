@@ -187,7 +187,18 @@ export class CreateBookingUseCase {
 
   async execute(
     dto: CreateBookingDto,
-    options?: { skipBookingFeatureGate?: boolean; skipPatientBookingRules?: boolean },
+    options?: {
+      skipBookingFeatureGate?: boolean;
+      skipPatientBookingRules?: boolean;
+      /**
+       * When true, the doctor's own appointment overlap check (step 3) is bypassed.
+       * Used by CreateImmediateAppointmentUseCase with force=true so a walk-in can be
+       * created even if it overlaps with an existing appointment in the doctor's calendar.
+       *
+       * ⚠️ The PATIENT overlap check (step 4b) is NEVER bypassed — not even with force.
+       */
+      skipDoctorOverlapCheck?: boolean;
+    },
   ): Promise<CreateBookingResult> {
     // --- Step 1: Turnstile validation (STUB — Etapa 1) ---
     // TODO(etapa-2): POST to https://challenges.cloudflare.com/turnstile/v0/siteverify
@@ -288,13 +299,17 @@ export class CreateBookingUseCase {
     }
 
     // --- Step 3: Verify slot availability (overlap detection) ---
-    const hasConflict = await this.appointmentRepo.hasOverlap({
-      doctorId: dto.doctor_id,
-      scheduledAt,
-      durationMinutes: officeDuration,
-    });
-    if (hasConflict) {
-      throw new AppointmentConflictError(scheduledAt);
+    // Skipped when skipDoctorOverlapCheck=true (immediate-consultation force mode).
+    // The patient overlap check below is NEVER skipped.
+    if (!options?.skipDoctorOverlapCheck) {
+      const hasConflict = await this.appointmentRepo.hasOverlap({
+        doctorId: dto.doctor_id,
+        scheduledAt,
+        durationMinutes: officeDuration,
+      });
+      if (hasConflict) {
+        throw new AppointmentConflictError(scheduledAt);
+      }
     }
 
     // --- Step 4: Resolve patient ---

@@ -159,32 +159,52 @@ export function timesBetween(
  * - Con consultorio pero sin schedule: retorna GENERIC_TIMES.
  * - Con schedule: usa el día de la semana de la fecha. Si no hay entrada habilitada → [].
  */
+/**
+ * Igual que getTimeSlotsForDate pero conservando CUÁNTO dura cada horario.
+ *
+ * Hace falta para saber qué slots pisa una cita: sin la duración, un turno de
+ * 45' a las 08:00 no bloqueaba el 08:30. Cada bloque del día puede tener su
+ * propia duración (ADR-028), así que no alcanza con la del consultorio.
+ * Si dos bloques generan el mismo horario con duraciones distintas, se
+ * conserva la MAYOR — ofrecer el corto dejaría entrar una cita que no cabe.
+ */
+export function getTimeSlotsWithDuration(
+  dateStr: string,
+  office: Pick<DoctorOffice, 'schedule' | 'slot_duration' | 'buffer_minutes'> | null,
+): { time: string; durationMin: number }[] {
+  const fallback = office?.slot_duration ?? 30;
+  if (!office || !office.schedule || office.schedule.length === 0) {
+    return GENERIC_TIMES.map((time) => ({ time, durationMin: fallback }));
+  }
+  const d = new Date(dateStr + 'T12:00:00');
+  const schedDay = jsDayToScheduleDay(d.getDay());
+  const scheds = office.schedule.filter((s) => s.day === schedDay && s.enabled);
+  if (scheds.length === 0) return [];
+
+  const byTime = new Map<string, number>();
+  for (const s of scheds) {
+    const durationMin = s.slotDuration ?? office.slot_duration ?? 30;
+    for (const time of timesBetween(
+      s.start,
+      s.end,
+      durationMin,
+      s.bufferMinutes ?? office.buffer_minutes ?? 0,
+    )) {
+      byTime.set(time, Math.max(byTime.get(time) ?? 0, durationMin));
+    }
+  }
+  return Array.from(byTime.entries())
+    .map(([time, durationMin]) => ({ time, durationMin }))
+    .sort((a, b) => a.time.localeCompare(b.time));
+}
+
 export function getTimeSlotsForDate(
   dateStr: string,
   office: Pick<DoctorOffice, 'schedule' | 'slot_duration' | 'buffer_minutes'> | null,
 ): string[] {
-  if (!office || !office.schedule || office.schedule.length === 0) return GENERIC_TIMES;
-  const d = new Date(dateStr + 'T12:00:00');
-  const jsDay = d.getDay();
-  const schedDay = jsDayToScheduleDay(jsDay);
-  // Un día puede tener VARIOS bloques habilitados (mañana + tarde, ADR-018).
-  // Usar filter (no find) y unir los slots de todos los bloques del día.
-  const scheds = office.schedule.filter((s) => s.day === schedDay && s.enabled);
-  if (scheds.length === 0) return [];
-  const all = new Set<string>();
-  for (const s of scheds) {
-    // Cada bloque manda sobre el consultorio cuando trae su propia duración.
-    for (const t of timesBetween(
-      s.start,
-      s.end,
-      s.slotDuration ?? office.slot_duration ?? 30,
-      s.bufferMinutes ?? office.buffer_minutes ?? 0,
-    )) {
-      all.add(t);
-    }
-  }
-  // HH:MM con ceros a la izquierda → orden lexicográfico == cronológico.
-  return Array.from(all).sort();
+  // Envoltorio de getTimeSlotsWithDuration: una sola implementación de la
+  // grilla. Tener dos era exactamente cómo nacieron los bugs de duración.
+  return getTimeSlotsWithDuration(dateStr, office).map((s) => s.time);
 }
 
 // ---------------------------------------------------------------------------

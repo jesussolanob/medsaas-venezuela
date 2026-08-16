@@ -59,3 +59,4 @@ export * from './dtos/confirm-appointment.dto';
 export * from './pending-consultation.schema';
 export * from './dtos/reviewer-login.dto';
 export * from './dtos/venezuelan-banks';
+export * from './dtos/create-immediate-appointment.dto';

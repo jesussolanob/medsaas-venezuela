@@ -790,6 +790,129 @@ describe('GetAvailableSlotsUseCase (offices-based + availability blocks)', () =>
     });
   });
 
+  // ─── E1: interval-based overlap detection ────────────────────────────────
+
+  describe('interval-based overlap detection (E1)', () => {
+    it('marks BOTH 08:00 AND 08:30 occupied when a 45-min appointment starts at 08:00 (30-min grid)', async () => {
+      // appt [480, 525). slot 08:00 [480, 510): 480 < 525 && 480 < 510 → blocked.
+      // slot 08:30 [510, 540): 510 < 525 && 480 < 540 → blocked.
+      // slot 09:00 [540, 570): 540 < 525 = false → NOT blocked.
+      const appt45 = makeAppointment({
+        scheduledAt: new Date(`2026-06-08T08:00:00.000${CARACAS}`),
+        durationMinutes: 45,
+      });
+      appointmentRepo = makeAppointmentRepo([appt45]);
+      useCase = makeUseCase(doctorLoader, officeRepo, appointmentRepo, blockRepo, scheduleRepo);
+
+      const result = await useCase.execute(DOCTOR_ID, DATE_STR);
+
+      expect(result.slots.find((s) => s.time === '08:00')?.available).toBe(false);
+      expect(result.slots.find((s) => s.time === '08:30')?.available).toBe(false);
+      expect(result.slots.find((s) => s.time === '09:00')?.available).toBe(true);
+    });
+
+    it('blocks overlapping grid slots when appointment starts off-grid (14:37, 30 min)', async () => {
+      // appt [877, 907).
+      // slot 14:00 [840, 870): 840 < 907 && 877 < 870 = false → NOT blocked.
+      // slot 14:30 [870, 900): 870 < 907 && 877 < 900 → blocked.
+      // slot 15:00 [900, 930): 900 < 907 && 877 < 930 → blocked.
+      // slot 15:30 [930, 960): 930 < 907 = false → NOT blocked.
+      const officeAfternoon = makeOffice({
+        schedule: [{ day: 0, enabled: true, start: '14:00', end: '16:00' }],
+        slotDuration: 30,
+        bufferMinutes: 0,
+      });
+      officeRepo = makeOfficeRepo([officeAfternoon]);
+      appointmentRepo = makeAppointmentRepo([
+        makeAppointment({
+          scheduledAt: new Date(`2026-06-08T14:37:00.000${CARACAS}`),
+          durationMinutes: 30,
+        }),
+      ]);
+      useCase = makeUseCase(doctorLoader, officeRepo, appointmentRepo, blockRepo, scheduleRepo);
+
+      const result = await useCase.execute(DOCTOR_ID, DATE_STR);
+
+      expect(result.slots.find((s) => s.time === '14:00')?.available).toBe(true);
+      expect(result.slots.find((s) => s.time === '14:30')?.available).toBe(false);
+      expect(result.slots.find((s) => s.time === '15:00')?.available).toBe(false);
+      expect(result.slots.find((s) => s.time === '15:30')?.available).toBe(true);
+    });
+
+    it('treats null durationMinutes as 30 minutes for overlap check (legacy rows)', async () => {
+      // durationMinutes = null → 30'. appt [480, 510).
+      // slot 08:00 [480, 510) → blocked. slot 08:30 [510, 540) → NOT blocked (boundary).
+      const apptNullDur = makeAppointment({
+        scheduledAt: new Date(`2026-06-08T08:00:00.000${CARACAS}`),
+        // durationMinutes omitted → null
+      });
+      appointmentRepo = makeAppointmentRepo([apptNullDur]);
+      useCase = makeUseCase(doctorLoader, officeRepo, appointmentRepo, blockRepo, scheduleRepo);
+
+      const result = await useCase.execute(DOCTOR_ID, DATE_STR);
+
+      expect(result.slots.find((s) => s.time === '08:00')?.available).toBe(false);
+      // Null treated as 30' → appt ends exactly at 08:30 → 08:30 slot NOT blocked.
+      expect(result.slots.find((s) => s.time === '08:30')?.available).toBe(true);
+    });
+
+    it('cancelled appointments do not block slots (filtered by findActiveByDoctorAndDateRange)', async () => {
+      // The repo contract excludes cancelled/completed/no_show rows.
+      // When it returns an empty list, all slots must be free — verifies the use case
+      // does NOT perform additional status filtering on top of the repo contract.
+      appointmentRepo = makeAppointmentRepo([]);
+      useCase = makeUseCase(doctorLoader, officeRepo, appointmentRepo, blockRepo, scheduleRepo);
+
+      const result = await useCase.execute(DOCTOR_ID, DATE_STR);
+
+      result.slots.forEach((s) => expect(s.available).toBe(true));
+    });
+
+    it('uses max slot duration when two offices produce the same time with different durations', async () => {
+      // office1: 30-min slots. office2: 45-min slots. Both generate '08:00'.
+      // Max duration = 45'. An appointment of 40' at 08:00 [480, 520).
+      // slot 08:30 [510, 540): if we used 30 → [510, 540) vs [480, 520): 510<520 && 480<540 → blocked ✓
+      // (Both 30 and 45 would block 08:30 in this case since 510 < 520.)
+      // More discriminating: appointment of 32' at 08:00 [480, 512).
+      // slot 08:30 [510, 540) with dur=30: 510 < 512 → blocked.
+      // slot 08:30 [510, 555) with dur=45: 510 < 512 → also blocked (same outcome here).
+      // Use a case where only the LARGER duration blocks extra: appt ends at 509.
+      // Actually let's just verify the happy-path: same slot from two offices, one appt.
+      const office1 = makeOffice({
+        id: 'off-1',
+        schedule: [{ day: 0, enabled: true, start: '08:00', end: '10:00', slotDuration: 30 }],
+        slotDuration: 30,
+        bufferMinutes: 0,
+      });
+      const office2 = makeOffice({
+        id: 'off-2',
+        schedule: [{ day: 0, enabled: true, start: '08:00', end: '10:00', slotDuration: 45 }],
+        slotDuration: 45,
+        bufferMinutes: 0,
+      });
+      officeRepo = makeOfficeRepo([office1, office2]);
+
+      // Appointment from 08:30 that lasts 31' → [510, 541).
+      // With max slot dur = 45: slot '08:00' = [480, 525). 480 < 541 && 510 < 525 → blocked.
+      // With min slot dur = 30: slot '08:00' = [480, 510). 480 < 541 && 510 < 510 = false → NOT blocked.
+      // So only with max(45) is '08:00' correctly blocked.
+      appointmentRepo = makeAppointmentRepo([
+        makeAppointment({
+          scheduledAt: new Date(`2026-06-08T08:30:00.000${CARACAS}`),
+          durationMinutes: 31,
+        }),
+      ]);
+      useCase = makeUseCase(doctorLoader, officeRepo, appointmentRepo, blockRepo, scheduleRepo);
+
+      const result = await useCase.execute(DOCTOR_ID, DATE_STR);
+
+      // With max duration 45' for '08:00': [480, 525) overlaps [510, 541) → blocked.
+      expect(result.slots.find((s) => s.time === '08:00')?.available).toBe(false);
+      // '08:30' slot: [510, 555) overlaps [510, 541) → blocked.
+      expect(result.slots.find((s) => s.time === '08:30')?.available).toBe(false);
+    });
+  });
+
   // ─── Duración propia de cada bloque ───────────────────────────────────────
 
   describe('duración propia de cada bloque', () => {

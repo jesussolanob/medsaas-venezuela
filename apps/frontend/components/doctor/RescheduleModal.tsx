@@ -15,6 +15,12 @@ import { useState, useEffect, useCallback } from 'react';
 import { X, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 import { toLocalYMD, toLocalHHMM } from '@/lib/timezone';
 import { showToast } from '@/components/ui/Toaster';
+import {
+  hhmmToMinutes,
+  isSlotBlocked,
+  DEFAULT_APPOINTMENT_MINUTES,
+  type BookedInterval,
+} from '@/lib/slot-availability';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -100,7 +106,8 @@ export default function RescheduleModal({
   const [rescheduleDate, setRescheduleDate] = useState<string | null>(null);
   const [rescheduleTime, setRescheduleTime] = useState<string | null>(null);
   const [weekOffset, setWeekOffset] = useState(0);
-  const [bookedTimes, setBookedTimes] = useState<string[]>([]);
+  /** Intervalos ocupados del día, en minutos desde medianoche (hora de Caracas). */
+  const [bookedIntervals, setBookedIntervals] = useState<BookedInterval[]>([]);
   const [saving, setSaving] = useState(false);
 
   // Fetch schedule config on mount.
@@ -130,16 +137,27 @@ export default function RescheduleModal({
     let cancelled = false;
     const doFetch = (date: string) =>
       fetch(`/api/doctor/appointments?date=${date}`)
-        .then((r) => r.json() as Promise<{ bookedAt?: string[] }>)
-        .then((data) => {
+        .then(
+          (r) =>
+            r.json() as Promise<{
+              data?: { booked?: { at: string; durationMinutes: number | null }[] };
+            }>,
+        )
+        .then((json) => {
           if (cancelled) return;
-          // Convert ISO timestamps to HH:MM (Caracas timezone) for slot comparison
-          const times = (data.bookedAt ?? []).map((iso) => toLocalHHMM(new Date(iso)));
-          setBookedTimes(times);
+          // El endpoint responde { success, data: { booked } }. Antes se leía
+          // `json.bookedAt` (un nivel de más), así que SIEMPRE llegaba vacío y
+          // este modal mostraba todos los horarios libres: el choque recién
+          // aparecía al confirmar, como error del backend.
+          const intervals: BookedInterval[] = (json?.data?.booked ?? []).map((b) => ({
+            startMin: hhmmToMinutes(toLocalHHMM(new Date(b.at))),
+            durationMin: b.durationMinutes ?? DEFAULT_APPOINTMENT_MINUTES,
+          }));
+          setBookedIntervals(intervals);
         })
         .catch(() => {
           // Non-fatal: treat all slots as available on fetch error
-          if (!cancelled) setBookedTimes([]);
+          if (!cancelled) setBookedIntervals([]);
         });
 
     if (rescheduleDate) {
@@ -147,7 +165,7 @@ export default function RescheduleModal({
     } else {
       // Use a resolved promise so the setState is always inside an async callback
       Promise.resolve().then(() => {
-        if (!cancelled) setBookedTimes([]);
+        if (!cancelled) setBookedIntervals([]);
       });
     }
     return () => {
@@ -168,9 +186,12 @@ export default function RescheduleModal({
   }
   const weekDates = dates.slice(weekOffset * 5, weekOffset * 5 + 5);
 
+  // Ocupado = el slot se CRUZA con una cita, no que empiecen a la misma hora:
+  // una cita de 45' a las 08:00 también tapa el slot de las 08:30.
   const isSlotBooked = useCallback(
-    (time: string): boolean => bookedTimes.includes(time),
-    [bookedTimes],
+    (time: string): boolean =>
+      isSlotBlocked(hhmmToMinutes(time), config?.slot_duration || 30, bookedIntervals),
+    [bookedIntervals, config?.slot_duration],
   );
 
   const getSlots = useCallback(
