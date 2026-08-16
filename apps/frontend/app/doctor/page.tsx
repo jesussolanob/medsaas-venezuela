@@ -14,6 +14,7 @@ import {
   CheckCircle,
   Clock,
   ClipboardList,
+  Zap,
   ChevronLeft,
   ChevronRight as ChevronRightIcon,
   UserPlus,
@@ -28,6 +29,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { StatCard, Card } from '@/components/dh';
 import NewAppointmentFlow from '@/components/appointment-flow/NewAppointmentFlow';
+import ImmediateConsultationModal from '@/components/doctor/ImmediateConsultationModal';
 import AppointmentDetailModal, {
   type RescheduleRequest,
 } from '@/components/doctor/AppointmentDetailModal';
@@ -156,6 +158,9 @@ export default function DoctorDashboard() {
   // null = desconocido (cargando o fetch falló), true = tiene consultorios, false = sin consultorios
   const [hasOffices, setHasOffices] = useState<boolean | null>(null);
   // Controla si el doctor descartó el banner de plantillas en esta sesión.
+  // Modal de consulta inmediata (paciente sin cita).
+  const [showImmediate, setShowImmediate] = useState(false);
+
   // Modal "Nueva consulta"
   const [showNewFlow, setShowNewFlow] = useState(false);
   // L3 (2026-04-29): estado del modal "Crear paciente" (quick action) +
@@ -870,6 +875,18 @@ export default function DoctorDashboard() {
                 <ClipboardList className="w-4 h-4" />
                 <span>Crear Consulta</span>
               </button>
+              {/* Paciente que llega SIN cita: se registra con la hora actual. */}
+              <button
+                onClick={() => setShowImmediate(true)}
+                className="flex items-center justify-center sm:justify-start gap-2 backdrop-blur text-white font-semibold text-[13px] px-4 py-2.5 rounded-full transition-colors"
+                style={{
+                  background: 'rgba(255,255,255,0.18)',
+                  border: '1px solid rgba(255,255,255,0.28)',
+                }}
+              >
+                <Zap className="w-4 h-4" />
+                <span>Consulta Inmediata</span>
+              </button>
               <button
                 onClick={() => setShowPatientForm(true)}
                 className="flex items-center justify-center sm:justify-start gap-2 backdrop-blur text-white font-semibold text-[13px] px-4 py-2.5 rounded-full transition-colors"
@@ -1397,6 +1414,18 @@ export default function DoctorDashboard() {
       {/* Modal: crear consulta (estilo acordeón).
           onSuccess: el modal maneja la navegación internamente (success step).
           Solo hacemos limpieza aquí y refrescamos el dashboard. */}
+      {showImmediate && (
+        <ImmediateConsultationModal
+          onClose={() => setShowImmediate(false)}
+          onCreated={(consultationId) => {
+            setShowImmediate(false);
+            setRefreshKey((k) => k + 1);
+            // El paciente está enfrente: se abre la consulta para atenderlo.
+            if (consultationId) router.push(`/doctor/consultations?open=${consultationId}`);
+          }}
+        />
+      )}
+
       <NewAppointmentFlow
         open={showNewFlow}
         onClose={() => {

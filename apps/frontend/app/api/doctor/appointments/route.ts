@@ -3,7 +3,7 @@
  *
  * GET  — returns booked time slots for a given date.
  *        Query: ?date=YYYY-MM-DD
- *        Response: { success: true, data: { bookedAt: string[] } }
+ *        Response: { success: true, data: { booked: { at, durationMinutes }[] } }
  *        Used by the NewAppointmentFlow wizard to grey out already-taken slots.
  *
  * DELETE — proxies to the backend `DELETE /api/appointments/:id`, which deletes
@@ -22,6 +22,8 @@ interface BackendAppointment {
   id: string;
   scheduledAt: string;
   status: string;
+  /** Minutos que OCUPA la cita. Null en filas viejas → se asume 30. */
+  durationMinutes?: number | null;
 }
 
 export const dynamic = 'force-dynamic';
@@ -57,9 +59,15 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   }
 
   const appointments = Array.isArray(result.value) ? result.value : [];
-  const bookedAt = appointments.filter((a) => a.status !== 'cancelled').map((a) => a.scheduledAt);
 
-  return NextResponse.json({ success: true, data: { bookedAt } });
+  // Se devuelve el INTERVALO, no solo la hora de inicio. Con solo el inicio,
+  // una cita de 45' a las 08:00 dejaba el slot de las 08:30 como libre: se
+  // ofrecía un horario que el backend después rechazaba por solapamiento.
+  const booked = appointments
+    .filter((a) => a.status !== 'cancelled')
+    .map((a) => ({ at: a.scheduledAt, durationMinutes: a.durationMinutes ?? null }));
+
+  return NextResponse.json({ success: true, data: { booked } });
 }
 
 // ---------------------------------------------------------------------------

@@ -123,8 +123,11 @@ export class GetAvailableSlotsUseCase {
     // 5. Load active offices for the doctor
     const activeOffices = await this.officeRepo.findActiveByDoctor(doctorId);
 
-    // 6. Generate theoretical time strings from all active offices that have this day enabled
-    const timeSet = new Set<string>();
+    // 6. Generate time slots from all active offices that have this day enabled.
+    //    Track each slot's duration (max across offices/blocks) so we can later
+    //    detect appointment overlaps by interval, not just by start time (E1 fix).
+    //    key = "HH:MM", value = max slot duration in minutes for that time.
+    const slotDurMap = new Map<string, number>();
 
     for (const office of activeOffices) {
       const dayEntries = office.getEnabledSchedulesForDay(officeDay);
@@ -144,13 +147,17 @@ export class GetAvailableSlotsUseCase {
 
         let current = startMin;
         while (current + duracion <= endMin) {
-          timeSet.add(formatMinutes(current));
+          const timeStr = formatMinutes(current);
+          // When two offices (or blocks) produce the same slot, keep the larger
+          // duration so the interval check uses the most conservative boundary.
+          const prev = slotDurMap.get(timeStr) ?? 0;
+          slotDurMap.set(timeStr, Math.max(prev, duracion));
           current += paso;
         }
       }
     }
 
-    if (timeSet.size === 0) {
+    if (slotDurMap.size === 0) {
       return { date: dateStr, slots: [] };
     }
 
@@ -166,28 +173,39 @@ export class GetAvailableSlotsUseCase {
       dayEnd,
     );
 
-    // Build a set of occupied HH:MM strings for O(1) lookup.
-    // Appointments are stored as UTC TIMESTAMPTZ; convert to Caracas wall-clock
-    // time to match the slot HH:MM strings (which are also Caracas wall-clock).
-    const occupiedTimes = new Set<string>(
-      occupied.map((appt: { scheduledAt: Date }) => toCaracasHHMM(appt.scheduledAt)),
-    );
+    // Convert each active appointment to a Caracas-time interval [startMin, endMin).
+    // durationMinutes null (legacy rows) → fallback 30, same COALESCE as hasOverlap SQL.
+    // Appointments are stored as UTC TIMESTAMPTZ; toCaracasHHMM converts to wall-clock.
+    const apptIntervals = occupied.map((appt) => {
+      const startMin = this.parseMinutes(toCaracasHHMM(appt.scheduledAt));
+      const dur = appt.durationMinutes ?? 30;
+      return { startMin, endMin: startMin + dur };
+    });
 
     // 8. Load availability blocks overlapping this day
     const blocks = await this.blockRepo.findOverlapping(doctorId, dayStart, dayEnd);
 
     // 9. Sort times and map to AvailableSlot[]
-    const sortedTimes = Array.from(timeSet).sort();
+    const sortedTimes = Array.from(slotDurMap.keys()).sort();
     const slots: AvailableSlot[] = sortedTimes.map((time) => {
+      const slotStart = this.parseMinutes(time);
+      const slotEnd = slotStart + (slotDurMap.get(time) ?? 30);
+
+      // Interval overlap: slot [slotStart, slotEnd) crosses appt [a.startMin, a.endMin)
+      // iff slotStart < a.endMin && a.startMin < slotEnd.
+      // This correctly handles appointments that start off-grid or span multiple slots.
+      const blockedByAppointment = apptIntervals.some(
+        (a) => slotStart < a.endMin && a.startMin < slotEnd,
+      );
+
       // Materialize the slot HH:MM as a Caracas-local instant for block overlap check.
-      // Block boundaries are also stored as UTC TIMESTAMPTZ, so comparing UTC instants
-      // is correct here — we just need the slot instant to reflect Caracas wall clock.
+      // Block boundaries are stored as UTC TIMESTAMPTZ; comparing UTC instants is correct.
       const slotDate = new Date(`${dateStr}T${time}:00.000${CARACAS_OFFSET}`);
       const blockedByAvailabilityBlock = blocks.some((b) => b.overlapsSlot(slotDate));
 
       return {
         time,
-        available: !occupiedTimes.has(time) && !blockedByAvailabilityBlock,
+        available: !blockedByAppointment && !blockedByAvailabilityBlock,
       };
     });
 

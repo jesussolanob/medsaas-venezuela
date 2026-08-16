@@ -7,6 +7,7 @@ import {
   Clock,
   Activity,
   Plus,
+  Zap,
   ChevronLeft,
   ChevronRight,
   Link2,
@@ -35,6 +36,7 @@ import {
   buildPackageTotalSessionsMap,
 } from './actions'; // MIGRATED: appointments → NestJS backend
 import NewAppointmentFlow from '@/components/appointment-flow/NewAppointmentFlow';
+import ImmediateConsultationModal from '@/components/doctor/ImmediateConsultationModal';
 import AppointmentDetailModal from '@/components/doctor/AppointmentDetailModal';
 import type { RescheduleRequest } from '@/components/doctor/AppointmentDetailModal';
 import { toLocalHHMM, toLocalYMD } from '@/lib/timezone';
@@ -1038,6 +1040,8 @@ export default function AgendaPage() {
   // BUG-8: usar NewAppointmentFlow (acordeón estilo booking público) en lugar del modal inline
   const [showNewFlow, setShowNewFlow] = useState(false);
   const [newFlowSlotStart, setNewFlowSlotStart] = useState<string | undefined>(undefined);
+  // Modal de consulta inmediata (paciente sin cita).
+  const [showImmediate, setShowImmediate] = useState(false);
 
   function openNewConsultaForDate(date: Date, time?: string) {
     const t = time || '09:00';
@@ -1139,6 +1143,14 @@ export default function AgendaPage() {
               <span className="hidden sm:inline">
                 {syncing ? 'Sincronizando…' : 'Sincronizar calendario'}
               </span>
+            </button>
+            {/* Paciente que llega SIN cita: se registra con la hora actual. */}
+            <button
+              onClick={() => setShowImmediate(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-amber-50 border border-amber-200 text-amber-700 rounded-lg text-sm font-semibold hover:bg-amber-100 transition-colors"
+            >
+              <Zap className="w-4 h-4" />
+              <span className="hidden sm:inline">Consulta inmediata</span>
             </button>
             <button
               onClick={() => openNewConsultaForDate(selectedDate)}
@@ -2671,6 +2683,18 @@ export default function AgendaPage() {
             );
           })()}
       </div>
+
+      {showImmediate && (
+        <ImmediateConsultationModal
+          onClose={() => setShowImmediate(false)}
+          onCreated={(consultationId) => {
+            setShowImmediate(false);
+            void loadData();
+            // El paciente está enfrente: se abre la consulta para atenderlo.
+            if (consultationId) router.push(`/doctor/consultations?open=${consultationId}`);
+          }}
+        />
+      )}
 
       {/* BUG-8 fix: NewAppointmentFlow estilo booking público (acordeón) */}
       {showNewFlow && (

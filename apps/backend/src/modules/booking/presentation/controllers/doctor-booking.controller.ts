@@ -1,4 +1,4 @@
-import { Body, Controller, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Post, Query, UseGuards } from '@nestjs/common';
 import { AppAuthGuard } from '../../../../infrastructure/auth/app-auth.guard';
 import {
   CurrentUser,
@@ -6,12 +6,30 @@ import {
 } from '../../../../presentation/decorators/current-user.decorator';
 import { ZodValidationPipe } from '../../../../presentation/pipes/zod-validation.pipe';
 import { CreateBookingDtoSchema, type CreateBookingDto } from '@delta/shared-types';
+import {
+  CreateImmediateAppointmentDtoSchema,
+  type CreateImmediateAppointmentDto,
+} from '@delta/shared-types';
 import { CreateBookingUseCase } from '../../application/use-cases/booking/create-booking.use-case';
+import { GetImmediateWindowUseCase } from '../../application/use-cases/booking/get-immediate-window.use-case';
+import { CreateImmediateAppointmentUseCase } from '../../application/use-cases/booking/create-immediate-appointment.use-case';
+import { z } from 'zod';
 
 interface SuccessResponse<T> {
   success: true;
   data: T;
 }
+
+/** Query-string schema for GET /api/doctor/appointments/immediate-window */
+/**
+ * La ventana es del ESPECIALISTA, no de un consultorio: su próxima cita lo
+ * ocupa físicamente atienda donde atienda. Por eso no recibe `office_id` —
+ * pedirlo obligaría al modal a elegir consultorio antes de poder avisar que no
+ * queda espacio, y sería un parámetro que el caso de uso ni mira.
+ */
+const ImmediateWindowQuerySchema = z.object({
+  duration_minutes: z.coerce.number().int().min(5).max(480),
+});
 
 /**
  * DoctorBookingController — authenticated endpoints for doctor-initiated booking.
@@ -26,7 +44,11 @@ interface SuccessResponse<T> {
 @Controller('doctor/appointments')
 @UseGuards(AppAuthGuard)
 export class DoctorBookingController {
-  constructor(private readonly createBooking: CreateBookingUseCase) {}
+  constructor(
+    private readonly createBooking: CreateBookingUseCase,
+    private readonly getWindow: GetImmediateWindowUseCase,
+    private readonly createImmediate: CreateImmediateAppointmentUseCase,
+  ) {}
 
   /**
    * POST /api/doctor/appointments
@@ -67,6 +89,85 @@ export class DoctorBookingController {
         appointmentCode: result.appointmentCode,
         scheduledAt: result.appointment.scheduledAt,
         meetLink: result.meetLink,
+      },
+    };
+  }
+
+  /**
+   * GET /api/doctor/appointments/immediate-window
+   *
+   * Returns how much time is available right now on the doctor's calendar before
+   * their next active appointment. Used by the frontend to display the
+   * "Hora libre" panel before starting an immediate walk-in consultation.
+   *
+   * Query params:
+   *   - office_id: UUID of the office where the walk-in is happening (required for UI context)
+   *   - duration_minutes: requested service duration in minutes (5–480)
+   *
+   * Response:
+   *   { now, nextAppointmentAt, availableMinutes, effectiveDuration, fits }
+   *
+   * Security: doctorId always comes from the authenticated session (user.sub).
+   */
+  @Get('immediate-window')
+  async immediateWindow(
+    @Query(new ZodValidationPipe(ImmediateWindowQuerySchema))
+    query: z.infer<typeof ImmediateWindowQuerySchema>,
+    @CurrentUser() user: CurrentUserPayload,
+  ): Promise<SuccessResponse<unknown>> {
+    const windowResult = await this.getWindow.execute({
+      doctorId: user.sub,
+      durationMinutes: query.duration_minutes,
+    });
+
+    return {
+      success: true,
+      data: {
+        now: windowResult.now,
+        nextAppointmentAt: windowResult.nextAppointmentAt,
+        availableMinutes: windowResult.availableMinutes,
+        effectiveDuration: windowResult.effectiveDuration,
+        fits: windowResult.fits,
+      },
+    };
+  }
+
+  /**
+   * POST /api/doctor/appointments/immediate
+   *
+   * Creates an immediate (walk-in) appointment whose scheduled_at is the
+   * current server time. Any client-provided scheduled_at is ignored.
+   *
+   * The effective duration is resolved as:
+   *   - force=false: min(duration_minutes, minutesUntilNextAppt)
+   *     → throws NoImmediateSlotError (409) if < 5 minutes are available
+   *   - force=true: always duration_minutes (doctor accepts the overlap)
+   *
+   * The patient's cross-doctor overlap check is NEVER bypassed — not even
+   * with force=true.
+   *
+   * Security:
+   *   - doctorId always from authenticated session (user.sub).
+   *   - patient_id must belong to the authenticated doctor (anti-IDOR).
+   *   - NEVER logs PII (patient name, cedula, email, phone).
+   */
+  @Post('immediate')
+  async createImmediate_(
+    @Body(new ZodValidationPipe(CreateImmediateAppointmentDtoSchema))
+    dto: CreateImmediateAppointmentDto,
+    @CurrentUser() user: CurrentUserPayload,
+  ): Promise<SuccessResponse<unknown>> {
+    const result = await this.createImmediate.execute(user.sub, dto);
+
+    return {
+      success: true,
+      data: {
+        appointmentId: result.appointmentId,
+        appointmentCode: result.appointmentCode,
+        scheduledAt: result.scheduledAt,
+        effectiveDuration: result.effectiveDuration,
+        meetLink: result.meetLink,
+        consultationId: result.consultationId,
       },
     };
   }
