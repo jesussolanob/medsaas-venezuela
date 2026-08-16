@@ -9,12 +9,20 @@ import {
   type IAppointmentRepository,
 } from '../../../domain/repositories/appointment.repository';
 import { UpdateCalendarEventUseCase } from '../../../../integrations/application/use-cases/integrations/update-calendar-event.use-case';
+import { computeActiveStatus } from '../../../domain/policies/appointment-status.policy';
 
 /** Milliseconds in one minute — used to compute the new event end time. */
 const MS_PER_MINUTE = 60_000;
 
-/** Statuses that allow a reschedule operation. */
-const RESCHEDULABLE_STATUSES: ReadonlySet<string> = new Set(['scheduled', 'confirmed']);
+/**
+ * Statuses that allow a reschedule operation.
+ *
+ * 'no_show' is intentionally included: when the patient missed the appointment
+ * the doctor can reschedule it instead of leaving it unresolved.  The appointment
+ * is restored to an active status ('confirmed' or 'scheduled') so it re-enters
+ * the normal workflow.  'cancelled' and 'completed' remain blocked.
+ */
+const RESCHEDULABLE_STATUSES: ReadonlySet<string> = new Set(['scheduled', 'confirmed', 'no_show']);
 
 /** Default slot duration used for overlap detection when the appointment has no stored duration. */
 const DEFAULT_SLOT_DURATION_MINUTES = 30;
@@ -102,17 +110,31 @@ export class RescheduleAppointmentUseCase {
     }
 
     // 6. Persist the new scheduled_at
-    const updated = await this.appointmentRepo.updateScheduledAt(
+    const dateUpdated = await this.appointmentRepo.updateScheduledAt(
       input.appointmentId,
       input.newScheduledAt,
     );
 
-    // 7. Audit log — action recorded as a pseudo-status transition from old datetime to new
+    // 6b. When rescheduling out of 'no_show', restore the appointment to an
+    //     active status using the same 3-day auto-confirm rule as appointment
+    //     creation ('confirmed' when < 3 days away, 'scheduled' otherwise).
+    //     Non-no_show reschedules preserve the current status unchanged.
+    const previousStatus = appointment.status;
+    let updated = dateUpdated;
+    if (previousStatus === 'no_show') {
+      const restoredStatus = computeActiveStatus(input.newScheduledAt);
+      updated = await this.appointmentRepo.updateStatus(input.appointmentId, restoredStatus);
+    }
+
+    // 7. Audit log — when rescheduling from 'no_show' record the real status
+    //    transition (no_show → confirmed/scheduled) so there is a permanent
+    //    trace of the patient having missed the original appointment.
+    //    For date-only reschedules the status does not change.
     await this.appointmentRepo.logStatusChange({
       appointmentId: input.appointmentId,
       actorId: input.actorId,
-      oldStatus: appointment.status,
-      newStatus: appointment.status, // status does not change; log preserves rescheduled context
+      oldStatus: previousStatus,
+      newStatus: updated.status,
     });
 
     // 8. Move the Google Calendar event to the new time (best-effort — must not

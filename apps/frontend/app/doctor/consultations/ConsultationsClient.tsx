@@ -104,6 +104,7 @@ import MarkdownText from '@/components/shared/MarkdownText';
 import NewAppointmentFlow from '@/components/appointment-flow/NewAppointmentFlow';
 import PatientFichaModal from '@/components/patient/PatientFichaModal';
 import RescheduleModal from '@/components/doctor/RescheduleModal';
+import NoShowModal from '@/components/doctor/NoShowModal';
 import PatientHistoryModal from './PatientHistoryModal';
 import { log } from '@/lib/logger';
 import { reportError } from '@/lib/report-error';
@@ -800,6 +801,8 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
     scheduledAt: string;
     infoMessage?: string;
   } | null>(null);
+  // Cuando se setea, abre el flujo de inasistencia (multa + reagendar).
+  const [noShowTarget, setNoShowTarget] = useState<Consultation | null>(null);
 
   // Doctor profile for share template
   const [doctorName, setDoctorName] = useState('');
@@ -3264,10 +3267,7 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                   )}
                   {selected.status !== 'no_show' && (
                     <button
-                      onClick={() => {
-                        if (confirm('¿Confirmas que el paciente NO asistió?'))
-                          updateConsultaStatus(selected.id, 'no_show', selected.appointment_id);
-                      }}
+                      onClick={() => setNoShowTarget(selected)}
                       className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-red-200 rounded-lg text-xs font-semibold text-red-600 hover:bg-red-50 transition-colors"
                       title="Marcar como no asistido"
                     >
@@ -6046,6 +6046,32 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                 reportError('doctor/consultations', 'onConfirmedApprove', err);
                 showToast({ type: 'error', message: 'Error al aprobar el cobro' });
               }
+            }}
+          />
+        )}
+
+        {/* Inasistencia: multa opcional + reagendar en el mismo paso. */}
+        {noShowTarget && (
+          <NoShowModal
+            consultationId={noShowTarget.id}
+            appointmentId={noShowTarget.appointment_id}
+            patientName={noShowTarget.patient_name}
+            scheduledAt={noShowTarget.consultation_date}
+            onClose={() => setNoShowTarget(null)}
+            onDone={(result) => {
+              const id = noShowTarget.id;
+              setNoShowTarget(null);
+              // El estado de la consulta lo deriva la cita: si reagendó, la cita
+              // volvió a estar vigente y la consulta deja de ser "no asistió".
+              const nextStatus: Consultation['status'] = result.rescheduled ? 'pending' : 'no_show';
+              const patch = (c: Consultation): Consultation => ({
+                ...c,
+                status: nextStatus,
+                amount: result.amount ?? c.amount,
+                payment_status: result.paymentStatus ?? c.payment_status,
+              });
+              setSelected((prev) => (prev && prev.id === id ? patch(prev) : prev));
+              setConsultations((prev) => prev.map((c) => (c.id === id ? patch(c) : c)));
             }}
           />
         )}
