@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 import { ChevronLeft, ChevronRight, CheckCircle2, Loader2 } from 'lucide-react';
 import { DoctorOffice, getTimeSlotsForDate, jsDayToScheduleDay } from '../appointment-flow.utils';
 
@@ -28,7 +28,7 @@ type Props = {
 const PAGE_SIZE = 5;
 const HORIZON_DAYS = 60;
 /**
- * Días hacia atrás que puede recorrer el especialista.
+ * El especialista puede retroceder SIN LÍMITE.
  *
  * Este flujo es SOLO del especialista (NewAppointmentFlow); el booking público
  * del paciente vive en app/book/[doctorId] y no usa este componente, así que
@@ -36,10 +36,13 @@ const HORIZON_DAYS = 60;
  *
  * Por qué: si atendió a alguien ayer (por ejemplo, se fue la luz y no pudo
  * cargarlo en el momento), tiene que poder dejar el registro con la fecha real
- * en vez de inventar una de hoy.
+ * en vez de inventar una de hoy. Antes el tope era de 30 días; el dueño pidió
+ * que no hubiera tope, así que la ventana visible se calcula a partir del
+ * offset en vez de recortarse contra un arreglo de largo fijo.
+ *
+ * Una cita con fecha pasada creada por el especialista nace ATENDIDA
+ * (el backend lo resuelve en computeInitialStatus).
  */
-const PAST_DAYS = 30;
-const PAST_PAGES = Math.ceil(PAST_DAYS / PAGE_SIZE);
 
 function fmtDateTime(iso: string): string {
   if (!iso) return '';
@@ -48,6 +51,23 @@ function fmtDateTime(iso: string): string {
     timeStyle: 'short',
     timeZone: 'America/Caracas',
   });
+}
+
+/** YYYY-MM-DD de una fecha en la zona del navegador (la misma que arma la grilla). */
+function toYMD(d: Date): string {
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${d.getFullYear()}-${mm}-${dd}`;
+}
+
+/**
+ * Días calendario entre dos YYYY-MM-DD. Se anclan al mediodía UTC para que un
+ * cambio de horario de verano no corra el resultado un día.
+ */
+function daysBetween(fromYMD: string, toYMDStr: string): number {
+  const from = Date.parse(`${fromYMD}T12:00:00Z`);
+  const to = Date.parse(`${toYMDStr}T12:00:00Z`);
+  return Math.round((to - from) / 86_400_000);
 }
 
 export default function StepSchedule({
@@ -62,45 +82,40 @@ export default function StepSchedule({
   loadingSlots,
   scheduledAt,
 }: Props) {
-  // Arranca PAST_DAYS antes de hoy y llega hasta HORIZON_DAYS: el índice de hoy
-  // es PAST_DAYS, así que weekOffset=0 sigue mostrando la página que empieza hoy
-  // (la vista por defecto no cambia) y un offset negativo retrocede al pasado.
-  const days: DayInfo[] = useMemo(() => {
+  // Un día está habilitado si el consultorio atiende ese día de la semana.
+  // Sin horario cargado se habilitan todos (el flujo cae a horarios genéricos).
+  const isDayEnabled = useCallback(
+    (d: Date): boolean => {
+      if (!selectedOffice?.schedule || selectedOffice.schedule.length === 0) return true;
+      const schedDay = jsDayToScheduleDay(d.getDay());
+      return selectedOffice.schedule.some((s) => s.day === schedDay && s.enabled);
+    },
+    [selectedOffice],
+  );
+
+  // Solo se construyen los PAGE_SIZE días visibles, corridos por weekOffset:
+  // 0 = la página que empieza hoy, negativo = hacia atrás (sin tope), positivo
+  // = hacia adelante hasta HORIZON_DAYS.
+  const visibleDays: DayInfo[] = useMemo(() => {
     const today = new Date();
     const result: DayInfo[] = [];
-    for (let i = -PAST_DAYS; i < HORIZON_DAYS; i++) {
+    for (let i = 0; i < PAGE_SIZE; i++) {
       const d = new Date(today);
-      d.setDate(today.getDate() + i);
-      const yyyy = d.getFullYear();
-      const mm = String(d.getMonth() + 1).padStart(2, '0');
-      const dd = String(d.getDate()).padStart(2, '0');
-      const dateStr = `${yyyy}-${mm}-${dd}`;
-
-      let enabled = true;
-      if (selectedOffice?.schedule && selectedOffice.schedule.length > 0) {
-        const jsDay = d.getDay();
-        const schedDay = jsDayToScheduleDay(jsDay);
-        const hasSched = selectedOffice.schedule.some((s) => s.day === schedDay && s.enabled);
-        enabled = hasSched;
-      }
-
+      d.setDate(today.getDate() + weekOffset * PAGE_SIZE + i);
       result.push({
-        date: dateStr,
+        date: toYMD(d),
         weekday: d.toLocaleDateString('es-VE', { weekday: 'short' }).toUpperCase(),
         dayNum: String(d.getDate()),
         month: d.toLocaleDateString('es-VE', { month: 'short' }).toUpperCase(),
-        enabled,
+        enabled: isDayEnabled(d),
       });
     }
     return result;
-  }, [selectedOffice]);
+  }, [isDayEnabled, weekOffset]);
 
-  // weekOffset 0 = la página que empieza hoy; negativo = semanas hacia atrás.
-  const todayPageStart = PAST_PAGES * PAGE_SIZE;
-  const windowStart = todayPageStart + weekOffset * PAGE_SIZE;
-  const visibleDays = days.slice(windowStart, windowStart + PAGE_SIZE);
-  const canPrev = weekOffset > -PAST_PAGES;
-  const canNext = windowStart + PAGE_SIZE < days.length;
+  // Hacia atrás no hay tope; hacia adelante se respeta el horizonte de 60 días.
+  const canPrev = true;
+  const canNext = (weekOffset + 1) * PAGE_SIZE < HORIZON_DAYS;
   const rangeLabel =
     visibleDays.length > 0
       ? `${visibleDays[0].dayNum} ${visibleDays[0].month} — ${visibleDays[visibleDays.length - 1].dayNum} ${visibleDays[visibleDays.length - 1].month}`
@@ -131,6 +146,12 @@ export default function StepSchedule({
   const nowHHMM = `${nowHour}:${nowPart('minute')}`;
   const isTodaySelected = selectedDate === todayCaracas;
 
+  // ¿La fecha+hora elegidas ya pasaron? Se compara contra los mismos strings de
+  // Caracas que usa la grilla de horas, en vez de volver a leer el reloj.
+  const isPastSelection =
+    selectedDate < todayCaracas ||
+    (isTodaySelected && Boolean(selectedTime) && selectedTime <= nowHHMM);
+
   // If no office schedule, show a hint about generic times
   const usingGenericTimes =
     !selectedOffice || !selectedOffice.schedule || selectedOffice.schedule.length === 0;
@@ -151,14 +172,33 @@ export default function StepSchedule({
 
       {/* Selector de fecha paginado */}
       <div>
-        <div className="flex items-center justify-between mb-2">
-          <p className="text-xs font-semibold text-slate-600 uppercase tracking-wider">
-            Selecciona el día
-          </p>
+        <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
+          <div className="flex items-center gap-2">
+            <p className="text-xs font-semibold text-slate-600 uppercase tracking-wider">
+              Selecciona el día
+            </p>
+            {/* Atajo: retroceder de a 5 días no sirve para una atención de hace
+                meses. Mueve la ventana a la fecha elegida y, si ese día se
+                atiende, la deja seleccionada. */}
+            <input
+              type="date"
+              value={selectedDate || ''}
+              onChange={(e) => {
+                const target = e.target.value;
+                if (!target) return;
+                setWeekOffset(Math.floor(daysBetween(toYMD(new Date()), target) / PAGE_SIZE));
+                const [y, m, d] = target.split('-').map(Number);
+                if (isDayEnabled(new Date(y, (m ?? 1) - 1, d))) setSelectedDate(target);
+              }}
+              aria-label="Ir a una fecha"
+              title="Ir a una fecha"
+              className="text-xs border border-slate-200 rounded-lg px-2 py-1 text-slate-600 focus:border-teal-300 focus:outline-none"
+            />
+          </div>
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={() => setWeekOffset(Math.max(-PAST_PAGES, weekOffset - 1))}
+              onClick={() => setWeekOffset(weekOffset - 1)}
               disabled={!canPrev}
               className="w-8 h-8 rounded-xl bg-white border border-slate-200 hover:border-teal-300 hover:bg-teal-50 disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center transition-colors"
               aria-label="Semana anterior"
@@ -284,6 +324,16 @@ export default function StepSchedule({
           <span className="text-xs font-semibold text-emerald-800">{fmtDateTime(scheduledAt)}</span>
           <span className="text-xs text-emerald-600 ml-1">
             — al seleccionar la hora avanzas automáticamente
+          </span>
+        </div>
+      )}
+
+      {/* Aviso de consulta retroactiva: el backend la crea directamente como
+          atendida, así que conviene decirlo ANTES de guardar y no después. */}
+      {scheduledAt && isPastSelection && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 flex items-start gap-2 text-xs text-amber-800">
+          <span>
+            Esta fecha ya pasó: la consulta se va a registrar como <strong>atendida</strong>.
           </span>
         </div>
       )}

@@ -15,34 +15,28 @@ import {
   type IOfficeRepository,
 } from '../../../../offices/domain/repositories/office.repository';
 import { CreateConsultationUseCase } from '../../../../consultations/application/use-cases/consultations/create-consultation.use-case';
-
-/**
- * Number of days from now within which a doctor-created appointment is
- * automatically confirmed instead of left as `scheduled`.
- *
- * Threshold: < AUTO_CONFIRM_DAYS_THRESHOLD  → 'confirmed'
- *            >= AUTO_CONFIRM_DAYS_THRESHOLD → 'scheduled'
- *
- * "Dentro de los próximos 2 días (hoy o mañana o pasado mañana)" equals < 3 days.
- */
-const AUTO_CONFIRM_DAYS_THRESHOLD = 3;
+import { computeActiveStatus } from '../../../domain/policies/appointment-status.policy';
 
 /**
  * Computes the initial appointment status based on who is creating the appointment
- * and how far in the future the slot is.
+ * and how far in the future (or past) the slot is.
  *
  * Rules:
- *  - Patient/public booking → always `scheduled`
+ *  - Patient/public booking              → always `scheduled`
+ *  - Doctor or admin, past date          → `completed` (already attended)
  *  - Doctor or admin, slot within 3 days → `confirmed`
- *  - Doctor or admin, slot 3+ days out  → `scheduled`
+ *  - Doctor or admin, slot 3+ days out   → `scheduled`
  */
 function computeInitialStatus(actorRole: string | undefined, scheduledAt: Date): AppointmentStatus {
   if (actorRole !== 'doctor' && actorRole !== 'admin') {
     return 'scheduled';
   }
-  const msPerDay = 24 * 60 * 60 * 1000;
-  const daysUntil = (scheduledAt.getTime() - Date.now()) / msPerDay;
-  return daysUntil < AUTO_CONFIRM_DAYS_THRESHOLD ? 'confirmed' : 'scheduled';
+  // Past appointments created by doctor/admin are already attended.
+  if (scheduledAt.getTime() < Date.now()) {
+    return 'completed';
+  }
+  // Future appointments: auto-confirm when the slot is near (< 3 days).
+  return computeActiveStatus(scheduledAt);
 }
 
 @Injectable()
