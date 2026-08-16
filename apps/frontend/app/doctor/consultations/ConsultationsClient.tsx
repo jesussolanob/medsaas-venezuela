@@ -88,6 +88,9 @@ import {
   getQuickItems,
   updateAppointmentStatus,
 } from './actions';
+// El consumo del combo vive en las acciones de pacientes: es el mismo endpoint
+// que alimenta la ficha, y no tiene sentido duplicar el mapeo del wire.
+import { getPackageUsage, type PackageUsage } from '@/app/doctor/patients/actions';
 import Paginator, { PAGE_SIZE_ALL } from '@/components/ui/Paginator';
 import { getEhrPatients } from '../ehr/actions';
 import { getPatientPrescriptions, createPrescription } from './prescriptions.client';
@@ -759,6 +762,8 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
 
   // Appointment data (for payment receipt, method, price)
   const [appointmentData, setAppointmentData] = useState<AppointmentData | null>(null);
+  // Consumo del combo al que pertenece esta consulta (qué se atendió y qué falta).
+  const [comboUsage, setComboUsage] = useState<PackageUsage[]>([]);
 
   // L1 (2026-04-29): Modal "Generar informe" — mismo concepto que share pero
   // sin el split WhatsApp/Email; solo genera URL y la abre en otra pestaña.
@@ -1700,6 +1705,15 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
       setPagoAmount(c.amount != null ? String(c.amount) : '');
       setPagoReceiptPath(c.payment_receipt_url ?? null);
       setAppointmentData(null);
+    }
+
+    // Consumo de los combos del paciente. No bloquea nada: si falla, la tarjeta
+    // simplemente no aparece.
+    setComboUsage([]);
+    if (c.patient_id) {
+      void getPackageUsage(c.patient_id)
+        .then(setComboUsage)
+        .catch(() => setComboUsage([]));
     }
 
     // Bug 6: Fetch patient detail to populate patient_name, patient_phone and
@@ -4867,6 +4881,26 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                         {sessionLabel(selected)}
                       </p>
                     )}
+                    {/* Consumo del combo: el rótulo de arriba dice en qué sesión
+                        estamos, esto dice cuánto se atendió y cuánto falta.
+                        "Sin asistir" va aparte: una inasistencia no consume. */}
+                    {comboUsage
+                      .filter(
+                        (u) =>
+                          !appointmentData?.plan_name || u.planName === appointmentData.plan_name,
+                      )
+                      .map((u) => {
+                        const total =
+                          u.totalSessions ??
+                          u.attended + u.scheduled + u.noShow + u.pendingScheduling;
+                        return (
+                          <p key={u.planName} className="mt-1 text-[10px] text-violet-600">
+                            {u.attended} de {total} atendidas
+                            {u.pendingScheduling > 0 && ` · ${u.pendingScheduling} por agendar`}
+                            {u.noShow > 0 && ` · ${u.noShow} sin asistir`}
+                          </p>
+                        );
+                      })}
                     {selected.patient_id && (
                       <div className="flex flex-col gap-0.5 mt-1">
                         <button

@@ -28,11 +28,25 @@ import { GetDoctorPendingConsultationsUseCase } from '../../application/use-case
 import { SchedulePendingConsultationUseCase } from '../../application/use-cases/schedule-pending-consultation.use-case';
 import { CancelPendingConsultationUseCase } from '../../application/use-cases/cancel-pending-consultation.use-case';
 import { CreateDoctorPendingConsultationsUseCase } from '../../application/use-cases/create-doctor-pending-consultations.use-case';
+import { GetPackageUsageUseCase } from '../../application/use-cases/get-package-usage.use-case';
 import type { PendingConsultation } from '../../domain/entities/pending-consultation.entity';
+import type { PackageUsageRow } from '../../domain/repositories/pending-consultation.repository';
 
 interface SuccessResponse<T> {
   success: true;
   data: T;
+}
+
+function toUsageResponse(row: PackageUsageRow) {
+  return {
+    patient_id: row.patientId,
+    plan_name: row.planName,
+    total_sessions: row.totalSessions,
+    attended: row.attended,
+    scheduled: row.scheduled,
+    no_show: row.noShow,
+    pending_scheduling: row.pendingScheduling,
+  };
 }
 
 function toResponse(entity: PendingConsultation) {
@@ -71,6 +85,7 @@ export class DoctorPendingConsultationsController {
     private readonly schedule: SchedulePendingConsultationUseCase,
     private readonly cancel: CancelPendingConsultationUseCase,
     private readonly createDoctorPending: CreateDoctorPendingConsultationsUseCase,
+    private readonly getUsage: GetPackageUsageUseCase,
   ) {}
 
   /**
@@ -151,5 +166,25 @@ export class DoctorPendingConsultationsController {
   ): Promise<SuccessResponse<ReturnType<typeof toResponse>>> {
     const result = await this.cancel.execute({ id, doctorId: user.sub });
     return { success: true, data: toResponse(result) };
+  }
+
+  /**
+   * GET /api/doctor/pending-consultations/usage?patient_id=<uuid>
+   *
+   * Returns per-plan session consumption for the given patient.
+   * Read-only — no mutations, no migrations.
+   *
+   * Anti-IDOR: doctorId comes from the authenticated session, never from the query.
+   * The patient must belong to the authenticated doctor; returns 404 otherwise.
+   *
+   * NEVER log patient_id (PII).
+   */
+  @Get('usage')
+  async getPackageUsage(
+    @CurrentUser() user: CurrentUserPayload,
+    @Query('patient_id', new ParseUUIDPipe({ optional: true })) patientId?: string,
+  ): Promise<SuccessResponse<ReturnType<typeof toUsageResponse>[]>> {
+    const items = await this.getUsage.execute({ doctorId: user.sub, patientId });
+    return { success: true, data: items.map(toUsageResponse) };
   }
 }
