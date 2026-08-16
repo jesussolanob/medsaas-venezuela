@@ -3,6 +3,23 @@
 import { useState, useEffect } from 'react';
 import { reportError } from '@/lib/report-error';
 
+/**
+ * Divisa en la que el especialista MUESTRA sus precios.
+ *
+ * No hay conversión de por medio: un servicio cargado en 50 se muestra como
+ * $50 o €50 según lo que eligió en Configuración. Lo único que cambia de
+ * verdad es el símbolo y la tasa con la que se calcula el equivalente en
+ * bolívares. Decisión del dueño (2026-08-16).
+ *
+ * OJO: esto NO aplica al plan que el especialista le paga a Delta — eso lo
+ * fijan los administradores y es SIEMPRE USD.
+ */
+export type PortalCurrency = { code: 'USD' | 'EUR'; symbol: '$' | '€' };
+
+export function currencyForMode(mode: string): PortalCurrency {
+  return mode === 'eur_bcv' ? { code: 'EUR', symbol: '€' } : { code: 'USD', symbol: '$' };
+}
+
 type BcvRateData = {
   rate: number | null;
   dateLabel: string;
@@ -16,7 +33,18 @@ type BcvRateData = {
   toBs: (amount: number) => string;
   /** Convert amount to Bs number */
   toBsNum: (amount: number) => number;
+  /** Símbolo de la divisa elegida por el especialista ('$' o '€'). */
+  symbol: string;
+  /** Código ISO de esa divisa, para textos donde el símbolo no alcanza. */
+  currencyCode: 'USD' | 'EUR';
+  /** Formatea un importe en la divisa del especialista: "$1,234.56" / "€1,234.56". */
+  format: (amount: number | null | undefined) => string;
 };
+
+const amountFmt = new Intl.NumberFormat('en-US', {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
 
 /**
  * Hook to fetch the doctor's configured exchange rate.
@@ -27,7 +55,20 @@ type BcvRateData = {
  *
  * Fallback: si el doctor no está autenticado, consume /api/admin/bcv-rate (USD).
  */
-export function useBcvRate(): BcvRateData {
+/**
+ * Preferencia del especialista pasada desde afuera.
+ *
+ * La usa la página pública `/book/:doctorId`: ahí no hay sesión, así que el
+ * hook no puede leer `/api/doctor/exchange-rate` y caía a dólar oficial —
+ * el paciente veía `$` y otra tasa mientras el especialista veía `€`.
+ * Los datos vienen en el payload público del booking.
+ */
+export type ExchangeRateOverride = {
+  mode?: string | null;
+  customRate?: number | null;
+};
+
+export function useBcvRate(override?: ExchangeRateOverride): BcvRateData {
   const [rate, setRate] = useState<number | null>(null);
   const [dateLabel, setDateLabel] = useState('');
   const [mode, setMode] = useState<string>('usd_bcv');
@@ -41,16 +82,25 @@ export function useBcvRate(): BcvRateData {
       let prefMode = 'usd_bcv';
       let customRate: number | null = null;
       let customLabel = '';
-      try {
-        const prefRes = await fetch('/api/doctor/exchange-rate', { cache: 'no-store' });
-        if (prefRes.ok) {
-          const pref = await prefRes.json();
-          if (typeof pref?.mode === 'string') prefMode = pref.mode;
-          if (typeof pref?.customRate === 'number') customRate = pref.customRate;
-          if (typeof pref?.customRateLabel === 'string') customLabel = pref.customRateLabel;
+
+      if (override?.mode) {
+        // La preferencia llega por props (booking público, sin sesión): se usa
+        // esa y NO se consulta el endpoint autenticado, que ahí responde 401
+        // y dejaba al paciente viendo la divisa equivocada.
+        prefMode = override.mode;
+        customRate = override.customRate ?? null;
+      } else {
+        try {
+          const prefRes = await fetch('/api/doctor/exchange-rate', { cache: 'no-store' });
+          if (prefRes.ok) {
+            const pref = await prefRes.json();
+            if (typeof pref?.mode === 'string') prefMode = pref.mode;
+            if (typeof pref?.customRate === 'number') customRate = pref.customRate;
+            if (typeof pref?.customRateLabel === 'string') customLabel = pref.customRateLabel;
+          }
+        } catch {
+          /* sin auth / error → se resuelve como BCV USD abajo */
         }
-      } catch {
-        /* sin auth / error → se resuelve como BCV USD abajo */
       }
 
       // 2. Tasa personalizada: usar exactamente la que fijó el doctor.
@@ -90,7 +140,10 @@ export function useBcvRate(): BcvRateData {
 
   useEffect(() => {
     fetchRate();
-  }, []);
+    // Se re-consulta si cambia la preferencia recibida por props (el payload
+    // público del booking llega después del primer render).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [override?.mode, override?.customRate]);
 
   function toBs(amount: number): string {
     if (!rate) return '—';
@@ -102,7 +155,25 @@ export function useBcvRate(): BcvRateData {
     return amount * rate;
   }
 
-  return { rate, dateLabel, mode, label, loading, refresh: fetchRate, toBs, toBsNum };
+  const { code: currencyCode, symbol } = currencyForMode(mode);
+
+  function format(amount: number | null | undefined): string {
+    return `${symbol}${amountFmt.format(Number(amount || 0))}`;
+  }
+
+  return {
+    rate,
+    dateLabel,
+    mode,
+    label,
+    loading,
+    refresh: fetchRate,
+    toBs,
+    toBsNum,
+    symbol,
+    currencyCode,
+    format,
+  };
 }
 
 /**

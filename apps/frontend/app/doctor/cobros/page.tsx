@@ -9,7 +9,7 @@
 //   - Realtime refresh → removed (no WS in Etapa 1). fetchPayments() called after mutations.
 import { useState, useEffect, useCallback } from 'react';
 import { useBcvRate } from '@/lib/useBcvRate';
-import { formatUsd, formatBs } from '@/lib/finances';
+import { formatBs } from '@/lib/finances';
 import { reportError } from '@/lib/report-error';
 import { showToast } from '@/components/ui/Toaster';
 import {
@@ -93,7 +93,14 @@ export default function CobrosPage() {
   const [payments, setPayments] = useState<Payment[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const { rate: bcvRate, mode: bcvMode, loading: bcvLoading } = useBcvRate();
+  const {
+    rate: bcvRate,
+    mode: bcvMode,
+    loading: bcvLoading,
+    format,
+    currencyCode,
+    symbol,
+  } = useBcvRate();
 
   // Date range for export
   const [dateFrom, setDateFrom] = useState(() => {
@@ -761,8 +768,8 @@ export default function CobrosPage() {
       : null;
 
     const amountLine = bsStr
-      ? `*Monto:* ${usdStr} USD (${bsStr}${bcvRate ? ` | Tasa BCV: ${bcvRate.toFixed(2)} Bs/$` : ''})`
-      : `*Monto:* ${usdStr} USD`;
+      ? `*Monto:* ${usdStr} ${currencyCode} (${bsStr}${bcvRate ? ` | Tasa BCV: ${bcvRate.toFixed(2)} Bs/${symbol}` : ''})`
+      : `*Monto:* ${usdStr} ${currencyCode}`;
 
     const PAYMENT_LABELS: Record<string, string> = {
       pago_movil: 'Pago Móvil',
@@ -902,7 +909,7 @@ export default function CobrosPage() {
             <DollarSign className="w-5 h-5 text-teal-500" />
             <span className="text-xs font-semibold text-slate-500 uppercase">Total USD</span>
           </div>
-          <p className="text-2xl font-bold text-slate-900">{formatUsd(totalUSD)}</p>
+          <p className="text-2xl font-bold text-slate-900">{format(totalUSD)}</p>
           <p className="text-xs text-slate-400 mt-1">
             {filtered.length} registro{filtered.length !== 1 ? 's' : ''}{' '}
             {tab === 'pending' ? 'pendientes' : tab === 'approved' ? 'aprobados' : 'en total'}
@@ -1062,7 +1069,7 @@ export default function CobrosPage() {
                 </div>
                 <div className="col-span-1 text-right">
                   <span className="text-sm font-semibold text-slate-900">
-                    {formatUsd(p.plan_price)}
+                    {format(p.plan_price)}
                   </span>
                 </div>
                 <div className="col-span-1 text-right">
@@ -1129,7 +1136,7 @@ export default function CobrosPage() {
                 </p>
                 <div className="flex items-baseline gap-2 pt-1">
                   <span className="text-2xl font-bold text-teal-600">
-                    {formatUsd(selectedPayment.plan_price)}
+                    {format(selectedPayment.plan_price)}
                   </span>
                   <span className="text-xs text-slate-400">USD</span>
                   {bcvRate && (
@@ -1405,7 +1412,7 @@ export default function CobrosPage() {
                           </span>
                           <div className="flex items-center gap-2 shrink-0">
                             <span className="text-sm font-bold text-teal-700">
-                              {formatUsd(item.amount)}
+                              {format(item.amount)}
                             </span>
                             <button
                               onClick={() => removeExtraItem(item.id, item.amount)}
@@ -1422,7 +1429,7 @@ export default function CobrosPage() {
                           Total actualizado
                         </span>
                         <span className="text-base font-bold text-teal-600">
-                          {formatUsd(selectedPayment.plan_price)}
+                          {format(selectedPayment.plan_price)}
                         </span>
                       </div>
                     </>
@@ -1514,7 +1521,7 @@ export default function CobrosPage() {
                       </p>
                     </div>
                     <span className="text-sm font-bold text-teal-600">
-                      {formatUsd(item.price_usd)}
+                      {format(item.price_usd)}
                     </span>
                   </button>
                 ))

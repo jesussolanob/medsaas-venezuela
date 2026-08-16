@@ -315,6 +315,8 @@ export default function BookingClient({
   initialOffices = [],
   requireReason = false,
   minLeadDays = 0,
+  currencyMode,
+  customRate = null,
 }: {
   doctor: DoctorProfile;
   plans: PricingPlan[];
@@ -329,9 +331,17 @@ export default function BookingClient({
   requireReason?: boolean;
   /** Mínimo de días de anticipación para agendar (0 = sin restricción). */
   minLeadDays?: number;
+  /**
+   * Divisa y tasa que eligió el especialista. Llegan por props desde el server
+   * component porque acá NO hay sesión: sin esto el hook cae a dólar oficial y
+   * el paciente vería otra divisa (y otro monto en bolívares) que el
+   * especialista para el mismo servicio.
+   */
+  currencyMode?: string | null;
+  customRate?: number | null;
 }) {
-  // BCV rate for dual currency
-  const { rate: bcvRate, toBs } = useBcvRate();
+  // BCV rate for dual currency — con la preferencia del especialista.
+  const { rate: bcvRate, toBs, format } = useBcvRate({ mode: currencyMode, customRate });
 
   // Auth state
   // ETAPA 1: Auth0 not available — booking always runs in guest mode.
@@ -838,7 +848,7 @@ export default function BookingClient({
                 ) : (
                   <>
                     {' — '}
-                    <span className="font-bold">${planTotal(selectedPlan)} USD</span>
+                    <span className="font-bold">{format(Number(planTotal(selectedPlan)))}</span>
                     {bcvRate && (
                       <span className="text-slate-400 ml-1">({toBs(planTotal(selectedPlan))})</span>
                     )}
@@ -1102,7 +1112,7 @@ export default function BookingClient({
               usingPackage && activePackage
                 ? `${activePackage.plan_name} (paquete: ${activePackage.used_sessions}/${activePackage.total_sessions} usadas)`
                 : selectedPlan
-                  ? `${selectedPlan.name} — $${planTotal(selectedPlan)} USD`
+                  ? `${selectedPlan.name} — ${format(Number(planTotal(selectedPlan)))}`
                   : undefined
             }
             completed={!!selectedPlan && activeStep > 1}
@@ -2319,7 +2329,7 @@ export default function BookingClient({
                     <span className="text-xs font-semibold text-slate-500">Monto a pagar</span>
                     <div className="text-right">
                       <span className="text-sm font-bold" style={{ color: BRAND.ink }}>
-                        ${planTotal(selectedPlan)} USD
+                        {format(Number(planTotal(selectedPlan)))}
                       </span>
                       {bcvRate && (
                         <span className="block text-[11px] text-slate-400">
@@ -2507,7 +2517,7 @@ export default function BookingClient({
                   ) : (
                     <div className="text-right">
                       <span className="font-bold" style={{ color: BRAND.ink }}>
-                        ${selectedPlan ? planTotal(selectedPlan) : 0} USD
+                        {format(selectedPlan ? Number(planTotal(selectedPlan)) : 0)}
                       </span>
                       {bcvRate && selectedPlan && (
                         <span className="block text-[11px] text-slate-400">

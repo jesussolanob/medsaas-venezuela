@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useBcvRate } from '@/lib/useBcvRate';
-import { formatUsd, formatBs, type PaymentRow } from '@/lib/finances';
+import { formatBs, type PaymentRow } from '@/lib/finances';
 import { reportError } from '@/lib/report-error';
 import {
   Users,
@@ -128,7 +128,7 @@ const ACTIVE_WINDOW_MS = 60 * 60 * 1000;
 
 export default function DoctorDashboard() {
   const router = useRouter();
-  const { rate: bcvRate, toBs, toBsNum } = useBcvRate();
+  const { rate: bcvRate, toBs, toBsNum, format } = useBcvRate();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [todayAppointments, setTodayAppointments] = useState<Appointment[]>([]);
   const [financialData, setFinancialData] = useState<FinancialData>({
@@ -1036,7 +1036,7 @@ export default function DoctorDashboard() {
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
           <StatCard
             label="Ingresos totales"
-            value={formatUsd(allTimeStats.total_revenue_lifetime)}
+            value={format(allTimeStats.total_revenue_lifetime)}
             icon={<DollarSign size={16} />}
             subtitle={
               bcvRate ? `≈ ${formatBs(toBsNum(allTimeStats.total_revenue_lifetime))}` : undefined
@@ -1185,7 +1185,7 @@ export default function DoctorDashboard() {
                     letterSpacing: '-0.02em',
                   }}
                 >
-                  {formatUsd(financialData.total_revenue)}
+                  {format(financialData.total_revenue)}
                 </p>
                 {bcvRate && (
                   <p className="text-sm font-semibold" style={{ color: 'var(--dh-turquoise)' }}>
@@ -1215,7 +1215,7 @@ export default function DoctorDashboard() {
                   </div>
                   <div className="text-right">
                     <p className="text-sm font-bold" style={{ color: '#92400e' }}>
-                      {formatUsd(financialData.pending_amount)}
+                      {format(financialData.pending_amount)}
                     </p>
                     {bcvRate && financialData.pending_amount > 0 && (
                       <p className="text-[11px]" style={{ color: '#b45309' }}>
@@ -1278,7 +1278,7 @@ export default function DoctorDashboard() {
                       fontSize: 22,
                     }}
                   >
-                    {formatUsd(
+                    {format(
                       financialData.appointment_count > 0
                         ? financialData.total_revenue / financialData.appointment_count
                         : 0,
@@ -1567,7 +1567,7 @@ export default function DoctorDashboard() {
 
                         {/* Monto */}
                         <div className="text-right shrink-0">
-                          <p className="text-sm font-bold text-slate-900">{formatUsd(amount)}</p>
+                          <p className="text-sm font-bold text-slate-900">{format(amount)}</p>
                           {bcvRate && amount > 0 && (
                             <p className="text-[11px] text-slate-400">{toBs(amount)}</p>
                           )}
