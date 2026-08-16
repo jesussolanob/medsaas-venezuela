@@ -1,6 +1,69 @@
 # 05 — Progress Log
 
 > Registro cronológico. Una entrada por fase/hito completado.
+> ⚠️ Orden: **la entrada más nueva va ARRIBA**. La del 2026-08-11 quedó al final
+> del archivo por error; no se movió para no ensuciar el diff.
+
+## 2026-08-16 — Lote de la fundadora (13/08): inasistencia, consulta retroactiva y botones
+
+Rama `feature/qa-agosto-13` desde `develop`. Sin desplegar todavía. Nace de una lista de
+12 observaciones que pasó una de las fundadoras; el dueño confirmó cuáles atacar ahora y
+dejó **en pausa** la moneda del portal (USD/Euro), la consulta inmediata, el agendado
+cruzando bloques y todo el módulo de ventas.
+
+### Lo que se hizo
+
+- **Botones de editar/borrar ingresos** (`debc6d2`). **Ya existían**: el problema era
+  `opacity-0 group-hover:opacity-100` — sin hover no existen, así que en tablet y teléfono
+  no había forma de llegar a ellos. La fundadora los pidió como si no estuvieran, y para
+  ella no estaban. Ahora siempre visibles en las DOS tablas (ingresos y gastos).
+- **Consulta del pasado sin tope y ya atendida** (`9ab143c`). El selector de día se
+  calculaba contra un arreglo fijo de 30 días hacia atrás; ahora la ventana se deriva del
+  offset y retrocede sin límite, con un selector de fecha para saltar lejos. Y una cita con
+  fecha pasada creada por el especialista **nace `completed`** (la consulta no tiene columna
+  `status` propia: se deriva de la cita). La regla de auto-confirmación de 3 días se extrajo
+  a `domain/policies/appointment-status.policy` porque ahora la usan dos casos de uso.
+- **Inasistencia con multa y reagenda** (`a3a6da5`). Ver ADR-031.
+
+### Tres cosas rotas que aparecieron al construir la inasistencia
+
+1. **Una cita en `no_show` no se podía reagendar.** `RESCHEDULABLE_STATUSES` solo tenía
+   `scheduled|confirmed` y devolvía "esta cita ya fue cancelada o atendida". O sea que el
+   flujo que pidió la fundadora era **literalmente imposible** hasta ahora.
+2. **Una consulta PAGADA cuya cita quedó en `no_show` figuraba en "Por ingresar"** —
+   plata ya cobrada contada como pendiente de cobro, porque `no_show` no estaba en la lista
+   de estados resueltos.
+3. **El criterio de "cita resuelta" estaba escrito en SEIS lugares, no en los tres** que
+   documenta el ADR-029: los tres conocidos más `listForDoctor`, `totalsForDoctor` y
+   `listIncomePaginated`, cada uno con la lista inline. Y `getIncomeBreakdown` no lo
+   aplicaba mientras `getConsultationSummary` sí → **la misma pantalla mostraba dos números
+   distintos para el mismo concepto**, que es exactamente el bug del 12/08 en otra esquina.
+   Los seis quedaron alineados.
+
+⚠️ **Al validar en staging:** los totales de meses ya cerrados se MUEVEN. Una consulta
+pagada con inasistencia que antes figuraba en "Por ingresar" ahora suma en Ingresos. Es la
+corrección de una clasificación equivocada, no plata nueva — pero no va a coincidir con una
+captura vieja.
+
+### Código muerto encontrado (no tocado)
+
+- El modal de la agenda para marcar atendida/cancelada/no-asistió: **nada lo abre**
+  (`setStatusAction` solo se llama con `null`). La agenda dice explícitamente "el estado de
+  la consulta y del pago se gestionan en Ir a consulta". Son ~100 líneas. Mismo caso del
+  aceptar/rechazar borrado el 11/08. **Pendiente de decisión del dueño.**
+- El modal de reagendar arrancaba en **mañana**, así que no dejaba reagendar para hoy — el
+  caso más común de una inasistencia ("no vino a las 9, viene a las 4"). Corregido.
+- `RescheduleModal` genera sus slots con un `slot_duration` GLOBAL de `/api/doctor/schedule`:
+  es una TERCERA implementación de la grilla de horarios que no conoce la duración por bloque
+  (ADR-028) ni el consultorio. No se tocó. **Deuda anotada.**
+
+### Verificación
+
+Build backend ✅ · build frontend ✅ · **393 suites / 3785 tests en verde**, corridos por el
+lead sin caché (`--skip-nx-cache`). `nx lint backend` se cae por OOM en esta máquina
+(pre-existente): los archivos tocados se pasaron por ESLint uno por uno. Los 7 errores de
+ESLint del frontend son **pre-existentes en `develop`** (verificado comparando con y sin los
+cambios). **Falta el QA visual.**
 
 ## 2026-08-10 — Mejoras de onboarding y servicios ✅ DESPLEGADO EN STAGING
 

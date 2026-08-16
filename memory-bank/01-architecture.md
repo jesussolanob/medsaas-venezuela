@@ -337,6 +337,34 @@ consultations}` (+ Consultorios/Plantillas sin moduleKey); deshabilitados agenda
   en plan gratuito (`ProcessLoginTouchUseCase`, que corre en el `resolve-identity` no guardado) y puede
   mejorar su plan sin pedirle nada a un admin. Un bloqueo hecho por un admin (`deactivated_by='admin'`)
   sigue necesitando al admin: esa distinción es la salvaguarda y no debe borrarse.
+- **ADR-031 (2026-08-16):** **La inasistencia es un estado RESUELTO, y se resuelve con multa y/o
+  reagenda en un solo paso.** Tres decisiones que van juntas:
+  (1) **`no_show` cuenta como cita resuelta en finanzas** (se suma a `confirmed`/`completed` en el
+  criterio COBRADA). Antes una consulta PAGADA cuya cita quedó en no_show caía en "Por ingresar":
+  plata ya cobrada mostrada como pendiente de cobro. Un no_show no espera confirmación de nada —
+  ya ocurrió. Si estaba pagado es ingreso (**por el portal no hay devolución**); si no, el monto
+  queda en 0 y no suma de ningún lado. ⚠️ El criterio vivía **inline en SEIS lugares**, no en los
+  tres que decía el ADR-029 — al tocarlo hay que peinarlos todos o la pantalla se contradice sola.
+  Además una consulta pendiente con monto efectivo 0 **no se lista en cobros**
+  (`COALESCE(c.amount, a.plan_price, 0) > 0`): si no hay nada que cobrar, no es un cobro.
+  (2) **Matriz de la plata al marcar inasistencia** (decisión del dueño): impaga y no reagenda →
+  el costo pasa a la multa (0 por defecto) y sale de Por cobrar; impaga y reagenda → sigue el flujo
+  completo y la multa se suma; pagada → el monto cobrado se mantiene; pagada + multa → el costo sube
+  y **el pago vuelve a `pending` por el TOTAL**, porque no existen pagos parciales (el enum es
+  `pending|approved` y nada más), y al cobrar la diferencia se aprueba de nuevo. La multa es
+  **siempre opcional y arranca en $0**. Si el especialista devuelve plata, corrige el monto a mano.
+  (3) **Reagendar desde `no_show` está permitido** y devuelve la cita a un estado vigente con la
+  misma regla de 3 días de la creación; `cancelled` y `completed` siguen bloqueados. El log de
+  auditoría guarda la transición REAL (`no_show → confirmed/scheduled`): como el estado deja de ser
+  no_show, ese log es el **único rastro** de que el paciente faltó.
+- **ADR-032 (2026-08-16):** **Una cita con fecha pasada creada por el especialista nace `completed`,
+  y no hay tope hacia atrás.** El especialista atiende y a veces carga la consulta después (se fue la
+  luz, se le hizo tarde): tiene que poder dejarla con la fecha REAL y que quede atendida de una vez,
+  sin un segundo paso que se olvida. Se resuelve en `computeInitialStatus` y no en la UI porque la
+  consulta **no tiene columna `status` propia** — su estado se deriva del de la cita, así que basta
+  con que la cita nazca `completed`. Solo aplica a actor `doctor`/`admin`: un booking público con
+  fecha pasada sigue siendo `scheduled` (y de todos modos no puede mandarla). El backend **nunca
+  validó fechas pasadas**, así que quitar el tope de 30 días fue puramente de frontend.
 
 - **Terminología (2026-07-23):** "médico" (SUSTANTIVO que nombra al usuario) → **"especialista"** en UI/correos/guías;
   se conservan adjetivos ("informe/reposo/insumos/datos médicos") y honoríficos Dr./Dra. Plantillas de email sembradas se
