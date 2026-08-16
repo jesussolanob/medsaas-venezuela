@@ -3,6 +3,7 @@ import {
   DoctorNotFoundError,
   PatientNotFoundError,
 } from './create-booking.use-case';
+import { Office } from '../../../../offices/domain/entities/office.entity';
 import { BookingNotEnabledError } from '../../../domain/errors/booking-not-enabled.error';
 import { ChiefComplaintRequiredError } from '../../../domain/errors/chief-complaint-required.error';
 import { BookingTooSoonError } from '../../../domain/errors/booking-too-soon.error';
@@ -1203,6 +1204,119 @@ describe('CreateBookingUseCase', () => {
       await expect(ucWithoutPlanRepo.execute(makeDto({ plan_id: PLAN_ID }))).resolves.toBeDefined();
       // Only the primary appointment is saved
       expect(mockAppointmentRepo.save).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  // ─── C1 / C2 — slot duration resolution ──────────────────────────────────
+
+  describe('slot duration resolution (C1 per-block, C2 doctor override)', () => {
+    /**
+     * 2026-07-01T10:00:00Z = 2026-07-01T06:00:00-04:00 (Caracas)
+     * July 1, 2026 is a Wednesday → office day 2 (0=Mon … 6=Sun)
+     */
+    const SCHEDULED_AT = '2026-07-01T10:00:00Z';
+
+    function makeOfficeWithBlock(blockSlotDuration: number): Office {
+      return Office.create({
+        id: 'off-001',
+        doctorId: 'doc-001',
+        name: 'Consultorio Test',
+        address: 'Av. Test',
+        city: 'Caracas',
+        phone: '04121234567',
+        slotDuration: 30, // office-wide default — should NOT be used when block matches
+        bufferMinutes: 0,
+        isActive: true,
+        modality: 'both',
+        mapUrl: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        schedule: [
+          {
+            day: 2, // Wednesday (0=Mon, 2=Wed) — matches 2026-07-01
+            enabled: true,
+            start: '05:00', // covers Caracas 06:00 (the appointment time)
+            end: '20:00',
+            slotDuration: blockSlotDuration,
+            bufferMinutes: 0,
+          },
+        ],
+      });
+    }
+
+    function makeUseCaseWithOfficeRepo(officeRepo: { findById: jest.Mock }): CreateBookingUseCase {
+      return new CreateBookingUseCase(
+        mockAppointmentRepo,
+        mockPatientRepo,
+        mockDoctorLoader,
+        mockConsumeUseCase,
+        mockCrypto as unknown as import('../../../../../infrastructure/crypto/crypto.service').CryptoService,
+        mockSequelize as unknown as import('sequelize-typescript').Sequelize,
+        null, // paymentRepo
+        mockResolveIdentity, // resolveIdentity
+        officeRepo as unknown as import('../../../../offices/domain/repositories/office.repository').IOfficeRepository, // officeRepo
+      );
+    }
+
+    beforeEach(() => {
+      mockDoctorLoader.findById.mockResolvedValue(DOCTOR);
+      mockAppointmentRepo.hasOverlap.mockResolvedValue(false);
+      mockAppointmentRepo.hasPatientOverlap.mockResolvedValue(false);
+      mockPatientRepo.findByEmailHash.mockResolvedValue(makePatient());
+      mockAppointmentRepo.save.mockResolvedValue(makeAppointment());
+    });
+
+    it('C1: uses per-block slotDuration (45) rather than office default (30)', async () => {
+      const mockOfficeRepo = { findById: jest.fn().mockResolvedValue(makeOfficeWithBlock(45)) };
+      const uc = makeUseCaseWithOfficeRepo(mockOfficeRepo);
+
+      await uc.execute(makeDto({ office_id: 'off-001', scheduled_at: SCHEDULED_AT }), {
+        skipPatientBookingRules: true,
+      });
+
+      expect(mockAppointmentRepo.hasOverlap).toHaveBeenCalledWith(
+        expect.objectContaining({ durationMinutes: 45 }),
+      );
+    });
+
+    it('C2: duration_minutes=60 overrides block slotDuration on doctor path', async () => {
+      const mockOfficeRepo = { findById: jest.fn().mockResolvedValue(makeOfficeWithBlock(30)) };
+      const uc = makeUseCaseWithOfficeRepo(mockOfficeRepo);
+
+      await uc.execute(
+        makeDto({ office_id: 'off-001', scheduled_at: SCHEDULED_AT, duration_minutes: 60 }),
+        { skipPatientBookingRules: true },
+      );
+
+      expect(mockAppointmentRepo.hasOverlap).toHaveBeenCalledWith(
+        expect.objectContaining({ durationMinutes: 60 }),
+      );
+    });
+
+    it('C2: public booking ignores duration_minutes even when provided', async () => {
+      const mockOfficeRepo = { findById: jest.fn().mockResolvedValue(makeOfficeWithBlock(30)) };
+      const uc = makeUseCaseWithOfficeRepo(mockOfficeRepo);
+
+      // No skipPatientBookingRules → public path, duration_minutes must be ignored
+      await uc.execute(
+        makeDto({ office_id: 'off-001', scheduled_at: SCHEDULED_AT, duration_minutes: 60 }),
+      );
+
+      // Must use block slotDuration (30), NOT the patient-supplied 60
+      expect(mockAppointmentRepo.hasOverlap).toHaveBeenCalledWith(
+        expect.objectContaining({ durationMinutes: 30 }),
+      );
+    });
+
+    it('C2: without duration_minutes and no office, overlap uses hardcoded default (30)', async () => {
+      // Default useCase has no officeRepo (null) → officeDuration stays at 30
+      await useCase.execute(makeDto({ scheduled_at: SCHEDULED_AT }), {
+        skipPatientBookingRules: true,
+      });
+
+      expect(mockAppointmentRepo.hasOverlap).toHaveBeenCalledWith(
+        expect.objectContaining({ durationMinutes: 30 }),
+      );
     });
   });
 });

@@ -477,6 +477,8 @@ export default function NewAppointmentFlow({ open, onClose, onSuccess, initialCo
               unavailableTimes={flow.unavailableTimes}
               loadingSlots={flow.loadingSlots}
               scheduledAt={flow.scheduledAt}
+              customDuration={flow.customDuration}
+              selectCustomSlot={flow.selectCustomSlot}
             />
           </AccordionSection>
 
