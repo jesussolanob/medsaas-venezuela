@@ -424,7 +424,7 @@ describe('CreateAppointmentUseCase', () => {
   });
 
   // -----------------------------------------------------------------
-  // Auto-confirm rule (Bug 5)
+  // Auto-confirm rule (Bug 5) + past-date rule (B1)
   // -----------------------------------------------------------------
 
   describe('auto-confirm status rule', () => {
@@ -439,6 +439,12 @@ describe('CreateAppointmentUseCase', () => {
     const farFutureDto: CreateAppointmentDto = {
       ...baseDto,
       scheduled_at: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString(),
+    };
+
+    /** Scheduled date 1 hour in the past. */
+    const pastDto: CreateAppointmentDto = {
+      ...baseDto,
+      scheduled_at: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
     };
 
     it('doctor creates appointment within 3 days → status confirmed', async () => {
@@ -465,16 +471,37 @@ describe('CreateAppointmentUseCase', () => {
       const result = await useCase.execute(nearFutureDto, 'patient');
       expect(result.status).toBe('scheduled');
     });
+
+    // B1: past-date rule
+    it('doctor creates appointment in the past → status completed', async () => {
+      const result = await useCase.execute(pastDto, 'doctor');
+      expect(result.status).toBe('completed');
+    });
+
+    it('admin creates appointment in the past → status completed', async () => {
+      const result = await useCase.execute(pastDto, 'admin');
+      expect(result.status).toBe('completed');
+    });
+
+    it('patient creates appointment in the past → status scheduled (no past-date rule for patients)', async () => {
+      const result = await useCase.execute(pastDto);
+      expect(result.status).toBe('scheduled');
+    });
   });
 
   // -----------------------------------------------------------------
-  // Auto-consultation creation on auto-confirm (Bug 5)
+  // Auto-consultation creation on auto-confirm (Bug 5) and past dates (B1)
   // -----------------------------------------------------------------
 
   describe('auto-consultation creation on auto-confirm', () => {
     const nearFutureDto: CreateAppointmentDto = {
       ...baseDto,
       scheduled_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+    };
+
+    const pastDto: CreateAppointmentDto = {
+      ...baseDto,
+      scheduled_at: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
     };
 
     it('creates consultation and links consultationId when auto-confirmed with patientId', async () => {
@@ -527,6 +554,27 @@ describe('CreateAppointmentUseCase', () => {
 
       expect(result.status).toBe('confirmed');
       expect(appointmentRepo.updateConsultationId).not.toHaveBeenCalled();
+    });
+
+    // B1: auto-consultation must also fire for past-date appointments (completed status).
+    // The status assertion is covered by the auto-confirm status rule describe block above;
+    // here we only verify that the consultation pipeline fires regardless of status.
+    it('auto-creates consultation for a past appointment (completed) when patientId is set', async () => {
+      const createConsultationUC = makeCreateConsultationUC();
+      useCase = new CreateAppointmentUseCase(appointmentRepo, officeRepo, createConsultationUC);
+
+      await useCase.execute(pastDto, 'doctor');
+
+      expect(createConsultationUC.execute).toHaveBeenCalledWith(
+        expect.objectContaining({
+          doctorId: DOCTOR_ID,
+          patientId: PATIENT_ID,
+        }),
+      );
+      expect(appointmentRepo.updateConsultationId).toHaveBeenCalledWith(
+        expect.any(String),
+        CONSULTATION_ID,
+      );
     });
   });
 });

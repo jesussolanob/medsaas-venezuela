@@ -665,6 +665,72 @@ export type PatientPackageInfo = {
 };
 
 /**
+ * Consumo real de un combo de sesiones, por paciente y por servicio.
+ *
+ * OJO: esto NO sale de `patient_packages` — esa tabla está vacía y ninguna
+ * pantalla la escribe. El modelo vivo es `pricing_plans.sessions_count` +
+ * `pending_consultations`, y el backend deriva los contadores de ahí.
+ *
+ * `noShow` va aparte a propósito: una inasistencia NO consume sesión
+ * (consumida = atendida, decisión del dueño 2026-08-16).
+ */
+/** Forma EXACTA del wire. El módulo pending-consultations serializa snake_case
+ *  (mirá `toResponse` en su controller), a diferencia de offices que manda
+ *  camelCase. Verificado leyendo el controller, no asumido. */
+type BackendPackageUsage = {
+  patient_id: string;
+  plan_name: string;
+  total_sessions: number | null;
+  attended: number;
+  scheduled: number;
+  no_show: number;
+  pending_scheduling: number;
+};
+
+export type PackageUsage = {
+  patientId: string;
+  planName: string;
+  /** Sesiones contratadas del servicio. null si el servicio ya no está en el catálogo. */
+  totalSessions: number | null;
+  attended: number;
+  scheduled: number;
+  noShow: number;
+  pendingScheduling: number;
+};
+
+/**
+ * GET /api/doctor/pending-consultations/usage[?patient_id=]
+ *
+ * Sin `patientId` trae el consumo de TODOS los pacientes del doctor (una sola
+ * consulta agrupada, no una por paciente).
+ */
+export async function getPackageUsage(patientId?: string): Promise<PackageUsage[]> {
+  const qs = patientId ? `?patient_id=${encodeURIComponent(patientId)}` : '';
+  const result = await backendGet<BackendPackageUsage[]>(
+    `/api/doctor/pending-consultations/usage${qs}`,
+  );
+
+  if (!result.ok) {
+    log.error('[getPackageUsage] backend error', {
+      code: result.error.code,
+      status: result.error.status,
+    });
+    return [];
+  }
+
+  const rows = Array.isArray(result.value) ? result.value : [];
+  return rows.map((r) => ({
+    patientId: r.patient_id,
+    planName: r.plan_name,
+    totalSessions: r.total_sessions,
+    attended: r.attended,
+    scheduled: r.scheduled,
+    noShow: r.no_show,
+    pendingScheduling: r.pending_scheduling,
+  }));
+}
+
+/**
  * Fetch active packages for a specific patient.
  *
  * Maps backend shape { patientId, remainingSessions, ... } to the UI shape

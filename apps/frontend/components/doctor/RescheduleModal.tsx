@@ -155,10 +155,12 @@ export default function RescheduleModal({
     };
   }, [rescheduleDate]);
 
-  // Build the rolling 21-weekday window starting tomorrow
+  // Ventana móvil de 21 días hábiles empezando HOY.
+  // Antes arrancaba mañana, lo que dejaba afuera el caso más común de una
+  // inasistencia: el paciente falta a las 9 y vuelve esa misma tarde.
   const dates: string[] = [];
   const today = new Date();
-  for (let d = 1; d <= 35 && dates.length < 21; d++) {
+  for (let d = 0; d <= 35 && dates.length < 21; d++) {
     const dt = new Date(today);
     dt.setDate(today.getDate() + d);
     if (dt.getDay() === 0) continue; // skip Sundays

@@ -55,6 +55,7 @@ describe('SchedulePendingConsultationUseCase', () => {
       bulkExpire: jest.fn(),
       findDueForReminder: jest.fn(),
       updateReminderStage: jest.fn(),
+      getPackageUsage: jest.fn(),
     };
 
     mockAppointmentRepo = {
