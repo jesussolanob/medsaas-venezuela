@@ -899,3 +899,19 @@ Detalles que NO hay que romper:
   el repositorio de consultas para este dato).
 - Solo se devuelven combos de verdad (`sessions_count > 1` o con filas por agendar). Si no,
   cinco consultas sueltas de "Consulta general" saldrían como "5 atendidas de 1".
+
+### `GET /api/booking/:doctorId/info` — divisa del especialista (2026-08-16)
+
+Dos campos nuevos, **camelCase** como el resto de ese payload:
+
+| Campo          | Tipo                           | Nota                                                    |
+| -------------- | ------------------------------ | ------------------------------------------------------- |
+| `currencyMode` | `usd_bcv \| eur_bcv \| custom` | `profiles.currency_mode`; null o valor raro → `usd_bcv` |
+| `customRate`   | `number \| null`               | **solo** cuando el modo es `custom`; en los demás, null |
+
+Existen porque la página pública NO tiene sesión: el hook del frontend consultaba el endpoint
+autenticado de la preferencia, recibía 401 y caía a dólar oficial — el paciente veía otra divisa
+y otro monto en bolívares que el especialista para el mismo servicio. Ver ADR-034.
+
+⚠️ `profiles.custom_rate` es DECIMAL y **pg lo entrega como string**: hay que convertirlo con
+`Number()` o el frontend recibe `"97.5"` donde espera un número.
