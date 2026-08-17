@@ -646,3 +646,22 @@ un lote aparte que hay que decidir: o se llena de verdad, o se borra.
 
 **Backend:** `src/domain/caracas-time` (conversión UTC→Caracas en un solo lugar),
 `Office.slotDurationAt()`, y los dos use cases de creación usándolo. Ver ADR-033.
+
+### Módulo de ventas (2026-08-16)
+
+| Componente                                       | Qué hace                                                                                         |
+| ------------------------------------------------ | ------------------------------------------------------------------------------------------------ |
+| `app/seller/page.tsx` + `SellerPortalClient.tsx` | Portal del vendedor: su código copiable, resumen por plan y lista con "cuánto hace que no entra" |
+| `app/doctor/onboarding/OnboardingForm.tsx`       | Campo "Código de vendedor" opcional, validado en vivo (verde con el nombre / rojo si no existe)  |
+| `app/api/seller/me/route.ts`                     | El vendedor lee su propio código — sin esto no puede compartirlo                                 |
+| `app/api/seller/specialists/route.ts`            | GET su lista · POST alta (el backend fija `sold_by` y el plan; no viajan desde el cliente)       |
+| `app/api/public/seller-code/[code]/route.ts`     | Validación pública; un código inválido responde 200 con `valid:false`, no un error               |
+| `proxy.ts`                                       | Guarda de `/seller` + `homeFor()`: cada rol cae en su portal en vez de en /login                 |
+
+**Backend:** módulo `sellers` completo (`create-seller`, `create-seller-specialist`,
+`validate-seller-code`, `get-seller-profile`), migración `20260816000001-seller-role`
+(`profiles.seller_code` único + `profiles.sold_by` con índice parcial). Ver ADR-037.
+
+⚠️ **La atribución se escribe UNA vez y se garantiza en la BD** (`UPDATE … WHERE sold_by IS NULL`),
+no en el use case. Si alguna vez hay que "corregir" una atribución, es un cambio de diseño con
+auditoría, no un UPDATE suelto.

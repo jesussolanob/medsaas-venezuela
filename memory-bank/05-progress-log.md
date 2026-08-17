@@ -4,6 +4,72 @@
 > ⚠️ Orden: **la entrada más nueva va ARRIBA**. La del 2026-08-11 quedó al final
 > del archivo por error; no se movió para no ensuciar el diff.
 
+## 2026-08-16 — Lista de la fundadora CERRADA 12/12 ⏳ TODO EN STAGING, SIN VALIDAR
+
+Se cerró la lista completa de 12 observaciones en una jornada. **Nada en `main`**, que arrastra
+~60 commits: son **siete lotes acumulados sin validar** (09/08 → 16/08). Guion de QA priorizado
+por riesgo en `memory-bank/09-qa-lote-agosto-2026.md`.
+
+### Lo construido, por orden
+
+| Commit                | Qué                                                                        |
+| --------------------- | -------------------------------------------------------------------------- |
+| `debc6d2`             | Botones de editar/borrar ingresos visibles (existían, pero solo con hover) |
+| `9ab143c`             | Consulta del pasado sin tope y ya atendida (ADR-032)                       |
+| `a3a6da5`             | Inasistencia con multa y reagenda (ADR-031)                                |
+| `1ce5bca`             | Consumo del paquete sobre el modelo vivo                                   |
+| `2540ceb`             | Eliminado el modal muerto de la agenda (143 líneas que nadie abría)        |
+| `3a7a03d`             | Hora libre + la cita guarda la duración del BLOQUE (ADR-033)               |
+| `c5ffa9a`             | Divisa del portal por especialista (ADR-034)                               |
+| `9456486`             | Un turno ocupa el tiempo que dura (ADR-035)                                |
+| `dea9448`             | Consulta inmediata (ADR-036)                                               |
+| `5faad6c` + `10c9bc7` | Módulo de ventas: rol, código y portal (ADR-037)                           |
+
+### 🔴 Lo que más valor tuvo NO estaba en la lista
+
+Ocho bugs que **ya estaban en producción** y aparecieron construyendo lo pedido:
+
+1. Una cita en `no_show` **no se podía reagendar** — el flujo que pidió la fundadora era
+   literalmente imposible.
+2. Una consulta **PAGADA** con inasistencia figuraba en "Por ingresar": plata ya cobrada mostrada
+   como pendiente de cobro.
+3. El criterio de "cita resuelta" vivía **en SEIS lugares**, no en los tres del ADR-029, y dos de
+   ellos alimentaban la misma pantalla con números distintos.
+4. La tarjeta de paquetes y la insignia de la lista **leían una tabla vacía**: nunca se veían.
+5. El plan Delta se convertía a bolívares **con la tasa del especialista** — y ese es el monto que
+   él transfiere al pagar su propio plan.
+6. El booking público **ofrecía horarios que no se podían tomar** (una cita bloqueaba solo su hora
+   de inicio, no su duración).
+7. El modal de reagendar **nunca** marcó un horario como ocupado: leía `json.bookedAt` cuando la
+   respuesta es `{ success, data: { … } }`.
+8. Un test fallaba **1 de cada 16 corridas** por estar mal escrito (adulteraba el token
+   reemplazando el último carácter por `'0'`; si ya terminaba en `'0'`, no adulteraba nada).
+
+### Decisión abierta del dueño
+
+El backend acepta que **cualquier administrador** gestione vendedores, pero `/admin` (guarda en
+`proxy.ts`) sigue admitiendo **solo `super_admin`**: un usuario con rol `admin` es expulsado en la
+puerta, así que ese permiso hoy no le sirve a nadie. Abrir el panel amplía quién ve doctores,
+suscripciones, pagos y configuración — es decisión de seguridad, no de implementación.
+
+### Deuda anotada, no tocada
+
+- `RescheduleModal` genera sus horarios con una duración GLOBAL: tercera implementación de la
+  grilla, no conoce la duración por bloque.
+- El módulo `packages` sigue vivo sin que nadie escriba `patient_packages`, y **la agenda todavía
+  la lee** para enriquecer citas.
+- **El workflow de deploy no corre tests** — es lo que permitió que la suite estuviera rota una
+  semana en agosto sin que nadie se enterara.
+
+### Sobre el trabajo con agentes
+
+El `backend-agent` **reportó verde midiendo solo sus propias suites** cuando había 7 rojas (había
+agregado un método a un puerto sin peinar los mocks), quedó libre **tres veces sin ejecutar** el
+mensaje que tenía en el buzón, y **cuatro veces** describió como propio algo que terminó o corrigió
+el lead. Lo único que atajó eso fue correr `pnpm nx test backend` COMPLETO antes de cada commit.
+También hubo **un commit directo sobre `develop`** en vez de una rama feature; se corrigió antes de
+pushear moviéndolo a `feature/consulta-inmediata`.
+
 ## 2026-08-16 — Lote de la fundadora (13/08): inasistencia, consulta retroactiva y botones
 
 Rama `feature/qa-agosto-13` desde `develop`. Sin desplegar todavía. Nace de una lista de
