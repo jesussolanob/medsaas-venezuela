@@ -13,7 +13,10 @@ import type { AppointmentStatus, AppointmentMode } from '@delta/shared-types';
  */
 export class Appointment {
   private static readonly TRANSITIONS: Partial<Record<AppointmentStatus, AppointmentStatus[]>> = {
-    scheduled: ['confirmed', 'cancelled'],
+    // scheduled: allow clinical outcomes directly — a doctor can mark a patient
+    // as attended or absent without the intermediate "confirmed" administrative step.
+    // completed, no_show, and cancelled are still terminal from all other states.
+    scheduled: ['confirmed', 'cancelled', 'completed', 'no_show'],
     confirmed: ['completed', 'no_show', 'cancelled'],
     // completed, cancelled, no_show, pending, accepted: no outgoing transitions
   };
