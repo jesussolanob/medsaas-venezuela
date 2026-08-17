@@ -1,17 +1,21 @@
 /**
- * POST /api/admin/sellers — alta de un vendedor.
+ * /api/admin/sellers — gestión de vendedores (SOLO super_admin).
  *
- * Thin-proxy a `POST /api/admin/sellers` del backend, que genera el
- * `sellerCode` (el cliente NUNCA lo manda) y crea el perfil con rol `seller`.
+ * Thin-proxy al módulo NestJS `sellers`:
+ *   GET  → lista de vendedores con su código y cuántos especialistas dio de alta
+ *   POST → alta de un vendedor; el backend genera el `sellerCode` (el cliente
+ *          NUNCA lo manda) y crea el perfil con rol `seller`
  *
- * Lo puede llamar cualquier administrador (`super_admin` o `admin`): el
- * backend aplica los roles, acá no se duplica esa decisión.
+ * El RBAC lo aplica el backend con `@Roles('super_admin')` — acá no se duplica
+ * esa decisión. Solo el super administrador gestiona vendedores (decisión del
+ * dueño, 2026-08-17); el rol `admin` ni siquiera existe en la sesión.
  *
- * Sin esta ruta el módulo de ventas era inalcanzable desde la aplicación: el
- * endpoint del backend existía y nada podía invocarlo.
+ * Ambas respuestas van con envelope `{ success, data }`, que es lo que espera
+ * la pantalla `/admin/sellers`.
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { backendPost } from '@/lib/api-client.server';
+import { backendGet, backendPost } from '@/lib/api-client.server';
+import { log } from '@/lib/logger';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,6 +23,38 @@ interface SellerCreated {
   id: string;
   sellerCode: string;
   createdAt: string;
+}
+
+/** Fila del listado — el backend serializa en camelCase. */
+export interface SellerAdminRow {
+  id: string;
+  fullName: string;
+  email: string;
+  sellerCode: string;
+  specialistsCount: number;
+  createdAt: string;
+  lastSignInAt: string | null;
+}
+
+export async function GET(): Promise<NextResponse> {
+  const result = await backendGet<SellerAdminRow[]>('/api/admin/sellers');
+
+  if (!result.ok) {
+    // No se loguea el cuerpo: trae nombre y correo de los vendedores.
+    log.error('[admin/sellers GET] backend error', {
+      code: result.error.code,
+      status: result.error.status,
+    });
+    return NextResponse.json(
+      { success: false, error: result.error.message },
+      { status: result.error.status ?? 502 },
+    );
+  }
+
+  return NextResponse.json({
+    success: true,
+    data: Array.isArray(result.value) ? result.value : [],
+  });
 }
 
 export async function POST(req: NextRequest): Promise<NextResponse> {

@@ -15,6 +15,7 @@ import { CreateSellerSpecialistUseCase } from './application/use-cases/create-se
 import { ListSellerSpecialistsUseCase } from './application/use-cases/list-seller-specialists.use-case';
 import { GetSellerSpecialistUseCase } from './application/use-cases/get-seller-specialist.use-case';
 import { GetSellerProfileUseCase } from './application/use-cases/get-seller-profile.use-case';
+import { ListSellersUseCase } from './application/use-cases/list-sellers.use-case';
 
 // Guards
 import { RolesGuard } from '../../presentation/guards/roles.guard';
@@ -62,6 +63,7 @@ import {
     ListSellerSpecialistsUseCase,
     GetSellerSpecialistUseCase,
     GetSellerProfileUseCase,
+    ListSellersUseCase,
   ],
   exports: [SELLER_REPOSITORY, ValidateSellerCodeUseCase],
 })

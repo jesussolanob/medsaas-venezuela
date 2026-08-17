@@ -13,6 +13,7 @@ import {
   LayoutDashboard,
   Users,
   UsersRound,
+  Handshake,
   ClipboardCheck,
   CreditCard,
   TrendingUp,
@@ -80,6 +81,9 @@ const navItems: NavEntry[] = [
   { name: 'Verificaciones', href: '/admin/verifications', icon: BadgeCheck },
   { name: 'Especialidades', href: '/admin/specialties', icon: Stethoscope },
   { name: 'Plantillas de email', href: '/admin/email-templates', icon: Mail },
+  // Vendedores: SOLO super_admin. El backend lo aplica con @Roles('super_admin');
+  // la pantalla muestra un aviso si alguien más llega por URL.
+  { name: 'Vendedores', href: '/admin/sellers', icon: Handshake },
   { name: 'Roles', href: '/admin/roles', icon: Shield, moduleKey: 'roles' },
   {
     name: 'Sugerencias',

@@ -14,8 +14,10 @@ import { CreateSellerSpecialistUseCase } from '../../application/use-cases/creat
 import { ListSellerSpecialistsUseCase } from '../../application/use-cases/list-seller-specialists.use-case';
 import { GetSellerSpecialistUseCase } from '../../application/use-cases/get-seller-specialist.use-case';
 import { GetSellerProfileUseCase } from '../../application/use-cases/get-seller-profile.use-case';
+import { ListSellersUseCase } from '../../application/use-cases/list-sellers.use-case';
 import type {
   SellerProfile,
+  SellerAdminRow,
   SellerSpecialistRow,
 } from '../../domain/repositories/seller.repository';
 
@@ -73,6 +75,24 @@ function toSellerDto(seller: SellerProfile) {
   };
 }
 
+/**
+ * Vendedor tal como lo consume `/admin/sellers`.
+ *
+ * Va en camelCase, igual que el resto de las respuestas de este controller: el
+ * BFF lo reenvía tal cual y la pantalla lo lee con estos mismos nombres.
+ */
+function toSellerAdminDto(row: SellerAdminRow) {
+  return {
+    id: row.id,
+    fullName: row.fullName,
+    email: row.email,
+    sellerCode: row.sellerCode,
+    specialistsCount: row.specialistsCount,
+    createdAt: row.createdAt,
+    lastSignInAt: row.lastSignInAt,
+  };
+}
+
 function toSpecialistDto(row: SellerSpecialistRow) {
   return {
     id: row.id,
@@ -95,6 +115,7 @@ function toSpecialistDto(row: SellerSpecialistRow) {
  * SellersController — three surfaces:
  *
  *   Admin (super_admin only):
+ *     GET  /api/admin/sellers         — list sellers + how many specialists each sold
  *     POST /api/admin/sellers         — create a seller account
  *
  *   Seller portal (role=seller only):
@@ -107,8 +128,11 @@ function toSpecialistDto(row: SellerSpecialistRow) {
  *     GET  /api/public/seller-code/:code — validate a seller code
  *
  * SECURITY:
- *   - Admin endpoint: @Roles('super_admin', 'admin') — el dueño pidió que
- *     CUALQUIER administrador pueda gestionar vendedores, no solo el super.
+ *   - Admin endpoint: @Roles('super_admin') — decisión del dueño (2026-08-17).
+ *     Antes decía @Roles('super_admin', 'admin'), pero 'admin' NO existe en
+ *     CurrentUserPayload['role']: ninguna sesión puede tener ese rol, así que
+ *     era un rol imaginario que además rompía el typecheck (invisible porque el
+ *     type-checker del build se queda sin memoria y el deploy no corre tipos).
  *   - Seller endpoints: @Roles('seller').
  *   - sellerId always comes from CurrentUser().sub — never from the request body.
  *   - sold_by is set from the session, never from body.
@@ -124,7 +148,26 @@ export class SellersController {
     private readonly listSpecialists: ListSellerSpecialistsUseCase,
     private readonly getSpecialist: GetSellerSpecialistUseCase,
     private readonly getProfile: GetSellerProfileUseCase,
+    private readonly listSellers: ListSellersUseCase,
   ) {}
+
+  // ---------------------------------------------------------------------------
+  // GET /api/admin/sellers
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Listado de vendedores para la pantalla `/admin/sellers`.
+   *
+   * Incluye el codigo de cada vendedor y cuantos especialistas dio de alta.
+   * Solo super_admin: el rol 'admin' no existe en CurrentUserPayload['role'].
+   */
+  @Get('admin/sellers')
+  @UseGuards(RolesGuard)
+  @Roles('super_admin')
+  async listSellersEndpoint(): Promise<SuccessResponse<ReturnType<typeof toSellerAdminDto>[]>> {
+    const sellers = await this.listSellers.execute();
+    return ok(sellers.map(toSellerAdminDto));
+  }
 
   // ---------------------------------------------------------------------------
   // POST /api/admin/sellers
@@ -132,7 +175,7 @@ export class SellersController {
 
   @Post('admin/sellers')
   @UseGuards(RolesGuard)
-  @Roles('super_admin', 'admin')
+  @Roles('super_admin')
   async createSellerEndpoint(
     @Body(new ZodValidationPipe(CreateSellerBodySchema)) body: CreateSellerBody,
   ): Promise<SuccessResponse<ReturnType<typeof toSellerDto>>> {

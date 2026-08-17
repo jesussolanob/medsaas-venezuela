@@ -48,8 +48,8 @@ export interface CreateSellerInput {
  * Security:
  *   - seller_code is generated server-side; the client never supplies it.
  *   - Sellers cannot choose their own plan — they are not subscription holders.
- *   - Callers must guard this use case with @Roles('super_admin', 'admin'):
- *     cualquier administrador gestiona vendedores (decisión del dueño).
+ *   - Callers must guard this use case with @Roles('super_admin'): solo el super
+ *     administrador gestiona vendedores (decisión del dueño, 2026-08-17).
  */
 @Injectable()
 export class CreateSellerUseCase {
