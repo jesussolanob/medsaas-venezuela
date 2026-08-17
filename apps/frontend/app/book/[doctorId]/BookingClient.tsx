@@ -1215,7 +1215,7 @@ export default function BookingClient({
                       </div>
                       <div className="text-right">
                         <p className="text-2xl font-extrabold" style={{ color: BRAND.turquoise }}>
-                          ${planTotal(plan)}
+                          {format(Number(planTotal(plan)))}
                         </p>
                         {bcvRate && (
                           <p className="text-[11px] text-slate-400 mt-0.5">
