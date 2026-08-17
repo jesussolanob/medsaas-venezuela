@@ -3684,3 +3684,65 @@ al entrar debería quedar en plan gratuito y poder mejorar su plan.
 ⚠️ Durante este lote se commiteó tres veces sobre `staging` en vez de una rama feature. Se
 corrigió por cherry-pick a `develop` y se verificó que el diff entre ambas quedó vacío, pero
 conviene mirar la rama activa después de cada merge a staging.
+
+---
+
+## 2026-08-17 — QA de reagenda e inmediata + 4 fixes (staging)
+
+Sesión reanudada tras un **reinicio por watchdog de hardware** (13:21). Murió durante
+`git push origin staging`: el merge estaba hecho localmente pero el push nunca salió, así que
+la ruta del BFF de alta de vendedor (`1523076`) quedó sin desplegar. Se pusheó y desplegó.
+
+### Lo que se verificó en staging (navegador real)
+
+| Caso                                          | Resultado                                                               |
+| --------------------------------------------- | ----------------------------------------------------------------------- |
+| P1.1.5 · el modal de reagendar marca ocupados | **OK** — 10:00 deshabilitado el 19/08                                   |
+| P1.1 · una cita ocupa el tiempo que dura      | **OK** — la inmediata 13:11–13:41 bloquea 13:00 y 13:30                 |
+| P0.2c · impaga + no asistió + reagenda        | **OK** salvo la fecha (ver fix 2). Ofrece el MISMO día                  |
+| P0.2e · pagada + multa                        | **OK** con la consulta realmente pagada: 50 + 10 = 60, pago a `pending` |
+| P1.2.3 · inmediata sin espacio                | **OK** — avisa y cambia a "Registrar igual"                             |
+| P1.2.5 · sesiones de paquete                  | **OK** — ofrece "sesión 2…5"                                            |
+| P0.4 · divisa en Servicios                    | **OK** — €40 con tasa EUR, vuelve a $40 con tasa USD                    |
+
+### Los cuatro fixes (rama `feature/fixes-qa-cobros-reagenda`)
+
+1. **`fb6cce0` — "Confirmar cobro" no guardaba nada.** El modal pintaba "Pago: Aprobado" y
+   "Total cobrado" sin escribir a BD; el guardado exigía pulsar además "Guardar pago". El
+   endpoint (BFF + use case + invariante del método) ya existía completo y **nadie lo
+   llamaba** — mismo patrón que la ruta de alta de vendedor. Consecuencia medida: con la
+   consulta realmente en `pending`, aplicar multa la trataba como impaga y **reemplazaba** el
+   monto (50 → 10). Por decisión del dueño (17/08) ahora persiste de una vez.
+2. **`0a9fb94` — la reagenda no movía `consultations.consultation_date`.** Agenda decía 16:00
+   y Consultas 14:00. Esa columna filtra y ordena el listado, así que una reagenda que cruzara
+   de día archivaba la consulta en la fecha equivocada. Nuevo `SyncConsultationDateUseCase`
+   inyectado opcional en `RescheduleAppointmentUseCase` (mismo patrón que Google Calendar,
+   best-effort). Se extendió el `update` del puerto con `consultationDate` **en vez de** agregar
+   un método nuevo, para no romper los mocks del módulo.
+3. **`e042e0a` — la consulta inmediata nunca se acortaba.** El aviso "va a durar X min en vez
+   de Y" se renderizaba con `fits && truncated`, condición **imposible**. Con 20 min libres y
+   un servicio de 30 la UI decía "no queda espacio" y mandaba `force=true`, creándola a
+   duración completa **encima** de la cita siguiente. El backend ya sabía acortarla. Ahora hay
+   tres estados: entra / se acorta (sin force) / no hay lugar ni acortándola.
+4. **`bf157ca` — símbolo de dólar fijo.** Corregido en flujo de agendar, detalle de cita,
+   agenda, ficha del paciente, reportes y toast. NO se tocan `SubscriptionPanel`,
+   `UpgradeClient` ni `PlanPaymentModal`: el plan que se le paga a Delta es siempre USD.
+
+### Regresión propia corregida
+
+El commit `1523076` (previo al reinicio) dejó el spec de appointments importando un **subpath
+inexistente** de `@delta/shared-types` — 1 suite sin correr, ya viajada a staging porque el
+workflow de deploy no corre tests. Corregido al barrel. Suite: **403 suites / 3891 tests**.
+
+### Abierto, sin tocar
+
+- ⚠️ **`sellers.controller.ts:135` no compila**: `@Roles('super_admin', 'admin')` pero `'admin'`
+  **no existe** en la unión de roles. Invisible porque el type-checker del build muere por OOM
+  en esta máquina y el deploy no corre tipos. Efectivamente solo `super_admin` crea vendedores.
+  Es decisión de producto si el rol `admin` debe existir.
+- Falta la **pantalla** de gestión de vendedores en `/admin`; el alta feliz no se pudo probar
+  (requiere sesión `super_admin`).
+- El método de pago elegido al crear la cita **no se guarda** (llega `null`).
+- La vista Día muestra 13:30 "Disponible" aunque esté ocupado (la grilla de agendar sí bloquea).
+- Si falla el fetch de la tasa, el portal cae a `$` en silencio en vez de un estado neutro.
+- Sin probar: P0.2a/b, P0.2d aislado, P0.1, P0.3, P1.3, baja de cuenta, onboarding.
