@@ -246,8 +246,8 @@ describe('AppointmentsController', () => {
       mockRescheduleUseCase.execute.mockResolvedValue(rescheduled);
 
       // Validate the DTO schema directly — this is what ZodValidationPipe would reject.
-      const { RescheduleAppointmentDtoSchema } =
-        await import('@delta/shared-types/dtos/reschedule-appointment.dto');
+      // Se importa del barrel: `@delta/shared-types` no expone subpaths.
+      const { RescheduleAppointmentDtoSchema } = await import('@delta/shared-types');
       expect(() =>
         RescheduleAppointmentDtoSchema.parse({ scheduled_at: newDateOffset }),
       ).not.toThrow();
