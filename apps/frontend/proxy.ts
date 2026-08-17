@@ -268,5 +268,15 @@ export const config = {
   // this, on the first request after Auth0 callback the session may not yet be
   // readable, causing resolveIdentity() to throw and redirect to /login instead
   // of the correct role-based portal.
-  matcher: ['/admin/:path*', '/doctor/:path*', '/patient/:path*', '/auth/:path*', '/post-login'],
+  // OJO: una ruta que no esté acá NO pasa por applyRbac, por más que applyRbac
+  // la contemple. `/seller` se agregó junto con su guarda: sin esta línea la
+  // guarda existe pero nunca corre.
+  matcher: [
+    '/admin/:path*',
+    '/doctor/:path*',
+    '/patient/:path*',
+    '/seller/:path*',
+    '/auth/:path*',
+    '/post-login',
+  ],
 };

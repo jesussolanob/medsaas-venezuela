@@ -1,9 +1,8 @@
-import { ApprovePaymentUseCase } from './approve-payment.use-case';
+import { ApplyNoShowFeeUseCase } from './apply-no-show-fee.use-case';
 import type { IConsultationRepository } from '../../../domain/repositories/consultation.repository';
 import { Consultation } from '../../../domain/entities/consultation.entity';
 import { ConsultationNotFoundError } from '../../../domain/errors/consultation-not-found.error';
 import { ConsultationNotOwnedError } from '../../../domain/errors/consultation-not-owned.error';
-import { PaymentAlreadyApprovedError } from '../../../domain/errors/payment-already-approved.error';
 
 const DOCTOR_ID = 'dddddddd-0000-0000-0000-000000000001';
 const OTHER_DOCTOR_ID = 'eeeeeeee-0000-0000-0000-000000000002';
@@ -27,8 +26,8 @@ function makeConsultation(
   });
 }
 
-describe('ApprovePaymentUseCase', () => {
-  let useCase: ApprovePaymentUseCase;
+describe('ApplyNoShowFeeUseCase', () => {
+  let useCase: ApplyNoShowFeeUseCase;
   let mockRepo: jest.Mocked<IConsultationRepository>;
 
   beforeEach(() => {
@@ -50,78 +49,53 @@ describe('ApprovePaymentUseCase', () => {
       listWithAppointment: jest.fn(),
       applyNoShowFee: jest.fn(),
     };
-    useCase = new ApprovePaymentUseCase(mockRepo);
+    useCase = new ApplyNoShowFeeUseCase(mockRepo);
   });
 
-  it('transitions pending → approved', async () => {
-    const pendingConsultation = makeConsultation({ paymentStatus: 'pending' });
-    const approvedConsultation = makeConsultation({
-      paymentStatus: 'approved',
-      amount: 50,
-      paymentMethod: 'zelle',
-      paymentDate: now,
-    });
-    mockRepo.findById.mockResolvedValue(pendingConsultation);
-    mockRepo.updatePayment.mockResolvedValue(approvedConsultation);
+  it('delegates to repo.applyNoShowFee with correct args when consultation is found and owned', async () => {
+    const consultation = makeConsultation({ amount: 30, paymentStatus: 'approved' });
+    const updated = makeConsultation({ amount: 80, paymentStatus: 'pending' });
+    mockRepo.findById.mockResolvedValue(consultation);
+    mockRepo.applyNoShowFee.mockResolvedValue(updated);
 
     const result = await useCase.execute({
       consultationId: CONSULTATION_ID,
       doctorId: DOCTOR_ID,
-      amount: 50,
-      paymentMethod: 'zelle',
+      newAmount: 80,
     });
 
-    expect(result.paymentStatus).toBe('approved');
-    expect(mockRepo.updatePayment).toHaveBeenCalledWith(
-      CONSULTATION_ID,
-      DOCTOR_ID,
-      expect.objectContaining({
-        paymentStatus: 'approved',
-        paymentMethod: 'zelle',
-        amount: 50,
-      }),
-    );
+    expect(mockRepo.applyNoShowFee).toHaveBeenCalledTimes(1);
+    expect(mockRepo.applyNoShowFee).toHaveBeenCalledWith(CONSULTATION_ID, DOCTOR_ID, 80);
+    expect(result.amount).toBe(80);
+    expect(result.paymentStatus).toBe('pending');
   });
 
-  it('throws PaymentAlreadyApprovedError when already approved', async () => {
-    const approvedConsultation = makeConsultation({ paymentStatus: 'approved' });
-    mockRepo.findById.mockResolvedValue(approvedConsultation);
-
-    await expect(
-      useCase.execute({
-        consultationId: CONSULTATION_ID,
-        doctorId: DOCTOR_ID,
-        amount: 50,
-        paymentMethod: 'zelle',
-      }),
-    ).rejects.toThrow(PaymentAlreadyApprovedError);
-
-    expect(mockRepo.updatePayment).not.toHaveBeenCalled();
-  });
-
-  it('records payment method and date', async () => {
-    const pendingConsultation = makeConsultation({ paymentStatus: 'pending' });
-    const paymentDate = new Date('2026-06-15T10:00:00Z');
-    const approvedConsultation = makeConsultation({
-      paymentStatus: 'approved',
-      amount: 100,
-      paymentMethod: 'pago_movil',
-      paymentDate,
+  it('works for a direct-create consultation (no appointment_id) — repo handles no-op', async () => {
+    // Consultation created manually by the doctor — no appointment_id.
+    // The repo's applyNoShowFee skips the payment sync silently.
+    const consultation = makeConsultation({
+      amount: 25,
+      paymentStatus: 'pending',
+      appointmentId: undefined,
     });
-    mockRepo.findById.mockResolvedValue(pendingConsultation);
-    mockRepo.updatePayment.mockResolvedValue(approvedConsultation);
+    const updated = makeConsultation({
+      amount: 75,
+      paymentStatus: 'pending',
+      appointmentId: undefined,
+    });
+    mockRepo.findById.mockResolvedValue(consultation);
+    mockRepo.applyNoShowFee.mockResolvedValue(updated);
 
     const result = await useCase.execute({
       consultationId: CONSULTATION_ID,
       doctorId: DOCTOR_ID,
-      amount: 100,
-      paymentMethod: 'pago_movil',
-      paymentDate,
+      newAmount: 75,
     });
 
-    expect(result.paymentMethod).toBe('pago_movil');
-    expect(result.paymentDate).toEqual(paymentDate);
-    expect(result.amount).toBe(100);
+    expect(mockRepo.applyNoShowFee).toHaveBeenCalledTimes(1);
+    expect(result.amount).toBe(75);
+    // updatePaymentDetails must never be called — this path only uses applyNoShowFee.
+    expect(mockRepo.updatePaymentDetails).not.toHaveBeenCalled();
   });
 
   it('throws ConsultationNotFoundError when consultation does not exist', async () => {
@@ -131,13 +105,15 @@ describe('ApprovePaymentUseCase', () => {
       useCase.execute({
         consultationId: CONSULTATION_ID,
         doctorId: DOCTOR_ID,
-        amount: 50,
-        paymentMethod: 'zelle',
+        newAmount: 60,
       }),
     ).rejects.toThrow(ConsultationNotFoundError);
+
+    expect(mockRepo.applyNoShowFee).not.toHaveBeenCalled();
   });
 
   it('throws ConsultationNotOwnedError when doctor does not own the consultation', async () => {
+    // Repo returns entity belonging to DOCTOR_ID; caller uses OTHER_DOCTOR_ID.
     const consultation = makeConsultation({ doctorId: DOCTOR_ID });
     mockRepo.findById.mockResolvedValue(consultation);
 
@@ -145,9 +121,10 @@ describe('ApprovePaymentUseCase', () => {
       useCase.execute({
         consultationId: CONSULTATION_ID,
         doctorId: OTHER_DOCTOR_ID,
-        amount: 50,
-        paymentMethod: 'zelle',
+        newAmount: 60,
       }),
     ).rejects.toThrow(ConsultationNotOwnedError);
+
+    expect(mockRepo.applyNoShowFee).not.toHaveBeenCalled();
   });
 });

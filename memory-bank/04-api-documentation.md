@@ -915,3 +915,26 @@ y otro monto en bolívares que el especialista para el mismo servicio. Ver ADR-0
 
 ⚠️ `profiles.custom_rate` es DECIMAL y **pg lo entrega como string**: hay que convertirlo con
 `Number()` o el frontend recibe `"97.5"` donde espera un número.
+
+## Módulo de ventas (2026-08-16)
+
+Todos en **camelCase** (convención de estos controllers — verificada, no asumida).
+
+| Endpoint                            | Rol                    | Devuelve                                                                           |
+| ----------------------------------- | ---------------------- | ---------------------------------------------------------------------------------- |
+| `POST /api/admin/sellers`           | `super_admin`, `admin` | `{ id, sellerCode, createdAt }`                                                    |
+| `GET /api/seller/me`                | `seller`               | `{ sellerCode, fullName }`                                                         |
+| `GET /api/seller/specialists`       | `seller`               | `{ id, fullName, specialty, plan, subscriptionStatus, createdAt, lastSignInAt }[]` |
+| `GET /api/seller/specialists/:id`   | `seller`               | Igual, una fila. **422 si no es suyo** (anti-IDOR)                                 |
+| `POST /api/seller/specialists`      | `seller`               | Alta. `sold_by` y plan los fija el backend                                         |
+| `GET /api/public/seller-code/:code` | público                | `{ valid, sellerName }` — **nada más**                                             |
+
+`POST /api/doctor/registration` gana el campo opcional **`seller_code`** (snake_case, como el
+resto de ese DTO). Errores: `SELLER_CODE_NOT_FOUND` (422).
+
+Reglas que no se pueden romper:
+
+- `sold_by` **solo se escribe si venía en null**, garantizado por SQL.
+- El vendedor **nunca** elige plan: el backend fija el de prueba e ignora el cuerpo.
+- `lastSignInAt` es null cuando el especialista nunca entró — es el dato que le dice al vendedor
+  si el registro se convirtió en uso real o quedó abandonado.

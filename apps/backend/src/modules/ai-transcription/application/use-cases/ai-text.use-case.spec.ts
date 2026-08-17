@@ -236,6 +236,7 @@ describe('AiTextUseCase', () => {
       findExtraItems: jest.fn(),
       list: jest.fn(),
       listWithAppointment: jest.fn(),
+      applyNoShowFee: jest.fn(),
       findByPatient: jest.fn(),
       findByAppointmentId: jest.fn(),
       deleteById: jest.fn().mockResolvedValue(undefined),

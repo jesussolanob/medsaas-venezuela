@@ -212,6 +212,12 @@ export default function ImmediateConsultationModal({
       setError('Elegí el tipo de consulta.');
       return;
     }
+    // El consultorio es obligatorio en el backend. Sin este guard, confirmar sin
+    // elegirlo devolvía un 400 de validación con el texto crudo de Zod.
+    if (!officeId) {
+      setError('Elegí el consultorio donde vas a atender.');
+      return;
+    }
     setSaving(true);
     setError('');
     try {

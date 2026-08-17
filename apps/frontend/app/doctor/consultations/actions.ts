@@ -453,6 +453,13 @@ export type ConsultationPaymentPatch = {
   payment_reference?: string | null;
   payment_receipt_url?: string | null;
   amount?: number | null;
+  /**
+   * Multa por inasistencia. Cuando viene > 0 junto con `amount`, el backend
+   * toma el camino que ADEMÁS sincroniza la tabla `payments`: sin esto, una
+   * consulta ya pagada quedaba con el costo nuevo pero el pago viejo aprobado,
+   * y la multa no aparecía en ninguna pantalla de finanzas.
+   */
+  no_show_fee?: number;
 };
 
 /**
@@ -476,6 +483,7 @@ export async function updateConsultationPaymentDetails(
   if ('payment_reference' in patch) body.payment_reference = patch.payment_reference;
   if ('payment_receipt_url' in patch) body.payment_receipt_url = patch.payment_receipt_url;
   if ('amount' in patch) body.amount = patch.amount;
+  if ('no_show_fee' in patch) body.no_show_fee = patch.no_show_fee;
 
   const result = await backendPatch<Consultation>(
     `/api/consultations/${consultationId}/payment-details`,

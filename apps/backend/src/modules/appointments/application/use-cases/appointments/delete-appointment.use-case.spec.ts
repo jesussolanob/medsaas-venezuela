@@ -102,6 +102,7 @@ function makeConsultationRepo(): jest.Mocked<IConsultationRepository> {
     deleteById: jest.fn().mockResolvedValue(undefined),
     findFirstCompletedByPaymentId: jest.fn().mockResolvedValue(null),
     listWithAppointment: jest.fn(),
+    applyNoShowFee: jest.fn(),
   } as jest.Mocked<IConsultationRepository>;
 }
 

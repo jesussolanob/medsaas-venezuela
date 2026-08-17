@@ -234,4 +234,24 @@ export interface IConsultationRepository {
    * does not belong to the doctor.
    */
   findExtraItems(consultationId: string, doctorId: string): Promise<ConsultationExtraItem[]>;
+
+  /**
+   * Atomically applies a no-show fee to a consultation and — when a linked
+   * approved payment exists — syncs that payment in the same transaction.
+   *
+   * Within a single DB transaction:
+   *   1. Updates consultations: amount = newAmount, payment_status = 'pending'.
+   *   2. Follows consultations.appointment_id → appointments.payment_id to locate
+   *      the linked payment (if any).
+   *   3. If a linked payment is found AND its status is 'approved', updates it:
+   *      status = 'pending', amount_usd = newAmount, paid_at = NULL.
+   *
+   * When no payment exists (direct-create consultation), step 3 is a no-op.
+   * Throws ConsultationNotFoundError when the consultation is not found / not owned.
+   */
+  applyNoShowFee(
+    consultationId: string,
+    doctorId: string,
+    newAmount: number,
+  ): Promise<Consultation>;
 }
