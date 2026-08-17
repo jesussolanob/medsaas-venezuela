@@ -459,26 +459,41 @@ export class SequelizeConsultationRepository implements IConsultationRepository 
       //    This is the reliable direction — consultation always knows its appointment;
       //    the reverse (appointments.consultation_id) can be NULL for legacy rows.
       //
-      //    The WHERE status = 'approved' guard means: only flip a payment that was
-      //    actually approved. If it's already pending (rare re-apply), this is a no-op.
+      //    Two behaviours based on newAmount:
+      //      newAmount === 0 (no-show without fee / waived charge):
+      //        Set payment to approved/$0 so it leaves "Por cobrar" in both count
+      //        and total. Applies to both pending and approved payments.
+      //      newAmount > 0 (no-show with fee):
+      //        Set payment to pending/newAmount. Applies to both pending (amount
+      //        update) and approved (un-approve) payments. The old guard
+      //        `AND p.status = 'approved'` was intentionally removed so pending
+      //        payments also get their amount_usd kept in sync.
       if (updated.appointmentId) {
-        await this.sequelize.query(
-          `UPDATE payments p
-             SET status    = 'pending',
-                 amount_usd = :newAmount,
-                 paid_at   = NULL,
-                 updated_at = now()
-             FROM appointments ap
-             WHERE ap.id         = :appointmentId
-               AND ap.payment_id = p.id
-               AND p.status      = 'approved'
-               AND p.doctor_id   = :doctorId`,
-          {
-            replacements: { newAmount, appointmentId: updated.appointmentId, doctorId },
-            type: QueryTypes.UPDATE,
-            transaction: t,
-          },
-        );
+        const sql =
+          newAmount === 0
+            ? `UPDATE payments p
+                 SET status    = 'approved',
+                     amount_usd = 0,
+                     paid_at   = now(),
+                     updated_at = now()
+                 FROM appointments ap
+                 WHERE ap.id         = :appointmentId
+                   AND ap.payment_id = p.id
+                   AND p.doctor_id   = :doctorId`
+            : `UPDATE payments p
+                 SET status    = 'pending',
+                     amount_usd = :newAmount,
+                     paid_at   = NULL,
+                     updated_at = now()
+                 FROM appointments ap
+                 WHERE ap.id         = :appointmentId
+                   AND ap.payment_id = p.id
+                   AND p.doctor_id   = :doctorId`;
+        await this.sequelize.query(sql, {
+          replacements: { newAmount, appointmentId: updated.appointmentId, doctorId },
+          type: QueryTypes.UPDATE,
+          transaction: t,
+        });
       }
 
       return this.toDomain(updated);

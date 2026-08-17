@@ -308,17 +308,19 @@ export class ConsultationsController {
   /**
    * PATCH /api/consultations/:id/payment-details — edit payment details.
    *
-   * Two distinct paths based on the presence of `no_show_fee`:
+   * Two distinct paths based on the presence of `no_show_fee` OR an explicit zero amount:
    *
    *   no_show_fee > 0 (AND amount provided):
-   *     Routes to ApplyNoShowFeeUseCase, which atomically:
-   *       - Updates consultations (amount, payment_status → 'pending').
-   *       - Syncs the linked approved payment (if any) to the same new amount.
-   *     This is the ONLY path that touches the payments table. Normal edits
-   *     (method, reference, receipt_url, plain amount change) never do.
+   *     Routes to ApplyNoShowFeeUseCase — atomically updates the consultation amount
+   *     and syncs the linked payment to the new total (pending + new amount).
    *
-   *   no_show_fee absent / 0:
+   *   amount === 0 (no-show without fee, or any waived charge):
+   *     Also routes to ApplyNoShowFeeUseCase with newAmount=0. The linked payment is
+   *     resolved as approved/$0 so it leaves "Por cobrar" in count AND total.
+   *
+   *   All other cases (method, reference, receipt_url, non-zero amount change):
    *     Routes to UpdatePaymentDetailsUseCase — updates consultation fields only.
+   *     This path never touches the payments table.
    *
    * SECURITY: doctorId comes from user.sub (authenticated token) — never from the body.
    */
@@ -328,12 +330,19 @@ export class ConsultationsController {
     @Body(new ZodValidationPipe(UpdatePaymentDetailsDtoSchema)) dto: UpdatePaymentDetailsDto,
     @CurrentUser() user: CurrentUserPayload,
   ): Promise<SuccessResponse<unknown>> {
-    // No-show fee path: must have both no_show_fee > 0 and the new total amount.
-    if (dto.no_show_fee !== undefined && dto.no_show_fee > 0 && dto.amount != null) {
+    // No-show sync path — two triggers:
+    //   1. Explicit no-show fee: no_show_fee > 0 AND amount provided.
+    //   2. Zero-amount resolution: amount === 0 (no-show without penalty, or waived charge).
+    // Both cases need the linked payment row to stay consistent with the consultation amount.
+    const isNoShowSyncPath =
+      (dto.no_show_fee !== undefined && dto.no_show_fee > 0 && dto.amount != null) ||
+      dto.amount === 0;
+
+    if (isNoShowSyncPath) {
       const consultation = await this.applyNoShowFeeUseCase.execute({
         consultationId: id,
         doctorId: user.sub,
-        newAmount: dto.amount,
+        newAmount: dto.amount ?? 0,
       });
       return { success: true, data: toConsultationResponse(consultation) };
     }

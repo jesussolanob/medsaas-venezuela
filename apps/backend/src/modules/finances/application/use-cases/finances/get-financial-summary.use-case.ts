@@ -71,17 +71,23 @@ export class GetFinancialSummaryUseCase {
   async execute(input: GetFinancialSummaryInput): Promise<GetFinancialSummaryOutput> {
     const month = input.month ?? this.currentMonth();
 
-    const [consultationSummary, manualIncome, expenses, rate, incomeBreakdown, expenseBreakdown] =
+    // sumManualIncome is intentionally NOT called here. totalIncome is derived from
+    // incomeBreakdown so both values always share the same source and cannot contradict
+    // each other in the UI (the "two queries for the same number" pattern that produced
+    // the $25 vs $0 bug when the frontend mixed client-side and backend totals).
+    const [consultationSummary, expenses, rate, incomeBreakdown, expenseBreakdown] =
       await Promise.all([
         this.financeRepo.getConsultationSummary(input.doctorId, month),
-        this.financeRepo.sumManualIncome(input.doctorId, month),
         this.financeRepo.sumExpenses(input.doctorId, month),
         this.rateStore.getRate(),
         this.financeRepo.getIncomeBreakdown(input.doctorId, month),
         this.financeRepo.getExpenseBreakdown(input.doctorId, month),
       ]);
 
-    const totalIncome = consultationSummary.approvedTotal + manualIncome.total;
+    // One source of truth: totalIncome = approved consultations + manual income,
+    // both from the same getIncomeBreakdown query. This guarantees totalIncome and
+    // incomeBreakdown.manualIncome are always consistent in every API response.
+    const totalIncome = incomeBreakdown.consultationsApproved + incomeBreakdown.manualIncome;
     const totalExpenses = expenses.total;
     // Net is signed: negative when expenses exceed income (deficit month).
     const net = parseFloat((totalIncome - totalExpenses).toFixed(2));

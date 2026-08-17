@@ -412,6 +412,59 @@ describe('ConsultationsController', () => {
   });
 
   describe('updatePaymentDetailsEndpoint', () => {
+    it('routes amount=0 through ApplyNoShowFeeUseCase (no-show without fee)', async () => {
+      // When the doctor waives the no-show fee, the frontend sends amount=0 without
+      // no_show_fee. The controller must route through applyNoShowFeeUseCase so the
+      // linked payment row is resolved as approved/$0 and leaves "Por cobrar".
+      const resolved = makeConsultation({ amount: 0, paymentStatus: 'pending' });
+      mockApplyNoShowFee.execute.mockResolvedValue(resolved);
+
+      const result = await controller.updatePaymentDetailsEndpoint(
+        CONSULTATION_ID,
+        { amount: 0 },
+        mockUser,
+      );
+
+      expect(result.success).toBe(true);
+      expect(mockApplyNoShowFee.execute).toHaveBeenCalledTimes(1);
+      expect(mockApplyNoShowFee.execute).toHaveBeenCalledWith(
+        expect.objectContaining({
+          consultationId: CONSULTATION_ID,
+          doctorId: DOCTOR_ID,
+          newAmount: 0,
+        }),
+      );
+      expect(mockUpdatePaymentDetails.execute).not.toHaveBeenCalled();
+    });
+
+    it('routes no_show_fee>0 through ApplyNoShowFeeUseCase (with fee)', async () => {
+      const updated = makeConsultation({ amount: 60, paymentStatus: 'pending' });
+      mockApplyNoShowFee.execute.mockResolvedValue(updated);
+
+      const result = await controller.updatePaymentDetailsEndpoint(
+        CONSULTATION_ID,
+        { no_show_fee: 20, amount: 60 },
+        mockUser,
+      );
+
+      expect(result.success).toBe(true);
+      expect(mockApplyNoShowFee.execute).toHaveBeenCalledTimes(1);
+      expect(mockApplyNoShowFee.execute).toHaveBeenCalledWith(
+        expect.objectContaining({ newAmount: 60 }),
+      );
+      expect(mockUpdatePaymentDetails.execute).not.toHaveBeenCalled();
+    });
+
+    it('routes non-zero amount through UpdatePaymentDetailsUseCase (normal edit)', async () => {
+      const updated = makeConsultation({ amount: 25, paymentStatus: 'pending' });
+      mockUpdatePaymentDetails.execute.mockResolvedValue(updated);
+
+      await controller.updatePaymentDetailsEndpoint(CONSULTATION_ID, { amount: 25 }, mockUser);
+
+      expect(mockUpdatePaymentDetails.execute).toHaveBeenCalledTimes(1);
+      expect(mockApplyNoShowFee.execute).not.toHaveBeenCalled();
+    });
+
     it('updates payment details and returns serialized consultation', async () => {
       const consultation = makeConsultation({
         paymentStatus: 'approved',
