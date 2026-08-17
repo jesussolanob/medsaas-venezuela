@@ -136,13 +136,27 @@ export default function NoShowModal({
       return { amount: currentAmount + fine, no_show_fee: fine };
     }
 
-    // Impaga y no reagenda: no quedó nada por cobrar salvo la multa.
-    // Sin pago aprobado no hay nada que sincronizar, así que va por el camino
-    // normal (el backend igual protege ese caso con `p.status = 'approved'`).
-    if (!willReschedule) return { amount: fine };
+    // Impaga: la multa también tiene que viajar con `no_show_fee`.
+    //
+    // Antes no se mandaba, con el razonamiento de que "sin pago aprobado no hay
+    // nada que sincronizar". Esa premisa quedó obsoleta: el backend sacó a
+    // propósito la guarda `AND p.status = 'approved'` para mantener en sync
+    // también los pagos PENDIENTES, y una cita impaga sí tiene su fila en
+    // `payments` (creada al agendar, en estado pending y con el precio del plan).
+    //
+    // Sin `no_show_fee`, el controller no enruta a ApplyNoShowFee y solo se
+    // actualiza `consultations.amount`. El pago se quedaba con el precio viejo,
+    // y como Cobros lee ese pago, el especialista veía $40 para cobrar cuando la
+    // multa era $10 — le cobraba de más al paciente. Medido en staging.
+    //
+    // Con multa 0 se sigue mandando solo `amount: 0`: esa es la rama que el
+    // controller enruta por `dto.amount === 0` y resuelve el pago en 0/aprobado.
+    if (!willReschedule) {
+      return fine > 0 ? { amount: fine, no_show_fee: fine } : { amount: 0 };
+    }
 
     // Impaga y reagenda: el flujo sigue completo, la multa se suma al costo.
-    return fine > 0 ? { amount: currentAmount + fine } : null;
+    return fine > 0 ? { amount: currentAmount + fine, no_show_fee: fine } : null;
   }
 
   async function confirm(willReschedule: boolean) {
@@ -271,8 +285,18 @@ export default function NoShowModal({
                 ) : (
                   <>
                     Esta consulta está <strong>impaga ({money(currentAmount)})</strong>. Si el
-                    paciente no reagenda, el costo pasa a {money(fine)} y sale de{' '}
-                    <strong>Por cobrar</strong>.
+                    paciente no reagenda, el costo pasa a {money(fine)}
+                    {fine > 0 ? (
+                      <>
+                        {' '}
+                        y eso es lo que queda <strong>Por cobrar</strong>.
+                      </>
+                    ) : (
+                      <>
+                        {' '}
+                        y sale de <strong>Por cobrar</strong>.
+                      </>
+                    )}
                   </>
                 )}
               </div>
