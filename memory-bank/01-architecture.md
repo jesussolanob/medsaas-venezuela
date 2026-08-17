@@ -429,6 +429,26 @@ próxima cita)` — si el bloque siguiente está libre ocupa lo que dura, y si n
   viene null porque el FK se actualiza en la BD después de construir la entidad: hay que leerlo del
   RESULTADO. Sin eso el botón no podía abrir la consulta y la sesión del combo quedaba sin enlazar.
 
+- **ADR-037 (2026-08-16):** **Rol vendedor: la atribución se escribe UNA vez y el código no toca el
+  plan.** Un rol `seller` recortado (solo crear especialistas y ver los que registró), gestionado por
+  cualquier administrador. La venta se atribuye por dos caminos: alta manual del vendedor, o el
+  especialista se registra escribiendo el **código** del vendedor —campo OPCIONAL en el onboarding—.
+  (1) **El código NO cambia el plan**: quien se registra con código arranca en el plan de prueba
+  igual que todos, y el vendedor **tampoco elige plan** al dar de alta (el backend fija `free_trial`
+  e ignora el cuerpo). El riesgo de que un vendedor regale un plan pago se resolvió **quitando la
+  decisión**, no poniéndole un permiso. (2) **`profiles.sold_by` se escribe UNA SOLA VEZ, garantizado
+  en la BD** (`UPDATE … WHERE sold_by IS NULL`) y no solo en el use case: ni reentrar al onboarding
+  ni escribir otro código después lo pisan. Sin eso dos vendedores se roban la atribución y no hay
+  nada que auditar el día que haya comisiones. (3) El código se genera sin caracteres ambiguos
+  (`ABCDEFGHJKMNPQRSTUVWXYZ23456789`, sin I/L/O/0/1) porque se dicta por teléfono; y se valida en
+  vivo contra `GET /api/public/seller-code/:code`, que devuelve **solo** `{ valid, sellerName }`.
+  (4) El rol `seller` está en FORBIDDEN_ROLES: no puede auto-registrarse por onboarding ni Auth0 —
+  lo crea un administrador o no existe.
+  ⚠️ **Pendiente de decisión:** el backend acepta que cualquier administrador gestione vendedores,
+  pero `/admin` sigue admitiendo SOLO a `super_admin` (guarda en `proxy.ts`), así que un usuario con
+  rol `admin` es expulsado en la puerta. Abrir ese panel amplía quién ve doctores, suscripciones,
+  pagos y configuración: es una decisión de seguridad del dueño.
+
 - **Terminología (2026-07-23):** "médico" (SUSTANTIVO que nombra al usuario) → **"especialista"** en UI/correos/guías;
   se conservan adjetivos ("informe/reposo/insumos/datos médicos") y honoríficos Dr./Dra. Plantillas de email sembradas se
   actualizan en BD vía mig `20260723000001` (REPLACE de frases sustantivas; `REPLACE` no toca adjetivos).
