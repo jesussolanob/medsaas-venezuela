@@ -9,6 +9,7 @@ import {
   type IAppointmentRepository,
 } from '../../../domain/repositories/appointment.repository';
 import { UpdateCalendarEventUseCase } from '../../../../integrations/application/use-cases/integrations/update-calendar-event.use-case';
+import { SyncConsultationDateUseCase } from '../../../../consultations/application/use-cases/consultations/sync-consultation-date.use-case';
 import { computeActiveStatus } from '../../../domain/policies/appointment-status.policy';
 
 /** Milliseconds in one minute — used to compute the new event end time. */
@@ -63,6 +64,15 @@ export class RescheduleAppointmentUseCase {
     @Optional()
     @Inject(UpdateCalendarEventUseCase)
     private readonly updateCalendarEvent: UpdateCalendarEventUseCase | null = null,
+    /**
+     * SyncConsultationDateUseCase — opcional por el mismo motivo que el de
+     * calendario: los tests existentes no lo inyectan. Cuando está presente,
+     * arrastra `consultations.consultation_date` a la fecha nueva para que el
+     * módulo de Consultas no siga mostrando (ni filtrando por) la hora vieja.
+     */
+    @Optional()
+    @Inject(SyncConsultationDateUseCase)
+    private readonly syncConsultationDate: SyncConsultationDateUseCase | null = null,
   ) {}
 
   async execute(input: RescheduleAppointmentInput): Promise<Appointment> {
@@ -136,6 +146,22 @@ export class RescheduleAppointmentUseCase {
       oldStatus: previousStatus,
       newStatus: updated.status,
     });
+
+    // 7b. Arrastrar la fecha de la consulta asociada (best-effort). La cita ya
+    //     se persistió: si esto falla, se registra y la reagenda sigue en pie.
+    if (this.syncConsultationDate) {
+      try {
+        await this.syncConsultationDate.execute({
+          appointmentId: input.appointmentId,
+          doctorId: appointment.doctorId,
+          newScheduledAt: input.newScheduledAt,
+        });
+      } catch (err) {
+        this.logger.warn(
+          `[reschedule-consultation-date] no se pudo mover la fecha de la consulta de ${input.appointmentId} (no fatal): ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
 
     // 8. Move the Google Calendar event to the new time (best-effort — must not
     //    break the reschedule). Only when the appointment has a synced event and

@@ -37,6 +37,7 @@ import StepServiceType from './steps/StepServiceType';
 import StepSchedule from './steps/StepSchedule';
 import StepPayment from './steps/StepPayment';
 import { showToast } from '@/components/ui/Toaster';
+import { useBcvRate } from '@/lib/useBcvRate';
 
 // ---------------------------------------------------------------------------
 // SuccessStep — shown after a single-session appointment is created.
@@ -271,6 +272,8 @@ type Props = {
 export default function NewAppointmentFlow({ open, onClose, onSuccess, initialContext }: Props) {
   const router = useRouter();
   const flow = useAppointmentFlow(open, onClose, onSuccess, initialContext);
+  // Divisa del especialista para el resumen del paso — no dólar fijo.
+  const { format } = useBcvRate();
 
   if (!open) return null;
 
@@ -436,7 +439,7 @@ export default function NewAppointmentFlow({ open, onClose, onSuccess, initialCo
               flow.usePackage
                 ? 'Cubierto por paquete'
                 : flow.selectedPlan
-                  ? `${flow.selectedPlan.name} — $${flow.selectedPlan.price_usd}`
+                  ? `${flow.selectedPlan.name} — ${format(flow.selectedPlan.price_usd)}`
                   : undefined
             }
             onOpen={() => flow.step2Done && flow.setCurrentStep(3)}

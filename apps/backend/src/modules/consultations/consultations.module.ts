@@ -11,6 +11,7 @@ import { CONSULTATION_REPOSITORY } from './domain/repositories/consultation.repo
 import { CreateConsultationUseCase } from './application/use-cases/consultations/create-consultation.use-case';
 import { UpdateConsultationUseCase } from './application/use-cases/consultations/update-consultation.use-case';
 import { ApprovePaymentUseCase } from './application/use-cases/consultations/approve-payment.use-case';
+import { SyncConsultationDateUseCase } from './application/use-cases/consultations/sync-consultation-date.use-case';
 import { ApprovePaymentWithExtrasUseCase } from './application/use-cases/consultations/approve-payment-with-extras.use-case';
 import { UpdatePaymentDetailsUseCase } from './application/use-cases/consultations/update-payment-details.use-case';
 import { GetConsultationByIdUseCase } from './application/use-cases/consultations/get-consultation-by-id.use-case';
@@ -55,7 +56,10 @@ import { PatientsModule } from '../patients/patients.module';
     ListConsultationsUseCase,
     ListConsultationsWithPatientUseCase,
     ApplyNoShowFeeUseCase,
+    SyncConsultationDateUseCase,
   ],
-  exports: [CONSULTATION_REPOSITORY, CreateConsultationUseCase],
+  // SyncConsultationDateUseCase se exporta para AppointmentsModule: la reagenda
+  // de una cita tiene que arrastrar la fecha de su consulta.
+  exports: [CONSULTATION_REPOSITORY, CreateConsultationUseCase, SyncConsultationDateUseCase],
 })
 export class ConsultationsModule {}

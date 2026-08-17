@@ -255,6 +255,7 @@ export class SequelizeConsultationRepository implements IConsultationRepository 
         | 'notes'
         | 'blocksSnapshot'
         | 'blocksStructure'
+        | 'consultationDate'
       >
     >,
   ): Promise<Consultation> {
@@ -283,6 +284,10 @@ export class SequelizeConsultationRepository implements IConsultationRepository 
     // Stored as plain JSONB — block definitions are not PHI.
     if (fields.blocksStructure !== undefined) {
       updateData.blocksStructure = fields.blocksStructure;
+    }
+    // consultationDate: la escribe la reagenda para que la consulta siga a su cita.
+    if (fields.consultationDate !== undefined) {
+      updateData.consultationDate = fields.consultationDate;
     }
 
     return this.sequelize.transaction(async (t) => {
