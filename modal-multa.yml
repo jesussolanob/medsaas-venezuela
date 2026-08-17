@@ -1,0 +1,186 @@
+- generic [ref=f36e1]:
+  - alert [ref=f36e2]
+  - generic [ref=f36e3]:
+    - complementary [ref=f36e4]:
+      - generic [ref=f36e5]:
+        - generic [ref=f36e6]:
+          - img "Delta Health Tech" [ref=f36e7]
+          - generic [ref=f36e8]:
+            - paragraph [ref=f36e9]: Delta Salud
+            - paragraph [ref=f36e10]: Especialista
+        - button "Ocultar sidebar" [ref=f36e11]
+      - navigation [ref=f36e15]:
+        - generic [ref=f36e16]:
+          - link "Inicio" [ref=f36e17] [cursor=pointer]:
+            - /url: /doctor
+          - link "Agenda" [ref=f36e23] [cursor=pointer]:
+            - /url: /doctor/agenda
+        - generic [ref=f36e26]:
+          - button "Consultorio" [ref=f36e27]
+          - generic [ref=f36e37]:
+            - link "Pacientes" [ref=f36e38] [cursor=pointer]:
+              - /url: /doctor/patients
+            - link "Consultas" [ref=f36e44] [cursor=pointer]:
+              - /url: /doctor/consultations
+            - link "Consultorios" [ref=f36e48] [cursor=pointer]:
+              - /url: /doctor/offices
+            - link "Plantillas" [ref=f36e53] [cursor=pointer]:
+              - /url: /doctor/templates
+            - link "Consultas por agendar" [ref=f36e58] [cursor=pointer]:
+              - /url: /doctor/pending-consultations
+            - link "Solicitudes" [ref=f36e63] [cursor=pointer]:
+              - /url: /doctor/patient-requests
+        - generic [ref=f36e68]:
+          - button "Finanzas" [ref=f36e69]
+          - generic [ref=f36e76]:
+            - link "Finanzas" [ref=f36e77] [cursor=pointer]:
+              - /url: /doctor/finances
+            - link "Cobros" [ref=f36e81] [cursor=pointer]:
+              - /url: /doctor/cobros
+            - link "Servicios" [ref=f36e85] [cursor=pointer]:
+              - /url: /doctor/services
+        - generic [ref=f36e90]:
+          - button "Marketing" [ref=f36e91]
+          - link "Recordatorios" [ref=f36e100] [cursor=pointer]:
+            - /url: /doctor/reminders
+      - generic [ref=f36e104]:
+        - generic [ref=f36e105]:
+          - paragraph [ref=f36e111]: Delta Plus
+          - paragraph [ref=f36e112]: Acceso completo
+        - link "Sugerencias" [ref=f36e113] [cursor=pointer]:
+          - /url: /doctor/suggestions
+        - link "Configuración" [ref=f36e116] [cursor=pointer]:
+          - /url: /doctor/settings
+        - generic [ref=f36e120]:
+          - button "Términos y Condiciones" [ref=f36e121]
+          - button "Política de Privacidad" [ref=f36e125]
+          - button "Cerrar sesión" [ref=f36e128]
+    - generic [ref=f36e132]:
+      - banner [ref=f36e133]:
+        - heading "Consultas" [level=1] [ref=f36e135]
+        - generic [ref=f36e136]:
+          - button "Buscar... ⌘K" [ref=f36e137]:
+            - generic [ref=f36e141]: Buscar...
+            - generic [ref=f36e142]: ⌘K
+          - button "Abrir ayuda" [ref=f36e143]
+          - generic [ref=f36e147] [cursor=pointer]
+      - main [ref=f36e151]:
+        - generic [ref=f36e152]:
+          - generic [ref=f36e153]:
+            - generic [ref=f36e154]:
+              - generic [ref=f36e155]:
+                - generic [ref=f36e524]:
+                  - button "Volver a consultas" [ref=f36e525]
+                  - generic [ref=f36e528]:
+                    - generic "Estado de la consulta" [ref=f36e529]: "Consulta: Pendiente"
+                    - generic "Estado del pago" [ref=f36e531]: "Pago: Aprobado"
+                - generic [ref=f36e533]: martes, 14 de julio de 2026
+                - generic [ref=f36e537]:
+                  - generic [ref=f36e538]:
+                    - button "Atendida" [ref=f36e539]
+                    - button "No asistió" [ref=f36e542]
+                    - generic [ref=f36e546]: Pago aprobado — reagenda para modificar la fecha
+                    - button "Reagendar" [ref=f36e547]
+                  - generic [ref=f36e550]:
+                    - button "Generar Documento" [ref=f36e551]
+                    - button "Compartir documentos" [ref=f36e555]
+              - generic [ref=f36e158]:
+                - generic [ref=f36e562]:
+                  - paragraph [ref=f36e563]: Grabar la consulta
+                  - paragraph [ref=f36e564]: Activa el micrófono y la IA transcribe + sugiere cómo distribuirlo en tus bloques.
+                - button "Grabar consulta" [ref=f36e565]
+              - generic [ref=f36e569]:
+                - navigation "Bloques de consulta" [ref=f36e570]:
+                  - generic [ref=f36e571]:
+                    - paragraph [ref=f36e572]: Secciones
+                    - button "Cambiar disposición de los bloques" [ref=f36e573]
+                  - generic [ref=f36e579]:
+                    - button "Motivo de consulta" [ref=f36e580]
+                    - button "Antecedentes" [ref=f36e581]
+                    - button "Notas internas" [ref=f36e582]
+                    - button "Diagnóstico" [ref=f36e583]
+                    - button "Paraclínico" [ref=f36e584]
+                    - button "Examen físico" [ref=f36e585]
+                    - button "Referencia" [ref=f36e586]
+                    - button "Récipe" [ref=f36e587]
+                  - button "Agregar bloque" [ref=f36e588]
+                - generic [ref=f36e592]:
+                  - generic [ref=f36e593]:
+                    - generic [ref=f36e594]:
+                      - generic [ref=f36e595]:
+                        - button "Colapsar bloque" [ref=f36e596]
+                        - button "Motivo de consulta" [ref=f36e600]
+                      - button "Colapsar bloque" [ref=f36e603]
+                    - generic [ref=f36e607]:
+                      - generic [ref=f36e608]:
+                        - button "Negrita" [ref=f36e609] [cursor=pointer]:
+                          - strong [ref=f36e610]: "N"
+                        - button "Cursiva" [ref=f36e611] [cursor=pointer]:
+                          - emphasis [ref=f36e612]: C
+                        - button "Subrayado" [ref=f36e613] [cursor=pointer]:
+                          - generic [ref=f36e614]: S
+                        - button "Tachado" [ref=f36e615] [cursor=pointer]:
+                          - generic [ref=f36e616]: T
+                        - button "Lista con viñetas" [ref=f36e618] [cursor=pointer]
+                        - button "Lista numerada" [ref=f36e626] [cursor=pointer]:
+                          - img [ref=f36e627]:
+                            - generic [ref=f36e628]: "1."
+                            - generic [ref=f36e630]: "2."
+                            - generic [ref=f36e632]: "3."
+                        - button "Cita" [ref=f36e634] [cursor=pointer]
+                        - button "Deshacer" [disabled] [ref=f36e638]
+                        - button "Rehacer" [disabled] [ref=f36e641]
+                      - paragraph [ref=f36e648]: Dolor de cabeza [QA-autosave-ok]
+                  - button "Guardar consulta" [ref=f36e650]
+              - generic [ref=f36e651]:
+                - generic [ref=f36e657]:
+                  - paragraph [ref=f36e658]: Asistente IA
+                  - paragraph [ref=f36e659]: Powered by Gemini
+                - generic [ref=f36e660]:
+                  - button "Resumir historial del paciente" [ref=f36e661]
+                  - button "Mejorar redacción" [ref=f36e666]
+              - generic [ref=f36e670]:
+                - generic [ref=f36e671]:
+                  - generic [ref=f36e672]: Auto-guardado activo
+                  - button "Guardar consulta" [ref=f36e677]
+                - paragraph [ref=f36e682]: Los cambios se guardan automaticamente. El informe queda registrado en el historial clinico del paciente.
+            - generic [ref=f36e183]:
+              - generic [ref=f36e683]:
+                - generic [ref=f36e688]:
+                  - paragraph [ref=f36e689]: Paciente Prueba QA
+                  - paragraph [ref=f36e690]: DLT-202607-0030
+                  - paragraph [ref=f36e691]: 0 de 3 atendidas
+                  - generic [ref=f36e692]:
+                    - button "Ver ficha del paciente" [ref=f36e693]
+                    - button "Revisar historial" [ref=f36e696]
+                - button "Ocultar panel" [ref=f36e701]
+              - button "Pago Aprobado" [ref=f36e706]:
+                - generic [ref=f36e707]: Pago
+                - generic [ref=f36e711]: Aprobado
+          - generic [ref=f36e717]:
+            - generic [ref=f36e718]:
+              - generic [ref=f36e726]:
+                - heading "El paciente no asistió" [level=2] [ref=f36e727]
+                - paragraph [ref=f36e728]: Paciente Prueba QA
+              - button "Cerrar" [ref=f36e729]
+            - generic [ref=f36e733]:
+              - text: Esta consulta ya está
+              - strong [ref=f36e734]: pagada (€20.00)
+              - text: ". El monto cobrado se mantiene: por el portal no hay devolución."
+            - generic [ref=f36e735]:
+              - generic [ref=f36e736] [cursor=pointer]:
+                - checkbox "Cobrar multa por inasistencia" [checked] [ref=f36e737]
+                - generic [ref=f36e738]: Cobrar multa por inasistencia
+              - generic [ref=f36e743]:
+                - generic [ref=f36e744]:
+                  - generic [ref=f36e745]: $
+                  - spinbutton "Monto de la multa" [active] [ref=f36e746]: "10"
+                  - generic [ref=f36e747]: se suma al costo de la consulta
+                - generic [ref=f36e751]:
+                  - text: El costo pasa a €30.00 y la consulta vuelve a
+                  - strong [ref=f36e752]: Por cobrar
+                  - text: por el total. Cuando cobres la diferencia, aprobá el pago de nuevo.
+            - paragraph [ref=f36e739]: ¿El paciente va a reagendar?
+            - generic [ref=f36e740]:
+              - button "No reagenda" [ref=f36e741]
+              - button "Sí, elegir fecha" [ref=f36e742]
