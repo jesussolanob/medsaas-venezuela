@@ -62,13 +62,26 @@ describe('Appointment entity', () => {
       expect(appt.canTransitionTo('cancelled')).toBe(true);
     });
 
-    it('denies scheduled → completed', () => {
+    // Clinical outcomes are allowed directly from scheduled — the doctor should
+    // not be forced to confirm a booking before marking a patient as attended or absent.
+    it('allows scheduled → completed', () => {
       const appt = makeAppointment({ status: 'scheduled' });
-      expect(appt.canTransitionTo('completed')).toBe(false);
+      expect(appt.canTransitionTo('completed')).toBe(true);
     });
 
-    it('denies scheduled → no_show', () => {
+    it('allows scheduled → no_show', () => {
       const appt = makeAppointment({ status: 'scheduled' });
+      expect(appt.canTransitionTo('no_show')).toBe(true);
+    });
+
+    // Terminal states remain terminal regardless of source state.
+    it('denies completed → no_show (terminal)', () => {
+      const appt = makeAppointment({ status: 'completed' });
+      expect(appt.canTransitionTo('no_show')).toBe(false);
+    });
+
+    it('denies cancelled → no_show (terminal)', () => {
+      const appt = makeAppointment({ status: 'cancelled' });
       expect(appt.canTransitionTo('no_show')).toBe(false);
     });
 
