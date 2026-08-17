@@ -60,6 +60,19 @@ export class SequelizeSellerRepository implements ISellerRepository {
     }
   }
 
+  async findById(id: string): Promise<SellerProfile | null> {
+    const row = await this.profileModel.findOne({
+      where: { id, role: 'seller' },
+    });
+    if (!row) return null;
+    return {
+      id: row.id,
+      fullName: row.fullName,
+      sellerCode: row.sellerCode!,
+      createdAt: row.createdAt,
+    };
+  }
+
   async findByCode(code: string): Promise<SellerProfile | null> {
     const row = await this.profileModel.findOne({
       where: { sellerCode: code, role: 'seller', isActive: true },
@@ -177,5 +190,6 @@ function toSpecialistRow(row: SellerProfileModel): SellerSpecialistRow {
     plan: row.plan ?? null,
     subscriptionStatus: row.subscriptionStatus ?? null,
     createdAt: row.createdAt,
+    lastSignInAt: row.lastSignInAt ?? null,
   };
 }

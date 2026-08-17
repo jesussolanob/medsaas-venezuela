@@ -34,6 +34,8 @@ export interface SellerSpecialistRow {
   plan: string | null;
   subscriptionStatus: string | null;
   createdAt: Date;
+  /** Null when the specialist has never logged in. */
+  lastSignInAt: Date | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -71,6 +73,12 @@ export interface ISellerRepository {
    * Throws DoctorEmailConflictError (409) when the email is already registered.
    */
   createSeller(params: CreateSellerParams): Promise<SellerProfile>;
+
+  /**
+   * Returns the seller profile for the given id, or null when not found.
+   * Used by GET /api/seller/me so a seller can read their own code.
+   */
+  findById(id: string): Promise<SellerProfile | null>;
 
   /**
    * Returns the seller profile whose seller_code matches the given code, or

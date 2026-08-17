@@ -60,6 +60,13 @@ export class SellerProfileModel extends Model {
   @Column({ type: DataType.UUID, allowNull: true, field: 'sold_by' })
   declare soldBy: string | null;
 
+  /**
+   * Timestamp of the seller's or specialist's last authenticated session.
+   * Updated by the identity-resolver on every login. NULL = never logged in.
+   */
+  @Column({ type: DataType.DATE, allowNull: true, field: 'last_sign_in_at' })
+  declare lastSignInAt: Date | null;
+
   @Column({ type: DataType.DATE, allowNull: true, field: 'created_at' })
   declare createdAt: Date;
 

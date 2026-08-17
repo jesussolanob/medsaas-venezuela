@@ -13,6 +13,7 @@ import { ValidateSellerCodeUseCase } from '../../application/use-cases/validate-
 import { CreateSellerSpecialistUseCase } from '../../application/use-cases/create-seller-specialist.use-case';
 import { ListSellerSpecialistsUseCase } from '../../application/use-cases/list-seller-specialists.use-case';
 import { GetSellerSpecialistUseCase } from '../../application/use-cases/get-seller-specialist.use-case';
+import { GetSellerProfileUseCase } from '../../application/use-cases/get-seller-profile.use-case';
 import type {
   SellerProfile,
   SellerSpecialistRow,
@@ -79,6 +80,7 @@ function toSpecialistDto(row: SellerSpecialistRow) {
     plan: row.plan,
     subscriptionStatus: row.subscriptionStatus,
     createdAt: row.createdAt,
+    lastSignInAt: row.lastSignInAt,
   };
 }
 
@@ -93,9 +95,10 @@ function toSpecialistDto(row: SellerSpecialistRow) {
  *     POST /api/admin/sellers         — create a seller account
  *
  *   Seller portal (role=seller only):
- *     GET  /api/seller/specialists     — list specialists I onboarded
- *     GET  /api/seller/specialists/:id — detail of one specialist
- *     POST /api/seller/specialists     — create a specialist (sold_by from session)
+ *     GET  /api/seller/me               — my own seller code + display name
+ *     GET  /api/seller/specialists      — list specialists I onboarded
+ *     GET  /api/seller/specialists/:id  — detail of one specialist
+ *     POST /api/seller/specialists      — create a specialist (sold_by from session)
  *
  *   Public (no auth):
  *     GET  /api/public/seller-code/:code — validate a seller code
@@ -117,6 +120,7 @@ export class SellersController {
     private readonly createSpecialist: CreateSellerSpecialistUseCase,
     private readonly listSpecialists: ListSellerSpecialistsUseCase,
     private readonly getSpecialist: GetSellerSpecialistUseCase,
+    private readonly getProfile: GetSellerProfileUseCase,
   ) {}
 
   // ---------------------------------------------------------------------------
@@ -135,6 +139,20 @@ export class SellersController {
     });
 
     return ok(toSellerDto(seller));
+  }
+
+  // ---------------------------------------------------------------------------
+  // GET /api/seller/me
+  // ---------------------------------------------------------------------------
+
+  @Get('seller/me')
+  @UseGuards(RolesGuard)
+  @Roles('seller')
+  async getSellerMe(
+    @CurrentUser() user: CurrentUserPayload,
+  ): Promise<SuccessResponse<{ sellerCode: string; fullName: string }>> {
+    const seller = await this.getProfile.execute(user.sub);
+    return ok({ sellerCode: seller.sellerCode, fullName: seller.fullName });
   }
 
   // ---------------------------------------------------------------------------

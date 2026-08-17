@@ -14,6 +14,7 @@ function makeSpecialist(overrides: Partial<SellerSpecialistRow> = {}): SellerSpe
     plan: 'free_trial',
     subscriptionStatus: 'trialing',
     createdAt: new Date('2026-08-16T10:00:00Z'),
+    lastSignInAt: null,
     ...overrides,
   };
 }
@@ -21,6 +22,7 @@ function makeSpecialist(overrides: Partial<SellerSpecialistRow> = {}): SellerSpe
 function makeRepoMock(): jest.Mocked<ISellerRepository> {
   return {
     createSeller: jest.fn(),
+    findById: jest.fn(),
     findByCode: jest.fn(),
     codeExists: jest.fn(),
     listSoldSpecialists: jest.fn(),
