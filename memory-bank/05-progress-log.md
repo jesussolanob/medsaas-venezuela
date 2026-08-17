@@ -3870,3 +3870,44 @@ nuevas o un backfill puntual.
 - Una consulta de $0 que nunca pasó por el flujo de inasistencia (`DLT-0006`, artefacto del bug
   viejo de la inmediata) **sigue listada en Por cobrar** sin nada que cobrar.
 - El CSV de **Gastos** usa "Monto" sin divisa (Ingresos y el general sí usan `Monto {code}`).
+
+### 2026-08-17 — Caso Dra. Ana María Solano: RESUELTO en prod (backfill de datos)
+
+**Qué pasaba:** su módulo "Consultas por agendar" salía vacío. La hipótesis vieja
+(_"su servicio tiene sessions_count = 1"_) era **falsa**.
+
+**Diagnóstico (con datos de producción):** tiene dos paquetes de 3 sesiones, creados el
+4/08 y actualizados el 5/08 a las 14:22 — nueve minutos antes de la primera reserva. Dos
+pacientes reservaron esos paquetes por el **booking público** el 5/08 y pagaron el paquete
+completo ($150 `approved` y $120 `pending`). Pero se crearon **0 preconsultas**, y de hecho
+**toda la BD de producción tenía 0**.
+
+**Por qué no se arreglaba solo:** la lista NO se deriva. La consulta agregada que pinta la
+tarjeta calcula `atendidas`/`agendadas`/`sin asistir` desde `appointments`, pero el balde
+**"por agendar" lo toma tal cual de `pending_consultations`** (la otra rama del UNION pone
+`0` fijo). Sin filas, no hay nada que mostrar y nunca se recupera. Las filas guardan estado
+que no se puede recalcular: `expires_at`, `reminder_stage` y el token para autoagendarse.
+
+**Descartado como causa:** el bloque multi-sesión de `CreateBookingUseCase` es **idéntico**
+entre `main` y `staging`; el envío de `planId` desde el booking público es del 23/07 y ya
+estaba en producción; los planes y precios eran correctos al momento de reservar.
+⚠️ **La causa raíz sigue sin identificarse** — puede volver a pasarle a otro especialista.
+
+**Arreglo aplicado (decisión del dueño):** backfill de 4 filas en producción replicando
+exactamente lo que escribe `PendingConsultationRepository.bulkCreate` (script con guarda
+anti-duplicado y transacción):
+
+| Paciente         | Plan                   | Sesiones | Vence                            |
+| ---------------- | ---------------------- | -------- | -------------------------------- |
+| Leagny Campos    | Consulta internacional | 2 y 3    | 4/09 (30 días desde la compra)   |
+| Kenyiber Puertas | 3 sesiones nacional    | 2 y 3    | nunca (el plan no tiene validez) |
+
+Vigencia contada **desde la compra**, fiel a lo que el sistema habría escrito.
+Verificado: la tarjeta de consumo ahora da **"0 atendidas · 1 agendada · 2 por agendar"**
+en ambos paquetes. ⚠️ Las filas nacen con `reminder_stage = 0`, así que el cron va a
+mandarles recordatorios reales a esos dos pacientes.
+
+**Decisión de diseño, evaluada y descartada:** derivar el balde "por agendar" de
+`sessions_count − consultas del plan` como respaldo cuando no hay filas. Habría arreglado
+este caso solo y haría al sistema tolerante a fallos de generación. El dueño prefirió
+dejarlo como está (2026-08-17).
