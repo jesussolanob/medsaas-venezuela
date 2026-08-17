@@ -23,6 +23,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { X, Zap, Loader2, AlertCircle, Search, UserPlus, Check } from 'lucide-react';
 import {
   fetchDoctorOffices,
+  normalizePatient,
   officesOpenAt,
   type DoctorOffice,
   type PatientLookup,
@@ -126,7 +127,10 @@ export default function ImmediateConsultationModal({
       setSearching(true);
       fetch(`/api/patients/search?q=${encodeURIComponent(query)}&limit=8`)
         .then((r) => (r.ok ? r.json() : { data: [] }))
-        .then((json) => setResults(Array.isArray(json.data) ? json.data : []))
+        // normalizePatient traduce el wire: la API devuelve `fullName` y todo
+        // este flujo lee `full_name`. Sin esto el nombre salía en blanco y solo
+        // se veía la cédula.
+        .then((json) => setResults(Array.isArray(json.data) ? json.data.map(normalizePatient) : []))
         .catch(() => setResults([]))
         .finally(() => setSearching(false));
     }, 300);
@@ -192,12 +196,12 @@ export default function ImmediateConsultationModal({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newPatient),
       });
-      const json = (await res.json()) as { data?: PatientLookup; error?: string };
+      const json = (await res.json()) as { data?: Record<string, unknown>; error?: string };
       if (!res.ok || !json.data) {
         setError(json.error || 'No se pudo crear el paciente.');
         return;
       }
-      setPatient(json.data);
+      setPatient(normalizePatient(json.data));
       setShowCreate(false);
     } catch {
       setError('No se pudo crear el paciente.');
