@@ -3807,3 +3807,66 @@ estaba autenticado con otra cuenta. Proyecto: **`sodium-shard-499116-r3`**, serv
 `delta-backend-staging` / `delta-frontend-staging` (us-east1), instancias `delta-db` y
 `delta-db-staging`. El secreto `DB_PASSWORD` sirve para el usuario `delta` vía
 cloud-sql-proxy.
+
+### 2026-08-17 (P0 completo) — dos bugs de plata más, arreglados
+
+Se corrió **P0 entero** con la cuenta de especialista (`lucas.rivas.55@gmail.com`).
+
+| Caso                                        | Resultado                                                                                            |
+| ------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| **P0.1** totales de Finanzas                | **OK** — julio: tarjeta $25 = tabla $25; agosto: $40 = $40. El desglose cierra                       |
+| **P0.2a** impaga + no asistió sin multa     | **OK** — pasa a 0 y desaparece de Por cobrar (total y conteo vuelven a su valor)                     |
+| **P0.2b** impaga + no asistió con multa $10 | **FALLA → arreglada** (ver abajo)                                                                    |
+| **P0.2d** pagada + reagenda                 | **OK** — el pago viaja: monto 40, `approved`, cita a `scheduled`, y la fecha de la consulta acompaña |
+| **P0.3** plan Delta en Bs                   | **OK en lo esencial** + hallazgo de negocio (ver abajo)                                              |
+| **P0.4** divisa del portal                  | **OK tras arreglar 3 rótulos**; el booking público muestra € al paciente ✅                          |
+
+#### Bug 1 — la multa sobre consulta impaga hacía cobrar de más
+
+Consulta impaga de $40, "No asistió" con multa de $10 y sin reagenda:
+`consultations.amount` → 10 ✓ pero `payments.amount_usd` → **40** ✗. Cobros lee el pago
+vinculado, así que mostraba **$40 para cobrar cuando corresponden $10**: el especialista le
+cobra $30 de más al paciente, y el total de Cobros subía +$40 en vez de +$10.
+
+Causa: `NoShowModal` no mandaba `no_show_fee` en la rama de consulta impaga, con el
+razonamiento —ya obsoleto— de que "sin pago aprobado no hay nada que sincronizar". El backend
+había quitado a propósito la guarda `AND p.status = 'approved'` justo para cubrir los pagos
+PENDIENTES. Sin ese campo el controller no enruta a `ApplyNoShowFee` y solo toca la consulta.
+
+Arreglado (`feature/fix-multa-impaga`) y **re-verificado en staging**: `DLT-0016` → consulta 10 /
+pago 10, y Cobros muestra €10,00 · Bs 8.944,90. De paso se corrigió el texto del modal, que con
+multa > 0 decía "sale de Por cobrar" cuando es justo lo que queda por cobrar.
+
+#### Bug 2 — rótulos en dólar fijo
+
+Con la tasa en Euro los números ya salían en €, pero tres rótulos seguían diciendo dólar. El
+peor: el **mensaje de WhatsApp de cobro** formateaba con `Intl.NumberFormat(currency:'USD')` y
+armaba **"$40.00 EUR"** — el texto que le llega al paciente para transferir. Además "TOTAL USD"
+sobre €580 y "Tasa BCV: 894.49 Bs/$". Arreglado (`feature/fix-rotulos-divisa-cobros`) y
+verificado: **TOTAL EUR · Tasa BCV: 894,49 Bs/€**.
+
+#### Hallazgo de negocio, NO tocado: dos tasas distintas llamadas "BCV"
+
+El plan Delta convierte a bolívares con `app_settings['usdt_rate']` = **886,20** (vía
+`BillingRateProvider`), pero la UI lo rotula **"Tasa BCV: 886,20 Bs/USD"**. El resto del portal
+usa la BCV oficial de dolarapi = **772,5441**. Son 14,7% de diferencia: $10 → **Bs 8.862** en el
+checkout del plan vs **Bs 7.725,44** con la tasa que el especialista ve en Cobros. El requisito
+de P0.3 sí se cumple (el precio no cambia con la divisa del especialista — verificado alternando
+`eur_bcv`/`usd_bcv`: el checkout devuelve idéntico). **Qué tasa cobra Delta por su propio plan es
+decisión del dueño**, por eso no se tocó: o el rótulo miente o la tasa es la equivocada.
+
+#### Caso Dra. Ana María Solano — CERRADO
+
+En **producción** sí tiene servicios, incluidos **dos paquetes de 3 sesiones**, y 2 citas
+agendadas con ellos el 5 de agosto. Tiene **0 preconsultas** — y **la BD de prod entera tiene 0**:
+la funcionalidad nunca generó una sola fila para nadie. En staging sí hay (7), o sea que la
+versión de staging las genera. Su reclamo era legítimo y la pantalla vacía era correcta.
+⚠️ Las preconsultas se crean dentro de `CreateBookingUseCase`, **al agendar**: sus dos citas ya
+existentes **no** las van a recibir retroactivamente ni después de promover. Necesita reservas
+nuevas o un backfill puntual.
+
+#### Menores anotados, sin tocar
+
+- Una consulta de $0 que nunca pasó por el flujo de inasistencia (`DLT-0006`, artefacto del bug
+  viejo de la inmediata) **sigue listada en Por cobrar** sin nada que cobrar.
+- El CSV de **Gastos** usa "Monto" sin divisa (Ingresos y el general sí usan `Monto {code}`).
