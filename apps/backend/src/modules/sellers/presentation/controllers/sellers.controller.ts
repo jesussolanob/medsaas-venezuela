@@ -283,16 +283,25 @@ const SELLER_CODE_FORMAT = /^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{6}$/;
 export class SellersPublicController {
   constructor(private readonly validateCode: ValidateSellerCodeUseCase) {}
 
+  /**
+   * Responde CON envelope `{ success, data }`, como el resto de los controllers.
+   *
+   * Devolvía el objeto crudo `{ valid, sellerName }`, y como `backendGet` del BFF
+   * desempaqueta `envelope.data`, `result.value` quedaba `undefined` y el BFF
+   * respondía SIEMPRE `valid:false`. Resultado: ningún código de vendedor podía
+   * validarse nunca, así que la atribución por código estaba muerta y encima el
+   * fallo era silencioso (200 + "código inválido", indistinguible de un typo).
+   */
   @Get('seller-code/:code')
   async validateSellerCode(
     @Param('code') code: string,
-  ): Promise<{ valid: boolean; sellerName: string | null }> {
+  ): Promise<SuccessResponse<{ valid: boolean; sellerName: string | null }>> {
     // Formato inválido → se responde sin tocar la BD. No frena la enumeración
     // (para eso hace falta throttling) pero evita que basura arbitraria llegue
     // a la base, que es lo único que se puede resolver desde acá.
     if (!SELLER_CODE_FORMAT.test(code)) {
-      return { valid: false, sellerName: null };
+      return ok({ valid: false, sellerName: null });
     }
-    return this.validateCode.execute(code);
+    return ok(await this.validateCode.execute(code));
   }
 }
