@@ -920,14 +920,21 @@ y otro monto en bolívares que el especialista para el mismo servicio. Ver ADR-0
 
 Todos en **camelCase** (convención de estos controllers — verificada, no asumida).
 
-| Endpoint                            | Rol                    | Devuelve                                                                           |
-| ----------------------------------- | ---------------------- | ---------------------------------------------------------------------------------- |
-| `POST /api/admin/sellers`           | `super_admin`, `admin` | `{ id, sellerCode, createdAt }`                                                    |
-| `GET /api/seller/me`                | `seller`               | `{ sellerCode, fullName }`                                                         |
-| `GET /api/seller/specialists`       | `seller`               | `{ id, fullName, specialty, plan, subscriptionStatus, createdAt, lastSignInAt }[]` |
-| `GET /api/seller/specialists/:id`   | `seller`               | Igual, una fila. **422 si no es suyo** (anti-IDOR)                                 |
-| `POST /api/seller/specialists`      | `seller`               | Alta. `sold_by` y plan los fija el backend                                         |
-| `GET /api/public/seller-code/:code` | público                | `{ valid, sellerName }` — **nada más**                                             |
+| Endpoint                            | Rol           | Devuelve                                                                           |
+| ----------------------------------- | ------------- | ---------------------------------------------------------------------------------- |
+| `GET /api/admin/sellers`            | `super_admin` | `{ id, fullName, email, sellerCode, specialistsCount, createdAt, lastSignInAt }[]` |
+| `POST /api/admin/sellers`           | `super_admin` | `{ id, sellerCode, createdAt }`                                                    |
+| `GET /api/seller/me`                | `seller`      | `{ sellerCode, fullName }`                                                         |
+| `GET /api/seller/specialists`       | `seller`      | `{ id, fullName, specialty, plan, subscriptionStatus, createdAt, lastSignInAt }[]` |
+| `GET /api/seller/specialists/:id`   | `seller`      | Igual, una fila. **422 si no es suyo** (anti-IDOR)                                 |
+| `POST /api/seller/specialists`      | `seller`      | Alta. `sold_by` y plan los fija el backend                                         |
+| `GET /api/public/seller-code/:code` | público       | `{ valid, sellerName }` — **nada más**                                             |
+
+> ⚠️ **Corregido 2026-08-17:** los endpoints de admin decían `@Roles('super_admin', 'admin')`,
+> pero **`'admin'` no existe** en `CurrentUserPayload['role']` — ninguna sesión puede tener ese
+> rol. Rompía el typecheck sin que nadie lo viera (el type-checker del build muere por OOM y el
+> deploy no corre tipos). Decisión del dueño: **solo `super_admin`** gestiona vendedores.
+> La pantalla es `/admin/sellers`; el BFF `app/api/admin/sellers/route.ts` (GET + POST).
 
 `POST /api/doctor/registration` gana el campo opcional **`seller_code`** (snake_case, como el
 resto de ese DTO). Errores: `SELLER_CODE_NOT_FOUND` (422).
