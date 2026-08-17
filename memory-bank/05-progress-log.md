@@ -3766,3 +3766,44 @@ Suite: **404 suites / 3893 tests** en verde.
 ⚠️ **Proceso:** el commit de bitácora `1b7490c` se hizo **directo sobre `develop`**, saltándose la
 regla de rama feature (el hook avisó "⚡ Rama protegida" y se ignoró). El resto del lote sí pasó
 por `feature/*`. Recordatorio del dueño: **todo** va por rama, documentación incluida.
+
+### 2026-08-17 (cierre real) — el módulo de ventas NUNCA funcionó: dos causas raíz
+
+El QA con sesión de `super_admin` destapó que el módulo entero estaba muerto — no
+solo la pantalla que faltaba. **Ni el alta funcionaba.** Dos bugs encadenados, ambos
+diagnosticados leyendo los logs de Cloud Run y la BD de staging, no adivinando:
+
+1. **`'seller'` no existía en el ENUM `user_role`.** La migración
+   `20260816000001-seller-role` agregó `profiles.seller_code`, `profiles.sold_by` y
+   las filas de `role_capabilities`, pero nunca extendió el tipo.
+   `role_capabilities.role` es TEXT (por eso el seed pasó sin ruido); `profiles.role`
+   sí es `user_role`. Todo el módulo reventaba con
+   `invalid input value for enum user_role: "seller"` → 500 en el INSERT del alta y
+   en cualquier `WHERE role = 'seller'`. **Es el mismo bug que 20260722000001**
+   (`subscription_status` sin `'trialing'`). Migración nueva:
+   `20260817000001-user-role-add-seller.cjs`.
+
+2. **El código de vendedor nunca validaba.** `SellersPublicController` devolvía el
+   objeto crudo `{ valid, sellerName }` sin el envelope `{ success, data }`. Como
+   `backendGet` desempaqueta `envelope.data`, el BFF recibía `undefined` y
+   respondía **siempre** `valid:false`. La atribución por código estaba muerta y el
+   fallo era silencioso: 200 + "código inválido", indistinguible de un typo.
+
+Nadie los había visto porque la ruta del BFF del alta tampoco existía hasta hoy: sin
+poder crear un vendedor, ninguno de los dos errores tenía forma de salir a la luz.
+
+**Verificado en vivo tras los fixes:** alta desde el formulario → vendedor
+`QA Vendedora Prueba` con código **DA69AA**; la tabla lo lista con 0 especialistas;
+correo repetido → **409** con mensaje claro; `GET /api/public/seller-code/DA69AA` →
+`{valid:true, sellerName:'QA Vendedora Prueba'}`, y también en minúsculas; código con
+formato válido pero inexistente y formato inválido → `valid:false`. Con sesión de
+doctor: `/admin/sellers` rebota y el endpoint da **403 `Required role: super_admin`**.
+
+Queda sin ejercitar el conteo con ≥1 especialista atribuido (hoy no hay ninguno con
+`sold_by`); la consulta es la misma que ya devuelve 0 correctamente.
+
+⚠️ Para diagnosticar hizo falta `gcloud auth login` con `lucas@deltasalud.app`: el CLI
+estaba autenticado con otra cuenta. Proyecto: **`sodium-shard-499116-r3`**, servicios
+`delta-backend-staging` / `delta-frontend-staging` (us-east1), instancias `delta-db` y
+`delta-db-staging`. El secreto `DB_PASSWORD` sirve para el usuario `delta` vía
+cloud-sql-proxy.
