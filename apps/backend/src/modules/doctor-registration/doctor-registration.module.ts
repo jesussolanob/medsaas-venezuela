@@ -29,6 +29,10 @@ import { CredentialVerificationModule } from '../credential-verification/credent
 // to read the current T&C version when persisting terms acceptance.
 import { LegalModule } from '../legal/legal.module';
 
+// SellersModule exports SELLER_REPOSITORY used by CompleteRegistrationUseCase
+// to resolve a seller_code → sold_by during the onboarding wizard.
+import { SellersModule } from '../sellers/sellers.module';
+
 /**
  * DoctorRegistrationModule
  *
@@ -59,6 +63,9 @@ import { LegalModule } from '../legal/legal.module';
     // LegalModule exports LEGAL_DOCUMENT_REPOSITORY used by CompleteRegistrationUseCase
     // to read the current T&C version when the doctor accepts terms during onboarding.
     LegalModule,
+    // SellersModule exports SELLER_REPOSITORY used by CompleteRegistrationUseCase
+    // to resolve seller_code → sold_by during the onboarding wizard.
+    SellersModule,
   ],
   controllers: [DoctorRegistrationController],
   providers: [

@@ -123,6 +123,7 @@ export class DoctorRegistrationController {
       specialty: body.specialty ?? null,
       gender: body.gender ?? null,
       acceptedTerms: body.accepted_terms,
+      sellerCode: body.seller_code ?? null,
     });
 
     return { success: true, data: result };

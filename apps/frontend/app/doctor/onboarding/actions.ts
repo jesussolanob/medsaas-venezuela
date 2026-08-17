@@ -33,6 +33,14 @@ export interface RegistrationInput {
   colegiado_number?: string | null;
   /** Flag de aceptación de Términos y Condiciones. El backend lo acepta opcionalmente. */
   accepted_terms?: boolean;
+  /**
+   * Código del vendedor que lo trajo. OPCIONAL.
+   *
+   * No cambia nada del alta —el plan sigue siendo el de prueba, igual que
+   * cualquier registro—: solo le acredita la venta a ese vendedor. El backend
+   * lo escribe UNA sola vez; reentrar al wizard con otro código no lo pisa.
+   */
+  seller_code?: string | null;
 }
 
 export interface RegistrationResult {
@@ -75,6 +83,9 @@ export async function submitDoctorRegistration(
   }
   if (input.accepted_terms) {
     body.accepted_terms = true;
+  }
+  if (input.seller_code?.trim()) {
+    body.seller_code = input.seller_code.trim().toUpperCase();
   }
 
   const result = await backendPost<BackendRegistrationResponse>('/api/doctor/registration', body);

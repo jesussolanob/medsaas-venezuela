@@ -6,6 +6,11 @@ import type { ConfigService } from '@nestjs/config';
 import { DoctorRegistration } from '../../domain/entities/doctor-registration.entity';
 import type { ILegalDocumentRepository } from '../../../legal/domain/repositories/legal-document.repository';
 import { LegalDocument } from '../../../legal/domain/entities/legal-document.entity';
+import type {
+  ISellerRepository,
+  SellerProfile,
+} from '../../../sellers/domain/repositories/seller.repository';
+import { SellerCodeNotFoundError } from '../../../sellers/domain/errors/seller-code-not-found.error';
 
 const makeRegistration = (
   overrides: Partial<Parameters<typeof DoctorRegistration.create>[0]> = {},
@@ -42,6 +47,29 @@ const makeTermsDoc = (): LegalDocument =>
     updatedAt: new Date(),
   });
 
+function makeSellerProfile(overrides: Partial<SellerProfile> = {}): SellerProfile {
+  return {
+    id: 'seller-uuid-001',
+    fullName: 'María González',
+    sellerCode: 'ABCDEF',
+    createdAt: new Date('2026-08-16T10:00:00Z'),
+    ...overrides,
+  };
+}
+
+function makeSellerRepoMock(): jest.Mocked<ISellerRepository> {
+  return {
+    createSeller: jest.fn(),
+    findById: jest.fn(),
+    findByCode: jest.fn(),
+    codeExists: jest.fn(),
+    listSoldSpecialists: jest.fn(),
+    findSoldSpecialist: jest.fn(),
+    createSoldSpecialist: jest.fn(),
+    linkSoldBy: jest.fn(),
+  };
+}
+
 describe('CompleteRegistrationUseCase', () => {
   let useCase: CompleteRegistrationUseCase;
   let mockRepo: jest.Mocked<IDoctorRegistrationRepository>;
@@ -49,6 +77,7 @@ describe('CompleteRegistrationUseCase', () => {
   let mockVerifyMpps: jest.Mocked<Pick<VerifyMppsUseCase, 'execute'>>;
   let mockConfig: jest.Mocked<Pick<ConfigService, 'get'>>;
   let mockLegalRepo: jest.Mocked<ILegalDocumentRepository>;
+  let mockSellerRepo: jest.Mocked<ISellerRepository>;
 
   beforeEach(() => {
     mockRepo = {
@@ -81,12 +110,15 @@ describe('CompleteRegistrationUseCase', () => {
       }),
     } as unknown as jest.Mocked<Pick<ConfigService, 'get'>>;
 
+    mockSellerRepo = makeSellerRepoMock();
+
     useCase = new CompleteRegistrationUseCase(
       mockRepo,
       mockMailer,
       mockVerifyMpps as unknown as VerifyMppsUseCase,
       mockConfig as unknown as ConfigService,
       mockLegalRepo,
+      mockSellerRepo,
     );
   });
 
@@ -669,5 +701,89 @@ describe('CompleteRegistrationUseCase', () => {
     await new Promise(process.nextTick);
 
     expect(mockRepo.acceptTerms).not.toHaveBeenCalled();
+  });
+
+  // ---------------------------------------------------------------------------
+  // Seller attribution — sellerCode during onboarding
+  // ---------------------------------------------------------------------------
+
+  it('links sold_by when a valid seller_code is provided', async () => {
+    const registration = makeRegistration();
+    mockRepo.findById.mockResolvedValue(makeEmptyRegistration());
+    mockRepo.updateRegistration.mockResolvedValue(registration);
+    mockRepo.findAllSuperAdmins.mockResolvedValue([]);
+    mockSellerRepo.findByCode.mockResolvedValue(makeSellerProfile({ id: 'seller-uuid-001' }));
+    mockSellerRepo.linkSoldBy.mockResolvedValue(undefined);
+
+    await useCase.execute({
+      doctorId: 'doc-1',
+      fullName: 'Dr. Ramírez',
+      cedula: 'V-99999',
+      sellerCode: 'ABCDEF',
+    });
+
+    expect(mockSellerRepo.findByCode).toHaveBeenCalledWith('ABCDEF');
+    expect(mockSellerRepo.linkSoldBy).toHaveBeenCalledWith('doc-1', 'seller-uuid-001');
+  });
+
+  it('normalises seller_code to uppercase + trimmed before lookup', async () => {
+    const registration = makeRegistration();
+    mockRepo.findById.mockResolvedValue(makeEmptyRegistration());
+    mockRepo.updateRegistration.mockResolvedValue(registration);
+    mockRepo.findAllSuperAdmins.mockResolvedValue([]);
+    mockSellerRepo.findByCode.mockResolvedValue(makeSellerProfile());
+    mockSellerRepo.linkSoldBy.mockResolvedValue(undefined);
+
+    await useCase.execute({
+      doctorId: 'doc-1',
+      fullName: 'Dr. Test',
+      cedula: 'V-11111',
+      sellerCode: '  abcdef  ',
+    });
+
+    expect(mockSellerRepo.findByCode).toHaveBeenCalledWith('ABCDEF');
+  });
+
+  it('throws SellerCodeNotFoundError (422) when code does not match any active seller', async () => {
+    const registration = makeRegistration();
+    mockRepo.findById.mockResolvedValue(makeEmptyRegistration());
+    mockRepo.updateRegistration.mockResolvedValue(registration);
+    mockRepo.findAllSuperAdmins.mockResolvedValue([]);
+    mockSellerRepo.findByCode.mockResolvedValue(null);
+
+    await expect(
+      useCase.execute({
+        doctorId: 'doc-1',
+        fullName: 'Dr. Test',
+        cedula: 'V-11111',
+        sellerCode: 'XXXXXX',
+      }),
+    ).rejects.toBeInstanceOf(SellerCodeNotFoundError);
+
+    expect(mockSellerRepo.linkSoldBy).not.toHaveBeenCalled();
+  });
+
+  it('does not call findByCode or linkSoldBy when sellerCode is omitted', async () => {
+    const registration = makeRegistration();
+    mockRepo.findById.mockResolvedValue(makeEmptyRegistration());
+    mockRepo.updateRegistration.mockResolvedValue(registration);
+    mockRepo.findAllSuperAdmins.mockResolvedValue([]);
+
+    await useCase.execute({ doctorId: 'doc-1', fullName: 'Dr.', cedula: 'V-1' });
+
+    expect(mockSellerRepo.findByCode).not.toHaveBeenCalled();
+    expect(mockSellerRepo.linkSoldBy).not.toHaveBeenCalled();
+  });
+
+  it('does not call findByCode or linkSoldBy when sellerCode is null', async () => {
+    const registration = makeRegistration();
+    mockRepo.findById.mockResolvedValue(makeEmptyRegistration());
+    mockRepo.updateRegistration.mockResolvedValue(registration);
+    mockRepo.findAllSuperAdmins.mockResolvedValue([]);
+
+    await useCase.execute({ doctorId: 'doc-1', fullName: 'Dr.', cedula: 'V-1', sellerCode: null });
+
+    expect(mockSellerRepo.findByCode).not.toHaveBeenCalled();
+    expect(mockSellerRepo.linkSoldBy).not.toHaveBeenCalled();
   });
 });

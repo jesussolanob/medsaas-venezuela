@@ -51,7 +51,14 @@ export type SubscriptionStatus = z.infer<typeof SubscriptionStatusSchema>;
 // CLAUDE.md: super_admin, admin, doctor, patient (no 'assistant', but 'admin' appears in code)
 // Decision: include both 'admin' and 'assistant' — SQL has assistant, CLAUDE.md code uses admin
 // ---------------------------------------------------------------------------
-export const UserRoleSchema = z.enum(['super_admin', 'admin', 'doctor', 'assistant', 'patient']);
+export const UserRoleSchema = z.enum([
+  'super_admin',
+  'admin',
+  'doctor',
+  'assistant',
+  'patient',
+  'seller',
+]);
 export type UserRole = z.infer<typeof UserRoleSchema>;
 
 // ---------------------------------------------------------------------------

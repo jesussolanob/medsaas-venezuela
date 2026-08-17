@@ -1,0 +1,195 @@
+import { Injectable } from '@nestjs/common';
+import { InjectModel } from '@nestjs/sequelize';
+import { Op, UniqueConstraintError } from 'sequelize';
+import { Sequelize } from 'sequelize-typescript';
+import type {
+  ISellerRepository,
+  SellerProfile,
+  SellerSpecialistRow,
+  CreateSellerParams,
+  CreateSoldSpecialistParams,
+} from '../../../domain/repositories/seller.repository';
+import { SellerProfileModel } from '../models/seller-profile.model';
+import { SpecialistEmailConflictError } from '../../../domain/errors/specialist-email-conflict.error';
+
+/** Trial duration in days — matches the value used throughout the platform. */
+const TRIAL_DURATION_DAYS = 30;
+
+@Injectable()
+export class SequelizeSellerRepository implements ISellerRepository {
+  constructor(
+    @InjectModel(SellerProfileModel)
+    private readonly profileModel: typeof SellerProfileModel,
+    private readonly sequelize: Sequelize,
+  ) {}
+
+  // ---------------------------------------------------------------------------
+  // Seller profile management
+  // ---------------------------------------------------------------------------
+
+  async createSeller(params: CreateSellerParams): Promise<SellerProfile> {
+    try {
+      const row = await this.profileModel.create({
+        id: params.id,
+        fullName: params.fullName,
+        email: params.email,
+        role: 'seller',
+        isActive: true,
+        sellerCode: params.sellerCode,
+        soldBy: null,
+        plan: null,
+        subscriptionStatus: null,
+        specialty: null,
+      } as Parameters<typeof SellerProfileModel.create>[0]);
+
+      return {
+        id: row.id,
+        fullName: row.fullName,
+        sellerCode: row.sellerCode!,
+        createdAt: row.createdAt,
+      };
+    } catch (err) {
+      if (err instanceof UniqueConstraintError) {
+        // Unique violations can be on email OR seller_code (unlikely on code but handled).
+        const existing = await this.profileModel.findOne({
+          where: { email: { [Op.iLike]: params.email } },
+        });
+        if (existing) throw new SpecialistEmailConflictError();
+      }
+      throw err;
+    }
+  }
+
+  async findById(id: string): Promise<SellerProfile | null> {
+    const row = await this.profileModel.findOne({
+      where: { id, role: 'seller' },
+    });
+    if (!row) return null;
+    return {
+      id: row.id,
+      fullName: row.fullName,
+      sellerCode: row.sellerCode!,
+      createdAt: row.createdAt,
+    };
+  }
+
+  async findByCode(code: string): Promise<SellerProfile | null> {
+    const row = await this.profileModel.findOne({
+      where: { sellerCode: code, role: 'seller', isActive: true },
+    });
+    if (!row) return null;
+    return {
+      id: row.id,
+      fullName: row.fullName,
+      sellerCode: row.sellerCode!,
+      createdAt: row.createdAt,
+    };
+  }
+
+  async codeExists(code: string): Promise<boolean> {
+    const count = await this.profileModel.count({ where: { sellerCode: code } });
+    return count > 0;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Specialist (sold_by) management
+  // ---------------------------------------------------------------------------
+
+  async listSoldSpecialists(sellerId: string): Promise<SellerSpecialistRow[]> {
+    const rows = await this.profileModel.findAll({
+      where: { soldBy: sellerId },
+      order: [['createdAt', 'DESC']],
+    });
+
+    return rows.map(toSpecialistRow);
+  }
+
+  async findSoldSpecialist(
+    sellerId: string,
+    specialistId: string,
+  ): Promise<SellerSpecialistRow | null> {
+    const row = await this.profileModel.findOne({
+      where: { id: specialistId, soldBy: sellerId },
+    });
+    if (!row) return null;
+    return toSpecialistRow(row);
+  }
+
+  async createSoldSpecialist(params: CreateSoldSpecialistParams): Promise<SellerSpecialistRow> {
+    const now = new Date();
+    const periodEnd = new Date(now);
+    periodEnd.setDate(periodEnd.getDate() + TRIAL_DURATION_DAYS);
+
+    const t = await this.sequelize.transaction();
+    try {
+      const row = await this.profileModel.create(
+        {
+          id: params.id,
+          fullName: params.fullName,
+          email: params.email,
+          role: 'doctor',
+          isActive: true,
+          plan: params.plan,
+          subscriptionStatus: 'trialing',
+          specialty: params.specialty ?? null,
+          soldBy: params.soldBy,
+          sellerCode: null,
+        } as Parameters<typeof SellerProfileModel.create>[0],
+        { transaction: t },
+      );
+
+      // Create subscription row — mirrors the free_trial flow from createAdminDoctor.
+      await this.sequelize.query(
+        `INSERT INTO subscriptions
+           (id, doctor_id, plan, status, price_usd, billing_cycle,
+            current_period_start, current_period_end, trial_ends_at,
+            cancelled_at, notes, created_at, updated_at)
+         VALUES
+           (uuid_generate_v4(), :doctorId, 'free_trial', 'trialing', 0, NULL,
+            :now, :periodEnd, :periodEnd,
+            NULL, NULL, now(), now())
+         ON CONFLICT (doctor_id) DO NOTHING`,
+        {
+          replacements: { doctorId: params.id, now, periodEnd },
+          transaction: t,
+        },
+      );
+
+      await t.commit();
+      return toSpecialistRow(row);
+    } catch (err) {
+      await t.rollback();
+      if (err instanceof UniqueConstraintError) {
+        const existing = await this.profileModel.findOne({
+          where: { email: { [Op.iLike]: params.email } },
+        });
+        if (existing) throw new SpecialistEmailConflictError();
+      }
+      throw err;
+    }
+  }
+
+  async linkSoldBy(specialistId: string, sellerId: string): Promise<void> {
+    // UPDATE ... WHERE sold_by IS NULL: the DB guarantees the one-write rule even
+    // under concurrent requests — only one of them can win the conditional update.
+    await this.profileModel.update({ soldBy: sellerId } as Partial<SellerProfileModel>, {
+      where: { id: specialistId, soldBy: null },
+    });
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function toSpecialistRow(row: SellerProfileModel): SellerSpecialistRow {
+  return {
+    id: row.id,
+    fullName: row.fullName,
+    specialty: row.specialty ?? null,
+    plan: row.plan ?? null,
+    subscriptionStatus: row.subscriptionStatus ?? null,
+    createdAt: row.createdAt,
+    lastSignInAt: row.lastSignInAt ?? null,
+  };
+}
