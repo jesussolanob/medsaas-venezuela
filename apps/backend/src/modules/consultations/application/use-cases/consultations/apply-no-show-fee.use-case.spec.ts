@@ -98,6 +98,25 @@ describe('ApplyNoShowFeeUseCase', () => {
     expect(mockRepo.updatePaymentDetails).not.toHaveBeenCalled();
   });
 
+  it('delegates with newAmount=0 for no-show without fee — repo resolves the linked payment as $0', async () => {
+    // No fee is charged: the doctor waives the charge. The repo will set the linked
+    // payment to approved/$0 so it leaves "Por cobrar" in both count and total.
+    const consultation = makeConsultation({ amount: 40, paymentStatus: 'pending' });
+    const resolved = makeConsultation({ amount: 0, paymentStatus: 'pending' });
+    mockRepo.findById.mockResolvedValue(consultation);
+    mockRepo.applyNoShowFee.mockResolvedValue(resolved);
+
+    const result = await useCase.execute({
+      consultationId: CONSULTATION_ID,
+      doctorId: DOCTOR_ID,
+      newAmount: 0,
+    });
+
+    expect(mockRepo.applyNoShowFee).toHaveBeenCalledTimes(1);
+    expect(mockRepo.applyNoShowFee).toHaveBeenCalledWith(CONSULTATION_ID, DOCTOR_ID, 0);
+    expect(result.amount).toBe(0);
+  });
+
   it('throws ConsultationNotFoundError when consultation does not exist', async () => {
     mockRepo.findById.mockResolvedValue(null);
 
