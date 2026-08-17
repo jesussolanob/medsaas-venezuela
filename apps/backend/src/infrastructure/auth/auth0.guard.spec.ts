@@ -44,7 +44,7 @@ function makeIdentityResolver(
   resolved: {
     profileId: string;
     email: string;
-    role: 'doctor' | 'super_admin' | 'patient' | 'assistant';
+    role: 'doctor' | 'super_admin' | 'patient' | 'assistant' | 'seller';
   } = {
     profileId: PROFILE_ID,
     email: TEST_EMAIL,

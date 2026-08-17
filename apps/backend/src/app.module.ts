@@ -49,6 +49,7 @@ import { PatientRequestsModule } from './modules/patient-requests/patient-reques
 import { SharedFilesModule } from './modules/shared-files/shared-files.module';
 import { LegalModule } from './modules/legal/legal.module';
 import { PendingConsultationsModule } from './modules/pending-consultations/pending-consultations.module';
+import { SellersModule } from './modules/sellers/sellers.module';
 import { InfraAuthModule } from './infrastructure/auth/infra-auth.module';
 
 @Module({
@@ -108,6 +109,7 @@ import { InfraAuthModule } from './infrastructure/auth/infra-auth.module';
     SharedFilesModule,
     LegalModule,
     PendingConsultationsModule,
+    SellersModule,
   ],
   controllers: [HealthController],
   providers: [

@@ -10,7 +10,7 @@ import type { CurrentUserPayload } from '../../presentation/decorators/current-u
  * Roles that must NEVER be assigned via self-service identity resolution.
  * Elevation to super_admin is a manual DBA/admin action.
  */
-const FORBIDDEN_ROLES = new Set(['super_admin', 'admin']);
+const FORBIDDEN_ROLES = new Set(['super_admin', 'admin', 'seller']);
 
 /**
  * Default role assigned when the requested role is absent or forbidden.

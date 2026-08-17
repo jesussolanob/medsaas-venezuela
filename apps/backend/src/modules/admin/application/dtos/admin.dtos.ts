@@ -271,7 +271,7 @@ export type SetDoctorAccessBody = z.infer<typeof SetDoctorAccessBodySchema>;
  */
 export const SetUserRoleBodySchema = z
   .object({
-    role: z.enum(['super_admin', 'doctor']),
+    role: z.enum(['super_admin', 'doctor', 'seller']),
   })
   .strict();
 

@@ -465,6 +465,44 @@ export default function OnboardingForm({
   const [gender, setGender] = useState('');
   const [mppsNumber, setMppsNumber] = useState('');
   const [colegiadoNumber, setColegiadoNumber] = useState('');
+  // Código del vendedor que lo trajo — OPCIONAL. Se valida mientras lo escribe
+  // porque un error de tipeo deja la venta sin acreditar y el vendedor se
+  // entera semanas después, cuando reclama.
+  const [sellerCode, setSellerCode] = useState('');
+  const [sellerName, setSellerName] = useState<string | null>(null);
+  const [sellerCodeInvalid, setSellerCodeInvalid] = useState(false);
+  const [checkingSellerCode, setCheckingSellerCode] = useState(false);
+
+  // Valida el código contra el backend mientras lo escribe. Público a
+  // propósito: acá todavía no hay sesión del vendedor, y el endpoint devuelve
+  // solo { valid, sellerName } — nada más del perfil.
+  useEffect(() => {
+    const code = sellerCode.trim();
+    if (code.length < 4) {
+      const clear = setTimeout(() => {
+        setSellerName(null);
+        setSellerCodeInvalid(false);
+      }, 0);
+      return () => clearTimeout(clear);
+    }
+    const timer = setTimeout(() => {
+      setCheckingSellerCode(true);
+      fetch(`/api/public/seller-code/${encodeURIComponent(code)}`)
+        .then((r) => (r.ok ? r.json() : { valid: false, sellerName: null }))
+        .then((j: { valid?: boolean; sellerName?: string | null }) => {
+          setSellerName(j.valid ? (j.sellerName ?? null) : null);
+          setSellerCodeInvalid(!j.valid);
+        })
+        .catch(() => {
+          // Si falla la verificación no se bloquea el registro: el campo es
+          // opcional y el backend vuelve a validarlo al guardar.
+          setSellerName(null);
+          setSellerCodeInvalid(false);
+        })
+        .finally(() => setCheckingSellerCode(false));
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [sellerCode]);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [serverError, setServerError] = useState<string | null>(null);
   const [termsAccepted, setTermsAccepted] = useState(false);
@@ -556,6 +594,7 @@ export default function OnboardingForm({
         gender: gender || null,
         mpps_number: mppsNumber.trim() || null,
         colegiado_number: colegiadoNumber.trim() || null,
+        seller_code: sellerCode.trim() || null,
         accepted_terms: true,
       });
 
@@ -997,6 +1036,35 @@ export default function OnboardingForm({
               className={inputNormal}
               autoComplete="off"
             />
+          </div>
+
+          {/* Código de vendedor — opcional, solo atribuye la venta */}
+          <div>
+            <label
+              htmlFor="field-seller-code"
+              className="block text-sm font-medium text-slate-700 mb-1.5"
+            >
+              Código de vendedor <span className="text-slate-400">(opcional)</span>
+            </label>
+            <input
+              id="field-seller-code"
+              type="text"
+              value={sellerCode}
+              onChange={(e) => setSellerCode(e.target.value.toUpperCase())}
+              placeholder="Si alguien te lo dio, escribilo acá"
+              className={sellerCodeInvalid ? inputError : inputNormal}
+              autoComplete="off"
+              autoCapitalize="characters"
+            />
+            {checkingSellerCode && <p className="text-xs text-slate-400 mt-1">Verificando…</p>}
+            {!checkingSellerCode && sellerName && (
+              <p className="text-xs text-emerald-600 mt-1 font-medium">Vendedor: {sellerName}</p>
+            )}
+            {!checkingSellerCode && sellerCodeInvalid && (
+              <p className="text-xs text-red-500 mt-1">
+                Ese código no existe. Revisalo o dejalo vacío.
+              </p>
+            )}
           </div>
 
           {/* Terms acceptance */}
