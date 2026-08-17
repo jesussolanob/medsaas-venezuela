@@ -76,6 +76,9 @@ function toSellerDto(seller: SellerProfile) {
 function toSpecialistDto(row: SellerSpecialistRow) {
   return {
     id: row.id,
+    // fullName es la columna principal de la tabla del portal: sin esto el
+    // vendedor ve una lista de filas en blanco.
+    fullName: row.fullName,
     specialty: row.specialty,
     plan: row.plan,
     subscriptionStatus: row.subscriptionStatus,
@@ -212,6 +215,9 @@ export class SellersController {
 // Public controller (no auth guard)
 // ---------------------------------------------------------------------------
 
+/** Mismo alfabeto que usa la generación (sin I/L/O/0/1) y largo fijo. */
+const SELLER_CODE_FORMAT = /^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{6}$/;
+
 /**
  * SellersPublicController
  *
@@ -221,6 +227,14 @@ export class SellersController {
  * GET /api/public/seller-code/:code → { valid, sellerName }
  *
  * SECURITY: only exposes { valid, sellerName } — no id, email, or other field.
+ *
+ * ⚠️ SIN RATE LIMITING. El proyecto no tiene throttling en NINGÚN endpoint
+ * todavía (ver la nota de Etapa 2 en create-booking.use-case) — no es una
+ * carencia de este módulo. Mientras no exista, este endpoint se puede sondear
+ * para descubrir códigos activos y el nombre del vendedor. El impacto acotado
+ * es que alguien se atribuya un registro a un vendedor ajeno; no expone datos
+ * de pacientes. Al agregar throttling al proyecto, ESTE endpoint y el booking
+ * público son los dos primeros que lo necesitan.
  */
 @Controller('public')
 export class SellersPublicController {
@@ -230,6 +244,12 @@ export class SellersPublicController {
   async validateSellerCode(
     @Param('code') code: string,
   ): Promise<{ valid: boolean; sellerName: string | null }> {
+    // Formato inválido → se responde sin tocar la BD. No frena la enumeración
+    // (para eso hace falta throttling) pero evita que basura arbitraria llegue
+    // a la base, que es lo único que se puede resolver desde acá.
+    if (!SELLER_CODE_FORMAT.test(code)) {
+      return { valid: false, sellerName: null };
+    }
     return this.validateCode.execute(code);
   }
 }

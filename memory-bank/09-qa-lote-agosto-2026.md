@@ -1,6 +1,6 @@
 # 09 — Guion de QA priorizado por riesgo (lote de agosto 2026)
 
-> Cubre **seis lotes acumulados en staging sin validar** (09/08 al 16/08). Nada de
+> Cubre **siete lotes acumulados en staging sin validar** (09/08 al 16/08). Nada de
 > esto está en `main`: `main` arrastra ~60 commits.
 > Estado por caso: `PENDIENTE` | `OK` | `FALLA`.
 >
@@ -171,6 +171,34 @@ el consultorio activo y el servicio activo), o la página se auto-sella.
 5. Reentrar al wizard **no debe des-verificar** al especialista si no cambiaste
    cédula, MPPS ni colegiado.
 
+## P1.6 · Módulo de ventas — TODO NUEVO, y es el único lote con MIGRACIÓN
+
+⚠️ **Este lote agrega dos columnas a `profiles`** (`seller_code` y `sold_by`). El deploy corre
+migraciones **antes** del build: si falló, no hay nada más que probar acá — mirá primero que el
+deploy de staging haya cerrado en verde.
+
+**Preparación:** hace falta un vendedor. Lo crea un administrador (`POST /api/admin/sellers` o la
+pantalla de admin). El backend le genera el código solo.
+
+1. **El vendedor entra** y cae en `/seller`. Un doctor o un paciente que intente entrar a `/seller`
+   tiene que ser expulsado a SU portal, no a `/login`.
+2. **Ve su código** arriba de todo, con botón de copiar.
+3. **Registra un especialista** desde su portal → aparece en su lista. **No hay selector de plan**:
+   la cuenta arranca en prueba. Eso es lo pedido, no un olvido.
+4. **El camino del código, que es el que escala:** en el onboarding de un especialista nuevo,
+   escribí el código en "Código de vendedor". Tiene que mostrar **"Vendedor: <nombre>"** en verde
+   mientras lo escribís. Poné uno inventado → **"Ese código no existe"** en rojo. Dejalo vacío →
+   sigue sin problema (el campo es opcional).
+5. 🔴 **La regla que no se puede romper:** completá el onboarding con un código, y después
+   **volvé a entrar al wizard y escribí OTRO código**. La atribución **NO debe cambiar**. Si
+   cambia, es FALLA grave: dos vendedores podrían robarse ventas y no habría nada que auditar.
+6. En la lista del vendedor: **fecha de registro, última entrada y plan**. Un especialista que
+   nunca entró tiene que decir "Nunca entró", no una fecha vacía.
+7. **Aislamiento:** con DOS vendedores, cada uno tiene que ver **solo los suyos**.
+
+> Recordá que hay una decisión pendiente: `/admin` hoy solo admite `super_admin`, así que la
+> gestión de vendedores en la práctica la hace el super aunque el backend acepte a `admin`.
+
 ---
 
 # P2 — Confunde, pero no rompe
@@ -232,5 +260,7 @@ guardó — así se resolvió el caso "Ana Sweeney".
 1. `staging` → `main` recién **después** de validar P0 y P1.
 2. ⚠️ **Despausar el cron**: `gcloud scheduler jobs resume doctor-inactivity-notices --location=us-east1`.
    Si no, queda muerto sin avisar.
-3. El deploy corre **migraciones antes del build**: este lote **no trae ninguna**,
-   así que ese riesgo no aplica.
+3. El deploy corre **migraciones antes del build**. El módulo de ventas SÍ trae una
+   (`20260816000001-seller-role`: dos columnas en `profiles`) — es la única del lote. Si esa
+   migración falla, bloquea TODOS los despliegues, así que confirmá que corrió en staging antes
+   de promover.

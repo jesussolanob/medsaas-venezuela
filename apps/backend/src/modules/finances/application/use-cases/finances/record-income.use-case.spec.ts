@@ -122,6 +122,7 @@ describe('RecordIncomeUseCase', () => {
       findByAppointmentId: jest.fn(),
       deleteById: jest.fn().mockResolvedValue(undefined),
       listWithAppointment: jest.fn(),
+      applyNoShowFee: jest.fn(),
     };
     mockPatientRepo = {
       findById: jest.fn(),

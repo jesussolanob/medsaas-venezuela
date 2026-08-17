@@ -17,6 +17,7 @@ import { GetConsultationByIdUseCase } from './application/use-cases/consultation
 import { GetPatientConsultationHistoryUseCase } from './application/use-cases/consultations/get-patient-consultation-history.use-case';
 import { ListConsultationsUseCase } from './application/use-cases/consultations/list-consultations.use-case';
 import { ListConsultationsWithPatientUseCase } from './application/use-cases/consultations/list-consultations-with-patient.use-case';
+import { ApplyNoShowFeeUseCase } from './application/use-cases/consultations/apply-no-show-fee.use-case';
 import { BlockContentSanitizer } from './application/block-content-sanitizer';
 
 import { ConsultationsController } from './presentation/controllers/consultations.controller';
@@ -53,6 +54,7 @@ import { PatientsModule } from '../patients/patients.module';
     GetPatientConsultationHistoryUseCase,
     ListConsultationsUseCase,
     ListConsultationsWithPatientUseCase,
+    ApplyNoShowFeeUseCase,
   ],
   exports: [CONSULTATION_REPOSITORY, CreateConsultationUseCase],
 })

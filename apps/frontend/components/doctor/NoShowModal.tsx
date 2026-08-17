@@ -118,6 +118,7 @@ export default function NoShowModal({
   function buildPatch(willReschedule: boolean): {
     amount?: number | null;
     payment_status?: PaymentStatus;
+    no_show_fee?: number;
   } | null {
     if (!consultationId) return null;
 
@@ -125,11 +126,19 @@ export default function NoShowModal({
       // Lo cobrado no se devuelve. Solo la multa mueve el costo, y al hacerlo la
       // consulta deja de estar saldada: vuelve a Por cobrar por el TOTAL y el
       // especialista la aprueba de nuevo cuando cobre la diferencia.
+      //
+      // `no_show_fee` NO es decorativo: es lo que le dice al backend que además
+      // sincronice la tabla `payments`. Sin ese campo, la consulta quedaba con
+      // el costo nuevo y el pago viejo aprobado, y la multa no se veía en
+      // NINGUNA pantalla de finanzas (el pago seguía contando como ingreso y
+      // Cobros excluye toda consulta con pago vinculado).
       if (fine <= 0) return null;
-      return { amount: currentAmount + fine, payment_status: 'pending' };
+      return { amount: currentAmount + fine, no_show_fee: fine };
     }
 
     // Impaga y no reagenda: no quedó nada por cobrar salvo la multa.
+    // Sin pago aprobado no hay nada que sincronizar, así que va por el camino
+    // normal (el backend igual protege ese caso con `p.status = 'approved'`).
     if (!willReschedule) return { amount: fine };
 
     // Impaga y reagenda: el flujo sigue completo, la multa se suma al costo.
@@ -166,7 +175,11 @@ export default function NoShowModal({
         return;
       }
       finalAmount = patch.amount ?? null;
-      finalStatus = patch.payment_status ?? null;
+      // Con multa sobre una consulta pagada el estado lo cambia el backend
+      // (ApplyNoShowFee deja la consulta en 'pending' y sincroniza el pago), así
+      // que no viaja en el parche: se refleja igual para que la lista no siga
+      // mostrando "pagada" hasta el próximo refresco.
+      finalStatus = patch.payment_status ?? (patch.no_show_fee ? 'pending' : null);
     }
 
     setSaving(false);
