@@ -754,11 +754,10 @@ export default function CobrosPage() {
     const service = payment.plan_name || 'consulta';
     const code = payment.appointment_code ? ` (Ref. ${payment.appointment_code})` : '';
 
-    const usdStr = new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      minimumFractionDigits: 2,
-    }).format(amountUsd);
+    // Se formatea con la divisa que eligió el especialista, no con USD fijo:
+    // el mensaje decía "$40.00 EUR" —símbolo de dólar con código euro— y es el
+    // texto que le llega al paciente para que transfiera.
+    const usdStr = format(amountUsd);
 
     const bsStr = amountBs
       ? new Intl.NumberFormat('es-VE', {
@@ -907,7 +906,9 @@ export default function CobrosPage() {
         <div className="bg-white border border-slate-200 rounded-xl p-5">
           <div className="flex items-center gap-2 mb-2">
             <DollarSign className="w-5 h-5 text-teal-500" />
-            <span className="text-xs font-semibold text-slate-500 uppercase">Total USD</span>
+            <span className="text-xs font-semibold text-slate-500 uppercase">
+              Total {currencyCode}
+            </span>
           </div>
           <p className="text-2xl font-bold text-slate-900">{format(totalUSD)}</p>
           <p className="text-xs text-slate-400 mt-1">
@@ -929,7 +930,9 @@ export default function CobrosPage() {
           ) : totalBs !== null ? (
             <>
               <p className="text-2xl font-bold text-slate-900">{formatBs(totalBs)}</p>
-              <p className="text-xs text-slate-400 mt-1">Tasa BCV: {bcvRate?.toFixed(2)} Bs/$</p>
+              <p className="text-xs text-slate-400 mt-1">
+                Tasa BCV: {bcvRate?.toFixed(2)} Bs/{symbol}
+              </p>
             </>
           ) : (
             <p className="text-sm text-slate-400">Tasa no disponible</p>
