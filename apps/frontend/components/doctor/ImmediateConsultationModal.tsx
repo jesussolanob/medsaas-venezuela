@@ -24,12 +24,20 @@ import { X, Zap, Loader2, AlertCircle, Search, UserPlus, Check } from 'lucide-re
 import {
   fetchDoctorOffices,
   normalizePatient,
+  normalizeService,
   officesOpenAt,
   type DoctorOffice,
   type PatientLookup,
 } from '@/components/appointment-flow/appointment-flow.utils';
 import { showToast } from '@/components/ui/Toaster';
 
+/**
+ * ⚠️ `/api/doctor/services` devuelve DOS formas según el parámetro: sin
+ * `officeId` responde snake_case (`price_usd`) y CON `officeId` responde
+ * camelCase (`priceUsd`). Este modal usa la variante filtrada, así que se
+ * normaliza con el helper compartido — leer solo snake_case dejaba el precio
+ * en undefined y la consulta se creaba en 0 aunque el servicio costara 40.
+ */
 type Service = {
   id: string;
   name: string;
@@ -157,7 +165,7 @@ export default function ImmediateConsultationModal({
     const qs = officeId ? `?officeId=${encodeURIComponent(officeId)}` : '';
     fetch(`/api/doctor/services${qs}`, { cache: 'no-store' })
       .then((r) => (r.ok ? r.json() : { data: [] }))
-      .then((json) => setServices(Array.isArray(json.data) ? json.data : []))
+      .then((json) => setServices(Array.isArray(json.data) ? json.data.map(normalizeService) : []))
       .catch(() => setServices([]));
   }, [officeId]);
 
