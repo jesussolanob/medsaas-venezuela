@@ -13,7 +13,6 @@ describe('GetFinancialSummaryUseCase', () => {
     pendingTotal: 100,
   };
 
-  const defaultManualIncome = { total: 50, count: 1 };
   const defaultExpenses = { total: 80, count: 2 };
 
   const defaultIncomeBreakdown = {
@@ -37,7 +36,9 @@ describe('GetFinancialSummaryUseCase', () => {
       findById: jest.fn(),
       list: jest.fn(),
       getConsultationSummary: jest.fn().mockResolvedValue(defaultConsultationSummary),
-      sumManualIncome: jest.fn().mockResolvedValue(defaultManualIncome),
+      // sumManualIncome is intentionally not called by the use case anymore —
+      // totalIncome is derived from incomeBreakdown to keep a single source of truth.
+      sumManualIncome: jest.fn(),
       sumExpenses: jest.fn().mockResolvedValue(defaultExpenses),
       delete: jest.fn(),
       lifetimeIncome: jest.fn(),
@@ -93,7 +94,11 @@ describe('GetFinancialSummaryUseCase', () => {
       approvedCount: 0,
       pendingTotal: 0,
     });
-    mockRepo.sumManualIncome.mockResolvedValue({ total: 0, count: 0 });
+    mockRepo.getIncomeBreakdown.mockResolvedValue({
+      consultationsApproved: 0,
+      consultationsPending: 0,
+      manualIncome: 0,
+    });
     mockRepo.sumExpenses.mockResolvedValue({ total: 0, count: 0 });
 
     const result = await useCase.execute({ doctorId: 'doc-id-1', month: '2026-06' });
@@ -105,13 +110,18 @@ describe('GetFinancialSummaryUseCase', () => {
     expect(result.pendingAmount).toBe(0);
   });
 
-  it('only counts approved payments for totalIncome', async () => {
+  it('only counts approved payments for totalIncome — pending is excluded', async () => {
+    // totalIncome comes from incomeBreakdown (not getConsultationSummary.approvedTotal)
+    mockRepo.getIncomeBreakdown.mockResolvedValue({
+      consultationsApproved: 200,
+      consultationsPending: 500,
+      manualIncome: 0,
+    });
     mockRepo.getConsultationSummary.mockResolvedValue({
       approvedTotal: 200,
       approvedCount: 2,
-      pendingTotal: 500, // pending is NOT counted in income
+      pendingTotal: 500, // used for pendingAmount; must not appear in totalIncome
     });
-    mockRepo.sumManualIncome.mockResolvedValue({ total: 0, count: 0 });
     mockRepo.sumExpenses.mockResolvedValue({ total: 0, count: 0 });
 
     const result = await useCase.execute({ doctorId: 'doc-id-1', month: '2026-06' });
@@ -121,12 +131,16 @@ describe('GetFinancialSummaryUseCase', () => {
   });
 
   it('returns NEGATIVE net when expenses exceed income (deficit month)', async () => {
+    mockRepo.getIncomeBreakdown.mockResolvedValue({
+      consultationsApproved: 10,
+      consultationsPending: 0,
+      manualIncome: 0,
+    });
     mockRepo.getConsultationSummary.mockResolvedValue({
       approvedTotal: 10,
       approvedCount: 1,
       pendingTotal: 0,
     });
-    mockRepo.sumManualIncome.mockResolvedValue({ total: 0, count: 0 });
     mockRepo.sumExpenses.mockResolvedValue({ total: 500, count: 5 });
 
     const result = await useCase.execute({ doctorId: 'doc-id-1', month: '2026-06' });
@@ -138,12 +152,16 @@ describe('GetFinancialSummaryUseCase', () => {
   });
 
   it('returns negative netBS when month is in deficit', async () => {
+    mockRepo.getIncomeBreakdown.mockResolvedValue({
+      consultationsApproved: 10,
+      consultationsPending: 0,
+      manualIncome: 0,
+    });
     mockRepo.getConsultationSummary.mockResolvedValue({
       approvedTotal: 10,
       approvedCount: 1,
       pendingTotal: 0,
     });
-    mockRepo.sumManualIncome.mockResolvedValue({ total: 0, count: 0 });
     mockRepo.sumExpenses.mockResolvedValue({ total: 110, count: 2 });
     mockRateStore.getRate.mockResolvedValue(10);
 
@@ -166,14 +184,69 @@ describe('GetFinancialSummaryUseCase', () => {
     expect(result.consultationCount).toBe(3);
   });
 
-  it('fetches all data in parallel (all mocks called once)', async () => {
+  it('fetches all data in parallel (required mocks called once)', async () => {
     await useCase.execute({ doctorId: 'doc-id-1', month: '2026-06' });
     expect(mockRepo.getConsultationSummary).toHaveBeenCalledTimes(1);
-    expect(mockRepo.sumManualIncome).toHaveBeenCalledTimes(1);
+    // sumManualIncome must NOT be called — totalIncome is derived from incomeBreakdown.
+    expect(mockRepo.sumManualIncome).not.toHaveBeenCalled();
     expect(mockRepo.sumExpenses).toHaveBeenCalledTimes(1);
     expect(mockRateStore.getRate).toHaveBeenCalledTimes(1);
     expect(mockRepo.getIncomeBreakdown).toHaveBeenCalledTimes(1);
     expect(mockRepo.getExpenseBreakdown).toHaveBeenCalledTimes(1);
+  });
+
+  describe('totalIncome derived from incomeBreakdown (single source of truth)', () => {
+    it('equals manualIncome when there are no approved consultations', async () => {
+      // Reproduces the bug scenario: July 2026, only a manual income entry of $25.
+      mockRepo.getIncomeBreakdown.mockResolvedValue({
+        consultationsApproved: 0,
+        consultationsPending: 0,
+        manualIncome: 25,
+      });
+      mockRepo.getConsultationSummary.mockResolvedValue({
+        approvedTotal: 0,
+        approvedCount: 0,
+        pendingTotal: 0,
+      });
+
+      const result = await useCase.execute({ doctorId: 'doc-id-1', month: '2026-07' });
+
+      expect(result.totalIncome).toBeGreaterThan(0);
+      expect(result.incomeBreakdown.manualIncome).toBe(25);
+      // Key invariant: totalIncome === incomeBreakdown.manualIncome when no consultations.
+      expect(result.totalIncome).toBe(result.incomeBreakdown.manualIncome);
+    });
+
+    it('equals consultationsApproved + manualIncome when both exist', async () => {
+      mockRepo.getIncomeBreakdown.mockResolvedValue({
+        consultationsApproved: 150,
+        consultationsPending: 50,
+        manualIncome: 75,
+      });
+
+      const result = await useCase.execute({ doctorId: 'doc-id-1', month: '2026-07' });
+
+      expect(result.totalIncome).toBe(225);
+      expect(result.totalIncome).toBe(
+        result.incomeBreakdown.consultationsApproved + result.incomeBreakdown.manualIncome,
+      );
+    });
+
+    it('passes the exact requested month to getIncomeBreakdown so date-filtered transactions appear', async () => {
+      // A manual income transaction dated 2026-07-17 must appear when month='2026-07'.
+      // At the use-case level this verifies the month is forwarded unchanged to the repo.
+      mockRepo.getIncomeBreakdown.mockResolvedValue({
+        consultationsApproved: 0,
+        consultationsPending: 0,
+        manualIncome: 25, // the Jul 17 entry
+      });
+
+      const result = await useCase.execute({ doctorId: 'doc-id-1', month: '2026-07' });
+
+      expect(mockRepo.getIncomeBreakdown).toHaveBeenCalledWith('doc-id-1', '2026-07');
+      expect(result.incomeBreakdown.manualIncome).toBe(25);
+      expect(result.totalIncome).toBe(25);
+    });
   });
 
   describe('incomeBreakdown', () => {

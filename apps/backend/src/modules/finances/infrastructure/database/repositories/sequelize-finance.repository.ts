@@ -435,6 +435,12 @@ export class SequelizeFinanceRepository implements IFinanceRepository {
         AND pt.deleted_at IS NULL
       WHERE p.doctor_id = :doctorId
         AND p.status = 'approved'
+        -- Un pago de $0 no es un ingreso: aparece cuando una inasistencia sin
+        -- multa deja el cobro en cero (ADR-031). Sin este filtro la lista de
+        -- Ingresos mostraba una fila de $0 por cada no-show perdonado — plata
+        -- que nadie pagó, listada como si se hubiera cobrado. El total no
+        -- cambiaba (suma cero), pero la lista mentía.
+        AND p.amount_usd > 0
         -- La cita tiene que estar en estado resuelto: un pago aprobado cuya
         -- cita sigue "por confirmar" todavía no es ingreso. 'no_show' se
         -- incluye porque es un estado terminal; si el pago está aprobado ya
