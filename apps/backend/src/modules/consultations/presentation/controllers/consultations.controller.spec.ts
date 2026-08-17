@@ -17,6 +17,7 @@ import { GetConsultationByIdUseCase } from '../../application/use-cases/consulta
 import { GetPatientConsultationHistoryUseCase } from '../../application/use-cases/consultations/get-patient-consultation-history.use-case';
 import { ListConsultationsUseCase } from '../../application/use-cases/consultations/list-consultations.use-case';
 import { ListConsultationsWithPatientUseCase } from '../../application/use-cases/consultations/list-consultations-with-patient.use-case';
+import { ApplyNoShowFeeUseCase } from '../../application/use-cases/consultations/apply-no-show-fee.use-case';
 import { Consultation } from '../../domain/entities/consultation.entity';
 import { ConsultationNotFoundError } from '../../domain/errors/consultation-not-found.error';
 import { PaymentAlreadyApprovedError } from '../../domain/errors/payment-already-approved.error';
@@ -57,6 +58,7 @@ describe('ConsultationsController', () => {
   const mockApprove = { execute: jest.fn() };
   const mockApproveWithExtras = { execute: jest.fn() };
   const mockUpdatePaymentDetails = { execute: jest.fn() };
+  const mockApplyNoShowFee = { execute: jest.fn() };
   const mockGetById = { execute: jest.fn() };
   const mockGetHistory = { execute: jest.fn() };
   const mockList = { execute: jest.fn() };
@@ -73,6 +75,7 @@ describe('ConsultationsController', () => {
         { provide: ApprovePaymentUseCase, useValue: mockApprove },
         { provide: ApprovePaymentWithExtrasUseCase, useValue: mockApproveWithExtras },
         { provide: UpdatePaymentDetailsUseCase, useValue: mockUpdatePaymentDetails },
+        { provide: ApplyNoShowFeeUseCase, useValue: mockApplyNoShowFee },
         { provide: GetConsultationByIdUseCase, useValue: mockGetById },
         { provide: GetPatientConsultationHistoryUseCase, useValue: mockGetHistory },
         { provide: ListConsultationsUseCase, useValue: mockList },

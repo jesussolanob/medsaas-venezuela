@@ -36,6 +36,7 @@ import { UpdateConsultationUseCase } from '../../application/use-cases/consultat
 import { ApprovePaymentUseCase } from '../../application/use-cases/consultations/approve-payment.use-case';
 import { ApprovePaymentWithExtrasUseCase } from '../../application/use-cases/consultations/approve-payment-with-extras.use-case';
 import { UpdatePaymentDetailsUseCase } from '../../application/use-cases/consultations/update-payment-details.use-case';
+import { ApplyNoShowFeeUseCase } from '../../application/use-cases/consultations/apply-no-show-fee.use-case';
 import { GetConsultationByIdUseCase } from '../../application/use-cases/consultations/get-consultation-by-id.use-case';
 import { GetPatientConsultationHistoryUseCase } from '../../application/use-cases/consultations/get-patient-consultation-history.use-case';
 import { ListConsultationsUseCase } from '../../application/use-cases/consultations/list-consultations.use-case';
@@ -122,6 +123,7 @@ export class ConsultationsController {
     private readonly approvePayment: ApprovePaymentUseCase,
     private readonly approvePaymentWithExtras: ApprovePaymentWithExtrasUseCase,
     private readonly updatePaymentDetailsUseCase: UpdatePaymentDetailsUseCase,
+    private readonly applyNoShowFeeUseCase: ApplyNoShowFeeUseCase,
     private readonly getById: GetConsultationByIdUseCase,
     private readonly getHistory: GetPatientConsultationHistoryUseCase,
     private readonly listConsultations: ListConsultationsUseCase,
@@ -306,8 +308,17 @@ export class ConsultationsController {
   /**
    * PATCH /api/consultations/:id/payment-details — edit payment details.
    *
-   * Editable at any time, including when the payment is already approved.
-   * All fields are optional; only provided fields are updated.
+   * Two distinct paths based on the presence of `no_show_fee`:
+   *
+   *   no_show_fee > 0 (AND amount provided):
+   *     Routes to ApplyNoShowFeeUseCase, which atomically:
+   *       - Updates consultations (amount, payment_status → 'pending').
+   *       - Syncs the linked approved payment (if any) to the same new amount.
+   *     This is the ONLY path that touches the payments table. Normal edits
+   *     (method, reference, receipt_url, plain amount change) never do.
+   *
+   *   no_show_fee absent / 0:
+   *     Routes to UpdatePaymentDetailsUseCase — updates consultation fields only.
    *
    * SECURITY: doctorId comes from user.sub (authenticated token) — never from the body.
    */
@@ -317,6 +328,17 @@ export class ConsultationsController {
     @Body(new ZodValidationPipe(UpdatePaymentDetailsDtoSchema)) dto: UpdatePaymentDetailsDto,
     @CurrentUser() user: CurrentUserPayload,
   ): Promise<SuccessResponse<unknown>> {
+    // No-show fee path: must have both no_show_fee > 0 and the new total amount.
+    if (dto.no_show_fee !== undefined && dto.no_show_fee > 0 && dto.amount != null) {
+      const consultation = await this.applyNoShowFeeUseCase.execute({
+        consultationId: id,
+        doctorId: user.sub,
+        newAmount: dto.amount,
+      });
+      return { success: true, data: toConsultationResponse(consultation) };
+    }
+
+    // Normal edit path — payment fields only, never touches payments table.
     const consultation = await this.updatePaymentDetailsUseCase.execute({
       consultationId: id,
       doctorId: user.sub,
