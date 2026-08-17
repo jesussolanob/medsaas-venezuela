@@ -5,6 +5,7 @@ function makeRepoMock(): jest.Mocked<ISellerRepository> {
   return {
     createSeller: jest.fn(),
     findById: jest.fn(),
+    listSellers: jest.fn(),
     findByCode: jest.fn(),
     codeExists: jest.fn(),
     listSoldSpecialists: jest.fn(),

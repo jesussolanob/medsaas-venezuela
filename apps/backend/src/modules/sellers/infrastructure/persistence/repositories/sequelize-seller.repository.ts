@@ -5,6 +5,7 @@ import { Sequelize } from 'sequelize-typescript';
 import type {
   ISellerRepository,
   SellerProfile,
+  SellerAdminRow,
   SellerSpecialistRow,
   CreateSellerParams,
   CreateSoldSpecialistParams,
@@ -94,6 +95,42 @@ export class SequelizeSellerRepository implements ISellerRepository {
   // ---------------------------------------------------------------------------
   // Specialist (sold_by) management
   // ---------------------------------------------------------------------------
+
+  /**
+   * Listado de vendedores para `/admin/sellers`.
+   *
+   * El conteo de especialistas se resuelve con UNA consulta agrupada por
+   * `sold_by` en vez de un COUNT por vendedor, para no caer en N+1.
+   */
+  async listSellers(): Promise<SellerAdminRow[]> {
+    const sellers = await this.profileModel.findAll({
+      where: { role: 'seller' },
+      order: [['createdAt', 'DESC']],
+    });
+    if (sellers.length === 0) return [];
+
+    const counts = await this.profileModel.findAll({
+      attributes: ['soldBy', [this.sequelize.fn('COUNT', this.sequelize.col('id')), 'total']],
+      where: { soldBy: { [Op.in]: sellers.map((s) => s.id) } },
+      group: ['sold_by'],
+      raw: true,
+    });
+
+    const bySeller = new Map<string, number>();
+    for (const row of counts as unknown as Array<{ soldBy: string; total: string }>) {
+      bySeller.set(row.soldBy, Number(row.total));
+    }
+
+    return sellers.map((s) => ({
+      id: s.id,
+      fullName: s.fullName,
+      email: s.email,
+      sellerCode: s.sellerCode ?? '',
+      specialistsCount: bySeller.get(s.id) ?? 0,
+      createdAt: s.createdAt,
+      lastSignInAt: s.lastSignInAt,
+    }));
+  }
 
   async listSoldSpecialists(sellerId: string): Promise<SellerSpecialistRow[]> {
     const rows = await this.profileModel.findAll({
