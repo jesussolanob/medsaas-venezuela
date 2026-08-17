@@ -12,6 +12,11 @@ import {
   LEGAL_DOCUMENT_REPOSITORY,
   type ILegalDocumentRepository,
 } from '../../../legal/domain/repositories/legal-document.repository';
+import {
+  SELLER_REPOSITORY,
+  type ISellerRepository,
+} from '../../../sellers/domain/repositories/seller.repository';
+import { SellerCodeNotFoundError } from '../../../sellers/domain/errors/seller-code-not-found.error';
 
 export interface CompleteRegistrationInput {
   doctorId: string;
@@ -24,6 +29,15 @@ export interface CompleteRegistrationInput {
   gender?: string | null;
   /** When true, persists terms acceptance (timestamp + version) on the profile. */
   acceptedTerms?: boolean;
+  /**
+   * Optional seller code submitted during the onboarding wizard.
+   * When present, the use case resolves it to a seller profile and writes
+   * sold_by on the doctor's profile — but only if sold_by is currently null.
+   *
+   * Throws SellerCodeNotFoundError (422) when the code does not match any
+   * active seller.
+   */
+  sellerCode?: string | null;
 }
 
 export interface CompleteRegistrationOutput {
@@ -69,6 +83,8 @@ export class CompleteRegistrationUseCase {
     private readonly config: ConfigService,
     @Inject(LEGAL_DOCUMENT_REPOSITORY)
     private readonly legalRepo: ILegalDocumentRepository,
+    @Inject(SELLER_REPOSITORY)
+    private readonly sellerRepo: ISellerRepository,
   ) {}
 
   async execute(input: CompleteRegistrationInput): Promise<CompleteRegistrationOutput> {
@@ -107,6 +123,25 @@ export class CompleteRegistrationUseCase {
     }
 
     this.logger.log(`[registration] profile updated doctorId=${input.doctorId}`);
+
+    // 1b. Seller attribution — only on first registration with a seller_code.
+    //
+    //     Invariant: sold_by is written at most once. The repository's linkSoldBy
+    //     implementation uses WHERE sold_by IS NULL so a second onboarding visit
+    //     with a different code (or no code) can never overwrite the original
+    //     attribution.
+    //
+    //     This step runs synchronously before the fire-and-forget tasks so that
+    //     a failed DB write (UniqueConstraintError, etc.) still surfaces to the
+    //     client as a 422, which is the correct behaviour.
+    if (input.sellerCode) {
+      const seller = await this.sellerRepo.findByCode(input.sellerCode.toUpperCase().trim());
+      if (!seller) {
+        throw new SellerCodeNotFoundError();
+      }
+      await this.sellerRepo.linkSoldBy(input.doctorId, seller.id);
+      this.logger.log(`[registration] seller linked doctorId=${input.doctorId}`);
+    }
 
     // 2. Persist terms acceptance — fire-and-forget (never fails registration).
     //    Only runs when the client explicitly sends accepted_terms: true.
