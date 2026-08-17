@@ -116,6 +116,14 @@ export interface IConsultationRepository {
         | 'notes'
         | 'blocksSnapshot'
         | 'blocksStructure'
+        /**
+         * consultationDate: la mueve la reagenda de la cita. La consulta y su
+         * cita son el MISMO encuentro; si solo se movía `appointments.scheduled_at`
+         * el listado de Consultas seguía mostrando la hora vieja y —peor— el
+         * filtro por rango y el orden usan esta columna, así que una reagenda
+         * que cruzaba de día archivaba la consulta en la fecha equivocada.
+         */
+        | 'consultationDate'
       >
     >,
   ): Promise<Consultation>;

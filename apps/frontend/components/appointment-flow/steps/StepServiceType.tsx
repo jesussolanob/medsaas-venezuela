@@ -1,6 +1,7 @@
 'use client';
 
 import { Loader2 } from 'lucide-react';
+import { useBcvRate } from '@/lib/useBcvRate';
 import type { PricingPlan, PatientPackageInfo, DoctorOffice } from '../appointment-flow.utils';
 
 type Props = {
@@ -31,6 +32,8 @@ export default function StepServiceType({
   confirmServiceTypeStep,
 }: Props) {
   const canContinue = !!selectedPlan || !!usePackage;
+  // El precio se muestra en la divisa que eligió el especialista, no en dólar fijo.
+  const { format } = useBcvRate();
 
   return (
     <div className="space-y-4">
@@ -103,7 +106,7 @@ export default function StepServiceType({
                     <span
                       className={`text-sm font-bold ${isSelected ? 'text-teal-700' : 'text-slate-700'}`}
                     >
-                      ${plan.price_usd}
+                      {format(plan.price_usd)}
                     </span>
                   </button>
                 );

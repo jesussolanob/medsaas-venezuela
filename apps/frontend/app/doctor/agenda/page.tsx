@@ -42,6 +42,7 @@ import type { RescheduleRequest } from '@/components/doctor/AppointmentDetailMod
 import { toLocalHHMM, toLocalYMD } from '@/lib/timezone';
 import { showToast } from '@/components/ui/Toaster';
 import { reportError } from '@/lib/report-error';
+import { useBcvRate } from '@/lib/useBcvRate';
 
 // RONDA 19c — Helper UNICO de estilos por status para citas en la agenda.
 // Cancelled: rojo claro fondo, texto rojo oscuro, borde rojo solido + opacity + line-through.
@@ -294,6 +295,8 @@ type CalendarView = 'week' | 'month' | 'day';
 type AgendaTab = 'calendar';
 
 export default function AgendaPage() {
+  // Precios en la divisa del especialista, no en dolar fijo.
+  const { format: fmtMoney } = useBcvRate();
   const router = useRouter();
   const today = new Date();
   const [weekOffset, setWeekOffset] = useState(0);
@@ -2485,7 +2488,7 @@ export default function AgendaPage() {
                                   {plan.name}
                                 </span>
                                 <span className="text-sm font-bold text-teal-600">
-                                  ${plan.price_usd.toFixed(2)}
+                                  {fmtMoney(plan.price_usd)}
                                 </span>
                               </div>
                               <span className="text-xs text-slate-400">

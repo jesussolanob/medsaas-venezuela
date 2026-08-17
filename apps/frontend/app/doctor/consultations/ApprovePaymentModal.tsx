@@ -14,6 +14,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { X, Plus, Trash2, DollarSign, Loader2, CheckCircle } from 'lucide-react';
 import { showToast } from '@/components/ui/Toaster';
+import { useBcvRate } from '@/lib/useBcvRate';
 
 export type ExtraItem = {
   description: string;
@@ -63,14 +64,17 @@ function buildRows(items: ExistingExtraItem[]): ExtraRow[] {
 
 export default function ApprovePaymentModal({
   open,
+  consultationId,
   baseAmount,
   existingExtras,
+  paymentMethod,
   onClose,
   onApproved,
 }: Props) {
   const [rows, setRows] = useState<ExtraRow[]>([]);
   const [saving, setSaving] = useState(false);
   const overlayRef = useRef<HTMLDivElement>(null);
+  const { format } = useBcvRate();
 
   // Resetear filas cada vez que se abre el modal
   useEffect(() => {
@@ -122,7 +126,22 @@ export default function ApprovePaymentModal({
   const extrasTotal = validExtras().reduce((acc, e) => acc + e.amount_usd, 0);
   const grandTotal = baseAmount + extrasTotal;
 
-  function handleConfirm() {
+  /**
+   * Confirmar el cobro PERSISTE de una vez (decisión del dueño, 2026-08-17).
+   *
+   * Antes este modal solo confirmaba el monto en memoria y el guardado real
+   * ocurría al presionar "Guardar pago" en el panel. La pantalla pasaba a
+   * "Pago: Aprobado" sin que nada se hubiera escrito: si el especialista no
+   * pulsaba el segundo botón, el cobro no existía. Peor todavía, al marcar
+   * "No asistió" con multa sobre esa consulta el backend la veía impaga y la
+   * multa REEMPLAZABA el monto en vez de sumarse (un cobro de 50 quedaba en 10).
+   *
+   * El endpoint ya existía completo —solo nadie lo llamaba—: persiste
+   * `consultations.amount = base + Σ(extras)` y `payment_status = 'approved'`.
+   * El método de pago es una invariante del backend; si falta, responde con el
+   * error y el modal queda abierto en vez de mentir con un "Aprobado".
+   */
+  async function handleConfirm() {
     if (hasIncompleteRows()) {
       showToast({
         type: 'error',
@@ -131,19 +150,43 @@ export default function ApprovePaymentModal({
       return;
     }
 
-    // Este modal SOLO confirma el MONTO (base + servicios adicionales). NO persiste
-    // a BD ni exige método de pago: el guardado real —y el requisito del método—
-    // ocurre al presionar "Guardar pago" en el panel de detalles.
     setSaving(true);
-    const extras = validExtras();
-    const updatedExtras: ExistingExtraItem[] = extras.map((e, idx) => ({
-      id: `local-${idx}`,
-      description: e.description,
-      amount_usd: e.amount_usd,
-    }));
-    onApproved(grandTotal, updatedExtras);
-    onClose();
-    setSaving(false);
+    try {
+      const res = await fetch(`/api/doctor/consultations/${consultationId}/approve-payment`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          extras: validExtras(),
+          ...(paymentMethod?.trim() ? { method: paymentMethod.trim() } : {}),
+        }),
+      });
+
+      const json = (await res.json().catch(() => ({}))) as {
+        success?: boolean;
+        error?: string;
+        data?: { amount?: number | null; extra_items?: ExistingExtraItem[] };
+      };
+
+      if (!res.ok || !json.success) {
+        showToast({
+          type: 'error',
+          message: json.error ?? 'No se pudo aprobar el cobro. Intenta de nuevo.',
+        });
+        return;
+      }
+
+      // El total y los extras vuelven del servidor con sus ids reales.
+      onApproved(
+        typeof json.data?.amount === 'number' ? json.data.amount : grandTotal,
+        json.data?.extra_items ?? [],
+      );
+      showToast({ type: 'success', message: 'Cobro aprobado' });
+      onClose();
+    } catch {
+      showToast({ type: 'error', message: 'Error de conexión al aprobar el cobro.' });
+    } finally {
+      setSaving(false);
+    }
   }
 
   if (!open) return null;
@@ -200,7 +243,7 @@ export default function ApprovePaymentModal({
             </p>
             <div className="flex items-center justify-between">
               <span className="text-sm text-slate-600">Monto base</span>
-              <span className="text-sm font-bold text-slate-800">${baseAmount.toFixed(2)}</span>
+              <span className="text-sm font-bold text-slate-800">{format(baseAmount)}</span>
             </div>
           </div>
 
@@ -288,11 +331,11 @@ export default function ApprovePaymentModal({
           <div className="rounded-xl border-2 border-teal-200 bg-teal-50 px-4 py-3">
             <div className="flex items-center justify-between">
               <span className="text-xs font-semibold text-teal-700">Total a cobrar</span>
-              <span className="text-lg font-extrabold text-teal-700">${grandTotal.toFixed(2)}</span>
+              <span className="text-lg font-extrabold text-teal-700">{format(grandTotal)}</span>
             </div>
             {extrasTotal > 0 && (
               <p className="text-[10px] text-teal-500 mt-1">
-                Base ${baseAmount.toFixed(2)} + servicios ${extrasTotal.toFixed(2)}
+                Base {format(baseAmount)} + servicios {format(extrasTotal)}
               </p>
             )}
           </div>
