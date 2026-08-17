@@ -427,9 +427,27 @@ export class CreateBookingUseCase {
       if (dto.plan_id && this.pricingPlanRepo && this.createPendingUC) {
         const plan = await this.pricingPlanRepo.findById(dto.plan_id);
 
-        // Ownership guard: silently skip if plan not found, belongs to a different
-        // doctor, or has only one session. This degrades gracefully — the booking
-        // still succeeds as a normal single-session appointment.
+        // Ownership guard: skip if plan not found, belongs to a different doctor,
+        // or has only one session. Degrada con gracia — la reserva igual se crea
+        // como una cita normal de una sesión.
+        //
+        // OJO: este skip era MUDO, y eso costó caro. En agosto de 2026 una
+        // especialista reportó que su módulo "Consultas por agendar" salía vacío:
+        // dos pacientes habían reservado paquetes de 3 sesiones y no se generó
+        // ninguna preconsulta. Como el skip no dejaba rastro, esa reserva era
+        // indistinguible de una normal y el problema pasó 12 días sin detectarse.
+        // Reproducido el flujo completo, hoy funciona; sin log no hay forma de
+        // saber cuál de las tres guardas falló aquella vez.
+        //
+        // El WARN no cambia el comportamiento: solo deja algo que se pueda buscar
+        // en los logs cuando vuelva a pasar. No se loguea PII.
+        if (!plan || plan.doctorId !== dto.doctor_id || plan.sessionsCount <= 1) {
+          this.logger.warn(
+            `[multi-sesion] no se generaron preconsultas para plan_id=${dto.plan_id}: ` +
+              `${!plan ? 'el plan no existe' : plan.doctorId !== dto.doctor_id ? 'el plan es de otro doctor' : `sessions_count=${plan.sessionsCount}`}`,
+          );
+        }
+
         if (plan && plan.doctorId === dto.doctor_id && plan.sessionsCount > 1) {
           const additionalRequested = dto.additional_sessions ?? [];
           // Determine how many sessions can be immediately scheduled (beyond the first).
