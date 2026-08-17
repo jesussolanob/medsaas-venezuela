@@ -268,8 +268,28 @@ export default function ImmediateConsultationModal({
     }
   }
 
-  const truncated =
-    window_ && window_.availableMinutes != null && window_.effectiveDuration < duration;
+  /**
+   * Tres estados posibles, no dos.
+   *
+   * Antes la UI ramificaba solo por `fits`, y el aviso de "va a durar X min en
+   * vez de Y" se pintaba con `fits && truncated` — condición IMPOSIBLE, porque
+   * si la consulta entra completa entonces effectiveDuration === duration. Ese
+   * texto era código muerto: con 20 minutos libres y un servicio de 30 la
+   * pantalla decía "no queda espacio" y el botón mandaba force=true, creando la
+   * consulta a duración COMPLETA encima de la cita siguiente — justo lo
+   * contrario de lo pedido ("que la consulta se acorte hasta la próxima cita").
+   *
+   * El backend ya sabía acortarla (effectiveDuration = min(duración, libre),
+   * con un mínimo de 5 min); solo hacía falta dejar de forzarlo.
+   */
+  const MIN_IMMEDIATE_MINUTES = 5;
+  const available = window_?.availableMinutes ?? null;
+  /** Entra completa. */
+  const fits = window_?.fits ?? true;
+  /** No entra completa, pero queda tiempo útil: el backend la crea acortada. */
+  const canShorten = !!window_ && !fits && available != null && available >= MIN_IMMEDIATE_MINUTES;
+  /** No entra ni acortada: la única salida es pisar la cita siguiente. */
+  const noRoom = !!window_ && !fits && !canShorten;
 
   return (
     <div
@@ -466,7 +486,7 @@ export default function ImmediateConsultationModal({
             )}
 
             {/* Qué va a pasar con la hora */}
-            {window_ && !window_.fits && (
+            {noRoom && window_ && (
               <div className="flex items-start gap-2 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-800">
                 <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
                 <span>
@@ -477,9 +497,9 @@ export default function ImmediateConsultationModal({
                 </span>
               </div>
             )}
-            {window_ && window_.fits && truncated && (
+            {canShorten && window_ && (
               <div className="rounded-lg bg-slate-50 border border-slate-200 px-3 py-2 text-xs text-slate-600">
-                Va a durar <strong>{window_.effectiveDuration} min</strong> en vez de {duration}
+                Va a durar <strong>{available} min</strong> en vez de {duration}
                 {window_.nextAppointmentAt
                   ? `, porque a las ${hhmm(window_.nextAppointmentAt)} tenés otra cita.`
                   : '.'}
@@ -502,12 +522,15 @@ export default function ImmediateConsultationModal({
                 Cancelar
               </button>
               <button
-                onClick={() => void submit(window_ ? !window_.fits : false)}
+                // force SOLO cuando no hay lugar ni acortándola. Si se puede
+                // acortar se envía sin force y el backend la recorta hasta la
+                // próxima cita, en vez de pisarla a duración completa.
+                onClick={() => void submit(noRoom)}
                 disabled={saving || (!pendingId && !serviceId)}
                 className="flex-1 py-2.5 bg-teal-500 text-white rounded-lg text-sm font-semibold hover:bg-teal-600 disabled:opacity-40 inline-flex items-center justify-center gap-2"
               >
                 {saving && <Loader2 className="w-4 h-4 animate-spin" />}
-                {window_ && !window_.fits ? 'Registrar igual' : 'Registrar y atender'}
+                {noRoom ? 'Registrar igual' : 'Registrar y atender'}
               </button>
             </div>
           </>
