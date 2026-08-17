@@ -540,8 +540,8 @@ export default function ServicesPage() {
                   {item.sessions_count > 1 && (
                     <div className="flex items-center gap-1">
                       <Tag className="w-3 h-3" />
-                      {item.sessions_count} sesiones — $
-                      {(item.price_usd * item.sessions_count).toFixed(2)} total
+                      {item.sessions_count} sesiones —{' '}
+                      {format(item.price_usd * item.sessions_count)} total
                     </div>
                   )}
                   {item.sessions_count > 1 && item.validity_days != null && (
