@@ -259,12 +259,8 @@ export default function FinancesPage() {
       // Adicionalmente cargamos: gastos, conceptos de ingreso, consultas, ingresos manuales
       // y lista de pacientes en paralelo.
       const doctorId = await getDoctorId();
-      const currentMonthStr = (() => {
-        const d = new Date();
-        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-      })();
 
-      const [paid, pending, exp, concepts, cons, manualRaw, patients, summary] = await Promise.all([
+      const [paid, pending, exp, concepts, cons, manualRaw, patients] = await Promise.all([
         getPayments({ status: 'approved' }),
         getPayments({ status: 'pending' }),
         getExpenses(),
@@ -272,7 +268,9 @@ export default function FinancesPage() {
         getConsultationsForReports(200),
         getManualIncomes(),
         doctorId ? getPatients(doctorId) : Promise.resolve([]),
-        getFinanceSummary(currentMonthStr),
+        // financeSummary is NOT fetched here — a dedicated useEffect below
+        // re-fetches it whenever activeMonth changes, keeping the breakdown
+        // in sync with the user's selected month at all times.
       ]);
 
       const toIncome = (p: Awaited<ReturnType<typeof getPayments>>[number]): Income => ({
@@ -323,7 +321,6 @@ export default function FinancesPage() {
 
       setPatientsList(patients);
       setConsultationsRows(cons);
-      if (summary) setFinanceSummary(summary);
     } catch (err) {
       reportError('doctor/finances', 'loadData', err);
     }
@@ -348,6 +345,23 @@ export default function FinancesPage() {
     const m = String(currentDate.getMonth() + 1).padStart(2, '0');
     return `${y}-${m}`;
   })();
+
+  // ─── Re-fetch financeSummary cuando cambia el mes seleccionado ───────────
+  // financeSummary is the source for the income/expense breakdown cards.
+  // It must always match the month the user is viewing — NOT the current
+  // calendar month at page-load time (which caused the "$25 total but $0
+  // ingresos manuales" bug when navigating to a previous month).
+  useEffect(() => {
+    let cancelled = false;
+    getFinanceSummary(activeMonth)
+      .then((s) => {
+        if (!cancelled && s) setFinanceSummary(s);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [activeMonth]);
 
   // ─── Cargar página de Ingresos cuando cambia tab/página/tamaño/mes ──────
   useEffect(() => {
