@@ -72,7 +72,7 @@ export default function NoShowModal({
   onDone,
 }: NoShowModalProps) {
   // La divisa la elige el especialista en Configuración (puede ser $ o €).
-  const { format: money } = useBcvRate();
+  const { format: money, symbol } = useBcvRate();
 
   // Datos frescos de la consulta. NO se reciben por props a propósito: la agenda
   // solo conoce `plan_price`, que desde que el monto es editable puede diferir
@@ -296,7 +296,7 @@ export default function NoShowModal({
                 {applyFine && (
                   <div className="pl-6 space-y-2">
                     <div className="flex items-center gap-2">
-                      <span className="text-sm text-slate-500">$</span>
+                      <span className="text-sm text-slate-500">{symbol}</span>
                       <input
                         type="number"
                         min="0"
