@@ -1,4 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
+import { randomInt } from 'crypto';
 import { randomUUID } from 'crypto';
 import {
   SELLER_REPOSITORY,
@@ -25,7 +26,7 @@ const MAX_RETRIES = 10;
 function randomCode(): string {
   let code = '';
   for (let i = 0; i < CODE_LENGTH; i++) {
-    code += SAFE_CHARS[Math.floor(Math.random() * SAFE_CHARS.length)];
+    code += SAFE_CHARS[randomInt(0, SAFE_CHARS.length)];
   }
   return code;
 }

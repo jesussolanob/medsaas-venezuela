@@ -1,5 +1,7 @@
 import { Body, Controller, Get, Post, Query, UseGuards } from '@nestjs/common';
 import { AppAuthGuard } from '../../../../infrastructure/auth/app-auth.guard';
+import { RolesGuard } from '../../../../presentation/guards/roles.guard';
+import { Roles } from '../../../../presentation/decorators/roles.decorator';
 import {
   CurrentUser,
   type CurrentUserPayload,
@@ -42,7 +44,11 @@ const ImmediateWindowQuerySchema = z.object({
  * public surface clean and makes the auth boundary explicit.
  */
 @Controller('doctor/appointments')
-@UseGuards(AppAuthGuard)
+// RolesGuard + @Roles explícito: sin esto, cualquier usuario autenticado
+// (incluido un `seller`) alcanzaba estos endpoints y solo lo frenaba el
+// anti-IDOR del paciente. Eso es defensa accidental, no una regla.
+@UseGuards(AppAuthGuard, RolesGuard)
+@Roles('doctor', 'super_admin')
 export class DoctorBookingController {
   constructor(
     private readonly createBooking: CreateBookingUseCase,
