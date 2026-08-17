@@ -235,6 +235,23 @@ describe('AppointmentsController', () => {
 
   describe('PUT /api/appointments/:id/reschedule', () => {
     const newDate = '2026-06-11T14:00:00.000Z';
+    // Offset form sent by RescheduleModal (Venezuela local time, -04:00, no DST).
+    // The RescheduleAppointmentDtoSchema must accept this — regression for the bug
+    // where z.string().datetime() without { offset: true } rejected offset strings
+    // and the BFF propagated a 400 to the UI.
+    const newDateOffset = '2026-08-19T10:00:00-04:00';
+
+    it('accepts an offset datetime string (Venezuela -04:00) — regression for 400 bug', async () => {
+      const rescheduled = makeAppointment({ scheduledAt: new Date(newDateOffset) });
+      mockRescheduleUseCase.execute.mockResolvedValue(rescheduled);
+
+      // Validate the DTO schema directly — this is what ZodValidationPipe would reject.
+      const { RescheduleAppointmentDtoSchema } =
+        await import('@delta/shared-types/dtos/reschedule-appointment.dto');
+      expect(() =>
+        RescheduleAppointmentDtoSchema.parse({ scheduled_at: newDateOffset }),
+      ).not.toThrow();
+    });
 
     it('delegates to RescheduleAppointmentUseCase with correct params', async () => {
       const rescheduled = makeAppointment({ scheduledAt: new Date(newDate) });
