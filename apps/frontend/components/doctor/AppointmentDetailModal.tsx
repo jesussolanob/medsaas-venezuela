@@ -32,6 +32,7 @@ import {
 } from 'lucide-react';
 import type { AppointmentDetailData } from '@/app/api/doctor/appointments/[id]/route';
 import { showToast } from '@/components/ui/Toaster';
+import { useBcvRate } from '@/lib/useBcvRate';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -183,6 +184,8 @@ export default function AppointmentDetailModal({
   onReschedule,
 }: Props) {
   const router = useRouter();
+  // Precio del plan en la divisa del especialista, no en dólar fijo.
+  const { format } = useBcvRate();
 
   const [appt, setAppt] = useState<AppointmentDetailData | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -481,7 +484,9 @@ export default function AppointmentDetailModal({
                 <div className="flex items-center gap-3">
                   <span className="text-xs text-slate-500">{appt.planName}</span>
                   {appt.planPrice != null && (
-                    <span className="text-sm font-bold text-emerald-600">${appt.planPrice}</span>
+                    <span className="text-sm font-bold text-emerald-600">
+                      {format(appt.planPrice)}
+                    </span>
                   )}
                 </div>
               )}

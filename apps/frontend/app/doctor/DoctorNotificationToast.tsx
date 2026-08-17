@@ -20,6 +20,7 @@ import { useEffect, useState, useRef, useCallback } from 'react';
 import { Bell, X, Calendar, User } from 'lucide-react';
 import { getRecentAppointmentsForNotification } from './notification-actions';
 import { reportError } from '@/lib/report-error';
+import { useBcvRate } from '@/lib/useBcvRate';
 
 type NewBooking = {
   id: string;
@@ -57,6 +58,8 @@ function isVersionSkewError(error: unknown): boolean {
 }
 
 export default function DoctorNotificationToast() {
+  // Monto en la divisa del especialista, no en dolar fijo.
+  const { format: fmtMoney } = useBcvRate();
   const [toasts, setToasts] = useState<Toast[]>([]);
   const knownIdsRef = useRef<Set<string>>(new Set());
   const initializedRef = useRef(false);
@@ -209,7 +212,7 @@ export default function DoctorNotificationToast() {
               {toast.booking.plan_name && (
                 <p className="text-xs text-teal-600 font-semibold mt-1">
                   {toast.booking.plan_name}
-                  {toast.booking.plan_price ? ` · $${toast.booking.plan_price}` : ''}
+                  {toast.booking.plan_price ? ` · ${fmtMoney(toast.booking.plan_price)}` : ''}
                 </p>
               )}
             </div>

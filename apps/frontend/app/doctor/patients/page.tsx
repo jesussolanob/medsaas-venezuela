@@ -77,6 +77,7 @@ import { sanitizeHtml } from '@/lib/sanitize-html';
 import { showToast } from '@/components/ui/Toaster';
 import NewRequestModal from '@/components/patient-requests/NewRequestModal';
 import RequestDetailModal from '@/app/doctor/patient-requests/RequestDetailModal';
+import { useBcvRate } from '@/lib/useBcvRate';
 
 // Tipo alineado a la respuesta camelCase del backend shared-files.
 type SharedFile = {
@@ -189,6 +190,8 @@ type DetailTab = 'consultas' | 'historial' | 'seguimiento';
 const SHOW_SHARED_FILES_CARDS = false;
 
 export default function PatientsPage() {
+  // Precios en la divisa del especialista, no en dolar fijo.
+  const { format: fmtMoney, currencyCode } = useBcvRate();
   const router = useRouter();
   // Deep-link: /doctor/patients?open=<patientId> abre directo la ficha del paciente
   // (usado desde el módulo de consultas). Se resuelve al cargar la lista.
@@ -2641,7 +2644,7 @@ export default function PatientsPage() {
                       >
                         <p className="text-sm font-semibold text-slate-800">{plan.name}</p>
                         <p className="text-xs text-slate-500 mt-0.5">
-                          ${plan.price_usd} USD · {plan.duration_minutes} min
+                          {fmtMoney(plan.price_usd)} {currencyCode} · {plan.duration_minutes} min
                         </p>
                       </button>
                     ))}
