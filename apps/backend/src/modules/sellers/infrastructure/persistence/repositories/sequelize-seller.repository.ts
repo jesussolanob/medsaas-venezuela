@@ -99,8 +99,14 @@ export class SequelizeSellerRepository implements ISellerRepository {
   /**
    * Listado de vendedores para `/admin/sellers`.
    *
-   * El conteo de especialistas se resuelve con UNA consulta agrupada por
-   * `sold_by` en vez de un COUNT por vendedor, para no caer en N+1.
+   * Son DOS consultas fijas (no N+1): los vendedores, y de una sola vez los
+   * especialistas de todos ellos. El conteo se hace en memoria.
+   *
+   * A propósito NO se usa `GROUP BY` con `fn('COUNT', col('id'))`: por ese
+   * camino Sequelize no mapea el atributo `soldBy` a la columna real `sold_by`
+   * y genera `SELECT "soldBy" … GROUP BY "sold_by"`, que Postgres rechaza —
+   * fue el 500 del primer intento. El volumen acá es de decenas de filas, así
+   * que contar en JS sale gratis y usa solo construcciones ya probadas.
    */
   async listSellers(): Promise<SellerAdminRow[]> {
     const sellers = await this.profileModel.findAll({
@@ -109,16 +115,14 @@ export class SequelizeSellerRepository implements ISellerRepository {
     });
     if (sellers.length === 0) return [];
 
-    const counts = await this.profileModel.findAll({
-      attributes: ['soldBy', [this.sequelize.fn('COUNT', this.sequelize.col('id')), 'total']],
+    const sold = await this.profileModel.findAll({
       where: { soldBy: { [Op.in]: sellers.map((s) => s.id) } },
-      group: ['sold_by'],
-      raw: true,
     });
 
     const bySeller = new Map<string, number>();
-    for (const row of counts as unknown as Array<{ soldBy: string; total: string }>) {
-      bySeller.set(row.soldBy, Number(row.total));
+    for (const row of sold) {
+      if (!row.soldBy) continue;
+      bySeller.set(row.soldBy, (bySeller.get(row.soldBy) ?? 0) + 1);
     }
 
     return sellers.map((s) => ({
