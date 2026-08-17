@@ -25,6 +25,27 @@ export interface SellerProfile {
   createdAt: Date;
 }
 
+/**
+ * Vendedor como lo ve el super administrador en `/admin/sellers`.
+ *
+ * A diferencia de `SellerProfile` acá SÍ va el correo: el super admin gestiona
+ * esas cuentas y necesita identificarlas. No es PII de paciente, pero igual
+ * NUNCA se loguea.
+ */
+export interface SellerAdminRow {
+  id: string;
+  /** PII — nunca loguear. */
+  fullName: string;
+  /** PII — nunca loguear. */
+  email: string;
+  sellerCode: string;
+  /** Cuántos especialistas dio de alta este vendedor. */
+  specialistsCount: number;
+  createdAt: Date;
+  /** Null si el vendedor nunca entró. */
+  lastSignInAt: Date | null;
+}
+
 /** Specialist row as seen from the seller portal — identity + subscription snapshot. */
 export interface SellerSpecialistRow {
   id: string;
@@ -79,6 +100,12 @@ export interface ISellerRepository {
    * Used by GET /api/seller/me so a seller can read their own code.
    */
   findById(id: string): Promise<SellerProfile | null>;
+
+  /**
+   * Lista TODOS los vendedores para el panel del super administrador,
+   * con cuántos especialistas dio de alta cada uno. Más recientes primero.
+   */
+  listSellers(): Promise<SellerAdminRow[]>;
 
   /**
    * Returns the seller profile whose seller_code matches the given code, or
