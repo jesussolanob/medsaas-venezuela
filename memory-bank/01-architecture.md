@@ -472,6 +472,35 @@ próxima cita)` — si el bloque siguiente está libre ocupa lo que dura, y si n
   Llevar formato al PDF sería una función nueva (parsear el HTML en fragmentos con estilo), no un
   arreglo, y el dueño decidió no hacerla.
 
+- **ADR-040 (2026-08-18):** **Delta Chile es un DESPLIEGUE más, no un fork: el país es
+  configuración.** Un repositorio, una imagen, cuatro despliegues (Venezuela y Chile × producción y
+  pre-producción), con `COUNTRY=ve|cl` inyectado al desplegar. Forkear el repo daba aislamiento
+  gratis y mantenimiento doble para siempre —los 7 defectos arreglados el 17/08 habrían sido 14
+  arreglos—; multi-tenant en un solo despliegue chocaba con el requisito de auditoría y mezclaba
+  datos clínicos de dos jurisdicciones en una base. **El aislamiento va en la infraestructura y la
+  reutilización en el código.**
+  (1) **Se separan Cloud Run, buckets y bases; se comparten proyecto GCP, región (`us-east1`),
+  secretos, clave de cifrado y cuentas de servicio** (decisión del dueño). El aislamiento queda
+  entonces a nivel de DATOS y no de identidad: lo que separa los datos es a qué apunta cada
+  servicio, no un permiso que lo impida. Es **reversible barato** — partir claves y cuentas después
+  es cambiar configuración del despliegue, no código.
+  (2) **Auth0: mismo inquilino, aplicación nueva.** Es seguro porque el rol **no sale del token,
+  sale de `profiles.role` de la base de cada país**, y `FORBIDDEN_ROLES` impide auto-asignarse
+  `super_admin`/`admin`/`seller`: un super admin venezolano que entre a la app chilena no encuentra
+  perfil en la base chilena y nace como especialista común. **El privilegio no viaja.**
+  (3) **La medición que habilita todo esto:** el acoplamiento con Venezuela está concentrado, no
+  desparramado. La tasa son **18 consumidores de un hook** más dos columnas de snapshot (no lógica);
+  la cédula es **un componente y dos regex**; los métodos de pago **ya son datos** y no código; el
+  locale es **solo formato**. Las costuras ya existen: hay que darlas vuelta, no construirlas.
+  (4) **En Chile la segunda moneda no se calcula distinto: DESAPARECE.** El concepto pasa de "tasa
+  BCV" a "¿este país tiene conversión local?". `bcv_rate` y `amount_bs` se dejan nulas — migrar el
+  esquema por país es más caro que dos columnas vacías.
+  ⚠️ **Regla de la fase de refactor:** cada cambio debe dejar el comportamiento venezolano
+  EXACTAMENTE igual, con las 3.898 pruebas como red. Si algo cambia en Venezuela, está mal hecho.
+  ⚠️ **Las migraciones siembran Venezuela:** 8 de las 103 insertan especialidades, métodos de pago,
+  historial de tasa y **documentos legales**. La base chilena corre las 103 y nace con datos
+  venezolanos. **No se tocan las migraciones** (una rota bloquea todos los despliegues): se agrega
+  un paso de siembra por país al final. Plan completo en `memory-bank/11-plan-chile.md`.
 - **ADR-037 (2026-08-16):** **Rol vendedor: la atribución se escribe UNA vez y el código no toca el
   plan.** Un rol `seller` recortado (solo crear especialistas y ver los que registró), gestionado por
   cualquier administrador. La venta se atribuye por dos caminos: alta manual del vendedor, o el
