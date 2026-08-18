@@ -658,10 +658,43 @@ un lote aparte que hay que decidir: o se llena de verdad, o se borra.
 | `app/api/public/seller-code/[code]/route.ts`     | Validación pública; un código inválido responde 200 con `valid:false`, no un error               |
 | `proxy.ts`                                       | Guarda de `/seller` + `homeFor()`: cada rol cae en su portal en vez de en /login                 |
 
+**Agregado el 2026-08-17/18:**
+
+| Componente                                 | Qué hace                                                                                                                                                                                                                                                   |
+| ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `app/r/[code]/page.tsx`                    | **Enlace público del vendedor.** Valida el código, muestra a quién se acredita, lo guarda y sigue a `/login`. Un código inválido NO bloquea: avisa y deja seguir sin atribución (perder el lead sería peor)                                                |
+| `lib/seller-referral.ts`                   | Persistencia del referido en `localStorage`. Es lo que hace que funcione: entre el enlace y el onboarding está **el login de Auth0, que se lleva puesto el parámetro de la URL**. localStorage y no cookie a propósito: es dato de marketing, no de sesión |
+| `app/admin/sellers/page.tsx`               | Pantalla de vendedores para `super_admin`: alta y listado con cuántos especialistas registró cada uno                                                                                                                                                      |
+| `app/api/admin/sellers/route.ts`           | GET listado · POST alta de vendedor                                                                                                                                                                                                                        |
+| `app/api/seller/specialists/[id]/route.ts` | **Ficha completa** del especialista. Anti-IDOR: un id ajeno y uno inexistente devuelven el **mismo 422**                                                                                                                                                   |
+
 **Backend:** módulo `sellers` completo (`create-seller`, `create-seller-specialist`,
-`validate-seller-code`, `get-seller-profile`), migración `20260816000001-seller-role`
-(`profiles.seller_code` único + `profiles.sold_by` con índice parcial). Ver ADR-037.
+`validate-seller-code`, `get-seller-profile`, `get-seller-specialist`, `list-sellers`),
+migración `20260816000001-seller-role` (`profiles.seller_code` único + `profiles.sold_by` con
+índice parcial) y `20260817000001-user-role-add-seller` (el valor `seller` en el ENUM `user_role`
+—faltaba, y el módulo entero devolvía 500 en staging con los tests en verde; ver la nota de enums
+de Postgres). Ver ADR-037.
+
+⚠️ **La ficha NO muestra MPPS ni colegiado** (decisión del dueño, 2026-08-17): son datos de
+habilitación profesional, le sirven a la verificación de admin y no al seguimiento comercial.
+
+⚠️ **`SpecialistNotInPortfolioError`** existe como error propio porque antes se reutilizaba
+`SellerCodeNotFoundError`: el bloqueo era correcto pero el vendedor leía "El código de vendedor
+ingresado no existe" al abrir una ficha, que no tiene nada que ver con lo que estaba haciendo.
 
 ⚠️ **La atribución se escribe UNA vez y se garantiza en la BD** (`UPDATE … WHERE sold_by IS NULL`),
 no en el use case. Si alguna vez hay que "corregir" una atribución, es un cambio de diseño con
 auditoría, no un UPDATE suelto.
+
+### Paginación de listados (2026-08-18)
+
+| Componente                       | Qué hace                                                                                                    |
+| -------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `components/ui/Paginator.tsx`    | Selector de tamaño + páginas. Con `PAGE_SIZE_ALL` (0) fija `totalPages = 1` y rotula "1–{total} de {total}" |
+| `app/doctor/patients/actions.ts` | `getPatients` y **`getPatientsPaged`** paginan de a 100 hasta juntar `total`                                |
+| `app/doctor/finances/actions.ts` | `traerTodasLasPaginas()` — helper compartido por `getIncomePaged`, `getExpensesPaged` y `getExpenses`       |
+
+⚠️ **El backend recorta cualquier `limit` a 100** (`Math.min(100, …)` en los controllers de
+pacientes y finanzas). Pedir `limit=500` **no trae 500: trae 100 y no avisa.** Como el Paginator con
+"Todas" asegura estar mostrando todo, el tope quedaba disimulado. Cualquier listado nuevo que ofrezca
+"Todas" tiene que recorrer páginas, no pedir un número grande. Ver ADR-038.
