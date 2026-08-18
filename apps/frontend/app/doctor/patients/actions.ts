@@ -303,18 +303,29 @@ export async function getPatients(_doctorId: string): Promise<Patient[]> {
  *
  * Backend: GET /api/patients?page=&limit= returns
  * { success, data: BackendPatientListItem[], meta: { total, page, limit } }.
- * Backend max is 100 items per request; use PAGE_SIZE_ALL (0) to fetch up to
- * 100 items (the back-end cap).
  *
- * @param opts.page     - 1-based page number.
- * @param opts.limit    - Items per page. Pass 0 (PAGE_SIZE_ALL) to fetch up to 100.
+ * `limit === PAGE_SIZE_ALL` (0) significa "Todas", y ahí el backend no alcanza:
+ * recorta a 100 por request. Antes esta función mapeaba PAGE_SIZE_ALL a 100 y
+ * devolvía esa única página, mientras el Paginator —que con "Todas" fija
+ * `totalPages = 1` y rotula "1–{total} de {total}"— aseguraba estar mostrando
+ * todo. Un especialista con 140 fichas veía 100, leía "1–140 de 140" y no tenía
+ * ninguna página siguiente que tocar. El tope seguía ahí, solo que disimulado.
+ *
+ * Ahora "Todas" pagina de a 100 hasta juntar `total`, igual que getPatients().
+ *
+ * @param opts.page     - 1-based page number. Se ignora con PAGE_SIZE_ALL.
+ * @param opts.limit    - Items por página. 0 (PAGE_SIZE_ALL) = todas.
  */
 export async function getPatientsPaged(opts: {
   page: number;
   limit: number;
 }): Promise<PagedResult<Patient>> {
-  // Backend caps at 100 per request. PAGE_SIZE_ALL (0) maps to the cap.
-  const effectiveLimit = opts.limit === 0 ? 100 : Math.min(opts.limit, 100);
+  if (opts.limit === 0) {
+    const todos = await getPatients('');
+    return { items: todos, total: todos.length };
+  }
+
+  const effectiveLimit = Math.min(opts.limit, PATIENTS_REQUEST_LIMIT);
 
   const result = await backendGetPaged<BackendPatientListItem>(
     `/api/patients?page=${opts.page}&limit=${effectiveLimit}`,
