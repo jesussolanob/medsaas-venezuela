@@ -45,12 +45,6 @@ export class SellerProfileModel extends Model {
   @Column({ type: DataType.TEXT, allowNull: true })
   declare cedula: string | null;
 
-  @Column({ type: DataType.TEXT, allowNull: true, field: 'mpps_number' })
-  declare mppsNumber: string | null;
-
-  @Column({ type: DataType.TEXT, allowNull: true, field: 'colegiado_number' })
-  declare colegiadoNumber: string | null;
-
   @Default(true)
   @Column({ type: DataType.BOOLEAN, allowNull: true, field: 'is_active' })
   declare isActive: boolean | null;

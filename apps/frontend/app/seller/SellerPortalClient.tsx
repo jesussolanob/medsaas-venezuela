@@ -23,8 +23,6 @@ type SpecialistDetail = SpecialistRow & {
   email: string;
   phone: string | null;
   cedula: string | null;
-  mppsNumber: string | null;
-  colegiadoNumber: string | null;
   isActive: boolean;
 };
 
@@ -431,18 +429,6 @@ export default function SellerPortalClient() {
                   <div>
                     <dt className="text-[11px] font-semibold text-slate-400 uppercase">Cédula</dt>
                     <dd className="text-slate-800">{ficha.cedula || '—'}</dd>
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <dt className="text-[11px] font-semibold text-slate-400 uppercase">MPPS</dt>
-                      <dd className="text-slate-800">{ficha.mppsNumber || '—'}</dd>
-                    </div>
-                    <div>
-                      <dt className="text-[11px] font-semibold text-slate-400 uppercase">
-                        Colegiado
-                      </dt>
-                      <dd className="text-slate-800">{ficha.colegiadoNumber || '—'}</dd>
-                    </div>
                   </div>
                   <div className="grid grid-cols-2 gap-3 pt-2 border-t border-slate-100">
                     <div>
