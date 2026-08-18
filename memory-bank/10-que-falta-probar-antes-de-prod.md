@@ -56,7 +56,10 @@
 
 ## 3 · Documentos y PDF
 
-32. ⚠️ El **documento compartido** sale **SIN el formato** del editor (negrita/cursiva/subrayado se pierden). El PDF convierte a texto plano a propósito (`htmlToPlainText`). Las viñetas y los párrafos sí salen bien. **Requiere decisión: es una función nueva, no un arreglo.**
+32. ✅ **DECIDIDO (dueño, 2026-08-18): el PDF se queda en texto plano.** No se lleva el
+    formato del editor al PDF. Lo que sí funciona y hay que verificar: el paciente **ve el
+    formato en el portal** (negrita, cursiva, viñetas), porque esa vista renderiza el HTML.
+    En el PDF solo se conservan párrafos y viñetas. **No es un defecto — no reportarlo.**
 33. En el PDF, la **viñeta de las listas** no queda sola en su renglón ✅
 
 ## 4 · Cobros y Finanzas
