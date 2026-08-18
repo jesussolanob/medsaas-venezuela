@@ -37,6 +37,7 @@ export class SequelizeDoctorRegistrationRepository implements IDoctorRegistratio
     await row.update({
       fullName: params.fullName,
       cedula: params.cedula,
+      phone: params.phone,
       mppsNumber: params.mppsNumber,
       colegiadoNumber: params.colegiadoNumber,
       specialty: params.specialty,

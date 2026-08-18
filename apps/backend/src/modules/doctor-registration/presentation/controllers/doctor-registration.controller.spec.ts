@@ -82,6 +82,7 @@ describe('DoctorRegistrationController', () => {
 
       const result = await controller.register(doctorUser, {
         full_name: 'Dr. Test',
+        phone: '584141234567',
         cedula: 'V-12345',
       });
 
@@ -98,6 +99,7 @@ describe('DoctorRegistrationController', () => {
 
       await controller.register(doctorUser, {
         full_name: 'Dr. Test',
+        phone: '584141234567',
         cedula: 'V-12345',
         mpps_number: 'MP-1',
         colegiado_number: 'COL-2',
@@ -119,6 +121,7 @@ describe('DoctorRegistrationController', () => {
 
       await controller.register(doctorUser, {
         full_name: 'Dr. Test',
+        phone: '584141234567',
         cedula: 'V-12345',
         specialty: 'Cardiología',
       });
@@ -136,6 +139,7 @@ describe('DoctorRegistrationController', () => {
 
       await controller.register(doctorUser, {
         full_name: 'Dr. Test',
+        phone: '584141234567',
         cedula: 'V-12345',
       });
 

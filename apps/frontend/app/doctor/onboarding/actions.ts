@@ -26,6 +26,8 @@ import type { DaySchedule } from '@/lib/schedule-utils';
 export interface RegistrationInput {
   full_name: string;
   cedula: string;
+  /** Teléfono canónico (país + número, solo dígitos). Obligatorio. */
+  phone: string;
   specialty?: string;
   /** F | M | O. null/undefined = prefiere no decirlo. */
   gender?: string | null;
@@ -67,6 +69,7 @@ export async function submitDoctorRegistration(
   const body: Record<string, unknown> = {
     full_name: input.full_name.trim(),
     cedula: input.cedula.trim(),
+    phone: input.phone.trim(),
   };
 
   if (input.specialty?.trim()) {

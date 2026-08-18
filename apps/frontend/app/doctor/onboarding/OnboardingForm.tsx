@@ -34,6 +34,7 @@ import TermsModal from '@/components/legal/TermsModal';
 import OnboardingStepOffice from './OnboardingStepOffice';
 import OnboardingStepService from './OnboardingStepService';
 import OnboardingWelcome from './OnboardingWelcome';
+import PhoneInput from '@/components/shared/PhoneInput';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -57,6 +58,7 @@ interface Props {
 interface FieldErrors {
   full_name?: string;
   cedula?: string;
+  phone?: string;
   specialty?: string;
 }
 
@@ -448,6 +450,10 @@ export default function OnboardingForm({
   const [isPending, startTransition] = useTransition();
 
   const [fullName, setFullName] = useState(initialFullName);
+  // Teléfono: obligatorio y primero — es el punto de contacto de Delta con el
+  // especialista (decisión del dueño, 2026-08-17). PhoneInput emite el canónico
+  // 'código de país + número', solo dígitos, y '' cuando está incompleto.
+  const [phone, setPhone] = useState('');
   const [cedulaPrefix, setCedulaPrefix] = useState<'V' | 'E' | 'P'>(initialCedulaPrefix);
   const [cedulaNumber, setCedulaNumber] = useState(initialCedulaNumber);
   const [specialty, setSpecialty] = useState<string>(() => {
@@ -560,6 +566,10 @@ export default function OnboardingForm({
       errors.cedula = 'Solo dígitos, entre 6 y 9 caracteres';
     }
 
+    if (!phone.trim()) {
+      errors.phone = 'El teléfono es obligatorio';
+    }
+
     const resolvedSpecialty = specialty === OTRO_VALUE ? customSpecialty.trim() : specialty;
     if (!resolvedSpecialty) {
       errors.specialty = 'La especialidad es obligatoria';
@@ -590,6 +600,7 @@ export default function OnboardingForm({
       const result = await submitDoctorRegistration({
         full_name: fullName.trim(),
         cedula: cedulaFormatted,
+        phone: phone.trim(),
         specialty: resolvedSpecialty || undefined,
         gender: gender || null,
         mpps_number: mppsNumber.trim() || null,
@@ -795,6 +806,31 @@ export default function OnboardingForm({
               <p className="text-sm text-red-600">{serverError}</p>
             </div>
           )}
+
+          {/* Teléfono — PRIMERO y obligatorio: es el punto de contacto de Delta. */}
+          <div>
+            <label
+              htmlFor="field-phone"
+              className="block text-xs font-semibold mb-1.5"
+              style={{ color: 'var(--dh-gray-700)' }}
+            >
+              Teléfono <span className="text-red-400">*</span>
+            </label>
+            <PhoneInput
+              name="field-phone"
+              value={phone}
+              onChange={(canonical) => {
+                setPhone(canonical);
+                if (fieldErrors.phone) setFieldErrors((prev) => ({ ...prev, phone: undefined }));
+              }}
+              required
+              error={fieldErrors.phone}
+              autoFocus
+            />
+            <p className="text-xs mt-1" style={{ color: 'var(--dh-gray-400)' }}>
+              Es la vía por la que te vamos a contactar.
+            </p>
+          </div>
 
           {/* Full name */}
           <div>

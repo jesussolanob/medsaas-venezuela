@@ -8,6 +8,8 @@ export const DOCTOR_REGISTRATION_REPOSITORY = Symbol('IDoctorRegistrationReposit
 export interface RegistrationUpdateParams {
   fullName: string;
   cedula: string;
+  /** Teléfono de contacto — obligatorio desde 2026-08-17. Solo dígitos con país. */
+  phone: string;
   mppsNumber: string | null;
   colegiadoNumber: string | null;
   specialty: string | null;
