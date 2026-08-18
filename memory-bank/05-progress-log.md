@@ -3911,3 +3911,46 @@ mandarles recordatorios reales a esos dos pacientes.
 `sessions_count − consultas del plan` como respaldo cuando no hay filas. Habría arreglado
 este caso solo y haría al sistema tolerante a fallos de generación. El dueño prefirió
 dejarlo como está (2026-08-17).
+
+### 2026-08-17 — Enlace del vendedor + teléfono obligatorio en el onboarding
+
+#### Teléfono obligatorio (pedido del dueño)
+
+El onboarding **no pedía teléfono en absoluto**. La columna `profiles.phone` existía desde la
+migración inicial, pero el modelo del módulo de registro no la declaraba, así que ni siquiera
+se podía escribir — **no hizo falta migración**. Ahora va **primero, obligatorio y con foco
+automático**, reutilizando el `PhoneInput` que ya existía. Cableado completo: DTO (8–20 dígitos
+con código de país) → controller → use case → puerto → repositorio → modelo, y del lado del
+frontend la server action y el BFF.
+
+⚠️ Al ser obligatorio en el DTO, **cualquier especialista que vuelva a entrar al wizard va a
+tener que cargar su teléfono** para poder guardar. A los que ya completaron el alta no les
+cambia nada mientras no reingresen.
+
+#### El enlace del vendedor (no existía)
+
+El QA preguntó dónde estaba y la respuesta era que **nunca se construyó**: lo que se
+especificó fue "que pueda compartir su código", y el enlace nunca entró en el alcance. El
+código se dictaba por teléfono y se tipeaba a mano — un error de una letra dejaba la venta sin
+acreditar.
+
+Tres piezas nuevas:
+
+1. **`/r/<CODIGO>`** — página pública. Valida el código, muestra a quién se acredita (para que
+   la persona confirme que abrió el enlace correcto), lo guarda y sigue a `/login`, que con
+   Auth0 es también el registro. Un código inválido **NO bloquea**: avisa y deja seguir sin
+   atribución, porque perder el lead sería peor.
+2. **`lib/seller-referral.ts`** — persistencia en `localStorage`. Es lo que hace que funcione:
+   entre el enlace y el onboarding está el **login de Auth0, que se lleva puesto el parámetro
+   de la URL**. Se eligió localStorage y no cookie a propósito: es un dato de marketing, no de
+   sesión, así no viaja al servidor en cada request.
+3. El **onboarding autopobla** el campo desde `?ref=` o desde localStorage, en ese orden, y
+   solo si está vacío. Al completar el alta **borra** el referido: en un equipo compartido el
+   próximo especialista no debe quedar acreditado al mismo vendedor.
+
+En el portal del vendedor el enlace aparece con **copiar** y **compartir por WhatsApp**; el
+dominio se toma del navegador porque cambia entre staging y prod.
+
+**Verificado en staging:** `/r/DA69AA` → guarda `DA69AA` y redirige al login ✅ ·
+`/r/ZZ99ZZ` (inexistente) → redirige igual y **no guarda nada** ✅.
+Falta probar el tramo final —que el onboarding lo autopoble— porque requiere un alta nueva.
