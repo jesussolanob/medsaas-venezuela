@@ -118,6 +118,7 @@ export class DoctorRegistrationController {
       doctorId: user.sub,
       fullName: body.full_name,
       cedula: body.cedula,
+      phone: body.phone,
       mppsNumber: body.mpps_number ?? null,
       colegiadoNumber: body.colegiado_number ?? null,
       specialty: body.specialty ?? null,

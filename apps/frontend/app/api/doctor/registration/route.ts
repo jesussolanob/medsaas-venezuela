@@ -18,6 +18,8 @@ import { backendPost } from '@/lib/api-client.server';
 interface RegistrationBody {
   full_name: string;
   cedula: string;
+  /** Obligatorio desde 2026-08-17: es el punto de contacto de Delta. */
+  phone: string;
   mpps_number?: string | null;
   colegiado_number?: string | null;
 }
@@ -38,9 +40,9 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'Cuerpo de la solicitud inválido' }, { status: 400 });
   }
 
-  if (!body.full_name?.trim() || !body.cedula?.trim()) {
+  if (!body.full_name?.trim() || !body.cedula?.trim() || !body.phone?.trim()) {
     return NextResponse.json(
-      { error: 'El nombre completo y la cédula son obligatorios' },
+      { error: 'El nombre completo, la cédula y el teléfono son obligatorios' },
       { status: 400 },
     );
   }

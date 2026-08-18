@@ -22,6 +22,8 @@ export interface CompleteRegistrationInput {
   doctorId: string;
   fullName: string;
   cedula: string;
+  /** Teléfono de contacto — obligatorio: es como Delta contacta al especialista. */
+  phone: string;
   mppsNumber?: string | null;
   colegiadoNumber?: string | null;
   specialty?: string | null;
@@ -111,6 +113,7 @@ export class CompleteRegistrationUseCase {
     const updated = await this.repo.updateRegistration(input.doctorId, {
       fullName: input.fullName,
       cedula: input.cedula,
+      phone: input.phone,
       mppsNumber: input.mppsNumber ?? null,
       colegiadoNumber: input.colegiadoNumber ?? null,
       specialty: input.specialty ?? null,

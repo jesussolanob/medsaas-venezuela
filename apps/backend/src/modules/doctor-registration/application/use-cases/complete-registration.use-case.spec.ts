@@ -138,6 +138,7 @@ describe('CompleteRegistrationUseCase', () => {
 
     const result = await useCase.execute({
       doctorId: 'doc-1',
+      phone: '584141234567',
       fullName: 'Carlos M.',
       cedula: 'V-12345678',
     });
@@ -145,6 +146,7 @@ describe('CompleteRegistrationUseCase', () => {
     expect(mockRepo.updateRegistration).toHaveBeenCalledWith('doc-1', {
       fullName: 'Carlos M.',
       cedula: 'V-12345678',
+      phone: '584141234567',
       mppsNumber: null,
       colegiadoNumber: null,
       specialty: null,
@@ -164,6 +166,7 @@ describe('CompleteRegistrationUseCase', () => {
 
     await useCase.execute({
       doctorId: 'doc-1',
+      phone: '584141234567',
       fullName: 'Dr. Name',
       cedula: 'V-999',
       mppsNumber: 'MP-1',
@@ -173,6 +176,7 @@ describe('CompleteRegistrationUseCase', () => {
     expect(mockRepo.updateRegistration).toHaveBeenCalledWith('doc-1', {
       fullName: 'Dr. Name',
       cedula: 'V-999',
+      phone: '584141234567',
       mppsNumber: 'MP-1',
       colegiadoNumber: 'COL-2',
       specialty: null,
@@ -189,6 +193,7 @@ describe('CompleteRegistrationUseCase', () => {
 
     await useCase.execute({
       doctorId: 'doc-1',
+      phone: '584141234567',
       fullName: 'Dr. Card',
       cedula: 'V-123',
       specialty: 'Cardiología',
@@ -197,6 +202,7 @@ describe('CompleteRegistrationUseCase', () => {
     expect(mockRepo.updateRegistration).toHaveBeenCalledWith('doc-1', {
       fullName: 'Dr. Card',
       cedula: 'V-123',
+      phone: '584141234567',
       mppsNumber: null,
       colegiadoNumber: null,
       specialty: 'Cardiología',
@@ -227,6 +233,7 @@ describe('CompleteRegistrationUseCase', () => {
 
     await useCase.execute({
       doctorId: 'doc-1',
+      phone: '584141234567',
       fullName: 'Carlos M.',
       cedula: 'V-12345678',
       mppsNumber: 'MP-1',
@@ -254,6 +261,7 @@ describe('CompleteRegistrationUseCase', () => {
 
     await useCase.execute({
       doctorId: 'doc-1',
+      phone: '584141234567',
       fullName: 'Carlos M.',
       cedula: '  V-12345678  ',
       mppsNumber: '',
@@ -272,7 +280,12 @@ describe('CompleteRegistrationUseCase', () => {
     mockRepo.updateRegistration.mockResolvedValue(verificado);
     mockRepo.findAllSuperAdmins.mockResolvedValue([]);
 
-    await useCase.execute({ doctorId: 'doc-1', fullName: 'Carlos M.', cedula: 'V-22222222' });
+    await useCase.execute({
+      doctorId: 'doc-1',
+      phone: '584141234567',
+      fullName: 'Carlos M.',
+      cedula: 'V-22222222',
+    });
 
     expect(mockRepo.updateRegistration).toHaveBeenCalledWith(
       'doc-1',
@@ -292,6 +305,7 @@ describe('CompleteRegistrationUseCase', () => {
 
     await useCase.execute({
       doctorId: 'doc-1',
+      phone: '584141234567',
       fullName: 'Carlos M.',
       cedula: 'V-12345678',
       mppsNumber: 'MP-999',
@@ -311,6 +325,7 @@ describe('CompleteRegistrationUseCase', () => {
 
     await useCase.execute({
       doctorId: 'doc-1',
+      phone: '584141234567',
       fullName: 'Dr. Gen',
       cedula: 'V-456',
     });
@@ -339,7 +354,12 @@ describe('CompleteRegistrationUseCase', () => {
     ]);
     mockMailer.sendTemplate.mockResolvedValue({ id: 'msg-3' });
 
-    await useCase.execute({ doctorId: 'doc-1', fullName: 'Carlos M.', cedula: 'V-12345678' });
+    await useCase.execute({
+      doctorId: 'doc-1',
+      phone: '584141234567',
+      fullName: 'Carlos M.',
+      cedula: 'V-12345678',
+    });
 
     // Allow fire-and-forget to settle
     await Promise.resolve();
@@ -369,7 +389,12 @@ describe('CompleteRegistrationUseCase', () => {
     ]);
     mockMailer.sendTemplate.mockResolvedValue({ id: 'msg-fallback' });
 
-    await useCase.execute({ doctorId: 'doc-1', fullName: 'Carlos M.', cedula: 'V-12345678' });
+    await useCase.execute({
+      doctorId: 'doc-1',
+      phone: '584141234567',
+      fullName: 'Carlos M.',
+      cedula: 'V-12345678',
+    });
     await Promise.resolve();
 
     expect(mockMailer.sendTemplate).toHaveBeenCalledWith(
@@ -390,7 +415,12 @@ describe('CompleteRegistrationUseCase', () => {
     mockRepo.updateRegistration.mockResolvedValue(registration);
     mockRepo.findAllSuperAdmins.mockResolvedValue([]);
 
-    await useCase.execute({ doctorId: 'doc-1', fullName: 'Dr.', cedula: 'V-1' });
+    await useCase.execute({
+      doctorId: 'doc-1',
+      phone: '584141234567',
+      fullName: 'Dr.',
+      cedula: 'V-1',
+    });
     await Promise.resolve();
 
     // Only the welcome email should be sent (no admin email)
@@ -409,7 +439,7 @@ describe('CompleteRegistrationUseCase', () => {
     mockMailer.sendTemplate.mockRejectedValue(new Error('SMTP down'));
 
     await expect(
-      useCase.execute({ doctorId: 'doc-1', fullName: 'Dr.', cedula: 'V-1' }),
+      useCase.execute({ doctorId: 'doc-1', phone: '584141234567', fullName: 'Dr.', cedula: 'V-1' }),
     ).resolves.toBeDefined();
   });
 
@@ -426,7 +456,7 @@ describe('CompleteRegistrationUseCase', () => {
     mockVerifyMpps.execute.mockRejectedValueOnce(new Error('SACS down'));
 
     await expect(
-      useCase.execute({ doctorId: 'doc-1', fullName: 'Dr.', cedula: 'V-1' }),
+      useCase.execute({ doctorId: 'doc-1', phone: '584141234567', fullName: 'Dr.', cedula: 'V-1' }),
     ).resolves.toMatchObject({ doctorId: 'doc-1', verificationStatus: 'pending' });
   });
 
@@ -436,7 +466,12 @@ describe('CompleteRegistrationUseCase', () => {
     mockRepo.updateRegistration.mockResolvedValue(registration);
     mockRepo.findAllSuperAdmins.mockResolvedValue([]);
 
-    await useCase.execute({ doctorId: 'doc-1', fullName: 'Dr.', cedula: 'V-1' });
+    await useCase.execute({
+      doctorId: 'doc-1',
+      phone: '584141234567',
+      fullName: 'Dr.',
+      cedula: 'V-1',
+    });
     // Allow fire-and-forget to settle
     await Promise.resolve();
 
@@ -454,7 +489,12 @@ describe('CompleteRegistrationUseCase', () => {
     mockRepo.findAllSuperAdmins.mockResolvedValue([]);
     mockMailer.sendTemplate.mockResolvedValue({ id: 'welcome-msg' });
 
-    await useCase.execute({ doctorId: 'doc-1', fullName: 'Ana G.', cedula: 'V-99999' });
+    await useCase.execute({
+      doctorId: 'doc-1',
+      phone: '584141234567',
+      fullName: 'Ana G.',
+      cedula: 'V-99999',
+    });
     await Promise.resolve();
 
     expect(mockMailer.sendTemplate).toHaveBeenCalledWith(
@@ -472,7 +512,12 @@ describe('CompleteRegistrationUseCase', () => {
     mockRepo.findAllSuperAdmins.mockResolvedValue([]);
     mockMailer.sendTemplate.mockResolvedValue({ id: 'welcome-msg-2' });
 
-    await useCase.execute({ doctorId: 'doc-1', fullName: 'Pedro R.', cedula: 'V-11111' });
+    await useCase.execute({
+      doctorId: 'doc-1',
+      phone: '584141234567',
+      fullName: 'Pedro R.',
+      cedula: 'V-11111',
+    });
     await Promise.resolve();
 
     const welcomeCalls = (mockMailer.sendTemplate as jest.Mock).mock.calls.filter(
@@ -488,7 +533,12 @@ describe('CompleteRegistrationUseCase', () => {
     mockRepo.findAllSuperAdmins.mockResolvedValue([]);
     mockMailer.sendTemplate.mockResolvedValue({ id: 'welcome-ghost' });
 
-    await useCase.execute({ doctorId: 'doc-1', fullName: 'Ghost Dr.', cedula: 'V-00001' });
+    await useCase.execute({
+      doctorId: 'doc-1',
+      phone: '584141234567',
+      fullName: 'Ghost Dr.',
+      cedula: 'V-00001',
+    });
     await Promise.resolve();
 
     const welcomeCalls = (mockMailer.sendTemplate as jest.Mock).mock.calls.filter(
@@ -505,7 +555,12 @@ describe('CompleteRegistrationUseCase', () => {
     mockRepo.findAllSuperAdmins.mockResolvedValue([]);
     mockMailer.sendTemplate.mockResolvedValue({ id: 'admin-msg' });
 
-    await useCase.execute({ doctorId: 'doc-1', fullName: 'Carlos M.', cedula: 'V-12345678' });
+    await useCase.execute({
+      doctorId: 'doc-1',
+      phone: '584141234567',
+      fullName: 'Carlos M.',
+      cedula: 'V-12345678',
+    });
     await Promise.resolve();
 
     const welcomeCalls = (mockMailer.sendTemplate as jest.Mock).mock.calls.filter(
@@ -521,7 +576,12 @@ describe('CompleteRegistrationUseCase', () => {
     mockRepo.updateRegistration.mockResolvedValue(updated);
     mockRepo.findAllSuperAdmins.mockResolvedValue([]);
 
-    await useCase.execute({ doctorId: 'doc-1', fullName: 'No Email Dr.', cedula: 'V-33333' });
+    await useCase.execute({
+      doctorId: 'doc-1',
+      phone: '584141234567',
+      fullName: 'No Email Dr.',
+      cedula: 'V-33333',
+    });
     await Promise.resolve();
 
     const welcomeCalls = (mockMailer.sendTemplate as jest.Mock).mock.calls.filter(
@@ -537,7 +597,12 @@ describe('CompleteRegistrationUseCase', () => {
     mockRepo.findAllSuperAdmins.mockResolvedValue([]);
     mockMailer.sendTemplate.mockResolvedValue({ id: 'welcome-noname' });
 
-    await useCase.execute({ doctorId: 'doc-1', fullName: '', cedula: 'V-55555' });
+    await useCase.execute({
+      doctorId: 'doc-1',
+      phone: '584141234567',
+      fullName: '',
+      cedula: 'V-55555',
+    });
     await Promise.resolve();
 
     expect(mockMailer.sendTemplate).toHaveBeenCalledWith(
@@ -560,7 +625,12 @@ describe('CompleteRegistrationUseCase', () => {
     mockRepo.findAllSuperAdmins.mockResolvedValue([]);
     mockMailer.sendTemplate.mockResolvedValue({ id: 'slash-msg' });
 
-    await useCase.execute({ doctorId: 'doc-1', fullName: 'Dr. Slash', cedula: 'V-77777' });
+    await useCase.execute({
+      doctorId: 'doc-1',
+      phone: '584141234567',
+      fullName: 'Dr. Slash',
+      cedula: 'V-77777',
+    });
     await Promise.resolve();
 
     expect(mockMailer.sendTemplate).toHaveBeenCalledWith(
@@ -583,7 +653,12 @@ describe('CompleteRegistrationUseCase', () => {
     mockRepo.findAllSuperAdmins.mockResolvedValue([]);
     mockMailer.sendTemplate.mockResolvedValue({ id: 'front-msg' });
 
-    await useCase.execute({ doctorId: 'doc-1', fullName: 'Dr. Front', cedula: 'V-88888' });
+    await useCase.execute({
+      doctorId: 'doc-1',
+      phone: '584141234567',
+      fullName: 'Dr. Front',
+      cedula: 'V-88888',
+    });
     await Promise.resolve();
 
     expect(mockMailer.sendTemplate).toHaveBeenCalledWith(
@@ -602,7 +677,12 @@ describe('CompleteRegistrationUseCase', () => {
     mockMailer.sendTemplate.mockRejectedValue(new Error('welcome SMTP error'));
 
     await expect(
-      useCase.execute({ doctorId: 'doc-1', fullName: 'Dr. Fail', cedula: 'V-66666' }),
+      useCase.execute({
+        doctorId: 'doc-1',
+        phone: '584141234567',
+        fullName: 'Dr. Fail',
+        cedula: 'V-66666',
+      }),
     ).resolves.toMatchObject({ doctorId: 'doc-1' });
   });
 
@@ -618,6 +698,7 @@ describe('CompleteRegistrationUseCase', () => {
 
     await useCase.execute({
       doctorId: 'doc-1',
+      phone: '584141234567',
       fullName: 'Carlos M.',
       cedula: 'V-12345678',
       acceptedTerms: true,
@@ -641,6 +722,7 @@ describe('CompleteRegistrationUseCase', () => {
 
     await useCase.execute({
       doctorId: 'doc-1',
+      phone: '584141234567',
       fullName: 'Carlos M.',
       cedula: 'V-12345678',
       acceptedTerms: false,
@@ -659,6 +741,7 @@ describe('CompleteRegistrationUseCase', () => {
 
     await useCase.execute({
       doctorId: 'doc-1',
+      phone: '584141234567',
       fullName: 'Carlos M.',
       cedula: 'V-12345678',
     });
@@ -678,6 +761,7 @@ describe('CompleteRegistrationUseCase', () => {
     await expect(
       useCase.execute({
         doctorId: 'doc-1',
+        phone: '584141234567',
         fullName: 'Dr.',
         cedula: 'V-1',
         acceptedTerms: true,
@@ -694,6 +778,7 @@ describe('CompleteRegistrationUseCase', () => {
 
     await useCase.execute({
       doctorId: 'doc-1',
+      phone: '584141234567',
       fullName: 'Dr.',
       cedula: 'V-1',
       acceptedTerms: true,
@@ -718,6 +803,7 @@ describe('CompleteRegistrationUseCase', () => {
 
     await useCase.execute({
       doctorId: 'doc-1',
+      phone: '584141234567',
       fullName: 'Dr. Ramírez',
       cedula: 'V-99999',
       sellerCode: 'ABCDEF',
@@ -737,6 +823,7 @@ describe('CompleteRegistrationUseCase', () => {
 
     await useCase.execute({
       doctorId: 'doc-1',
+      phone: '584141234567',
       fullName: 'Dr. Test',
       cedula: 'V-11111',
       sellerCode: '  abcdef  ',
@@ -755,6 +842,7 @@ describe('CompleteRegistrationUseCase', () => {
     await expect(
       useCase.execute({
         doctorId: 'doc-1',
+        phone: '584141234567',
         fullName: 'Dr. Test',
         cedula: 'V-11111',
         sellerCode: 'XXXXXX',
@@ -770,7 +858,12 @@ describe('CompleteRegistrationUseCase', () => {
     mockRepo.updateRegistration.mockResolvedValue(registration);
     mockRepo.findAllSuperAdmins.mockResolvedValue([]);
 
-    await useCase.execute({ doctorId: 'doc-1', fullName: 'Dr.', cedula: 'V-1' });
+    await useCase.execute({
+      doctorId: 'doc-1',
+      phone: '584141234567',
+      fullName: 'Dr.',
+      cedula: 'V-1',
+    });
 
     expect(mockSellerRepo.findByCode).not.toHaveBeenCalled();
     expect(mockSellerRepo.linkSoldBy).not.toHaveBeenCalled();
@@ -782,7 +875,13 @@ describe('CompleteRegistrationUseCase', () => {
     mockRepo.updateRegistration.mockResolvedValue(registration);
     mockRepo.findAllSuperAdmins.mockResolvedValue([]);
 
-    await useCase.execute({ doctorId: 'doc-1', fullName: 'Dr.', cedula: 'V-1', sellerCode: null });
+    await useCase.execute({
+      doctorId: 'doc-1',
+      phone: '584141234567',
+      fullName: 'Dr.',
+      cedula: 'V-1',
+      sellerCode: null,
+    });
 
     expect(mockSellerRepo.findByCode).not.toHaveBeenCalled();
     expect(mockSellerRepo.linkSoldBy).not.toHaveBeenCalled();
