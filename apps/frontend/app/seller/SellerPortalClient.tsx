@@ -16,7 +16,7 @@
  */
 
 import { useCallback, useEffect, useState } from 'react';
-import { Users, Copy, Check, Loader2, UserPlus, AlertCircle, X } from 'lucide-react';
+import { Users, Copy, Check, Loader2, UserPlus, AlertCircle, X, Share2 } from 'lucide-react';
 import { showToast } from '@/components/ui/Toaster';
 
 type SpecialistRow = {
@@ -64,6 +64,12 @@ export default function SellerPortalClient() {
   const [rows, setRows] = useState<SpecialistRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
+  const [linkCopied, setLinkCopied] = useState(false);
+  // El enlace se arma en el cliente: el dominio cambia entre staging y prod,
+  // asi que se toma del navegador en vez de hardcodearlo o pasarlo por env.
+  const enlace = code
+    ? `${typeof window === 'undefined' ? '' : window.location.origin}/r/${code}`
+    : '';
 
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ fullName: '', email: '', specialty: '', phone: '' });
@@ -191,6 +197,52 @@ export default function SellerPortalClient() {
             <strong>&ldquo;Código de vendedor&rdquo;</strong>. Lo que se registre con tu código se
             te acredita automáticamente.
           </p>
+
+          {/* El enlace: evita que el código se dicte y se tipee mal. */}
+          {code && (
+            <div className="mt-5 pt-5 border-t border-slate-100">
+              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
+                Tu enlace para compartir
+              </p>
+              <div className="flex items-center gap-2 flex-wrap">
+                <code className="text-xs sm:text-sm text-slate-700 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 break-all flex-1 min-w-[220px]">
+                  {enlace}
+                </code>
+                <button
+                  onClick={() => {
+                    void navigator.clipboard.writeText(enlace);
+                    setLinkCopied(true);
+                    setTimeout(() => setLinkCopied(false), 2000);
+                  }}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 border border-slate-200 rounded-lg text-xs font-semibold text-slate-600 hover:bg-slate-50"
+                >
+                  {linkCopied ? (
+                    <>
+                      <Check className="w-3.5 h-3.5 text-emerald-600" /> Copiado
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-3.5 h-3.5" /> Copiar enlace
+                    </>
+                  )}
+                </button>
+                <a
+                  href={`https://wa.me/?text=${encodeURIComponent(
+                    `Te comparto el enlace para registrarte en Delta Salud: ${enlace}`,
+                  )}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 px-3 py-2 bg-teal-500 hover:bg-teal-600 text-white rounded-lg text-xs font-semibold transition-colors"
+                >
+                  <Share2 className="w-3.5 h-3.5" /> WhatsApp
+                </a>
+              </div>
+              <p className="text-xs text-slate-500 mt-2">
+                Quien entre por acá queda asociado a vos{' '}
+                <strong>sin tener que escribir nada</strong>: el código lo completa el sistema.
+              </p>
+            </div>
+          )}
         </section>
 
         {/* Resumen */}

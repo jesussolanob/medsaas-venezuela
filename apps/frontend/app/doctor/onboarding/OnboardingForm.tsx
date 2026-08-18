@@ -35,6 +35,7 @@ import OnboardingStepOffice from './OnboardingStepOffice';
 import OnboardingStepService from './OnboardingStepService';
 import OnboardingWelcome from './OnboardingWelcome';
 import PhoneInput from '@/components/shared/PhoneInput';
+import { leerReferido, limpiarReferido, esCodigoValido } from '@/lib/seller-referral';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -476,6 +477,32 @@ export default function OnboardingForm({
   // entera semanas después, cuando reclama.
   const [sellerCode, setSellerCode] = useState('');
   const [sellerName, setSellerName] = useState<string | null>(null);
+
+  /**
+   * Autopoblar el código del vendedor.
+   *
+   * Dos orígenes, en este orden:
+   *   1. `?ref=` en la URL — por si se llega directo con el parámetro.
+   *   2. localStorage — lo normal: lo dejó la página /r/<código> ANTES del login
+   *      de Auth0, que es donde el parámetro de la URL se pierde.
+   *
+   * Solo autopobla si el campo está vacío: si el especialista ya escribió algo,
+   * manda lo que él escribió.
+   */
+  useEffect(() => {
+    if (sellerCode) return;
+    // En un tick aparte, igual que el portal del vendedor: llamar setState
+    // directo desde el cuerpo del efecto encadena renders y lo marca el linter.
+    const t = setTimeout(() => {
+      const enUrl = new URLSearchParams(window.location.search).get('ref');
+      const candidato =
+        enUrl && esCodigoValido(enUrl) ? enUrl.trim().toUpperCase() : leerReferido();
+      if (candidato) setSellerCode(candidato);
+    }, 0);
+    return () => clearTimeout(t);
+    // Solo al montar: es una precarga, no un binding permanente.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [sellerCodeInvalid, setSellerCodeInvalid] = useState(false);
   const [checkingSellerCode, setCheckingSellerCode] = useState(false);
 
@@ -613,6 +640,10 @@ export default function OnboardingForm({
         setServerError(result.error ?? 'Error al enviar tu registro. Intenta nuevamente.');
         return;
       }
+
+      // Alta aceptada: se borra el referido para que en un equipo compartido
+      // el próximo especialista no quede acreditado al mismo vendedor.
+      limpiarReferido();
 
       // Step 1 done — proceed to step 2
       irAlPaso(2);
