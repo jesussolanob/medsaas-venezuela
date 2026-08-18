@@ -3954,3 +3954,89 @@ dominio se toma del navegador porque cambia entre staging y prod.
 **Verificado en staging:** `/r/DA69AA` → guarda `DA69AA` y redirige al login ✅ ·
 `/r/ZZ99ZZ` (inexistente) → redirige igual y **no guarda nada** ✅.
 Falta probar el tramo final —que el onboarding lo autopoble— porque requiere un alta nueva.
+
+### 2026-08-17/18 — Ficha del especialista para el vendedor + QA completo del portal del especialista
+
+Dos tramos en la misma sesión: se cerró el módulo de ventas (lo último que faltaba y se podía
+hacer solo) y se recorrió con navegador real todo lo que el QA manual no había tocado del
+portal del especialista.
+
+#### Ficha del especialista en el portal del vendedor
+
+El dueño pidió que el vendedor pueda abrir la **ficha completa** del especialista que registró
+("es lo que me interesa, que vean los datos"), y después sacar de esa ficha **MPPS y colegiado**:
+son datos de habilitación profesional que le sirven a la verificación de admin, no al seguimiento
+comercial.
+
+Aparecieron dos defectos, los dos del mismo tipo que ya tiene nombre en este repo — **código
+completo que nadie llama** y **el dato se pierde en la última línea**:
+
+1. **El alta descartaba teléfono y cédula.** El formulario los pedía, el DTO los aceptaba, el use
+   case los pasaba… y el `create()` del repositorio escribía solo nombre, correo y especialidad.
+   La ficha decía "No cargado" mientras el alta respondía OK. El modelo `SellerProfileModel`
+   tampoco declaraba esas columnas (existían en `profiles` desde siempre), así que **no hizo falta
+   migración**: alcanzó con declararlas y escribirlas.
+2. **El error de la ficha hablaba de otra cosa.** Pedir la ficha de un especialista ajeno —o de un
+   id inexistente— devolvía 422 con _"El código de vendedor ingresado no existe"_, porque el use
+   case reutilizaba `SellerCodeNotFoundError`. El bloqueo era correcto; el mensaje no tenía nada que
+   ver con lo que el vendedor estaba haciendo. Se creó `SpecialistNotInPortfolioError`
+   ("Ese especialista no está en tu cartera.").
+
+**Anti-IDOR verificado en vivo:** un id ajeno y un id inexistente devuelven **exactamente el mismo
+422**. Es a propósito: distinguirlos dejaría a un vendedor enumerar la cartera de otro probando ids.
+
+#### QA del portal del especialista (22 items verificados)
+
+Recorrido con navegador real contra staging, verificando **en la BD** y no en la pantalla.
+
+**Confirmado que ya funcionaba:** duración por bloque (lunes a 45' y martes partido en 08–12 a 20'
+
+- 14–17 a 60' → la grilla ofrece exactamente eso) · la regla servicio↔consultorio · el combo
+  multiplicando bien ($30 × 3 = $90, tasa 772,54 pareja en todas las tarjetas) · "Otra hora" guardando
+  la duración REAL y bloqueando lo que pisa · el detalle de cita unificado, que abre por `?open=` y
+  muestra el horario real · marcar asistencia sin confirmar antes · **una cita pagada no ofrece
+  cancelar**, solo reagendar, y explica por qué · alta de paciente con edad calculada · búsqueda sin
+  acentos en las dos direcciones · editor con formato que **persiste tras recargar** · la viñeta del
+  PDF en el mismo renglón que su texto.
+
+**Siete defectos que la lista de QA no anticipaba** (todos arreglados y desplegados):
+
+| #   | Defecto                                                          | Por qué importaba                                                                                                                                            |
+| --- | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 1   | La **vista Día ofrecía huecos ya tomados**                       | Una cita de 09:07 a 09:32 dejaba el slot de 09:30 en "Disponible" **con el botón de agendar encima**, mientras el booking público lo rechazaba. Ver ADR-035. |
+| 2   | La **consulta del pasado no quedaba atendida**                   | El asistente lo promete por pantalla y no se cumplía. Ver ADR-032.                                                                                           |
+| 3   | El **método de pago del alta se perdía**                         | Llegaba a `appointments` pero la consulta nacía con `payment_method` en null: había que volver a elegir el método ya elegido.                                |
+| 4   | **"Todas" traía solo las primeras 100**                          | En pacientes, ingresos y egresos. El paginador rotulaba "1–{total} de {total}" **sin página siguiente**. También salía incompleto el CSV de egresos.         |
+| 5   | La **insignia de servicios estaba fija** en "Visible en booking" | Al ocultar un servicio la BD cambiaba y el texto seguía diciendo visible.                                                                                    |
+| 6   | Los **mensajes de compatibilidad decían el número equivocado**   | Reportaban la duración del consultorio en vez del bloque más largo, que es la que decide: el especialista cambiaba el número equivocado.                     |
+| 7   | El **alta del vendedor descartaba teléfono y cédula**            | Ver arriba.                                                                                                                                                  |
+
+**Patrón:** cinco de los siete son **rótulos o estados que no siguen al dato real**. El dato estaba
+bien guardado; lo que mentía era lo que el especialista leía en pantalla. Ninguno lo detecta un test,
+un typecheck ni un build — se ven mirando la BD al lado de la pantalla.
+
+#### Decisiones del dueño en esta sesión
+
+- **El PDF se queda en texto plano (2026-08-18).** El item 32 pedía llevar el formato del editor al
+  PDF; no se implementa. Aclaración importante para el QA: el paciente **sí ve el formato en el
+  portal web** (esa vista renderiza el HTML con `sanitizeHtml`, que solo saca etiquetas peligrosas);
+  el aplanado es **solo del PDF**, donde igual se conservan párrafos y viñetas.
+- **El vendedor ve la ficha completa, sin MPPS ni colegiado.**
+
+#### Cabos sueltos anotados (no bloquean)
+
+- **El lint del frontend está roto en `develop`: 122 errores y 177 avisos.** `nx lint frontend`
+  falla, así que no frena nada — el mismo agujero que los tests que el deploy no corre. Al tocar un
+  archivo hay que comparar el conteo antes/después con `git stash`, porque el absoluto no dice nada.
+- La vista Día calcula el fin de cita con la duración del **consultorio**, no la real: una cita de
+  25' desde las 09:07 se muestra "hasta 09:37" y el detalle dice 09:32. **Bloquea de más, no de
+  menos**, así que no es riesgoso.
+- El encabezado de la agenda dice "Citas cada 30 min" aunque el día tenga bloques de otra duración.
+
+#### Qué queda sin probar (necesita al dueño)
+
+Un solo pase cubre casi todo: abrir **`/r/<CODIGO>` en incógnito y registrarse con otra cuenta de
+Google** ejercita el enlace del vendedor, el código autopoblado, el teléfono obligatorio, el
+**onboarding completo** (nunca validado) y **la regla de que reescribir otro código no cambia la
+atribución** (ADR-037). Aparte quedan la **baja de cuenta** (`marcovillegas1197@gmail.com`) y el
+**aislamiento entre dos vendedores** (hace falta una segunda cuenta con login propio).
