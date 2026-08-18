@@ -173,6 +173,12 @@ export class SequelizeSellerRepository implements ISellerRepository {
           plan: params.plan,
           subscriptionStatus: 'trialing',
           specialty: params.specialty ?? null,
+          // phone y cedula LLEGABAN hasta acá y se descartaban en silencio: el
+          // formulario del portal los pide, el DTO los acepta y el use case los
+          // pasa, pero este create() no los escribía. El vendedor cargaba el
+          // teléfono y la ficha decía "No cargado".
+          phone: params.phone ?? null,
+          cedula: params.cedula ?? null,
           soldBy: params.soldBy,
           sellerCode: null,
         } as Parameters<typeof SellerProfileModel.create>[0],
