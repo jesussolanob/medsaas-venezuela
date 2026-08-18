@@ -1653,11 +1653,39 @@ export default function AgendaPage() {
                       });
                     };
 
+                    /**
+                     * Cita que YA EMPEZÓ antes de este slot y todavía no terminó.
+                     *
+                     * La tarjeta se dibuja en el slot donde la cita ARRANCA, pero una
+                     * cita puede pasar de largo: 09:07 con 25 min llega hasta 09:32 y
+                     * se come parte del slot de 09:30. Sin esto, ese slot se mostraba
+                     * "Disponible" y con un botón para agendar encima — mientras el
+                     * booking público, que sí mira el solapamiento, lo rechazaba. El
+                     * especialista veía libre un hueco que su propia página de reservas
+                     * no vendía, y podía encimar dos consultas.
+                     *
+                     * Se cuenta como ocupado solo el solapamiento real: una cita que
+                     * termina justo cuando el slot empieza (09:30 contra 09:00–09:30)
+                     * no lo toma.
+                     */
+                    const citaQueInvadeElSlot = (slot: { time: string; endTime: string }) => {
+                      const slotStart = slotMinutes(slot.time);
+                      const slotEnd = slotMinutes(slot.endTime);
+                      return dayAppts.find((a) => {
+                        if (a.status === 'cancelled') return false;
+                        const inicio = slotMinutes(a.time);
+                        const fin = slotMinutes(a.endTime);
+                        // Arranca antes del slot (su tarjeta va en otro) y lo pisa.
+                        return inicio < slotStart && fin > slotStart && slotEnd > slotStart;
+                      });
+                    };
+
                     return (
                       <>
                         {timeSlots.map((slot) => {
                           const slotAppt = findApptForSlot(slot);
                           if (slotAppt) matchedApptIds.add(slotAppt.id);
+                          const invasora = slotAppt ? undefined : citaQueInvadeElSlot(slot);
                           const isPast =
                             new Date(`${dateToYMD(selectedDate)}T${slot.time}`) < new Date();
 
@@ -1723,6 +1751,15 @@ export default function AgendaPage() {
                                       <CalendarX className="w-3.5 h-3.5 text-slate-400" />
                                       <span className="text-xs text-slate-400 font-medium">
                                         Bloqueado
+                                      </span>
+                                    </div>
+                                  ) : invasora ? (
+                                    // Ver citaQueInvadeElSlot: la consulta anterior se
+                                    // pasa de este horario. No es un hueco libre.
+                                    <div className="w-full h-12 rounded-lg border border-slate-200 bg-slate-50 flex items-center justify-center gap-2 px-2">
+                                      <Clock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                      <span className="text-xs text-slate-400 font-medium truncate">
+                                        Ocupado — {invasora.patient_name} hasta {invasora.endTime}
                                       </span>
                                     </div>
                                   ) : (
