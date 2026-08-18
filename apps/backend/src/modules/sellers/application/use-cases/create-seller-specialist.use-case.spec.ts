@@ -13,8 +13,6 @@ function makeSpecialist(overrides: Partial<SellerSpecialistRow> = {}): SellerSpe
     email: 'dr.ramirez@example.com',
     phone: '584141234567',
     cedula: 'V-12345678',
-    mppsNumber: null,
-    colegiadoNumber: null,
     isActive: true,
     specialty: 'Cardiología',
     plan: 'free_trial',

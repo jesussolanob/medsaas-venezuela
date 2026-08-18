@@ -47,11 +47,15 @@ export interface SellerAdminRow {
 }
 
 /**
- * Specialist row as seen from the seller portal — ficha completa.
+ * Specialist row as seen from the seller portal.
  *
- * El vendedor necesita poder contactar y identificar al especialista que vendió
+ * El vendedor necesita poder contactar e identificar al especialista que vendió
  * ("para su posterior consulta"). Son datos del ESPECIALISTA, no de pacientes,
  * y el vendedor es personal de Delta — pero NINGUNO se loguea.
+ *
+ * A propósito NO incluye MPPS ni colegiado (decisión del dueño, 2026-08-17):
+ * son datos de habilitación profesional que le sirven a la verificación de
+ * admin, no al seguimiento comercial del vendedor.
  */
 export interface SellerSpecialistRow {
   id: string;
@@ -63,8 +67,6 @@ export interface SellerSpecialistRow {
   phone: string | null;
   /** PII — identidad. Do NOT log. */
   cedula: string | null;
-  mppsNumber: string | null;
-  colegiadoNumber: string | null;
   /** false = cuenta dada de baja o desactivada por un admin. */
   isActive: boolean;
   specialty: string | null;
