@@ -168,7 +168,15 @@ export default function ServicesPage() {
   /** Duración del bloque de un consultorio, con default explícito. */
   const slotOf = (o: DoctorOffice) => o.slotDuration ?? o.slot_duration ?? DEFAULT_SLOT_DURATION;
 
-  /** Duración más larga que el consultorio puede sostener en alguno de sus bloques. */
+  /**
+   * Duración más larga que el consultorio puede sostener en alguno de sus bloques.
+   *
+   * Es el número que decide la compatibilidad, así que TAMBIÉN es el que se le
+   * muestra al especialista cuando algo no entra. Los mensajes usaban `slotOf`
+   * (la duración del consultorio): un consultorio con la tarde en bloques de 60'
+   * rechazaba un servicio de 90' diciendo "atiende en bloques de 30 min", y el
+   * especialista terminaba cambiando el número equivocado.
+   */
   const maxSlotOf = (o: DoctorOffice) => {
     const bloques = (o.schedule ?? []).filter((b) => b?.enabled !== false);
     if (bloques.length === 0) return slotOf(o);
@@ -202,7 +210,7 @@ export default function ServicesPage() {
       showToast({
         type: 'error',
         message: selectedOffice
-          ? `"${selectedOffice.name}" atiende en bloques de ${slotOf(selectedOffice)} min y este servicio dura ${durationMins}. Elige otro consultorio o reduce la duración.`
+          ? `"${selectedOffice.name}" atiende en bloques de hasta ${maxSlotOf(selectedOffice)} min y este servicio dura ${durationMins}. Elige otro consultorio o reduce la duración.`
           : `Para dejarlo en "General" el servicio debe entrar en todos los consultorios, y ${incompatibleOffices.length === 1 ? 'uno atiende' : `${incompatibleOffices.length} atienden`} en bloques más cortos que ${durationMins} min.`,
       });
       return;
@@ -559,7 +567,16 @@ export default function ServicesPage() {
                     ) : (
                       <EyeOff className="w-3.5 h-3.5 text-slate-400" />
                     )}
-                    <span className="text-xs font-medium text-slate-600">Visible en booking</span>
+                    {/*
+                      El rótulo tiene que seguir al estado: estaba fijo en
+                      "Visible en booking", así que un servicio oculto se leía
+                      como visible aunque el ojo tachado y el interruptor
+                      dijeran lo contrario. El especialista no tenía forma de
+                      saber cuáles había sacado del link de reservas.
+                    */}
+                    <span className="text-xs font-medium text-slate-600">
+                      {item.show_in_booking ? 'Visible en booking' : 'Oculto en booking'}
+                    </span>
                   </div>
                   <button
                     onClick={() => toggleBooking(item)}
@@ -685,7 +702,7 @@ export default function ServicesPage() {
                       return (
                         <option key={o.id} value={o.id} disabled={!fits}>
                           {o.name}
-                          {!fits && ` — bloques de ${slotOf(o)} min`}
+                          {!fits && ` — bloques de hasta ${maxSlotOf(o)} min`}
                         </option>
                       );
                     })}
@@ -699,9 +716,9 @@ export default function ServicesPage() {
                 ) : (
                   <p className="text-[10px] text-red-500 mt-1">
                     {selectedOffice
-                      ? `Este servicio dura ${durationMins} min y "${selectedOffice.name}" atiende en bloques de ${slotOf(selectedOffice)} min.`
+                      ? `Este servicio dura ${durationMins} min y "${selectedOffice.name}" atiende en bloques de hasta ${maxSlotOf(selectedOffice)} min.`
                       : `Para dejarlo en "General" tiene que entrar en todos los consultorios: ${incompatibleOffices
-                          .map((o) => `${o.name} (${slotOf(o)} min)`)
+                          .map((o) => `${o.name} (hasta ${maxSlotOf(o)} min)`)
                           .join(', ')}.`}
                   </p>
                 )}

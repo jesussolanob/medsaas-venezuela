@@ -196,6 +196,10 @@ export class CreateAppointmentUseCase {
         consultationDate: saved.scheduledAt,
         chiefComplaint: saved.chiefComplaint ?? null,
         amount: saved.planPrice ?? null,
+        // Ver CreateConsultationInput.paymentMethod: el método elegido en el
+        // alta se guardaba solo en la cita y la consulta quedaba en null.
+        paymentMethod: saved.paymentMethod ?? null,
+        paymentReference: saved.paymentReference ?? null,
       });
       return await this.appointmentRepo.updateConsultationId(saved.id, consultation.id);
     } catch (err: unknown) {

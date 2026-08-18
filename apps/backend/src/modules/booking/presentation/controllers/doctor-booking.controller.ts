@@ -86,6 +86,9 @@ export class DoctorBookingController {
       // Doctor-initiated bookings bypass patient-facing rules (require_reason,
       // min_lead_days) — the doctor can always schedule regardless of those.
       skipPatientBookingRules: true,
+      // Una fecha ya pasada nace atendida: el especialista está registrando algo
+      // que YA ocurrió, no agendando a futuro.
+      doctorInitiated: true,
     });
 
     return {

@@ -371,10 +371,12 @@ export default function FinancesPage() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setIncLoading(true);
 
-    const limit = incPageSize === PAGE_SIZE_ALL ? 100 : incPageSize;
+    // PAGE_SIZE_ALL viaja tal cual: la acción recorre todas las páginas. Antes
+    // acá se traducía a "limit 100, página 1", que traía 100 filas y el
+    // Paginator las rotulaba como si fueran todas.
     const page = incPageSize === PAGE_SIZE_ALL ? 1 : incPage;
 
-    getIncomePaged({ page, limit, month: activeMonth })
+    getIncomePaged({ page, limit: incPageSize, month: activeMonth })
       .then((result) => {
         if (cancelled) return;
         setIncPagedItems(result.items);
@@ -403,10 +405,9 @@ export default function FinancesPage() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setExpLoading(true);
 
-    const limit = expPageSize === PAGE_SIZE_ALL ? 100 : expPageSize;
     const page = expPageSize === PAGE_SIZE_ALL ? 1 : expPage;
 
-    getExpensesPaged({ page, limit, month: activeMonth })
+    getExpensesPaged({ page, limit: expPageSize, month: activeMonth })
       .then((result) => {
         if (cancelled) return;
         setExpPagedItems(result.items);

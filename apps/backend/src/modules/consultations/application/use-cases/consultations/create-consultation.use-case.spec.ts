@@ -92,6 +92,40 @@ describe('CreateConsultationUseCase', () => {
     expect(result.paymentStatus).toBe('pending');
   });
 
+  it('conserva el método de pago elegido en el alta, sin darlo por cobrado', async () => {
+    mockRepo.countByDoctorAndMonth.mockResolvedValue(0);
+    mockRepo.findByCode.mockResolvedValue(null);
+    mockRepo.save.mockImplementation(async (c) => c);
+
+    const result = await useCase.execute({
+      doctorId: DOCTOR_ID,
+      patientId: PATIENT_ID,
+      consultationDate: now,
+      paymentMethod: 'efectivo',
+      paymentReference: 'QA-REF-001',
+    });
+
+    expect(result.paymentMethod).toBe('efectivo');
+    expect(result.paymentReference).toBe('QA-REF-001');
+    // El cobro se sigue aprobando en Cobros: guardar el método no lo da por cobrado.
+    expect(result.paymentStatus).toBe('pending');
+  });
+
+  it('deja el método en null cuando el alta no eligió ninguno', async () => {
+    mockRepo.countByDoctorAndMonth.mockResolvedValue(0);
+    mockRepo.findByCode.mockResolvedValue(null);
+    mockRepo.save.mockImplementation(async (c) => c);
+
+    const result = await useCase.execute({
+      doctorId: DOCTOR_ID,
+      patientId: PATIENT_ID,
+      consultationDate: now,
+    });
+
+    expect(result.paymentMethod).toBeNull();
+    expect(result.paymentReference).toBeNull();
+  });
+
   it('links to appointment when appointmentId is provided', async () => {
     const appointmentId = 'bbbbbbbb-0000-0000-0000-000000000001';
     mockRepo.countByDoctorAndMonth.mockResolvedValue(0);
