@@ -629,3 +629,36 @@ status='active'` con `QueryTypes.UPDATE` (devuelve `[undefined, affectedCount]`;
   (`lib/dev-auth.ts`, headers x-dev-\*) por defecto en local; **Auth0 ✅ integrado** (env-gated por
   `AUTH_MODE`). Middleware = `proxy.ts` (convención Next 16, reemplaza middleware.ts). El frontend
   NUNCA importa apps/backend (solo HTTP). **Storage ✅ MinIO (local) / GCS (prod)** por `STORAGE_DRIVER`.
+
+- **ADR-041 (2026-08-18):** **El WhatsApp comercial usa el asistente que YA existe; Chatwoot solo
+  pone el canal y la bandeja.** Un médico escribe, responde la IA, y si pide una persona el
+  ejecutivo entra **en el mismo hilo**.
+  (1) **El cerebro no se construye: ya está.** `help-assistant` tiene 1.491 líneas de guías
+  curadas, protección contra inyección de prompt y consciencia de rol y plan, vivo en producción.
+  WhatsApp es **un canal nuevo para un asistente que ya existe**, no un proyecto de IA. Falta una
+  cuarta guía comercial y un camino sin autenticar: hoy el endpoint exige login y elige guía por
+  rol, y **un médico que todavía no es cliente no tiene cuenta**.
+  (2) **Chatwoot autohospedado**, verificado en su repositorio y no en su web: `whatsapp.rb` y
+  `agent_bot.rb` están en la parte comunitaria; lo que vive en `enterprise/` es `captain`, **la IA
+  de ellos, que justamente no usamos**. En su nube el plan gratis son 2 agentes y **solo chat web**.
+  Se descartan Twilio Flex (US$ 10.000 de implementación), Respond.io (US$ 199/mes y su IA no
+  conoce la app), Wati (**su IA no deriva a humano**) y FeelSocial (sin precios públicos). n8n
+  quedaría entre dos sistemas que ya hablan HTTP: solo se justifica si el equipo comercial quiere
+  editar flujos sin un desarrollador.
+  (3) **La decisión NO es de plata:** con dos ejecutivos son ~US$ 34 autohospedado contra US$ 38 en
+  su nube. Se elige propio porque **el costo por agente castiga justo lo que se quiere hacer
+  crecer** (con 5 son US$ 34 contra US$ 95), porque el historial comercial queda en la nube propia
+  —argumento real con el ADR-040— y porque evita una migración a los seis meses.
+  (4) **Cada vendedor tiene su usuario propio en Chatwoot** (pedido del dueño). Una cuenta
+  compartida deja las conversaciones sin dueño y borra la trazabilidad comercial. **La fuente de
+  verdad es `profiles` de Delta; Chatwoot es un reflejo** — el alta y la baja se sincronizan por su
+  API de agentes. Cierra el círculo con la atribución del ADR-037: el vendedor manda su enlace
+  `/r/<CODIGO>` en el mismo chat.
+  ⚠️ **Chatwoot NO va en Cloud Run:** Sidekiq tiene que correr siempre y con `min-instances=0` los
+  mensajes quedan encolados sin procesar; además usa websockets. Va en una VM con Docker Compose.
+  ⚠️ **Bloqueante antes de abrir el canal: mover Gemini a Vertex AI.** Hoy corre en el nivel
+  gratuito, **que entrena con lo que recibe**. En el widget web el daño está acotado; en WhatsApp un
+  médico va a pegar datos de un paciente tarde o temprano.
+  ⚠️ **Desde el 1/10/2026 Meta cobra los mensajes de servicio** (~US$ 0,0068). Las respuestas
+  humanas escritas desde la app de WhatsApp Business siguen gratis. Plan completo en
+  `memory-bank/12-plan-whatsapp-ventas.md`.
