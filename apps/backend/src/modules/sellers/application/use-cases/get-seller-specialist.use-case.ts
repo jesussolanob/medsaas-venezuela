@@ -4,13 +4,13 @@ import {
   type ISellerRepository,
   type SellerSpecialistRow,
 } from '../../domain/repositories/seller.repository';
-import { SellerCodeNotFoundError } from '../../domain/errors/seller-code-not-found.error';
+import { SpecialistNotInPortfolioError } from '../../domain/errors/specialist-not-in-portfolio.error';
 
 /**
  * GetSellerSpecialistUseCase
  *
  * Returns the detail of a single specialist attributed to the given seller.
- * Throws SellerCodeNotFoundError (422) when the specialist does not exist or
+ * Throws SpecialistNotInPortfolioError (422) when the specialist does not exist or
  * belongs to a different seller — both cases return the same error to prevent
  * enumeration of other sellers' portfolios (anti-IDOR).
  *
@@ -28,7 +28,7 @@ export class GetSellerSpecialistUseCase {
     if (!specialist) {
       // Same error for "not found" and "belongs to another seller" — prevents
       // enumeration of specialists across sellers.
-      throw new SellerCodeNotFoundError();
+      throw new SpecialistNotInPortfolioError();
     }
     return specialist;
   }
