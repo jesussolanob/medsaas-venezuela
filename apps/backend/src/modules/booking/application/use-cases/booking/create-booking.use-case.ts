@@ -640,6 +640,10 @@ export class CreateBookingUseCase {
           consultationDate: savedAppointment.scheduledAt,
           chiefComplaint: dto.chief_complaint ?? null,
           amount: dto.plan_price ?? null,
+          // El método viaja a la consulta: se guardaba solo en la cita y el
+          // especialista tenía que volver a elegirlo al cobrar.
+          paymentMethod: savedAppointment.paymentMethod,
+          paymentReference: savedAppointment.paymentReference,
         });
         await this.appointmentRepo.updateConsultationId(savedAppointment.id, consultation.id);
         createdConsultationId = consultation.id;
