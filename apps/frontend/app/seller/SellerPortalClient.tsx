@@ -19,6 +19,15 @@ import { useCallback, useEffect, useState } from 'react';
 import { Users, Copy, Check, Loader2, UserPlus, AlertCircle, X, Share2 } from 'lucide-react';
 import { showToast } from '@/components/ui/Toaster';
 
+type SpecialistDetail = SpecialistRow & {
+  email: string;
+  phone: string | null;
+  cedula: string | null;
+  mppsNumber: string | null;
+  colegiadoNumber: string | null;
+  isActive: boolean;
+};
+
 type SpecialistRow = {
   id: string;
   fullName: string;
@@ -65,6 +74,11 @@ export default function SellerPortalClient() {
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
+  // Ficha del especialista: se pide al abrirla y no se toma de la lista, para
+  // pasar por el endpoint con guarda anti-IDOR y traer el dato fresco.
+  const [ficha, setFicha] = useState<SpecialistDetail | null>(null);
+  const [fichaCargando, setFichaCargando] = useState(false);
+  const [fichaError, setFichaError] = useState('');
   // El enlace se arma en el cliente: el dominio cambia entre staging y prod,
   // asi que se toma del navegador en vez de hardcodearlo o pasarlo por env.
   const enlace = code
@@ -102,6 +116,29 @@ export default function SellerPortalClient() {
     const t = setTimeout(() => void load(), 0);
     return () => clearTimeout(t);
   }, [load]);
+
+  async function abrirFicha(id: string) {
+    setFicha(null);
+    setFichaError('');
+    setFichaCargando(true);
+    try {
+      const res = await fetch(`/api/seller/specialists/${id}`, { cache: 'no-store' });
+      const j = (await res.json().catch(() => ({}))) as {
+        success?: boolean;
+        data?: SpecialistDetail;
+        error?: string;
+      };
+      if (!res.ok || !j.success || !j.data) {
+        setFichaError(j.error ?? 'No se pudo cargar la ficha.');
+        return;
+      }
+      setFicha(j.data);
+    } catch {
+      setFichaError('Error de conexión al cargar la ficha.');
+    } finally {
+      setFichaCargando(false);
+    }
+  }
 
   async function crear() {
     if (!form.fullName.trim() || !form.email.trim()) {
@@ -292,7 +329,10 @@ export default function SellerPortalClient() {
                     return (
                       <tr
                         key={r.id}
-                        className={i < rows.length - 1 ? 'border-b border-slate-100' : ''}
+                        onClick={() => void abrirFicha(r.id)}
+                        className={`cursor-pointer hover:bg-slate-50/70 transition-colors ${
+                          i < rows.length - 1 ? 'border-b border-slate-100' : ''
+                        }`}
                       >
                         <td className="px-5 py-3">
                           <p className="font-semibold text-slate-800">{r.fullName}</p>
@@ -320,6 +360,128 @@ export default function SellerPortalClient() {
           )}
         </section>
       </div>
+
+      {/* Ficha del especialista */}
+      {(ficha || fichaCargando || fichaError) && (
+        <div
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-[70] p-4"
+          onClick={() => {
+            setFicha(null);
+            setFichaError('');
+          }}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 max-h-[90vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {fichaCargando && (
+              <div className="flex items-center gap-2 text-sm text-slate-500 py-6 justify-center">
+                <Loader2 className="w-4 h-4 animate-spin" /> Cargando la ficha…
+              </div>
+            )}
+
+            {fichaError && !fichaCargando && (
+              <div className="text-center py-4">
+                <AlertCircle className="w-6 h-6 text-red-500 mx-auto mb-2" />
+                <p className="text-sm text-red-600">{fichaError}</p>
+              </div>
+            )}
+
+            {ficha && !fichaCargando && (
+              <>
+                <div className="flex items-start justify-between gap-3 mb-4">
+                  <div>
+                    <h2 className="text-lg font-bold text-slate-900">{ficha.fullName}</h2>
+                    <p className="text-xs text-slate-500">
+                      {ficha.specialty || 'Sin especialidad'}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setFicha(null)}
+                    className="text-slate-400 hover:text-slate-600"
+                    aria-label="Cerrar"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                {!ficha.isActive && (
+                  <div className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-800 mb-4">
+                    Esta cuenta está <strong>dada de baja</strong>.
+                  </div>
+                )}
+
+                <dl className="space-y-3 text-sm">
+                  <div>
+                    <dt className="text-[11px] font-semibold text-slate-400 uppercase">Correo</dt>
+                    <dd className="text-slate-800 break-all">{ficha.email}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-[11px] font-semibold text-slate-400 uppercase">Teléfono</dt>
+                    <dd className="text-slate-800">
+                      {ficha.phone ? (
+                        <a href={`tel:${ficha.phone}`} className="text-teal-700 hover:underline">
+                          {ficha.phone}
+                        </a>
+                      ) : (
+                        <span className="text-slate-400">No cargado</span>
+                      )}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-[11px] font-semibold text-slate-400 uppercase">Cédula</dt>
+                    <dd className="text-slate-800">{ficha.cedula || '—'}</dd>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <dt className="text-[11px] font-semibold text-slate-400 uppercase">MPPS</dt>
+                      <dd className="text-slate-800">{ficha.mppsNumber || '—'}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-[11px] font-semibold text-slate-400 uppercase">
+                        Colegiado
+                      </dt>
+                      <dd className="text-slate-800">{ficha.colegiadoNumber || '—'}</dd>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3 pt-2 border-t border-slate-100">
+                    <div>
+                      <dt className="text-[11px] font-semibold text-slate-400 uppercase">Plan</dt>
+                      <dd className="text-slate-800">{PLAN_LABELS[ficha.plan ?? ''] ?? '—'}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-[11px] font-semibold text-slate-400 uppercase">Alta</dt>
+                      <dd className="text-slate-800">{fmtDate(ficha.createdAt)}</dd>
+                    </div>
+                  </div>
+                  <div>
+                    <dt className="text-[11px] font-semibold text-slate-400 uppercase">
+                      Último ingreso
+                    </dt>
+                    <dd className="text-slate-800">
+                      {ficha.lastSignInAt ? fmtDate(ficha.lastSignInAt) : 'Nunca entró'}
+                    </dd>
+                  </div>
+                </dl>
+
+                <a
+                  href={ficha.phone ? `https://wa.me/${ficha.phone}` : undefined}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={`mt-5 w-full inline-flex items-center justify-center gap-2 rounded-lg py-2.5 text-sm font-semibold transition-colors ${
+                    ficha.phone
+                      ? 'bg-teal-500 hover:bg-teal-600 text-white'
+                      : 'bg-slate-100 text-slate-400 pointer-events-none'
+                  }`}
+                >
+                  <Share2 className="w-4 h-4" />
+                  {ficha.phone ? 'Escribirle por WhatsApp' : 'Sin teléfono cargado'}
+                </a>
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Alta de especialista */}
       {showForm && (
