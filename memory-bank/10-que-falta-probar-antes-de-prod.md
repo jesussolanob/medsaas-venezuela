@@ -29,19 +29,19 @@
 8. Consulta inmediata: se crea **con su monto**, no en $0
 9. **Un turno ocupa el tiempo que dura**: cita de 45' a las 8:00 en bloques de 30' → el 8:30 no se ofrece ni en booking ni al especialista ✅
 10. El **modal de reagendar marca los horarios ocupados** ✅
-11. **Agendar a una hora libre** ("Otra hora", fuera de la grilla) y que la cita guarde la **duración real**
-12. **Detalle de cita unificado** y botón de salida directa a la consulta
-13. El **detalle de cita abre** (no abría por params sin esperar)
-14. **Cancelar y reagendar desde la consulta**, y poder reagendar siempre
-15. Una **cita pagada no se cancela, se reagenda**
-16. Se puede **marcar asistencia sin confirmar** la cita antes
-17. Se eliminó **aceptar/rechazar cita**: confirmar que no falta ninguna acción que usaras
+11. **Agendar a una hora libre** ("Otra hora", fuera de la grilla) y que la cita guarde la **duración real** ✅
+12. **Detalle de cita unificado** y botón de salida directa a la consulta ✅
+13. El **detalle de cita abre** (no abría por params sin esperar) ✅
+14. **Cancelar y reagendar desde la consulta**, y poder reagendar siempre ✅
+15. Una **cita pagada no se cancela, se reagenda** ✅
+16. Se puede **marcar asistencia sin confirmar** la cita antes ✅
+17. Se eliminó **aceptar/rechazar cita**: confirmar que no falta ninguna acción que usaras ✅
 18. La **reagenda mueve también la fecha de la consulta** (agenda y Consultas coinciden) ✅
-19. La agenda en **vista Día**: revisar que no marque "Disponible" un bloque ocupado _(defecto conocido)_
+19. La agenda en **vista Día**: no marca "Disponible" un bloque ocupado ✅ (estaba roto — arreglado)
 
 ## 2 · Consultas
 
-20. **Registrar una consulta del pasado**: sin tope de fecha, avisa y queda **atendida**
+20. **Registrar una consulta del pasado**: sin tope de fecha, avisa y queda **atendida** ✅ (estaba roto — arreglado)
 21. **Inasistencia**: pregunta por multa y permite reagendar de una vez ✅
 22. Inasistencia — impaga, sin reagenda, **sin multa** → costo $0 y sale de Por cobrar ✅
 23. Inasistencia — impaga, sin reagenda, **con multa** → queda el monto de la multa ✅
@@ -49,15 +49,15 @@
 25. Inasistencia — **pagada + reagenda** → el pago **viaja** a la fecha nueva ✅
 26. Inasistencia — **pagada + multa** → el costo sube y el pago vuelve a pendiente ✅
 27. Reagendar desde "No asistió" permite mover al **mismo día** ✅
-28. **Editor con texto con formato** (negritas, listas) en la consulta
-29. **Disposición configurable de los bloques** de la consulta
+28. **Editor con texto con formato** (negritas, listas) en la consulta ✅
+29. **Disposición configurable de los bloques** de la consulta ✅
 30. La **fecha de la consulta se ve** y el detalle abre directo
-31. El **total del combo sale del servicio**, no del paquete
+31. El **total del combo sale del servicio**, no del paquete ✅
 
 ## 3 · Documentos y PDF
 
-32. El **documento compartido** con el paciente sale **con el mismo formato** que el editor
-33. En el PDF, la **viñeta de las listas** no queda sola en su renglón
+32. ⚠️ El **documento compartido** sale **SIN el formato** del editor (negrita/cursiva/subrayado se pierden). El PDF convierte a texto plano a propósito (`htmlToPlainText`). Las viñetas y los párrafos sí salen bien. **Requiere decisión: es una función nueva, no un arreglo.**
+33. En el PDF, la **viñeta de las listas** no queda sola en su renglón ✅
 
 ## 4 · Cobros y Finanzas
 
@@ -111,21 +111,21 @@
 
 ## 9 · Consultorios, servicios y pacientes
 
-69. Cada **bloque puede tener su propia duración** de consulta
-70. Un día con bloques de **45'** y otro de **20'**: la cita ocupa el largo correcto
-71. La **duración del servicio** vuelve, y solo se asocia a consultorios que la soporten
-72. **Alta de paciente** (no guardaba)
-73. **Listado de pacientes con más de 100 fichas** (se cortaba en 100)
-74. **Buscar sin acentos**: "maria jose" encuentra a "María José"
+69. Cada **bloque puede tener su propia duración** de consulta ✅
+70. Un día con bloques de **45'** y otro de **20'**: la cita ocupa el largo correcto ✅
+71. La **duración del servicio** vuelve, y solo se asocia a consultorios que la soporten ✅
+72. **Alta de paciente** (no guardaba) ✅
+73. **Listado de pacientes con más de 100 fichas** (se cortaba en 100) ✅ (seguía roto — arreglado)
+74. **Buscar sin acentos**: "maria jose" encuentra a "María José" ✅
 
 ## 10 · Módulo de ventas — 🔴 NUNCA VALIDADO (requiere login de vendedor)
 
 75. Crear un vendedor desde **`/admin/sellers`** ✅ y ver su **código** ✅
 76. Solo **`super_admin`** entra a esa pantalla ✅
-77. El **vendedor entra y cae en `/seller`**; un doctor o paciente que intente entrar es expulsado a SU portal
-78. El vendedor **ve su código arriba**, con botón de copiar
-79. El vendedor **registra un especialista** → aparece en su lista, **sin selector de plan** (arranca en prueba)
-80. En su lista: **fecha de registro, última entrada y plan**; "Nunca entró" si nunca ingresó
+77. El **vendedor entra y cae en `/seller`**; un doctor o paciente que intente entrar es expulsado a SU portal ✅ (falta probar el rebote de un doctor)
+78. El vendedor **ve su código arriba**, con botón de copiar ✅
+79. El vendedor **registra un especialista** → aparece en su lista, **sin selector de plan** (arranca en prueba) ✅ (perdía el teléfono — arreglado)
+80. En su lista: **fecha de registro, última entrada y plan**; "Nunca entró" si nunca ingresó ✅
 81. **Aislamiento**: con dos vendedores, cada uno ve **solo los suyos**
 82. En el **onboarding**, el código válido muestra "Vendedor: <nombre>" en verde ✅ (endpoint), inventado en rojo ✅, vacío pasa
 83. 🔴 **La regla que no se puede romper**: completar el onboarding con un código y después **escribir otro** — la atribución **NO debe cambiar**
@@ -155,6 +155,42 @@
 
 - Causa raíz de las preconsultas no generadas de la **Dra. Solano**: sin identificar. Ya hay un WARN para cazarla.
 - **Dos tasas llamadas "BCV"** con 14,7% de diferencia entre el plan Delta y el resto del portal.
-- El **método de pago** elegido al crear la cita no se guarda.
 - Una consulta de **$0** sin resolver queda en Por cobrar.
 - El **CSV de Gastos** dice "Monto" sin divisa.
+
+---
+
+## Hallado y arreglado en el QA del 17 de agosto de 2026
+
+Siete defectos que la lista no anticipaba, todos ya en staging:
+
+1. **La vista Día ofrecía huecos ya tomados.** Una cita de 09:07 a 09:32 dejaba el slot
+   de 09:30 rotulado "Disponible" con el botón de agendar encima, mientras el booking
+   público —que sí mira el solapamiento— lo rechazaba. Ahora dice "Ocupado — <paciente>
+   hasta <hora>".
+2. **La consulta del pasado no quedaba atendida.** El asistente lo prometía por pantalla
+   y no se cumplía: el alta del especialista pasa por el use case del booking _público_,
+   que fija `scheduled` a mano. Quedaba en la agenda como si estuviera por venir.
+3. **El método de pago del alta se perdía.** Se guardaba en `appointments` pero la
+   consulta nacía con `payment_method` en null, así que al cobrar había que volver a
+   elegir el método ya elegido. (Estaba anotado como cabo suelto; ahora tiene causa y
+   arreglo.)
+4. **"Todas" traía solo las primeras 100.** El backend recorta a 100 por request. En
+   pacientes, ingresos y egresos se pedía más y se recibían 100, y el paginador rotulaba
+   "1–{total} de {total}" sin página siguiente: el tope seguía ahí, disimulado. También
+   afectaba el CSV de egresos.
+5. **La insignia de servicios estaba fija** en "Visible en booking": al ocultar uno, la
+   BD cambiaba pero el texto seguía diciendo visible.
+6. **Los mensajes de compatibilidad servicio↔consultorio decían el número equivocado**
+   (la duración del consultorio en vez del bloque más largo, que es lo que decide).
+7. **El alta del vendedor descartaba teléfono y cédula** en el `create()` del repositorio.
+
+### Cabos sueltos nuevos
+
+- El **lint del frontend está roto**: 122 errores y 177 avisos en `develop`. `nx lint
+frontend` falla, así que no frena nada — mismo agujero que los tests que no corre el CI.
+- La vista Día calcula el fin de cita con la duración del **consultorio**, no la real:
+  una cita de 25' desde las 09:07 se muestra "hasta 09:37" y el detalle dice 09:32.
+  Bloquea de más, no de menos.
+- El encabezado de la agenda dice "Citas cada 30 min" aunque el día tenga bloques de otra
+  duración.
