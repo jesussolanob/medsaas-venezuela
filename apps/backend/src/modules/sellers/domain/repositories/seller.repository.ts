@@ -46,11 +46,27 @@ export interface SellerAdminRow {
   lastSignInAt: Date | null;
 }
 
-/** Specialist row as seen from the seller portal — identity + subscription snapshot. */
+/**
+ * Specialist row as seen from the seller portal — ficha completa.
+ *
+ * El vendedor necesita poder contactar y identificar al especialista que vendió
+ * ("para su posterior consulta"). Son datos del ESPECIALISTA, no de pacientes,
+ * y el vendedor es personal de Delta — pero NINGUNO se loguea.
+ */
 export interface SellerSpecialistRow {
   id: string;
   /** PII — full name. Seller portal context only. Do NOT log. */
   fullName: string;
+  /** PII — contacto. Do NOT log. */
+  email: string;
+  /** PII — contacto. Do NOT log. Obligatorio en el alta desde 2026-08-17. */
+  phone: string | null;
+  /** PII — identidad. Do NOT log. */
+  cedula: string | null;
+  mppsNumber: string | null;
+  colegiadoNumber: string | null;
+  /** false = cuenta dada de baja o desactivada por un admin. */
+  isActive: boolean;
   specialty: string | null;
   plan: string | null;
   subscriptionStatus: string | null;

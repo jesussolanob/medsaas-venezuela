@@ -99,6 +99,14 @@ function toSpecialistDto(row: SellerSpecialistRow) {
     // fullName es la columna principal de la tabla del portal: sin esto el
     // vendedor ve una lista de filas en blanco.
     fullName: row.fullName,
+    // Ficha completa (decisión del dueño, 2026-08-17): el vendedor tiene que
+    // poder contactar e identificar al especialista que vendió. Nunca se loguea.
+    email: row.email,
+    phone: row.phone,
+    cedula: row.cedula,
+    mppsNumber: row.mppsNumber,
+    colegiadoNumber: row.colegiadoNumber,
+    isActive: row.isActive,
     specialty: row.specialty,
     plan: row.plan,
     subscriptionStatus: row.subscriptionStatus,
