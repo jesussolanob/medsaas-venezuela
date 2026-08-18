@@ -366,6 +366,16 @@ consultations}` (+ Consultorios/Plantillas sin moduleKey); deshabilitados agenda
   fecha pasada sigue siendo `scheduled` (y de todos modos no puede mandarla). El backend **nunca
   validó fechas pasadas**, así que quitar el tope de 30 días fue puramente de frontend.
 
+  ⚠️ **Corregido el 2026-08-18: la regla estaba escrita pero NO se aplicaba.** `computeInitialStatus`
+  vive en `CreateAppointmentUseCase`, y el alta desde el panel del especialista **no pasa por ahí**:
+  pasa por `CreateBookingUseCase` —el use case del booking PÚBLICO, donde siempre corresponde
+  `scheduled`—, que fijaba el estado a mano. Resultado: el asistente prometía "se va a registrar como
+  atendida" y la cita quedaba agendada, metida en la agenda como si estuviera por venir. Se agregó la
+  opción `doctorInitiated`, que **solo** pasa `DoctorBookingController`. Una reserva pública nunca la
+  lleva (un paciente no puede declarar atendida una consulta) y la consulta inmediata tampoco.
+  **Lección:** una regla de dominio escrita en UN camino de alta no cubre los otros; este proyecto
+  tiene dos y la promesa estaba en la UI del que no la aplicaba.
+
 - **ADR-033 (2026-08-16):** **La duración de una cita se resuelve por BLOQUE al crearla, y el
   especialista puede agendar a una hora libre.** (1) El ADR-028 dio duración propia a cada bloque,
   pero solo los slots OFRECIDOS la respetaban: al crear la cita se persistía `office.slotDuration`,
@@ -412,6 +422,15 @@ consultations}` (+ Consultorios/Plantillas sin moduleKey); deshabilitados agenda
   COALESCE de `hasOverlap`. Aplica a los TRES lugares: booking público, flujo del especialista y
   modal de reagendar. ⚠️ El modal de reagendar además **nunca** había marcado un horario como
   ocupado: leía `json.bookedAt` cuando el endpoint responde `{ success, data: { … } }`.
+  ⚠️ **Corregido el 2026-08-18: la vista Día del especialista no aplicaba esta regla.** Asignaba
+  cada cita al slot donde ARRANCA y nada más, así que una cita que se pasa de largo dejaba el slot
+  siguiente en "Disponible" **con el botón de agendar encima** — mientras el booking público, que sí
+  mira el solapamiento, lo rechazaba. El especialista veía libre un hueco que su propia página de
+  reservas no vendía. Ahora ese slot muestra "Ocupado — <paciente> hasta <hora>"; la tarjeta se sigue
+  dibujando una sola vez, en el slot donde la cita empieza. Una cita cancelada no ocupa, y una que
+  termina justo cuando el slot empieza tampoco. **Mismo patrón que el ADR-032:** la regla estaba bien
+  del lado que vende (booking) y no del lado que agenda (agenda del especialista).
+
 - **ADR-036 (2026-08-16):** **Consulta inmediata: nunca se solapa y nunca se rechaza.** Para el
   paciente que llega sin cita, la duración es `mínimo(duración del servicio, minutos hasta la
 próxima cita)` — si el bloque siguiente está libre ocupa lo que dura, y si no, se acorta
@@ -428,6 +447,30 @@ próxima cita)` — si el bloque siguiente está libre ocupa lo que dura, y si n
   ⚠️ `CreateBookingUseCase` descartaba el id de la consulta que crea, y `appointment.consultationId`
   viene null porque el FK se actualiza en la BD después de construir la entidad: hay que leerlo del
   RESULTADO. Sin eso el botón no podía abrir la consulta y la sesión del combo quedaba sin enlazar.
+
+- **ADR-038 (2026-08-18):** **"Todas" tiene que traer todas: el tope del backend se pagina, no se
+  disimula.** El backend recorta cualquier `limit` a **100 por request** (`Math.min(100, …)` en los
+  controllers de pacientes y finanzas). Varias pantallas pedían más —`limit=200`, `limit=500`— y
+  recibían 100 **sin error y sin aviso**. Peor: con "Todas" el `Paginator` fija `totalPages = 1` y
+  rotula "1–{total} de {total}", así que un especialista con 140 fichas veía 100, leía "1–140 de 140"
+  y **no tenía página siguiente que tocar**. El tope seguía ahí, disimulado. También salía incompleto
+  el **CSV de egresos**. La regla: cuando la UI ofrece "todas", la capa de acceso **recorre las
+  páginas** hasta juntar `total` (`traerTodasLasPaginas` en finanzas, `getPatients` en pacientes),
+  con tope de 50 páginas y un log si se alcanza; si una página falla devuelve lo ya juntado, porque
+  una página rota no debe vaciar la lista. **No se sube el tope del backend**: 100 por request
+  protege la BD, y quien necesita todo pagina.
+  ⚠️ El arreglo ya existía en `getPatients` desde antes y **no se había aplicado a
+  `getPatientsPaged`**, que es la que usa la pantalla. Al arreglar un tope así hay que barrer TODAS
+  las funciones que pegan al mismo endpoint, no solo la que se estaba mirando.
+
+- **ADR-039 (2026-08-18):** **El PDF se queda en texto plano; el formato vive en la pantalla.**
+  El documento descargable convierte el HTML del editor a texto plano (`htmlToPlainText`), y se
+  decidió **dejarlo así**. El paciente **sí ve negrita, cursiva y viñetas en el portal web**, porque
+  esa vista renderiza el HTML pasado por `sanitizeHtml` (denylist: saca `<script>`, `<iframe>`,
+  handlers `on*` y URLs `javascript:`, y deja pasar el formato). En el PDF se conservan **párrafos y
+  viñetas** —la viñeta pegada a su renglón, no sola— y se pierden negrita/cursiva/subrayado.
+  Llevar formato al PDF sería una función nueva (parsear el HTML en fragmentos con estilo), no un
+  arreglo, y el dueño decidió no hacerla.
 
 - **ADR-037 (2026-08-16):** **Rol vendedor: la atribución se escribe UNA vez y el código no toca el
   plan.** Un rol `seller` recortado (solo crear especialistas y ver los que registró), gestionado por
