@@ -41,6 +41,15 @@ export class RegistrationProfileModel extends Model {
   @Column({ type: DataType.TEXT, allowNull: true })
   declare cedula: string | null;
 
+  /**
+   * Teléfono de contacto del especialista. La columna ya existía en `profiles`
+   * (TEXT nullable, migración inicial) pero este modelo no la declaraba, así que
+   * el onboarding no podía escribirla. Obligatorio en el alta desde 2026-08-17:
+   * es el canal por el que Delta lo contacta.
+   */
+  @Column({ type: DataType.TEXT, allowNull: true })
+  declare phone: string | null;
+
   @Column({ type: DataType.TEXT, allowNull: true, field: 'mpps_number' })
   declare mppsNumber: string | null;
 

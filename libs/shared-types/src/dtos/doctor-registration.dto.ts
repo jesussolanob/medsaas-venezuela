@@ -22,6 +22,14 @@ export const DoctorRegistrationDtoSchema = z
         'cedula must follow format V/E/P-<value> (e.g. V-12345678)',
       )
       .max(30, 'cedula must be at most 30 characters'),
+    /**
+     * Teléfono del especialista — OBLIGATORIO desde 2026-08-17.
+     *
+     * Es el punto de contacto de Delta con él, así que se pide de primero en el
+     * onboarding y sin él no se completa el alta. Formato canónico que emite
+     * PhoneInput: código de país + número, solo dígitos (ej. 584141234567).
+     */
+    phone: z.string().regex(/^\d{8,20}$/, 'phone must be 8-20 digits including country code'),
     mpps_number: z.string().min(1).max(50).nullable().optional(),
     colegiado_number: z.string().min(1).max(50).nullable().optional(),
     /**
