@@ -290,6 +290,58 @@ describe('CreateBookingUseCase', () => {
     });
   });
 
+  // ---------------------------------------------------------------------------
+  // Estado inicial: fecha pasada cargada por el especialista
+  // ---------------------------------------------------------------------------
+
+  describe('estado inicial según quién agenda', () => {
+    const prepararSlotLibre = () => {
+      mockDoctorLoader.findById.mockResolvedValue(DOCTOR);
+      mockAppointmentRepo.hasOverlap.mockResolvedValue(false);
+      mockAppointmentRepo.hasPatientOverlap.mockResolvedValue(false);
+      mockPatientRepo.findByEmailHash.mockResolvedValue(makePatient());
+      mockAppointmentRepo.save.mockImplementation(async (a) => a);
+    };
+
+    const EN_EL_PASADO = '2020-03-05T14:00:00Z';
+    const EN_EL_FUTURO = '2099-03-05T14:00:00Z';
+
+    it('nace atendida cuando el especialista registra una consulta que ya ocurrió', async () => {
+      prepararSlotLibre();
+
+      await useCase.execute(makeDto({ scheduled_at: EN_EL_PASADO }), { doctorInitiated: true });
+
+      expect(mockAppointmentRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({ status: 'completed' }),
+        FAKE_TRANSACTION,
+      );
+    });
+
+    it('sigue agendada cuando el especialista agenda a futuro', async () => {
+      prepararSlotLibre();
+
+      await useCase.execute(makeDto({ scheduled_at: EN_EL_FUTURO }), { doctorInitiated: true });
+
+      expect(mockAppointmentRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({ status: 'scheduled' }),
+        FAKE_TRANSACTION,
+      );
+    });
+
+    it('una reserva pública con fecha pasada NO se da por atendida', async () => {
+      prepararSlotLibre();
+
+      // Sin `doctorInitiated`: es el camino del paciente. Un paciente no puede
+      // declarar atendida una consulta.
+      await useCase.execute(makeDto({ scheduled_at: EN_EL_PASADO }));
+
+      expect(mockAppointmentRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({ status: 'scheduled' }),
+        FAKE_TRANSACTION,
+      );
+    });
+  });
+
   describe('rejects occupied slot', () => {
     it('throws AppointmentConflictError when slot is already taken', async () => {
       mockDoctorLoader.findById.mockResolvedValue(DOCTOR);

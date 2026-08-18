@@ -207,6 +207,25 @@ export class CreateBookingUseCase {
        * ⚠️ The PATIENT overlap check (step 4b) is NEVER bypassed — not even with force.
        */
       skipDoctorOverlapCheck?: boolean;
+      /**
+       * El especialista está registrando la cita desde su propio panel.
+       *
+       * Cambia una sola cosa: una fecha ya pasada nace `completed` en vez de
+       * `scheduled`. Si el especialista carga hoy una consulta de la semana
+       * pasada, esa consulta YA ocurrió; dejarla agendada la mete en su agenda
+       * como si estuviera por venir y nunca sale de ahí.
+       *
+       * El asistente de "Nueva consulta" ya se lo promete al especialista antes
+       * de guardar ("Esta fecha ya pasó: la consulta se va a registrar como
+       * atendida"), pero este use case —que es el del booking PÚBLICO, donde
+       * siempre corresponde `scheduled`— fijaba el estado a mano y la promesa
+       * no se cumplía. Es la misma regla que ya aplica computeInitialStatus()
+       * en CreateAppointmentUseCase, el otro camino de alta.
+       *
+       * Una reserva pública NUNCA pasa por acá: un paciente no puede declarar
+       * atendida una consulta.
+       */
+      doctorInitiated?: boolean;
     },
   ): Promise<CreateBookingResult> {
     // --- Step 1: Turnstile validation (STUB — Etapa 1) ---
@@ -357,7 +376,10 @@ export class CreateBookingUseCase {
       patientEmail: dto.patient_email,
       patientCedula: dto.patient_cedula ?? null,
       scheduledAt,
-      status: 'scheduled',
+      // Ver `doctorInitiated` en las opciones: solo el especialista puede dar
+      // de alta una consulta que ya ocurrió, y esa nace atendida.
+      status:
+        options?.doctorInitiated && scheduledAt.getTime() < Date.now() ? 'completed' : 'scheduled',
       appointmentMode: dto.appointment_mode,
       source: 'booking',
       planName: dto.plan_name,
