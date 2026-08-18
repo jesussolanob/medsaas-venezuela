@@ -104,8 +104,6 @@ function toSpecialistDto(row: SellerSpecialistRow) {
     email: row.email,
     phone: row.phone,
     cedula: row.cedula,
-    mppsNumber: row.mppsNumber,
-    colegiadoNumber: row.colegiadoNumber,
     isActive: row.isActive,
     specialty: row.specialty,
     plan: row.plan,

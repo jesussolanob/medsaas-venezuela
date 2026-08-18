@@ -230,8 +230,6 @@ function toSpecialistRow(row: SellerProfileModel): SellerSpecialistRow {
     email: row.email,
     phone: row.phone ?? null,
     cedula: row.cedula ?? null,
-    mppsNumber: row.mppsNumber ?? null,
-    colegiadoNumber: row.colegiadoNumber ?? null,
     isActive: row.isActive ?? true,
     specialty: row.specialty ?? null,
     plan: row.plan ?? null,

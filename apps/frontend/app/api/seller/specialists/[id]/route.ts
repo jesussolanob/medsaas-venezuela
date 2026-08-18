@@ -23,8 +23,6 @@ export interface SellerSpecialistDetail {
   email: string;
   phone: string | null;
   cedula: string | null;
-  mppsNumber: string | null;
-  colegiadoNumber: string | null;
   isActive: boolean;
   specialty: string | null;
   plan: string | null;
