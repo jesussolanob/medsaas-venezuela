@@ -232,6 +232,36 @@ de abajo), **1 no se pudo reproducir** y **25 entraron en el lote**. Detalle com
     fecha muestra **hora** · una consulta con fecha pasada **abre su detalle sola** · el
     detalle de cita en la agenda dice si está **pagada**.
 
+### Verificado con navegador real el 2026-08-19 (Playwright, sobre staging)
+
+Solo la superficie **pública** — el portal del especialista, admin y vendedor necesitan login de
+Auth0 y el acceso de reviewer está apagado desde el 27/07:
+
+- ✅ **Divisa (#20):** el HTML **del servidor** ya trae `€60.00 / €199.98 / €30.00 / €45.00`, y en
+  el navegador hay **4 precios en euros y CERO en dólares**. No hay parpadeo posible: el símbolo
+  llega resuelto, no depende del fetch de la tasa.
+- ✅ **Sesiones adicionales (#10):** el campo de fecha y hora libre **ya no existe**
+  (`datetime-local` = 0 en el DOM). Hay dos desplegables por sesión; el de días ofrece solo los que
+  el especialista atiende (salta sábado y domingo) y el de horas los 13 slots reales de 08:00 a
+  16:00 cada 40 min. **Elegir el mismo día que la 1.ª consulta marca su horario como
+  "10:00 — ocupado" y deshabilitado.**
+- ✅ **Varias cuentas (#25):** con dos pagos móviles cargados a mano en la BD, el paciente ve **las
+  dos** bajo "Datos para transferir (elegí una):", cada una rotulada `Mercantil · 0424…` /
+  `Banesco · 0414…`. Los datos se restauraron a su forma original al terminar.
+- 🐛 **Hallado al probar:** los rótulos de esos datos salían **en inglés** ("Bank", "Phone",
+  "Holder", "Id_number") en la pantalla del paciente. Con un solo bloque pasaba desapercibido.
+  Arreglado con `fieldLabel()` en `lib/payment-details`.
+
+**NO se completó ninguna reserva de prueba a propósito** — ver el aviso del correo, abajo.
+
+### 🚨 Aviso para el QA — staging manda correo REAL
+
+`EMAIL_DRIVER=resend` en el servicio desplegado y en `staging.yml:153` desde el 2026-08-09.
+**El ADR-024 y el guion 07 decían `noop` y estaban desactualizados** (corregido el 19/08). Staging
+corre sobre una **base clonada con pacientes reales**, así que cualquier acción que dispare un
+correo —reservar, compartir documentos, recordatorios— **le llega a la persona real**. Probar
+envíos SOLO con pacientes de prueba y direcciones inventadas.
+
 ### Abierto — necesita al dueño
 
 - ⚠️ **Servicio de 30' que no se asocia a un consultorio de 30+10: NO REPRODUCIBLE.** La

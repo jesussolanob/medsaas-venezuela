@@ -24,7 +24,7 @@ import { getProfessionalTitle } from '@/lib/professional-title';
 import { useBcvRate } from '@/lib/useBcvRate';
 import { reportError } from '@/lib/report-error';
 import { isValidEmail } from '@/lib/validation';
-import { entriesOf, entryLabel } from '@/lib/payment-details';
+import { entriesOf, entryLabel, fieldLabel } from '@/lib/payment-details';
 // L6 (2026-04-29): inputs canonicos para cedula y telefono venezolano
 import CedulaInput from '@/components/shared/CedulaInput';
 import PhoneInput from '@/components/shared/PhoneInput';
@@ -2480,7 +2480,7 @@ export default function BookingClient({
                               {Object.entries(opcion).map(([key, val]) =>
                                 val ? (
                                   <p key={key} className="text-slate-600">
-                                    <span className="font-semibold capitalize">{key}:</span> {val}
+                                    <span className="font-semibold">{fieldLabel(key)}:</span> {val}
                                   </p>
                                 ) : null,
                               )}

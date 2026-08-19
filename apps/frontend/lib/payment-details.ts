@@ -100,6 +100,33 @@ export function withEntries(
 }
 
 /**
+ * Rótulo en español de cada campo de datos de pago.
+ *
+ * Las claves del JSONB están en inglés (`bank`, `id_number`, `account_type`)
+ * porque son nombres de datos, no texto de usuario. El booking público las
+ * pintaba **crudas y capitalizadas**: el paciente leía "Bank", "Phone",
+ * "Holder", "Id_number" en una pantalla que por lo demás está toda en español.
+ * Se vio recién al probar con DOS cuentas cargadas — con un solo bloque pasaba
+ * desapercibido. Los rótulos ya existían en la pantalla de Configuración del
+ * especialista; viven acá para que las dos pantallas digan lo mismo.
+ */
+const FIELD_LABELS: Record<string, string> = {
+  bank: 'Banco',
+  phone: 'Teléfono',
+  id_number: 'Cédula/RIF',
+  holder: 'Titular',
+  account: 'N° de cuenta',
+  account_type: 'Tipo de cuenta',
+  email: 'Correo',
+  binance_id: 'Binance ID',
+};
+
+/** Rótulo mostrable de un campo. Una clave desconocida cae a sí misma. */
+export function fieldLabel(key: string): string {
+  return FIELD_LABELS[key] ?? key.replace(/_/g, ' ');
+}
+
+/**
  * Rótulo de una entrada cuando hay varias ("Banesco · 0414…").
  *
  * Sirve para que el paciente distinga una opción de otra sin leer todo el
