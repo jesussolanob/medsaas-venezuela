@@ -146,6 +146,35 @@ persona. Corregido en los dos documentos.
   portales. El vendedor tenía que borrar cookies; en una máquina compartida —donde trabaja
   un equipo comercial— la sesión quedaba abierta para el siguiente.
 
+### 🔴 El bug que destapó probar la extensión por días
+
+**Extender le BORRABA al especialista los días que ya tenía.** Medido contra la BD de
+staging: `gerardomanuel.neo@gmail.com` vencía el **21/08** (el panel decía "2 días");
+extendido por **10 días** quedaba en **29/08** —hoy + 10— en vez de **31/08**.
+
+**La causa, visible en el propio código:** las dos lecturas del vencimiento no coincidían.
+
+| Quién                                                 | Cómo leía el vencimiento                                                                                                                       |
+| ----------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `listSubscriptions` (el panel)                        | `COALESCE(p.subscription_expires_at, s.current_period_end)` — con un comentario propio explicando que en perfiles viejos el primero viene NULL |
+| `getSubscriptionSnapshot` (extend/suspend/reactivate) | solo `profile.subscriptionExpiresAt`                                                                                                           |
+
+Sin el fallback, el ancla caía en `now` y el tiempo restante se descartaba **en silencio**.
+Es **exactamente** la familia del ADR-029/031: una regla de negocio aplicada en un lugar de
+varios, y la pantalla contradiciéndose sola. El docstring del método ahora dice explícito
+que su regla es la MISMA que la de `listSubscriptions` y que si cambia una cambia la otra.
+
+**Era preexistente pero casi invisible:** perder dos días en una extensión de doce meses no
+se nota; en una de diez días, sí. **8 de los 14 especialistas activos** de staging estaban
+en condiciones de perder días, y a uno que vence en **2126** extenderlo lo habría
+**acortado cien años**.
+
+✅ **Efecto colateral bueno:** `reactivate` usa el mismo snapshot. Un especialista legacy
+vigente pero con el perfil en NULL entraba a la rama "vencido → regalar un mes"; ahora lee
+bien que sigue vigente. `suspend` no usa `expiresAt`, así que no cambia.
+
+Verificado contra la BD real después del arreglo: **21/08 + 10 días = 31/08**.
+
 ### Cómo se probaron los módulos autenticados (sin credenciales del dueño)
 
 No se puede hacer login por Google/Auth0 sin la contraseña del dueño, y el acceso de
