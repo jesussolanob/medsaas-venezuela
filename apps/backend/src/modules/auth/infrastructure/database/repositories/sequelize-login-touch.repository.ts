@@ -60,7 +60,8 @@ export class SequelizeLoginTouchRepository implements ILoginTouchRepository {
             SET is_active           = true,
                 deactivated_by      = NULL,
                 plan                = CASE
-                                        WHEN subscription_expires_at IS NOT NULL
+                                        WHEN plan IS NOT NULL
+                                         AND subscription_expires_at IS NOT NULL
                                          AND subscription_expires_at > NOW()
                                         THEN plan
                                         ELSE :freePlanKey
