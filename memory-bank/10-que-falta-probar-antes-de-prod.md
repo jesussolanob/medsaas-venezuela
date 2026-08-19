@@ -200,6 +200,55 @@ frontend` falla, así que no frena nada — mismo agujero que los tests que no c
 
 ---
 
+## Lote de 25 observaciones del 19 de agosto de 2026 — arregladas y desplegadas
+
+De los 27 puntos de `Pruebas 18-08.txt`: **2 ya estaban resueltos** (son las regresiones
+de abajo), **1 no se pudo reproducir** y **25 entraron en el lote**. Detalle completo en
+`05-progress-log.md` (entrada 2026-08-19); decisiones en **ADR-044** y **ADR-045**.
+
+### Lo que hay que probar
+
+1. 🔴 **Consulta inmediata, los cuatro caminos:** crear un paciente nuevo desde el modal y
+   que **avance** · que la consulta quede **confirmada** (no "por confirmar") · sin
+   espacio, que "Registrar igual" **registre** · que el nombre no se parta entre el
+   buscador y el formulario.
+2. 🔴 **Paquete multi-sesión desde el link público:** las consultas 2ª en adelante solo
+   ofrecen **días y horas que el especialista atiende** y marcan los ocupados. Al
+   confirmar tiene que salir **código de consulta** (`DLT-…`), no de cita (`BK-…`).
+3. 🔴 **Multa por inasistencia:** las flechas suben de a **$1** y el monto aparece en
+   Por cobrar.
+4. 🔴 **Consultorios:** "Copiar a…" con varios días marcados (probarlo también en el
+   **onboarding**) · al crear uno nuevo, que ofrezca asociarle los servicios existentes.
+5. 🔴 **Divisa euro:** el link público **no debe parpadear** de $ a €.
+6. 🔴 **Métodos de pago:** cargar **DOS pagos móviles y DOS cuentas** y verificar que las
+   dos aparezcan en el booking y en el mensaje de cobro por WhatsApp.
+7. 🔴 **Plan Delta:** el checkout tiene **3 pasos** y muestra los datos de la cuenta.
+   ⚠️ En staging hay **datos SIMULADOS** (Banesco, J-40123456-7): cargar los reales de TLS
+   desde `/admin/settings` → `platform_payment_instructions` (ahora es un textarea).
+8. 🔴 **Baja de cuenta:** vive al final de `/doctor/upgrade`, en gris.
+9. 🔴 **Vendedor:** columna **Seguimiento** con "Nunca entró" / "Registro incompleto" /
+   "Sin actividad"; el alta pide **cédula**; el onboarding **no vuelve a pedir el teléfono**.
+10. 🔴 **Consulta:** bloques **verticales** por defecto (con toggle a horizontal) · la
+    fecha muestra **hora** · una consulta con fecha pasada **abre su detalle sola** · el
+    detalle de cita en la agenda dice si está **pagada**.
+
+### Abierto — necesita al dueño
+
+- ⚠️ **Servicio de 30' que no se asocia a un consultorio de 30+10: NO REPRODUCIBLE.** La
+  regla compara la duración del bloque más largo contra la del servicio y **el buffer no
+  entra en la cuenta** (30 ≥ 30 es verdadero); se revisaron los 14 consultorios reales de
+  staging y ninguno lo contradice. **Hace falta el nombre exacto del consultorio y del
+  servicio** para dictaminarlo contra esa fila.
+
+### Cabos sueltos nuevos
+
+- El portal del vendedor usa cortes de actividad de **7 y 30 días** y `/admin` usa **7 y
+  14**. Ya divergían antes del lote; unificarlos es decisión de producto.
+- El lint del frontend sigue en **123 errores preexistentes** (medido con y sin el lote:
+  idéntico). No frena nada y no sirve de señal.
+
+---
+
 ## Regresiones halladas por el dueño el 18 de agosto de 2026 — arregladas y desplegadas
 
 Cuatro reportes sobre staging. **Dos eran bugs reales, uno NO era de permisos aunque lo
