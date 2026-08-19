@@ -15,6 +15,11 @@
  * Chequea al montar, al volver el foco a la ventana y cada 60s. Solo bloquea
  * ante una respuesta CONCLUYENTE del servidor: un error de red no interrumpe a
  * nadie (se reintenta en el próximo ciclo).
+ *
+ * ⚠️ El rol que se espera acá es el MISMO que exigen los guards (`requireSuperAdmin`
+ * en el BFF y `@Roles('super_admin')` en el backend). El día que `/admin` admita
+ * también al rol `admin`, hay que ampliarlo en los tres lugares o esta pantalla
+ * va a bloquear a alguien que sí tiene permiso.
  */
 
 import { useCallback, useEffect, useState } from 'react';
@@ -87,7 +92,10 @@ export default function AdminSessionWatchdog() {
           </div>
         </div>
         <a
-          href="/auth/logout"
+          // Mismo destino que el botón "Cerrar sesión" del layout: en Auth0 hay
+          // que pasar por /auth/logout (limpia la cookie httpOnly y el /v2/logout
+          // de Auth0); en dev-stub no existe esa ruta y se vuelve al login.
+          href={process.env.NEXT_PUBLIC_AUTH_MODE === 'auth0' ? '/auth/logout' : '/login'}
           className="mt-5 flex w-full items-center justify-center rounded-lg bg-teal-500 py-2.5 text-sm font-semibold text-white hover:bg-teal-600"
         >
           Iniciar sesión de nuevo

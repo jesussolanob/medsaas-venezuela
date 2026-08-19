@@ -83,6 +83,30 @@ tests que afirmaban los textos viejos. Detector para no volver atrás: buscar en
 `apps/backend/src` mensajes sin acentos ni palabras en español dentro de `super(...)` /
 `new XxxException(...)`.
 
+### Cómo verificarlo en staging
+
+⚠️ **Cada cuenta en una ventana de incógnito SEPARADA.** Dos pestañas de la misma ventana
+comparten la sesión de Auth0 y se fabrican falsos errores de permisos — que es justo lo que
+pasó el 18/08.
+
+1. **Prueba vigente (el bug principal).** Entrar como `marcovillegas1197@gmail.com`: le quedan
+   3 días y tiene que ver **todos** los módulos (Agenda, Consultorio, Finanzas, Marketing,
+   Pacientes, Consultas). Su fila en la BD ya quedó reparada.
+2. **Baja y vuelta.** Con un especialista en prueba: Configuración → dar de baja la cuenta →
+   volver a entrar. Antes quedaba en `delta_free` y perdía los días; ahora tiene que
+   **conservar el plan y los días**. Con la prueba ya vencida, sí debe quedar en Delta Free.
+3. **Panel de admin.** `/admin/suscripciones` tiene que mostrar el **mismo** plan que ve el
+   especialista. Deben seguir apareciendo las 15 filas de siempre, con fecha y estado.
+4. **Extender días y cambiar plan** con la cuenta de administrador: funcionan (nunca
+   estuvieron rotos). Si aparece un error, ahora está **en español** y dice si la causa es la
+   sesión.
+5. **Aviso de sesión.** Con `/admin` abierto, entrar en OTRA pestaña de la MISMA ventana como
+   especialista: en ≤60s (o al volver el foco) el panel debe bloquearse con "Esta ventana
+   cambió de cuenta".
+6. **Consulta inmediata.** Inicio → Consulta inmediata → "Es un paciente nuevo": el nombre
+   tecleado tiene que caer en "Nombre y apellido", y Chrome ya no debe ofrecer autorrelleno
+   que parta el nombre entre el buscador y el formulario.
+
 ### Lo que dejó el QA como lección
 
 El QA se hizo con la cuenta del dueño: `super_admin`, plan permanente. Esa cuenta **no puede
