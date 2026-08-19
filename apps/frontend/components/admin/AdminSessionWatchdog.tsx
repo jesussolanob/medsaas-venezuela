@@ -87,7 +87,10 @@ export default function AdminSessionWatchdog() {
           </div>
         </div>
         <a
-          href="/auth/logout"
+          // Mismo destino que el botón "Cerrar sesión" del layout: en Auth0 hay
+          // que pasar por /auth/logout (limpia la cookie httpOnly y el /v2/logout
+          // de Auth0); en dev-stub no existe esa ruta y se vuelve al login.
+          href={process.env.NEXT_PUBLIC_AUTH_MODE === 'auth0' ? '/auth/logout' : '/login'}
           className="mt-5 flex w-full items-center justify-center rounded-lg bg-teal-500 py-2.5 text-sm font-semibold text-white hover:bg-teal-600"
         >
           Iniciar sesión de nuevo
