@@ -945,3 +945,27 @@ Reglas que no se pueden romper:
 - El vendedor **nunca** elige plan: el backend fija el de prueba e ignora el cuerpo.
 - `lastSignInAt` es null cuando el especialista nunca entró — es el dato que le dice al vendedor
   si el registro se convirtió en uso real o quedó abandonado.
+
+## `GET /api/session` (BFF, 2026-08-18)
+
+Ruta del frontend, **no** del backend NestJS. Responde `{ authenticated: boolean, role: string | null }`
+del propio solicitante: sin PII y sin datos de terceros. La consume `AdminSessionWatchdog` para
+detectar que la sesión del navegador cambió debajo de una pantalla abierta (ADR-043). Nunca lanza:
+si no hay sesión responde `{ authenticated: false, role: null }`.
+
+## Idioma de los mensajes de error (barrido 2026-08-18)
+
+El `GlobalExceptionFilter` reenvía **tal cual** al navegador el `message` de `DomainError` y de
+`HttpException`; solo los errores inesperados se enmascaran como "Ocurrió un error inesperado".
+Por eso **todo mensaje nuevo nace en español**, en la clase que lo emite — nunca parcheado en el
+`catch` del frontend. Se tradujeron ~110 (errores de dominio de todos los módulos, validaciones de
+controladores, guards y los mensajes Zod de `libs/shared-types`).
+
+Detector rápido de regresiones: buscar en `apps/backend/src` mensajes sin acentos ni palabras en
+español dentro de `super(...)` / `new XxxException(...)`.
+
+## `GET /api/admin/subscriptions` — cambio de fuente (2026-08-18)
+
+Ahora sale de **`profiles`** (LEFT JOIN a `subscriptions` solo por precio y fin de prueba). Antes
+leía la tabla legacy y mostraba un plan distinto al que gobierna el acceso del especialista.
+Ver **ADR-042**. El contrato de respuesta no cambió.
