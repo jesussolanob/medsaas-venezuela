@@ -96,10 +96,18 @@ export async function listOffices(): Promise<OfficeView[]> {
   return result.value.map(toView);
 }
 
-/** Crea un consultorio. */
-export async function createOffice(input: OfficeInput): Promise<MutationResult> {
+/**
+ * Crea un consultorio y devuelve su id.
+ *
+ * El id venía en la respuesta del backend y se descartaba: sin él no se puede
+ * encadenar nada después del alta, y lo primero que hace falta encadenar es
+ * ofrecerle asociar los servicios que ya tiene.
+ */
+export async function createOffice(input: OfficeInput): Promise<MutationResult & { id?: string }> {
   const result = await backendPost<BackendOffice>('/api/doctor/offices', input);
-  return result.ok ? { ok: true } : { ok: false, error: result.error.message };
+  return result.ok
+    ? { ok: true, id: result.value?.id }
+    : { ok: false, error: result.error.message };
 }
 
 /** Actualiza un consultorio (ownership en el backend). */

@@ -71,8 +71,22 @@ export type ExchangeRateOverride = {
 export function useBcvRate(override?: ExchangeRateOverride): BcvRateData {
   const [rate, setRate] = useState<number | null>(null);
   const [dateLabel, setDateLabel] = useState('');
-  const [mode, setMode] = useState<string>('usd_bcv');
-  const [label, setLabel] = useState<string>('USD → BsS');
+  // El modo arranca en el que YA vino por props, no en el default de dólar.
+  //
+  // Si no, el booking público de un especialista en euros pintaba todos los
+  // precios con `$` en el primer render y recién saltaba a `€` cuando resolvía
+  // el fetch de la tasa: el paciente veía la divisa equivocada durante un
+  // instante. La preferencia no depende de esa llamada — el Server Component ya
+  // la pasó por props —, así que el símbolo puede ser correcto desde el
+  // principio. Solo la tasa numérica en bolívares sigue llegando después.
+  const [mode, setMode] = useState<string>(() => override?.mode ?? 'usd_bcv');
+  const [label, setLabel] = useState<string>(() => {
+    // Mismos textos que fija `fetchRate`, para que el rótulo tampoco cambie
+    // debajo del cursor cuando resuelve la tasa.
+    if (override?.mode === 'custom') return 'Tasa personalizada';
+    if (override?.mode === 'eur_bcv') return 'EUR → BsS (BCV)';
+    return 'USD → BsS (BCV)';
+  });
   const [loading, setLoading] = useState(true);
 
   async function fetchRate() {

@@ -23,6 +23,12 @@ interface SellerSpecialistRow {
   createdAt: string;
   /** Última vez que entró. null = nunca entró desde que se registró. */
   lastSignInAt?: string | null;
+  /**
+   * Terminó el alta (consultorio + servicio activos). Es lo que separa "se
+   * registró y quedó a mitad de camino" de "está operativo", que son dos
+   * llamadas comerciales distintas.
+   */
+  onboardingCompleted?: boolean;
 }
 
 export async function GET(): Promise<NextResponse> {

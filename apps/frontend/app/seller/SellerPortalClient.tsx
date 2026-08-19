@@ -34,6 +34,9 @@ type SpecialistRow = {
   subscriptionStatus: string | null;
   createdAt: string;
   lastSignInAt?: string | null;
+  /** Terminó el alta (consultorio + servicio). El vendedor necesita ver a quién
+   *  llamar porque quedó a mitad de camino. */
+  onboardingCompleted?: boolean;
 };
 
 const PLAN_LABELS: Record<string, string> = {
@@ -52,18 +55,60 @@ function fmtDate(iso: string | null | undefined): string {
   });
 }
 
-/** Días desde la última vez que entró — para ver de un vistazo si lo abandonó. */
-function actividad(lastSignInAt: string | null | undefined): {
+/**
+ * Estado de seguimiento: a quién hay que llamar y por qué.
+ *
+ * El vendedor no necesita "cuántos días hace que no entra" como dato suelto:
+ * necesita saber a quién perseguir. Por eso el orden es por urgencia comercial
+ * y no cronológico —quien nunca entró y quien quedó a mitad del alta son dos
+ * llamadas DISTINTAS— y por eso cada estado dice qué hacer:
+ *
+ *   1. Nunca entró            → el alta quedó en la nada, hay que activarlo.
+ *   2. Registro incompleto    → entró pero no terminó de configurarse: no puede
+ *                               cobrar ni recibir reservas, así que se va a ir
+ *                               salvo que alguien lo ayude a terminar.
+ *   3. Sin actividad / Activo → ya está operativo; solo importa si se enfrió.
+ *
+ * ⚠️ Los cortes (7 y 30 días) son los de esta pantalla; el panel de admin usa
+ * 7 y 14 en `UsersPanel.tsx`. Ya divergían antes de este cambio. Unificarlos es
+ * una decisión de producto pendiente, no algo que corresponda decidir acá.
+ */
+function estadoSeguimiento(row: { lastSignInAt?: string | null; onboardingCompleted?: boolean }): {
   label: string;
   className: string;
+  detalle?: string;
 } {
-  if (!lastSignInAt) {
-    return { label: 'Nunca entró', className: 'bg-red-50 text-red-600' };
+  if (!row.lastSignInAt) {
+    return {
+      label: 'Nunca entró',
+      className: 'bg-red-50 text-red-600',
+      detalle: 'Se registró y nunca inició sesión',
+    };
   }
-  const dias = Math.floor((Date.now() - new Date(lastSignInAt).getTime()) / 86_400_000);
+
+  // `undefined` = el backend todavía no manda el campo. No se acusa a nadie de
+  // tener el registro incompleto por un dato que no llegó.
+  if (row.onboardingCompleted === false) {
+    return {
+      label: 'Registro incompleto',
+      className: 'bg-amber-50 text-amber-700',
+      detalle: 'Entró pero no terminó de configurar consultorio y servicios',
+    };
+  }
+
+  const dias = Math.floor((Date.now() - new Date(row.lastSignInAt).getTime()) / 86_400_000);
   if (dias <= 7) return { label: 'Activo', className: 'bg-emerald-50 text-emerald-700' };
-  if (dias <= 30) return { label: `Hace ${dias} días`, className: 'bg-amber-50 text-amber-700' };
-  return { label: `Hace ${dias} días`, className: 'bg-slate-100 text-slate-500' };
+  if (dias <= 30)
+    return {
+      label: `Hace ${dias} días`,
+      className: 'bg-amber-50 text-amber-700',
+      detalle: 'Se está enfriando',
+    };
+  return {
+    label: `Hace ${dias} días`,
+    className: 'bg-slate-100 text-slate-500',
+    detalle: 'Sin actividad — conviene reactivarlo',
+  };
 }
 
 export default function SellerPortalClient() {
@@ -84,7 +129,13 @@ export default function SellerPortalClient() {
     : '';
 
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ fullName: '', email: '', specialty: '', phone: '' });
+  const [form, setForm] = useState({
+    fullName: '',
+    email: '',
+    specialty: '',
+    phone: '',
+    cedula: '',
+  });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -157,7 +208,7 @@ export default function SellerPortalClient() {
         return;
       }
       showToast({ type: 'success', message: 'Especialista registrado' });
-      setForm({ fullName: '', email: '', specialty: '', phone: '' });
+      setForm({ fullName: '', email: '', specialty: '', phone: '', cedula: '' });
       setShowForm(false);
       await load();
     } catch {
@@ -317,13 +368,13 @@ export default function SellerPortalClient() {
                   <tr className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
                     <th className="px-5 py-3">Especialista</th>
                     <th className="px-5 py-3">Registrado</th>
-                    <th className="px-5 py-3">Última entrada</th>
+                    <th className="px-5 py-3">Seguimiento</th>
                     <th className="px-5 py-3">Plan</th>
                   </tr>
                 </thead>
                 <tbody>
                   {rows.map((r, i) => {
-                    const act = actividad(r.lastSignInAt);
+                    const act = estadoSeguimiento(r);
                     return (
                       <tr
                         key={r.id}
@@ -343,6 +394,9 @@ export default function SellerPortalClient() {
                           >
                             {act.label}
                           </span>
+                          {act.detalle && (
+                            <p className="text-[11px] text-slate-400 mt-1">{act.detalle}</p>
+                          )}
                         </td>
                         <td className="px-5 py-3">
                           <span className="text-xs font-semibold text-slate-700">
@@ -516,15 +570,31 @@ export default function SellerPortalClient() {
                 <input
                   value={form.phone}
                   onChange={(e) => setForm({ ...form, phone: e.target.value })}
-                  placeholder="Teléfono (opcional)"
+                  placeholder="Teléfono"
                   className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:border-teal-400 outline-none"
                 />
               </div>
+              {/*
+                La cédula la aceptaba el backend desde siempre, pero el
+                formulario no la pedía: el especialista terminaba tecleándola él
+                en el onboarding, que es justo lo que el dueño quiere evitar.
+                Cuanto más complete el vendedor acá, menos le piden a él después.
+              */}
+              <input
+                value={form.cedula}
+                onChange={(e) => setForm({ ...form, cedula: e.target.value })}
+                placeholder="Cédula"
+                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:border-teal-400 outline-none"
+              />
             </div>
 
             <p className="text-xs text-slate-500">
               La cuenta arranca en el <strong>plan de prueba</strong>, igual que cualquier registro.
               El especialista mejora su plan pagando.
+            </p>
+            <p className="text-xs text-slate-500">
+              Todo lo que cargues acá le queda precargado: cuanto más completo, menos datos le pide
+              el sistema cuando entre por primera vez.
             </p>
 
             {error && (

@@ -699,6 +699,38 @@ pacientes y finanzas). Pedir `limit=500` **no trae 500: trae 100 y no avisa.** C
 "Todas" asegura estar mostrando todo, el tope quedaba disimulado. Cualquier listado nuevo que ofrezca
 "Todas" tiene que recorrer páginas, no pedir un número grande. Ver ADR-038.
 
+### Lote de QA del 19 de agosto de 2026
+
+| Componente / módulo                                  | Qué cambió                                                                                                                      |
+| ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| **`lib/api-error.ts`** _(nuevo)_                     | `apiErrorMessage`/`apiErrorCode`. El BFF devuelve `error` como OBJETO y varios componentes lo tipaban como string               |
+| **`lib/payment-details.ts`** _(nuevo)_               | `entriesOf`/`withEntries`/`entryLabel`. Varias entradas por método de pago, compatible hacia atrás (ADR-044)                    |
+| `lib/schedule-utils.ts`                              | `copyDayToOthers` — copiar el horario de un día a los que se elijan. **Cableado en Consultorios Y onboarding**                  |
+| `components/doctor/ImmediateConsultationModal.tsx`   | El buscador se **desmonta** al crear paciente (autorrelleno de Chrome) + "Volver a buscar" + un 409 pasa a "Registrar igual"    |
+| `components/doctor/NoShowModal.tsx`                  | `step="1"` en la multa, y una multa sin consulta vinculada avisa en vez de perderse                                             |
+| `components/doctor/AppointmentDetailModal.tsx`       | Tercer estado visible: **Pago** (Pagada / Por cobrar). El dato ya llegaba y solo se usaba para esconder "Cancelar"              |
+| `components/doctor/PlanPaymentModal.tsx`             | Comprobante y datos del pago en **un paso** (3 en vez de 4). Valida ANTES de subir, para no dejar comprobantes huérfanos        |
+| `components/appointment-flow/NewAppointmentFlow.tsx` | Una consulta con fecha pasada **abre su detalle sola**, sin el paso de "Ir a la consulta"                                       |
+| `app/doctor/consultations/ConsultationsClient.tsx`   | El fetch de `?open=` arranca al inicio del efecto (estaba detrás de cargar todos los pacientes) · default vertical · +hora      |
+| `app/doctor/offices/page.tsx` + `actions.ts`         | "Copiar a…" · `createOffice` **devuelve el id** · modal que ofrece asociar los servicios ya existentes                          |
+| `app/doctor/settings/page.tsx`                       | Métodos de pago con **varias entradas** por método; la validación de 20 dígitos corre sobre cada cuenta                         |
+| `app/doctor/upgrade/UpgradeClient.tsx`               | Monta `DeactivateAccountCard` al final, en gris (salió de "Mi perfil")                                                          |
+| `app/book/[doctorId]/BookingClient.tsx`              | Sesiones 2..N con **disponibilidad real** (era `datetime-local` libre) · muestra el código de CONSULTA · varias cuentas         |
+| `app/admin/settings/page.tsx`                        | **`<textarea>` en valores multilínea.** Con el `input` de antes, Enter guardaba y las instrucciones de pago no se podían cargar |
+| `app/seller/SellerPortalClient.tsx`                  | Columna **Seguimiento** ("Nunca entró" / "Registro incompleto" / "Sin actividad") + campo cédula en el alta                     |
+| `app/doctor/onboarding/OnboardingForm.tsx`           | `initialPhone`: no vuelve a pedir el teléfono que ya cargó el vendedor                                                          |
+| `lib/useBcvRate.tsx`                                 | El modo arranca del `override` que ya vino por props → sin parpadeo de $ a €                                                    |
+
+**Backend:** `CreateBookingUseCase` (`forceConfirmed`, `consultationCode` en el resultado,
+validación de horario en sesiones adicionales), `CreateImmediateAppointmentUseCase`,
+`BookingController`, `SessionOutsideOfficeHoursError` (nuevo, 422 en español), módulo
+`sellers` (`onboardingCompleted` de punta a punta) y `SequelizeConsultationBlockRepository`
+(default de disposición → `vertical`). **Sin migraciones nuevas.**
+
+⚠️ **`payment_details` no se lee directo en ningún lado.** Los tres consumidores pasan por
+`lib/payment-details`. El del mensaje de cobro por WhatsApp es el más frágil: tiene los
+campos escritos a mano por método.
+
 ### Aviso de cambio de sesión en `/admin` (2026-08-18)
 
 | Componente                                  | Qué hace                                                                                                                                                                                                   |

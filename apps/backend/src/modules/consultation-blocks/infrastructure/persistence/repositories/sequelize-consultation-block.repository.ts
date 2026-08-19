@@ -120,7 +120,11 @@ export class SequelizeConsultationBlockRepository implements IConsultationBlockR
     });
     const raw = (profile as unknown as { consultation_blocks_layout?: string | null })
       ?.consultation_blocks_layout;
-    return raw === 'vertical' ? 'vertical' : 'tabs';
+    // Sin preferencia guardada (columna nullable) el default es VERTICAL: la
+    // consulta se lee de corrido como una historia clínica, y en pestañas los
+    // bloques que no están al frente quedan invisibles. Un especialista que ya
+    // eligió 'tabs' lo conserva — por eso se compara contra 'tabs' y no al revés.
+    return raw === 'tabs' ? 'tabs' : 'vertical';
   }
 
   // ── setDoctorLayout ───────────────────────────────────────────────────────

@@ -442,10 +442,14 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
   // WP-E (2026-08): disposición de los bloques — 'tabs' (horizontal) o 'vertical' (sidebar).
   // Se carga desde localStorage; el default viene de la config del doctor (cargado en el
   // useEffect de inicialización). El localStorage prevalece sobre el default del doctor.
+  // El default es VERTICAL (pedido del dueño, 2026-08-19): la consulta se lee de
+  // corrido como una historia clínica, y en pestañas los bloques que no están al
+  // frente quedan invisibles — el especialista no ve lo que ya cargó. El toggle a
+  // horizontal sigue estando, y la elección se recuerda.
   const [blockLayout, setBlockLayout] = useState<'tabs' | 'vertical'>(() => {
-    if (typeof window === 'undefined') return 'tabs';
+    if (typeof window === 'undefined') return 'vertical';
     const stored = window.localStorage.getItem('delta:consultation-layout');
-    return stored === 'vertical' ? 'vertical' : 'tabs';
+    return stored === 'tabs' ? 'tabs' : 'vertical';
   });
   // Ref para el default del doctor (se usa para inicializar SOLO si localStorage está vacío).
   const doctorLayoutDefaultRef = useRef<'tabs' | 'vertical' | null>(null);
@@ -956,6 +960,17 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
     getDevDoctorId().then(async (doctorId) => {
       if (!doctorId) return;
       try {
+        // La consulta a abrir se pide ANTES que nada.
+        //
+        // El pedido puntual vivía más abajo, después de `await getEhrPatients()`
+        // — que trae la lista entera de pacientes y descifra la PII fila por
+        // fila. Aunque el comentario de allá abajo prometía abrir "al instante",
+        // la promesa ni siquiera arrancaba hasta que ese await terminaba, así
+        // que venir de "Registrar y atender" dejaba al especialista mirando una
+        // pantalla que carga. Arrancando acá, el pedido viaja mientras el resto
+        // se resuelve y el editor abre en cuanto vuelve.
+        const openConsultationPromise = openId ? getConsultation(openId) : null;
+
         // Doctor profile → GET /api/doctor/profile (+ template config for PDF)
         Promise.all([getDoctorProfile(), loadTemplateConfigs()]).then(
           ([profileData, templates]) => {
@@ -1057,7 +1072,8 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
             setDoctorActiveBlocks(resolved.map(normalizeBlockShape));
             // WP-E: read layout preference from the API response.
             // Apply it ONLY if localStorage has no override (preserves user's manual toggle).
-            const apiLayout = j.layout === 'vertical' ? 'vertical' : 'tabs';
+            // Mismo default que el estado inicial: sin preferencia guardada, vertical.
+            const apiLayout = j.layout === 'tabs' ? 'tabs' : 'vertical';
             doctorLayoutDefaultRef.current = apiLayout;
             if (!window.localStorage.getItem('delta:consultation-layout')) {
               setBlockLayout(apiLayout);
@@ -1125,7 +1141,8 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
 
         // D4 FIX: Cuando hay ?open=, abre el detalle al instante en lugar de cargar
         // la lista completa primero. Estrategia:
-        //   1. Si openId presente → fetch puntual getConsultation(openId) (rápido).
+        //   1. Si openId presente → fetch puntual getConsultation(openId), lanzado
+        //      al principio del efecto (ver arriba) para que no quede encolado.
         //   2. Lista se carga en paralelo con limit normal (15), no 100_000.
         //   3. Fallback: si el fetch puntual falla (posiblemente openId es appointment_id),
         //      buscamos en la lista por c.appointment_id — pero con paginación razonable.
@@ -1133,9 +1150,8 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
         let consultationsList = initialConsultations ?? [];
 
         if (openId) {
-          // Intentar abrir el detalle INMEDIATAMENTE via fetch puntual.
-          // Guard: evitar reabrir si ya está abierto (openedConsultationIdRef).
-          const directFetch = getConsultation(openId);
+          // Ya está en vuelo desde el inicio del efecto.
+          const directFetch = openConsultationPromise;
 
           // Cargar la lista en paralelo con limit normal (no 100_000).
           const listFetch = listConsultationsPaged({
@@ -3249,7 +3265,15 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                 </div>
               </div>
 
-              {/* D3: Fecha de la consulta — solo lectura, formateada en es-VE */}
+              {/*
+                D3: Fecha y HORA de la consulta — solo lectura, en es-VE.
+
+                La hora importa: con varias consultas el mismo día, la fecha sola
+                no alcanza para saber cuál se está mirando. El dato siempre
+                estuvo completo (`consultation_date` es timestamptz), solo no se
+                mostraba. La zona va explícita en America/Caracas porque el
+                navegador del especialista puede estar en otra.
+              */}
               {selected.consultation_date && (
                 <div className="flex items-center gap-1.5 text-xs text-slate-500">
                   <Calendar className="w-3.5 h-3.5 text-slate-400 shrink-0" />
@@ -3259,6 +3283,10 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                       day: 'numeric',
                       month: 'long',
                       year: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit',
+                      hour12: true,
+                      timeZone: 'America/Caracas',
                     }).format(new Date(selected.consultation_date))}
                   </span>
                 </div>

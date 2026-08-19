@@ -242,5 +242,7 @@ function toSpecialistRow(row: SellerProfileModel): SellerSpecialistRow {
     subscriptionStatus: row.subscriptionStatus ?? null,
     createdAt: row.createdAt,
     lastSignInAt: row.lastSignInAt ?? null,
+    // Legacy rows that predate the column may return null; treat as false.
+    onboardingCompleted: row.onboardingCompleted ?? false,
   };
 }

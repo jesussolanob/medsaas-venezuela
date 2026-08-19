@@ -36,6 +36,7 @@ import {
   removeBlock,
   updateBlock,
   toggleDay,
+  copyDayToOthers,
   type DaySchedule,
   type OverlapError,
 } from '@/lib/schedule-utils';
@@ -125,6 +126,26 @@ export default function OnboardingStepOffice({ onBack, onSuccess, existingOffice
   const handleRemoveBlock = (idx: number) => setSchedule((prev) => removeBlock(prev, idx));
   const handleUpdateBlock = (idx: number, field: 'start' | 'end', value: string) =>
     setSchedule((prev) => updateBlock(prev, idx, field, value));
+
+  // "Copiar a…": cargar el mismo horario siete veces es donde más se equivoca
+  // uno, y acá es la primera vez que el especialista arma su horario.
+  const [copySourceDay, setCopySourceDay] = useState<number | null>(null);
+  const [copyTargets, setCopyTargets] = useState<number[]>([]);
+
+  const toggleCopyPanel = (dayNum: number) => {
+    setCopySourceDay((prev) => (prev === dayNum ? null : dayNum));
+    setCopyTargets([]);
+  };
+  const toggleCopyTarget = (dayNum: number) =>
+    setCopyTargets((prev) =>
+      prev.includes(dayNum) ? prev.filter((d) => d !== dayNum) : [...prev, dayNum],
+    );
+  const applyCopyToDays = () => {
+    if (copySourceDay === null || copyTargets.length === 0) return;
+    setSchedule((prev) => copyDayToOthers(prev, copySourceDay, copyTargets));
+    setCopySourceDay(null);
+    setCopyTargets([]);
+  };
 
   /** Bloques de un día con su índice en el array plano (el que usan las validaciones). */
   function blocksOfDay(dayNum: number): { block: DaySchedule; globalIdx: number }[] {
@@ -440,7 +461,70 @@ export default function OnboardingStepOffice({ onBack, onSuccess, existingOffice
                         No disponible
                       </span>
                     )}
+
+                    {isDayActive && dayBlocks.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => toggleCopyPanel(dayNum)}
+                        aria-expanded={copySourceDay === dayNum}
+                        className={`ml-auto text-[11px] font-semibold px-2 py-1 rounded-md transition-colors ${
+                          copySourceDay === dayNum
+                            ? 'bg-teal-50 text-teal-700'
+                            : 'text-slate-500 hover:text-teal-600 hover:bg-slate-50'
+                        }`}
+                      >
+                        Copiar a…
+                      </button>
+                    )}
                   </div>
+
+                  {copySourceDay === dayNum && (
+                    <div className="mx-3 mb-3 rounded-lg border border-teal-200 bg-teal-50/50 p-3 space-y-2">
+                      <p className="text-[11px] font-semibold text-slate-600">
+                        Aplicar el horario de {dayName} a:
+                      </p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {DAYS.map((_, otroNum) =>
+                          otroNum === dayNum ? null : (
+                            <button
+                              key={otroNum}
+                              type="button"
+                              onClick={() => toggleCopyTarget(otroNum)}
+                              aria-pressed={copyTargets.includes(otroNum)}
+                              className={`text-[11px] font-semibold px-2.5 py-1 rounded-md border transition-colors ${
+                                copyTargets.includes(otroNum)
+                                  ? 'bg-teal-500 text-white border-teal-500'
+                                  : 'bg-white text-slate-600 border-slate-200 hover:border-teal-300'
+                              }`}
+                            >
+                              {DAYS_SHORT[otroNum]}
+                            </button>
+                          ),
+                        )}
+                      </div>
+                      <p className="text-[11px] text-slate-500">
+                        Los días que elijas quedan con este mismo horario y{' '}
+                        <strong>se reemplaza</strong> lo que tuvieran.
+                      </p>
+                      <div className="flex gap-2 pt-0.5">
+                        <button
+                          type="button"
+                          onClick={() => toggleCopyPanel(dayNum)}
+                          className="text-[11px] font-semibold text-slate-500 hover:text-slate-700 px-2 py-1"
+                        >
+                          Cancelar
+                        </button>
+                        <button
+                          type="button"
+                          onClick={applyCopyToDays}
+                          disabled={copyTargets.length === 0}
+                          className="text-[11px] font-bold text-white bg-teal-500 hover:bg-teal-600 disabled:opacity-40 px-3 py-1 rounded-md"
+                        >
+                          Aplicar
+                        </button>
+                      </div>
+                    </div>
+                  )}
 
                   {/* Bloques del día */}
                   {isDayActive && (

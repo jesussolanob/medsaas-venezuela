@@ -51,6 +51,8 @@ interface Props {
   initialCedulaPrefix?: 'V' | 'E' | 'P';
   initialCedulaNumber?: string;
   initialSpecialty?: string;
+  /** Teléfono ya cargado en el perfil (p. ej. por el vendedor que dio el alta). */
+  initialPhone?: string;
   specialties: Specialty[];
   /** Step to begin on (computed from profile state in page.tsx). */
   initialStep?: 1 | 2 | 3;
@@ -444,6 +446,7 @@ export default function OnboardingForm({
   initialCedulaPrefix = 'V',
   initialCedulaNumber = '',
   initialSpecialty = '',
+  initialPhone = '',
   specialties,
   initialStep = 1,
 }: Props) {
@@ -454,7 +457,12 @@ export default function OnboardingForm({
   // Teléfono: obligatorio y primero — es el punto de contacto de Delta con el
   // especialista (decisión del dueño, 2026-08-17). PhoneInput emite el canónico
   // 'código de país + número', solo dígitos, y '' cuando está incompleto.
-  const [phone, setPhone] = useState('');
+  //
+  // Arranca con lo que YA está en el perfil. A un especialista dado de alta por
+  // un vendedor, el teléfono se lo cargaron al registrarlo: el formulario lo
+  // ignoraba y se lo volvía a pedir en blanco, que es justo lo que el dueño
+  // pidió evitar ("que no le pida datos ya registrados por el vendedor").
+  const [phone, setPhone] = useState(initialPhone);
   const [cedulaPrefix, setCedulaPrefix] = useState<'V' | 'E' | 'P'>(initialCedulaPrefix);
   const [cedulaNumber, setCedulaNumber] = useState(initialCedulaNumber);
   const [specialty, setSpecialty] = useState<string>(() => {

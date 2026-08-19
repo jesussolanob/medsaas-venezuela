@@ -24,6 +24,7 @@ import { getProfessionalTitle } from '@/lib/professional-title';
 import { useBcvRate } from '@/lib/useBcvRate';
 import { reportError } from '@/lib/report-error';
 import { isValidEmail } from '@/lib/validation';
+import { entriesOf, entryLabel } from '@/lib/payment-details';
 // L6 (2026-04-29): inputs canonicos para cedula y telefono venezolano
 import CedulaInput from '@/components/shared/CedulaInput';
 import PhoneInput from '@/components/shared/PhoneInput';
@@ -321,7 +322,8 @@ export default function BookingClient({
   doctor: DoctorProfile;
   plans: PricingPlan[];
   paymentMethods?: string[];
-  paymentDetails?: Record<string, Record<string, string>>;
+  /** Un método puede traer un juego de datos o varios — ver lib/payment-details. */
+  paymentDetails?: Record<string, unknown>;
   bookedSlots?: string[];
   /** Número de semanas a mostrar en el selector de fechas (viene del schedule del doctor). */
   bookingHorizonWeeks?: number;
@@ -512,14 +514,24 @@ export default function BookingClient({
    * entrada para esa fecha y se muestra todo disponible (experiencia degradada pero no rota).
    */
   useEffect(() => {
-    if (!selectedDate) return;
+    // Se consulta la disponibilidad de la fecha de la 1.ª consulta Y la de cada
+    // sesión adicional elegida. Antes solo se pedía la de `selectedDate`, porque
+    // las sesiones 2..N se cargaban con un campo de fecha y hora LIBRE: el
+    // paciente podía poner las 3 de la mañana y nadie lo frenaba.
+    const fechasPendientes = [
+      selectedDate,
+      ...additionalSessionDates.map((v) => (v ? v.slice(0, 10) : '')),
+    ]
+      .filter((d): d is string => !!d)
+      .filter((d, i, arr) => arr.indexOf(d) === i)
+      // Ya consultada (aunque el set haya quedado vacío): no se vuelve a pedir.
+      .filter((d) => !unavailableTimes.has(d));
 
-    // Evitar re-fetch si ya tenemos datos para esta fecha (incluso si el set está vacío)
-    if (unavailableTimes.has(selectedDate)) return;
+    if (fechasPendientes.length === 0) return;
 
-    const fetchDateSlots = async () => {
+    const fetchDateSlots = async (fecha: string) => {
       try {
-        const res = await fetch(`/api/booking/${doctor.id}/slots?date=${selectedDate}`);
+        const res = await fetch(`/api/booking/${doctor.id}/slots?date=${fecha}`);
         if (!res.ok) return;
         const json = (await res.json()) as { slots?: { time: string; available: boolean }[] };
         const rawSlots = json?.slots;
@@ -535,14 +547,14 @@ export default function BookingClient({
         }
 
         // Siempre almacenar la fecha (aunque el set esté vacío) para evitar re-fetches
-        setUnavailableTimes((prev) => new Map(prev).set(selectedDate, notAvailable));
+        setUnavailableTimes((prev) => new Map(prev).set(fecha, notAvailable));
       } catch {
         // Degrade silently
       }
     };
 
-    void fetchDateSlots();
-  }, [selectedDate, doctor.id, unavailableTimes]);
+    void Promise.all(fechasPendientes.map(fetchDateSlots));
+  }, [selectedDate, additionalSessionDates, doctor.id, unavailableTimes]);
 
   // When there are 2+ offices and a date is selected but no office is chosen yet,
   // do NOT auto-assign — the user must pick an office explicitly in step 2.
@@ -774,8 +786,13 @@ export default function BookingClient({
         }
       }
 
-      // Guardar codigo de la cita y meet link para mostrarlo en el resumen
-      setBookedCode(result.appointmentCode || '');
+      // Se muestra el código de CONSULTA (DLT-YYYYMM-NNNN), no el de la cita.
+      // Es el que el paciente va a nombrar cuando llame o escriba, y el que el
+      // especialista ve en su módulo de Consultas: el de la cita
+      // (BK-YYYYMMDD-…) es interno y no le sirve a nadie del otro lado.
+      // Fallback al de la cita porque la consulta se crea best-effort y puede
+      // faltar; sin fallback el paciente se quedaría sin ningún código.
+      setBookedCode(result.consultationCode || result.appointmentCode || '');
       setBookedMeetLink(result.meetLink ?? null);
       // Verificar si quedaron sesiones pendientes de agendar
       const planSessions = selectedPlan?.sessions_count ?? 1;
@@ -829,7 +846,7 @@ export default function BookingClient({
             {bookedCode && (
               <div className="flex items-center justify-between pb-2 mb-1 border-b border-slate-200">
                 <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">
-                  Código de cita
+                  Código de consulta
                 </span>
                 <span className="font-mono text-xs font-bold text-slate-800 bg-white px-2 py-0.5 rounded">
                   {bookedCode}
@@ -1577,27 +1594,90 @@ export default function BookingClient({
 
                   {!deferAllSessions && (
                     <div className="space-y-3">
+                      {/*
+                        Fecha y hora de las sesiones 2..N salen de la MISMA
+                        disponibilidad que la 1.ª.
+
+                        Antes esto era un `<input type="datetime-local">`: hora
+                        libre, sin relación con el horario del especialista. El
+                        paciente podía comprar un paquete y dejar la consulta 2
+                        a las 3 de la mañana, o encima de otra cita. Ahora solo
+                        se ofrecen días que el especialista atiende y, dentro de
+                        cada día, los horarios que están libres.
+                      */}
                       {Array.from({ length: (selectedPlan.sessions_count ?? 1) - 1 }).map(
                         (_, i) => {
                           const sessionNum = i + 2;
+                          const valor = additionalSessionDates[i] ?? '';
+                          const fechaElegida = valor ? valor.slice(0, 10) : '';
+                          const horaElegida = valor ? valor.slice(11, 16) : '';
+                          const horariosDelDia = fechaElegida ? (grouped[fechaElegida] ?? []) : [];
+                          // Las otras sesiones ya elegidas: no se puede pedir dos
+                          // veces el mismo horario dentro de la misma compra.
+                          const yaElegidos = new Set(
+                            additionalSessionDates.filter((v, j) => j !== i && !!v),
+                          );
+
+                          const setValor = (fecha: string, hora: string) =>
+                            setAdditionalSessionDates((prev) => {
+                              const next = [...prev];
+                              next[i] =
+                                fecha && hora ? `${fecha}T${hora}` : fecha ? `${fecha}T` : '';
+                              return next;
+                            });
+
                           return (
                             <div key={sessionNum}>
                               <label className="block text-xs font-semibold text-slate-600 mb-1.5">
                                 Consulta {sessionNum}{' '}
                                 <span className="font-normal text-slate-400">(opcional)</span>
                               </label>
-                              <input
-                                type="datetime-local"
-                                value={additionalSessionDates[i] ?? ''}
-                                onChange={(e) => {
-                                  setAdditionalSessionDates((prev) => {
-                                    const next = [...prev];
-                                    next[i] = e.target.value;
-                                    return next;
-                                  });
-                                }}
-                                className={fi}
-                              />
+                              <div className="flex flex-col sm:flex-row gap-2">
+                                <select
+                                  value={fechaElegida}
+                                  onChange={(e) => setValor(e.target.value, '')}
+                                  className={fi}
+                                  aria-label={`Fecha de la consulta ${sessionNum}`}
+                                >
+                                  <option value="">Elegí el día…</option>
+                                  {dates.map((d) => (
+                                    <option key={d} value={d}>
+                                      {grouped[d]?.[0]?.label ?? d}
+                                    </option>
+                                  ))}
+                                </select>
+                                <select
+                                  value={horaElegida}
+                                  onChange={(e) => setValor(fechaElegida, e.target.value)}
+                                  disabled={!fechaElegida}
+                                  className={fi}
+                                  aria-label={`Hora de la consulta ${sessionNum}`}
+                                >
+                                  <option value="">
+                                    {fechaElegida ? 'Elegí la hora…' : 'Elegí primero el día'}
+                                  </option>
+                                  {horariosDelDia.map((s) => {
+                                    const ocupado =
+                                      isSlotUnavailable(fechaElegida, s.time) ||
+                                      yaElegidos.has(`${fechaElegida}T${s.time}`) ||
+                                      // La 1.ª consulta ya ocupa su horario.
+                                      (!!selectedSlot &&
+                                        fechaElegida === selectedSlot.date &&
+                                        s.time === selectedSlot.time);
+                                    return (
+                                      <option key={s.time} value={s.time} disabled={ocupado}>
+                                        {s.time}
+                                        {ocupado ? ' — ocupado' : ''}
+                                      </option>
+                                    );
+                                  })}
+                                </select>
+                              </div>
+                              {fechaElegida && horariosDelDia.length === 0 && (
+                                <p className="text-xs text-amber-600 mt-1">
+                                  Ese día no tiene horarios de atención. Elegí otro.
+                                </p>
+                              )}
                             </div>
                           );
                         },
@@ -2361,26 +2441,54 @@ export default function BookingClient({
                     ))}
                   </div>
 
-                  {/* Show payment details for transfer methods */}
+                  {/*
+                    Datos para transferir. El especialista puede tener VARIAS
+                    cuentas o pagos móviles: se muestran TODAS y el paciente
+                    elige la que le sirve —el sentido de la feature es que no
+                    pague comisión por no tener ese banco—. Con una sola, se ve
+                    igual que siempre (sin encabezado de opción).
+                  */}
                   {selectedPaymentMethod &&
                     requiresReceipt(selectedPaymentMethod as PaymentMethod) &&
-                    paymentDetails?.[selectedPaymentMethod] && (
-                      <div
-                        className="rounded-xl p-3.5 border border-slate-200 space-y-1 text-xs"
-                        style={{ background: BRAND.bone }}
-                      >
-                        <p className="font-bold text-slate-700">Datos para transferencia:</p>
-                        {Object.entries(paymentDetails[selectedPaymentMethod] || {}).map(
-                          ([key, val]) =>
-                            val ? (
-                              <p key={key} className="text-slate-600">
-                                <span className="font-semibold capitalize">{key}:</span>{' '}
-                                {String(val)}
-                              </p>
-                            ) : null,
-                        )}
-                      </div>
-                    )}
+                    (() => {
+                      const opciones = entriesOf(paymentDetails, selectedPaymentMethod);
+                      if (opciones.length === 0) return null;
+                      return (
+                        <div
+                          className="rounded-xl p-3.5 border border-slate-200 space-y-2.5 text-xs"
+                          style={{ background: BRAND.bone }}
+                        >
+                          <p className="font-bold text-slate-700">
+                            {opciones.length > 1
+                              ? 'Datos para transferir (elegí una):'
+                              : 'Datos para transferencia:'}
+                          </p>
+                          {opciones.map((opcion, i) => (
+                            <div
+                              key={i}
+                              className={
+                                opciones.length > 1
+                                  ? 'rounded-lg bg-white/70 border border-slate-200 p-2.5 space-y-1'
+                                  : 'space-y-1'
+                              }
+                            >
+                              {opciones.length > 1 && (
+                                <p className="font-semibold text-slate-500">
+                                  {entryLabel(opcion, i)}
+                                </p>
+                              )}
+                              {Object.entries(opcion).map(([key, val]) =>
+                                val ? (
+                                  <p key={key} className="text-slate-600">
+                                    <span className="font-semibold capitalize">{key}:</span> {val}
+                                  </p>
+                                ) : null,
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      );
+                    })()}
 
                   {/* Receipt upload */}
                   {selectedPaymentMethod &&

@@ -91,10 +91,20 @@ export default function DeactivateAccountCard() {
 
   return (
     <>
-      <div className="bg-white border border-red-200 rounded-xl p-5 mt-6">
+      {/*
+        Tono GRIS, no rojo (pedido del dueño, 2026-08-19).
+
+        La tarjeta vive al final de /doctor/upgrade, entre planes que invitan a
+        comprar: en rojo de alerta gritaba más que el resto de la página y
+        parecía una advertencia sobre la cuenta. La confirmación por frase
+        tipeada sigue siendo la protección real contra el toque accidental —
+        no hace falta que el color asuste. El rojo se conserva DENTRO del modal,
+        donde ya se está decidiendo la baja.
+      */}
+      <div className="bg-white border border-slate-200 rounded-xl p-5 mt-6">
         <div className="flex items-start gap-3">
-          <div className="shrink-0 w-9 h-9 rounded-lg bg-red-50 flex items-center justify-center">
-            <AlertTriangle className="w-4.5 h-4.5 text-red-600" aria-hidden="true" />
+          <div className="shrink-0 w-9 h-9 rounded-lg bg-slate-100 flex items-center justify-center">
+            <AlertTriangle className="w-4.5 h-4.5 text-slate-500" aria-hidden="true" />
           </div>
           <div className="min-w-0 flex-1">
             {programada && (
@@ -115,7 +125,7 @@ export default function DeactivateAccountCard() {
             </p>
             <button
               onClick={() => setOpen(true)}
-              className="mt-3 px-3.5 py-2 rounded-lg text-xs font-semibold border border-red-300 text-red-600 hover:bg-red-50 transition-colors"
+              className="mt-3 px-3.5 py-2 rounded-lg text-xs font-semibold border border-slate-300 text-slate-500 hover:bg-slate-50 hover:text-slate-700 transition-colors"
             >
               Dar de baja mi cuenta
             </button>
