@@ -208,6 +208,10 @@ export async function POST(req: NextRequest) {
         appointmentId?: string;
         scheduledAt?: string;
         meetLink?: string | null;
+        /** Código de la CONSULTA (DLT-YYYYMM-NNNN). Es el que se le muestra al
+         *  paciente al confirmar; el de la cita es interno. Null cuando la
+         *  creación de la consulta (best-effort) no llegó a ocurrir. */
+        consultationCode?: string | null;
       };
     };
     const data = successBody.data ?? {};
@@ -216,6 +220,7 @@ export async function POST(req: NextRequest) {
       success: true,
       appointmentId: data.appointmentId ?? null,
       appointmentCode: data.appointmentCode ?? null,
+      consultationCode: data.consultationCode ?? null,
       packageUsed: !!packageId,
       packageRemaining: null,
       // Forward meet_link from backend when Google Calendar is connected.

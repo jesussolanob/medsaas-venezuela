@@ -51,7 +51,12 @@ import {
   type IPricingPlanRepository,
 } from '../../../../packages/domain/repositories/pricing-plan.repository';
 import { CreatePendingConsultationsUseCase } from '../../../../pending-consultations/application/use-cases/create-pending-consultations.use-case';
-import { CARACAS_OFFSET } from '../../../../../domain/caracas-time';
+import {
+  CARACAS_OFFSET,
+  toCaracasHHMM,
+  toCaracasOfficeDay,
+} from '../../../../../domain/caracas-time';
+import { SessionOutsideOfficeHoursError } from '../../../domain/errors/session-outside-office-hours.error';
 
 export interface CreateBookingResult {
   appointment: Appointment;
@@ -68,6 +73,13 @@ export interface CreateBookingResult {
    * consulta inmediata) tiene que leerlo de acá.
    */
   consultationId: string | null;
+  /**
+   * Código legible de la consulta recién creada (DLT-YYYYMM-NNNN).
+   *
+   * Null cuando la creación automática de consulta falló (best-effort). El
+   * llamador debe manejar ambos casos sin romper el flujo de booking.
+   */
+  consultationCode: string | null;
 }
 
 /**
@@ -226,6 +238,21 @@ export class CreateBookingUseCase {
        * atendida una consulta.
        */
       doctorInitiated?: boolean;
+      /**
+       * Fuerza el estado inicial a `confirmed` sin pasar por el ternario de
+       * `doctorInitiated`.
+       *
+       * ⚠️ NO usar `doctorInitiated` para la consulta inmediata: cuando
+       * `scheduledAt` es "ahora", para el momento de la evaluación el instante
+       * ya es pasado y la cita nacería `completed` — el especialista recién
+       * va a atender al paciente.  Esta opción existe exactamente para ese
+       * escenario: el paciente está físicamente en el consultorio, la consulta
+       * ya fue agendada y confirmada en el mismo acto.
+       *
+       * Se evalúa ANTES que `doctorInitiated` para evitar malentendidos futuros.
+       * Solo debe usarlo `CreateImmediateAppointmentUseCase`.
+       */
+      forceConfirmed?: boolean;
     },
   ): Promise<CreateBookingResult> {
     // --- Step 1: Turnstile validation (STUB — Etapa 1) ---
@@ -261,6 +288,10 @@ export class CreateBookingUseCase {
     let officeName: string | undefined;
     let officeMapUrl: string | undefined;
     let officeDuration = 30;
+    // Hoisted so the multi-session loop (step A1b) can validate extra session
+    // slots against the office schedule without re-loading from the database.
+    let resolvedOffice: import('../../../../offices/domain/entities/office.entity').Office | null =
+      null;
 
     if (dto.office_id && this.officeRepo) {
       const office = await this.officeRepo.findById(dto.office_id);
@@ -268,6 +299,7 @@ export class CreateBookingUseCase {
         if (!office.supportsModality(dto.appointment_mode)) {
           throw new OfficeModalityMismatchError(dto.appointment_mode, office.modality);
         }
+        resolvedOffice = office;
         officeAddress = office.address || undefined;
         officeName = office.name;
         officeMapUrl = office.mapUrl ?? undefined;
@@ -376,10 +408,16 @@ export class CreateBookingUseCase {
       patientEmail: dto.patient_email,
       patientCedula: dto.patient_cedula ?? null,
       scheduledAt,
-      // Ver `doctorInitiated` en las opciones: solo el especialista puede dar
-      // de alta una consulta que ya ocurrió, y esa nace atendida.
-      status:
-        options?.doctorInitiated && scheduledAt.getTime() < Date.now() ? 'completed' : 'scheduled',
+      // Ver `forceConfirmed` y `doctorInitiated` en las opciones.
+      // Orden de evaluación:
+      //   1. forceConfirmed → nace `confirmed` (walk-in: el paciente está presente).
+      //   2. doctorInitiated + fecha pasada → nace `completed` (carga retroactiva).
+      //   3. Todo lo demás → nace `scheduled`.
+      status: options?.forceConfirmed
+        ? 'confirmed'
+        : options?.doctorInitiated && scheduledAt.getTime() < Date.now()
+          ? 'completed'
+          : 'scheduled',
       appointmentMode: dto.appointment_mode,
       source: 'booking',
       planName: dto.plan_name,
@@ -485,6 +523,33 @@ export class CreateBookingUseCase {
           // Create immediately-scheduled additional appointments.
           for (const extra of toScheduleNow) {
             const extraAt = new Date(extra.scheduled_at);
+
+            // Defence in depth: validate that each extra session falls within an
+            // enabled office schedule block. The frontend enforces the same rule
+            // on the slot picker, but the backend must be the hard gate.
+            //
+            // Only checked when we have a resolved office. When no office is
+            // linked the check is skipped to preserve backward compatibility.
+            // Timezone: America/Caracas — via the shared helpers in
+            // `src/domain/caracas-time.ts`, same criterion as GetAvailableSlotsUseCase.
+            if (resolvedOffice) {
+              const extraDay = toCaracasOfficeDay(extraAt);
+              const extraTimeHHMM = toCaracasHHMM(extraAt);
+              const extraMinutes = parseHHMMMinutes(extraTimeHHMM);
+              const blocks = resolvedOffice.getEnabledSchedulesForDay(extraDay);
+              const withinBlock = blocks.some((b) => {
+                const startMin = parseHHMMMinutes(b.start);
+                const endMin = parseHHMMMinutes(b.end);
+                return extraMinutes >= startMin && extraMinutes < endMin;
+              });
+              if (!withinBlock) {
+                throw new SessionOutsideOfficeHoursError({
+                  officeDay: extraDay,
+                  timeHHMM: extraTimeHHMM,
+                  blocks,
+                });
+              }
+            }
 
             // Corrección 1: chequeo de solape antes de persistir cada cita adicional.
             // Si el slot está ocupado la transacción entera aborta (igual que la 1ª cita).
@@ -631,6 +696,7 @@ export class CreateBookingUseCase {
     // A failure here only means the consultation will be absent from the list;
     // the booking appointment itself is fully persisted and confirmed.
     let createdConsultationId: string | null = savedAppointment.consultationId ?? null;
+    let createdConsultationCode: string | null = null;
     if (this.createConsultationUC && !savedAppointment.consultationId) {
       try {
         const consultation = await this.createConsultationUC.execute({
@@ -647,6 +713,7 @@ export class CreateBookingUseCase {
         });
         await this.appointmentRepo.updateConsultationId(savedAppointment.id, consultation.id);
         createdConsultationId = consultation.id;
+        createdConsultationCode = consultation.consultationCode;
       } catch (err: unknown) {
         // Non-fatal. Log el MENSAJE del error (código/DB — NO contiene PII) para
         // poder diagnosticar por qué no se creó la consulta.
@@ -661,6 +728,7 @@ export class CreateBookingUseCase {
       appointmentCode,
       meetLink,
       consultationId: createdConsultationId,
+      consultationCode: createdConsultationCode,
     };
   }
 
@@ -762,6 +830,22 @@ export class CreateBookingUseCase {
     const hex4 = randomUUID().replace(/-/g, '').slice(0, 4).toUpperCase();
     return `BK-${ymd}-${rand6}-${hex4}`;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Module-level helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Parses "HH:MM" into total minutes from midnight.
+ *
+ * Mirrors the same private helper in `Office` entity and `DaySchedule` VO,
+ * kept here as a module-level pure function to avoid coupling the use case to
+ * domain internals.
+ */
+function parseHHMMMinutes(time: string): number {
+  const parts = time.split(':');
+  return parseInt(parts[0] ?? '0', 10) * 60 + parseInt(parts[1] ?? '0', 10);
 }
 
 // ---------------------------------------------------------------------------

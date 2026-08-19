@@ -216,6 +216,7 @@ describe('BookingController', () => {
         appointmentCode: 'BK-20260701-123456-AB12',
         meetLink: null,
         consultationId: null,
+        consultationCode: null,
       });
 
       const dto = {

@@ -36,7 +36,10 @@ import {
   updateBlock as updateBlockIn,
   setBlockDuration as setBlockDurationIn,
   setDurationForAllBlocks as setDurationForAllBlocksIn,
+  copyDayToOthers as copyDayToOthersIn,
 } from '@/lib/schedule-utils';
+import { getDoctorServices, updateDoctorService } from '@/app/doctor/services/actions';
+import type { DoctorService } from '@/app/doctor/services-shared';
 
 type Office = {
   id: string;
@@ -186,6 +189,17 @@ export default function OfficesPage() {
   const [phone, setPhone] = useState('');
   const [mapUrl, setMapUrl] = useState('');
   const [schedule, setSchedule] = useState<DaySchedule[]>(DEFAULT_SCHEDULE);
+  // "Copiar horario a…": qué día se está copiando y a cuáles se va a pegar.
+  // `null` = ningún panel abierto.
+  const [copySourceDay, setCopySourceDay] = useState<number | null>(null);
+  const [copyTargets, setCopyTargets] = useState<number[]>([]);
+  // Paso posterior al alta: ofrecer asociarle los servicios que ya existen.
+  const [asociar, setAsociar] = useState<{
+    officeId: string;
+    servicios: DoctorService[];
+    elegidos: string[];
+  } | null>(null);
+  const [asociando, setAsociando] = useState(false);
   const [slotDuration, setSlotDuration] = useState(30);
   const [bufferMinutes, setBufferMinutes] = useState(10);
   const [modality, setModality] = useState<OfficeModality>('in_person');
@@ -320,6 +334,32 @@ export default function OfficesPage() {
     setSchedule((prev) => addBlockIn(prev, dayNum));
   }
 
+  /** Abre (o cierra) el panel de "copiar este día a…". */
+  function toggleCopyPanel(dayNum: number) {
+    setCopySourceDay((prev) => (prev === dayNum ? null : dayNum));
+    setCopyTargets([]);
+  }
+
+  /** Marca/desmarca un día destino en el panel de copia. */
+  function toggleCopyTarget(dayNum: number) {
+    setCopyTargets((prev) =>
+      prev.includes(dayNum) ? prev.filter((d) => d !== dayNum) : [...prev, dayNum],
+    );
+  }
+
+  /** Copia los bloques del día origen a los días marcados y cierra el panel. */
+  function applyCopyToDays() {
+    if (copySourceDay === null || copyTargets.length === 0) return;
+    const cuantos = copyTargets.length;
+    setSchedule((prev) => copyDayToOthersIn(prev, copySourceDay, copyTargets));
+    setCopySourceDay(null);
+    setCopyTargets([]);
+    showToast({
+      type: 'success',
+      message: `Horario copiado a ${cuantos} día${cuantos === 1 ? '' : 's'}`,
+    });
+  }
+
   // ---------------------------------------------------------------------------
   // Guardar
   // ---------------------------------------------------------------------------
@@ -373,11 +413,16 @@ export default function OfficesPage() {
         modality,
       };
 
-      let result;
+      // El id solo existe en el alta; se guarda aparte para no depender de
+      // estrechar una unión entre el resultado de crear y el de actualizar.
+      let nuevoOfficeId: string | null = null;
+      let result: { ok: boolean; error?: string };
       if (editing) {
         result = await updateOffice(editing.id, payload);
       } else {
-        result = await createOffice(payload);
+        const creado = await createOffice(payload);
+        nuevoOfficeId = creado.ok ? (creado.id ?? null) : null;
+        result = creado;
       }
 
       if (!result.ok) {
@@ -393,11 +438,70 @@ export default function OfficesPage() {
       });
       closeForm();
       fetchOffices();
+
+      // Recién creado: si ya tiene servicios cargados, se le ofrece asociarlos
+      // en vez de dejarlo descubrir por su cuenta que el consultorio nuevo no
+      // ofrece nada. Un consultorio sin servicios no puede recibir reservas, y
+      // eso no se ve desde esta pantalla.
+      if (nuevoOfficeId) {
+        void ofrecerAsociarServicios(nuevoOfficeId);
+      }
     } catch (err: unknown) {
       setErrorAndScroll(err instanceof Error ? err.message : 'Ocurrió un error inesperado.');
     } finally {
       setSaving(false);
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Asociar servicios existentes a un consultorio recién creado
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Busca los servicios del especialista y, si tiene alguno que todavía no se
+   * ofrece en este consultorio, abre el paso de asociación.
+   *
+   * Se saltan los servicios GENERALES (`office_id === null`): esos ya aparecen
+   * en todos los consultorios, así que ofrecerlos sería prometer un cambio que
+   * no cambia nada — y peor, atarlos a este consultorio los sacaría del resto.
+   */
+  async function ofrecerAsociarServicios(nuevoOfficeId: string) {
+    try {
+      const servicios = await getDoctorServices();
+      const candidatos = servicios.filter(
+        (s) => s.is_active && s.office_id !== null && s.office_id !== nuevoOfficeId,
+      );
+      if (candidatos.length === 0) return;
+      setAsociar({ officeId: nuevoOfficeId, servicios: candidatos, elegidos: [] });
+    } catch {
+      // Es un ofrecimiento, no un paso obligatorio: si falla, el consultorio ya
+      // quedó creado y el especialista puede asociar servicios desde Servicios.
+    }
+  }
+
+  async function confirmarAsociacion() {
+    if (!asociar || asociar.elegidos.length === 0) return;
+    setAsociando(true);
+    const resultados = await Promise.all(
+      asociar.elegidos.map((id) => updateDoctorService(id, { office_id: asociar.officeId })),
+    );
+    setAsociando(false);
+
+    const fallidos = resultados.filter((r) => !r.success).length;
+    if (fallidos > 0) {
+      // No hay endpoint en lote: cada servicio va por su PUT y alguno puede
+      // fallar solo. Se dice cuántos, en vez de un "listo" que sería mentira.
+      showToast({
+        type: 'error',
+        message: `${resultados.length - fallidos} de ${resultados.length} servicios asociados. Revisá el resto en Servicios.`,
+      });
+    } else {
+      showToast({
+        type: 'success',
+        message: `${resultados.length} servicio${resultados.length === 1 ? '' : 's'} asociado${resultados.length === 1 ? '' : 's'}`,
+      });
+    }
+    setAsociar(null);
   }
 
   // ---------------------------------------------------------------------------
@@ -455,6 +559,93 @@ export default function OfficesPage() {
         onConfirm={() => confirmDelete && performDelete(confirmDelete)}
         onCancel={() => setConfirmDelete(null)}
       />
+
+      {/*
+        Asociar servicios al consultorio recién creado.
+
+        Se ofrece, no se impone: cerrar sin elegir nada es una respuesta válida
+        y el consultorio ya quedó creado. Los servicios "General" no aparecen
+        acá — ya se ofrecen en todos los consultorios.
+      */}
+      {asociar && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[70] p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+            <div>
+              <h3 className="text-base font-bold text-slate-900">
+                ¿Qué servicios ofrecés en este consultorio?
+              </h3>
+              <p className="text-xs text-slate-500 mt-1">
+                Ya tenés {asociar.servicios.length} servicio
+                {asociar.servicios.length === 1 ? '' : 's'} cargado
+                {asociar.servicios.length === 1 ? '' : 's'}. Marcá los que también atendés acá —
+                podés hacerlo después desde Servicios.
+              </p>
+            </div>
+
+            <div className="space-y-1.5">
+              {asociar.servicios.map((s) => {
+                const marcado = asociar.elegidos.includes(s.id);
+                return (
+                  <label
+                    key={s.id}
+                    className={`flex items-center gap-3 px-3 py-2.5 rounded-lg border cursor-pointer transition-colors ${
+                      marcado
+                        ? 'border-teal-400 bg-teal-50/60'
+                        : 'border-slate-200 hover:border-slate-300'
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={marcado}
+                      onChange={() =>
+                        setAsociar((prev) =>
+                          prev
+                            ? {
+                                ...prev,
+                                elegidos: marcado
+                                  ? prev.elegidos.filter((id) => id !== s.id)
+                                  : [...prev.elegidos, s.id],
+                              }
+                            : prev,
+                        )
+                      }
+                      className="accent-teal-500"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-semibold text-slate-800 truncate">{s.name}</p>
+                      <p className="text-xs text-slate-400">
+                        {s.duration_minutes} min · ${s.price_usd}
+                      </p>
+                    </div>
+                  </label>
+                );
+              })}
+            </div>
+
+            <p className="text-[11px] text-slate-400">
+              Un servicio se atiende en un consultorio a la vez: al marcarlo acá deja de estar
+              asociado al anterior.
+            </p>
+
+            <div className="flex gap-2 pt-1">
+              <button
+                onClick={() => setAsociar(null)}
+                disabled={asociando}
+                className="flex-1 py-2.5 border border-slate-200 rounded-lg text-sm font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+              >
+                Ahora no
+              </button>
+              <button
+                onClick={() => void confirmarAsociacion()}
+                disabled={asociando || asociar.elegidos.length === 0}
+                className="flex-1 py-2.5 bg-teal-500 text-white rounded-lg text-sm font-semibold hover:bg-teal-600 disabled:opacity-40"
+              >
+                {asociando ? 'Asociando…' : 'Asociar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Header */}
       <div className="flex items-center justify-between">
@@ -835,7 +1026,75 @@ export default function OfficesPage() {
                           {!isDayActive && (
                             <span className="text-xs text-slate-400 italic">No disponible</span>
                           )}
+
+                          {/*
+                            "Copiar a…" — programar un día y repetirlo en los que
+                            elija, en vez de cargar el mismo horario siete veces.
+                            Solo tiene sentido en un día que ya tiene bloques.
+                          */}
+                          {isDayActive && dayBlocks.length > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => toggleCopyPanel(dayNum)}
+                              aria-expanded={copySourceDay === dayNum}
+                              className={`ml-auto text-[11px] font-semibold px-2 py-1 rounded-md transition-colors ${
+                                copySourceDay === dayNum
+                                  ? 'bg-teal-50 text-teal-700'
+                                  : 'text-slate-500 hover:text-teal-600 hover:bg-slate-50'
+                              }`}
+                            >
+                              Copiar a…
+                            </button>
+                          )}
                         </div>
+
+                        {copySourceDay === dayNum && (
+                          <div className="mx-3 mb-3 rounded-lg border border-teal-200 bg-teal-50/50 p-3 space-y-2">
+                            <p className="text-[11px] font-semibold text-slate-600">
+                              Aplicar el horario de {dayName} a:
+                            </p>
+                            <div className="flex flex-wrap gap-1.5">
+                              {DAYS.map((otroNombre, otroNum) =>
+                                otroNum === dayNum ? null : (
+                                  <button
+                                    key={otroNum}
+                                    type="button"
+                                    onClick={() => toggleCopyTarget(otroNum)}
+                                    aria-pressed={copyTargets.includes(otroNum)}
+                                    className={`text-[11px] font-semibold px-2.5 py-1 rounded-md border transition-colors ${
+                                      copyTargets.includes(otroNum)
+                                        ? 'bg-teal-500 text-white border-teal-500'
+                                        : 'bg-white text-slate-600 border-slate-200 hover:border-teal-300'
+                                    }`}
+                                  >
+                                    {DAYS_SHORT[otroNum]}
+                                  </button>
+                                ),
+                              )}
+                            </div>
+                            <p className="text-[11px] text-slate-500">
+                              Los días que elijas quedan con este mismo horario y{' '}
+                              <strong>se reemplaza</strong> lo que tuvieran.
+                            </p>
+                            <div className="flex gap-2 pt-0.5">
+                              <button
+                                type="button"
+                                onClick={() => toggleCopyPanel(dayNum)}
+                                className="text-[11px] font-semibold text-slate-500 hover:text-slate-700 px-2 py-1"
+                              >
+                                Cancelar
+                              </button>
+                              <button
+                                type="button"
+                                onClick={applyCopyToDays}
+                                disabled={copyTargets.length === 0}
+                                className="text-[11px] font-bold text-white bg-teal-500 hover:bg-teal-600 disabled:opacity-40 px-3 py-1 rounded-md"
+                              >
+                                Aplicar
+                              </button>
+                            </div>
+                          </div>
+                        )}
 
                         {/* Bloques del día (solo si activo) */}
                         {isDayActive && (

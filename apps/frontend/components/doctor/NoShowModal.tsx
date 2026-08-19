@@ -165,6 +165,20 @@ export default function NoShowModal({
       setError('Esta consulta no tiene una cita vinculada, no se puede registrar la inasistencia.');
       return;
     }
+
+    // Una multa sobre una cita sin consulta vinculada no tiene dónde escribirse:
+    // `buildPatch` devuelve null y el importe se perdía SIN AVISO — el
+    // especialista creía haber cobrado algo que nunca quedó registrado. Toda cita
+    // crea su consulta desde el ADR-021, pero esa creación es best-effort y puede
+    // haber fallado. Si no hay dónde anotarla, se dice antes de tocar nada.
+    if (fine > 0 && !consultationId) {
+      setError(
+        'Esta cita no tiene una consulta vinculada, así que no se puede registrar la multa. ' +
+          'Registrá la inasistencia sin multa y cobrala aparte.',
+      );
+      return;
+    }
+
     setSaving(true);
 
     const statusResult = await updateAppointmentStatus(appointmentId, 'no_show');
@@ -324,7 +338,11 @@ export default function NoShowModal({
                       <input
                         type="number"
                         min="0"
-                        step="0.01"
+                        // De a $1: una multa se piensa en dólares enteros, y con
+                        // step="0.01" cada clic en la flecha movía un céntimo. Tipear
+                        // decimales a mano sigue funcionando (el step solo gobierna
+                        // las flechas y la rueda del mouse).
+                        step="1"
                         value={fineInput}
                         onChange={(e) => setFineInput(e.target.value)}
                         className="w-28 px-3 py-1.5 border border-slate-200 rounded-lg text-sm focus:border-teal-400 outline-none"

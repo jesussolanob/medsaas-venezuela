@@ -676,6 +676,37 @@ status='active'` con `QueryTypes.UPDATE` (devuelve `[undefined, affectedCount]`;
   `subscription_plan` — copiar de una a otra SIEMPRE con guarda contra `enum_range`, o el día que
   aparezca un valor nuevo la transacción explota y deja al especialista sin poder entrar.
 
+- **ADR-044 (2026-08-19):** **Los datos de cobro del especialista admiten VARIAS entradas
+  por método, sin migrar nada.** Un especialista con cuentas en dos bancos tenía que
+  elegir cuál publicaba, y el paciente que no tiene ese banco paga comisión o no paga.
+  `profiles.payment_details` pasa a aceptar, por método, **un objeto (forma histórica) o
+  una lista**; `apps/frontend/lib/payment-details.ts` normaliza al leer (`entriesOf`) y
+  decide la forma al escribir (`withEntries`: objeto con una entrada, lista con varias).
+  (1) **No hay migración de datos y es deliberado**: la columna es JSONB con datos reales
+  de producción y en este proyecto **una migración rota bloquea TODOS los despliegues**
+  (ver el gotcha del ADR-022). Un perfil viejo sigue funcionando sin que nadie lo toque y
+  la forma nueva se escribe sola la primera vez que el especialista guarda.
+  (2) **Solo `pago_movil` y `transferencia` ofrecen "+ Agregar otro"** en la UI, aunque el
+  modelo de datos sea genérico: son los que un especialista tiene repetidos en distintos
+  bancos. Zelle o Binance con dos cuentas confunden al paciente más de lo que ayudan.
+  (3) ⚠️ **Nadie lee `payment_details[metodo]` directo.** Los tres consumidores —el
+  acordeón de Configuración, el booking público y el mensaje de cobro por WhatsApp— pasan
+  por el helper. El de WhatsApp era el más frágil: tenía los campos escritos a mano por
+  método, y ahora emite una línea por entrada, numerada solo cuando hay más de una.
+  (4) La validación de 20 dígitos de la cuenta bancaria ahora corre sobre **cada** cuenta
+  cargada; antes miraba solo la primera y con varias dejaba pasar una mal escrita.
+
+- **ADR-045 (2026-08-19):** **La consulta inmediata nace CONFIRMADA, con una opción propia
+  y no reusando `doctorInitiated`.** El paciente está físicamente en el consultorio: que
+  la cita naciera "por confirmar" no describía nada real. Se agregó `forceConfirmed` a las
+  options de `CreateBookingUseCase`, evaluada **antes** del ternario de `doctorInitiated`.
+  ⚠️ **Por qué no alcanza `doctorInitiated`:** ese ternario elige entre `completed` y
+  `scheduled` mirando si `scheduledAt` ya pasó, y como la hora de una consulta inmediata
+  es "ahora", para cuando la línea se evalúa **siempre** es pasado — la cita nacería
+  `completed` (atendida) antes de que el especialista examine al paciente, que es peor que
+  el bug original. La opción va separada justamente para que nadie la "simplifique"
+  después fusionándola con `doctorInitiated`.
+
 - **ADR-043 (2026-08-18):** **Una pantalla de admin tiene que darse cuenta de que la sesión
   cambió debajo.** La sesión de Auth0 es una cookie del **perfil del navegador, no de la
   pestaña**: si alguien entra con otra cuenta en otra pestaña de la misma ventana, el panel abierto

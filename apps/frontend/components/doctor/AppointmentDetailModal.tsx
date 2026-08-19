@@ -499,8 +499,17 @@ export default function AppointmentDetailModal({
                 </div>
               )}
 
-              {/* Status badges: cita + consulta */}
-              <div className="grid grid-cols-2 gap-2 bg-slate-50 rounded-xl p-3">
+              {/*
+                Estados: cita + consulta + PAGO.
+
+                El pago se agregó el 2026-08-19: el dato ya llegaba en
+                `appt.paymentStatus` y solo se usaba para decidir si esconder
+                "Cancelar", pero nunca se mostraba. El especialista tenía que
+                entrar a la consulta para saber si la cita estaba cobrada —
+                justo el dato que necesita para decidir entre cancelar y
+                reagendar, que es la regla del negocio en esta pantalla.
+              */}
+              <div className="grid grid-cols-3 gap-2 bg-slate-50 rounded-xl p-3">
                 <div>
                   <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
                     Cita
@@ -524,6 +533,24 @@ export default function AppointmentDetailModal({
                   ) : (
                     <span className="inline-flex items-center gap-1 mt-1 text-[10px] px-2 py-0.5 rounded-full bg-slate-50 text-slate-400 border border-slate-200">
                       Sin consulta
+                    </span>
+                  )}
+                </div>
+                <div>
+                  <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                    Pago
+                  </p>
+                  {appt.paymentStatus === 'approved' ? (
+                    <span className="inline-flex items-center gap-1 mt-1 text-[10px] font-semibold px-2 py-0.5 rounded-full border bg-emerald-50 text-emerald-700 border-emerald-200">
+                      Pagada
+                    </span>
+                  ) : appt.paymentStatus === 'pending' ? (
+                    <span className="inline-flex items-center gap-1 mt-1 text-[10px] font-semibold px-2 py-0.5 rounded-full border bg-amber-50 text-amber-700 border-amber-200">
+                      Por cobrar
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 mt-1 text-[10px] px-2 py-0.5 rounded-full bg-slate-50 text-slate-400 border border-slate-200">
+                      —
                     </span>
                   )}
                 </div>

@@ -104,6 +104,7 @@ function makeBookingResult(
     // La consulta viene del resultado, NO de appointment.consultationId: el FK
     // se actualiza en la BD después de construir la entidad.
     consultationId,
+    consultationCode: consultationId ? 'DLT-202508-0001' : null,
   };
 }
 
@@ -284,6 +285,38 @@ describe('CreateImmediateAppointmentUseCase', () => {
 
       const bookingDto = createBookingMock.execute.mock.calls[0]![0];
       expect(bookingDto.duration_minutes).toBe(45);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // forceConfirmed: la consulta inmediata nace confirmada
+  // -------------------------------------------------------------------------
+
+  describe('forceConfirmed — la consulta inmediata nace confirmada', () => {
+    it('pasa forceConfirmed=true a CreateBookingUseCase para que la cita nazca confirmed', async () => {
+      patientRepoMock.findById.mockResolvedValueOnce(makePatient());
+      getWindowMock.execute.mockResolvedValueOnce(makeWindowResult({ now: NOW }));
+      createBookingMock.execute.mockResolvedValueOnce(
+        makeBookingResult(makeSavedAppt({ scheduledAt: NOW }), makePatient()),
+      );
+
+      await useCase.execute(DOCTOR_ID, makeBaseDto());
+
+      const [, options] = createBookingMock.execute.mock.calls[0]!;
+      expect(options?.forceConfirmed).toBe(true);
+    });
+
+    it('NO pasa doctorInitiated (evita que la cita nazca completed por ser del pasado inmediato)', async () => {
+      patientRepoMock.findById.mockResolvedValueOnce(makePatient());
+      getWindowMock.execute.mockResolvedValueOnce(makeWindowResult({ now: NOW }));
+      createBookingMock.execute.mockResolvedValueOnce(
+        makeBookingResult(makeSavedAppt({ scheduledAt: NOW }), makePatient()),
+      );
+
+      await useCase.execute(DOCTOR_ID, makeBaseDto());
+
+      const [, options] = createBookingMock.execute.mock.calls[0]!;
+      expect(options?.doctorInitiated).toBeFalsy();
     });
   });
 

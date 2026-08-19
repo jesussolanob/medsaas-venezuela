@@ -27,6 +27,7 @@ import {
   History,
 } from 'lucide-react';
 import PlanPaymentModal from '@/components/doctor/PlanPaymentModal';
+import DeactivateAccountCard from '@/app/doctor/settings/DeactivateAccountCard';
 
 interface PlanFeature {
   feature_key: string;
@@ -627,6 +628,14 @@ export default function UpgradeClient({ plans, currentPlanKey }: UpgradeClientPr
         </div>
         <ChevronRight className="w-4 h-4 ml-auto shrink-0 text-slate-400 transition-transform group-hover:translate-x-0.5 group-hover:text-green-600" />
       </a>
+
+      {/*
+        Baja de cuenta — última de la página y en gris (pedido del dueño,
+        2026-08-19). Vivía al pie de "Mi perfil", donde aparecía mientras el
+        especialista hacía su trabajo diario. Acá está donde tiene sentido
+        buscarla —la pantalla de lo que paga— sin competir con los planes.
+      */}
+      <DeactivateAccountCard />
 
       {/* Payment modal */}
       {modalState && (

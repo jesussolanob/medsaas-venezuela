@@ -80,6 +80,15 @@ export class SellerProfileModel extends Model {
   @Column({ type: DataType.DATE, allowNull: true, field: 'last_sign_in_at' })
   declare lastSignInAt: Date | null;
 
+  /**
+   * Whether the specialist has completed the onboarding wizard (has an active
+   * office + service). Column added by migration 20260617000004. NULL on legacy
+   * rows that predate the column — treated as false in the mapper.
+   */
+  @Default(false)
+  @Column({ type: DataType.BOOLEAN, allowNull: true, field: 'onboarding_completed' })
+  declare onboardingCompleted: boolean | null;
+
   @Column({ type: DataType.DATE, allowNull: true, field: 'created_at' })
   declare createdAt: Date;
 

@@ -4,6 +4,102 @@
 > ⚠️ Orden: **la entrada más nueva va ARRIBA**. La del 2026-08-11 quedó al final
 > del archivo por error; no se movió para no ensuciar el diff.
 
+## 2026-08-19 — Lote de 25 observaciones del QA manual del 18/08 ⏳ EN STAGING, ESPERANDO AL DUEÑO
+
+El dueño entregó una lista de 27 puntos (`Pruebas 18-08.txt`). **Dos ya estaban
+resueltos** —son las regresiones que se arreglaron esa misma noche—, **uno no se pudo
+reproducir** y los **25 restantes** entraron en un solo lote.
+
+**Entrega:** rama `feature/qa-19-agosto-lote` → `develop` → `staging`.
+`nx test backend`: **405 suites · 3.918 tests · 0 fallas** (línea base 404/3.898).
+`tsc` limpio en ambas apps. Build de las dos apps OK. **Dist booteado contra la BD real
+de staging: 249 rutas mapeadas, 0 errores de inyección**, y curl real a
+`/api/booking/:id/info` y `/slots`. Lint del frontend: **123 errores / 177 avisos, los
+mismos con y sin el lote** (medido con `git stash`) — cero regresiones.
+
+### Lo que NO era trabajo nuevo
+
+- **#1 (plan que bloqueaba módulos)** y **#2 (nombre partido por Chrome)** son las
+  regresiones del 18/08. Verificado contra la BD: `marcovillegas1197@gmail.com` quedó en
+  `free_trial · active · vence 21/08` y el plan `free_trial` tiene **18 de 18 features**.
+- **#23 (teléfono en el onboarding)**: ya se persiste al terminar el paso 1, antes de
+  avanzar. Si el especialista abandona en el paso 2, el teléfono ya está guardado.
+- **#14 (servicio de 30' en consultorio de 30+10)**: **NO REPRODUCIBLE**. La regla es
+  `duración del bloque más largo >= duración del servicio` y el buffer **no entra en la
+  cuenta**: 30 contra 30 da verdadero. Se revisaron además los 14 consultorios reales de
+  staging y ninguno contradice eso. **Falta que el dueño diga el nombre exacto del
+  consultorio y del servicio.**
+
+### La causa raíz más instructiva del lote
+
+**"Crear y continuar" no avanzaba** porque el route handler devuelve `error` como
+**OBJETO** `{code,message,status}` y el modal lo tipaba como `string`. Al hacer
+`setError(objeto)` sobre un `useState<string>`, React tira "Objects are not valid as a
+React child" y **rompe el render en pleno click**: desde la pantalla se ve exactamente
+como un botón que no hace nada. Es la variante de UI de `tipos-que-mienten-sobre-la-api`.
+Se agregó **`lib/api-error.ts`** (`apiErrorMessage` / `apiErrorCode`) porque el patrón
+está repartido por el código y va a volver a pasar.
+
+### Decisiones de diseño que conviene recordar
+
+- **`forceConfirmed` es una opción NUEVA, no `doctorInitiated`.** La consulta inmediata
+  debe nacer `confirmed`. No alcanza con `doctorInitiated`: como la hora es "ahora", para
+  cuando se evalúa el ternario ya es pasado y la cita nacería **`completed`** (atendida),
+  que es peor — el especialista recién va a examinar al paciente.
+- **El autorrelleno de Chrome se corta desmontando el campo, no con atributos.** Chrome
+  **ignora deliberadamente** `autocomplete="off"` en campos que clasifica como nombre o
+  dirección, y `data-lpignore`/`data-1p-ignore` **solo hablan con LastPass y 1Password**.
+  Mientras el buscador y "Nombre y apellido" convivan en pantalla sin un `<form>` que los
+  separe, Chrome los trata como un formulario sin dueño y reparte el autocompletado. El
+  arreglo del 18/08 había puesto los atributos; faltaba lo único que funciona.
+- **Varios pagos móviles y cuentas: COMPATIBLE HACIA ATRÁS, sin migración.** Un método
+  puede guardar un objeto (forma vieja) o una lista (forma nueva) y `lib/payment-details`
+  normaliza al leer. Se eligió así porque en este proyecto **una migración rota bloquea
+  TODOS los despliegues**, y acá no hacía falta ninguna. Se escribe lista solo cuando hay
+  más de una entrada. Consumidores: settings, booking público y el mensaje de cobro por
+  WhatsApp — **ninguno lee `payment_details[metodo]` directo**.
+- **Las instrucciones de pago de la plataforma no se podían cargar.** El editor de
+  `/admin/settings` usaba un `<input type="text">` para todo y ahí **Enter guarda en vez
+  de saltar de renglón**: cargar banco, RIF y beneficiario —una línea cada uno— era
+  imposible desde la pantalla. Ahora las keys multilínea usan `<textarea>`. El modal de
+  pago del plan **ya las mostraba** desde antes; lo que faltaba era poder escribirlas.
+- **`copyDayToOthers` va en `lib/schedule-utils` y se cableó en las DOS pantallas**
+  (Consultorios y onboarding). Agregarlo solo en una repite la deriva histórica que ya
+  dejó al onboarding admitiendo un bloque por día.
+
+### Lo que hay que probar en staging
+
+1. **Consulta inmediata**: crear paciente nuevo desde el modal y que avance · que la
+   consulta quede **confirmada**, no "por confirmar" · sin espacio → "Registrar igual"
+   funciona · el nombre no se parte con el autorrelleno de Chrome · abre rápido.
+2. **Paquete multi-sesión desde el link público**: las consultas 2..N solo ofrecen
+   **días y horarios que el especialista atiende**, marcan los ocupados, y al confirmar
+   sale **código de consulta** (`DLT-…`), no de cita.
+3. **Multa por inasistencia**: las flechas suben de a $1 y el monto aparece en Por cobrar.
+4. **Consultorios**: "Copiar a…" con varios días · al crear uno nuevo ofrece asociar los
+   servicios existentes.
+5. **Divisa euro**: el link público **no parpadea** de $ a €.
+6. **Métodos de pago**: cargar DOS pagos móviles y DOS cuentas, y verificar que las dos
+   aparezcan en el booking y en el mensaje de cobro por WhatsApp.
+7. **Plan Delta**: el checkout tiene 3 pasos y muestra los datos de la cuenta.
+   ⚠️ En staging quedaron cargados **datos SIMULADOS** de TLS (Banesco, J-40123456-7):
+   el dueño tiene que poner los reales desde `/admin/settings`.
+8. **Baja de cuenta**: ahora vive al final de `/doctor/upgrade`, en gris.
+9. **Vendedor**: la columna **Seguimiento** distingue "Nunca entró" / "Registro
+   incompleto" / "Sin actividad"; el alta pide cédula y el onboarding **precarga el
+   teléfono**.
+
+### Cabos sueltos
+
+- **#14 sigue abierta** — necesita el nombre del consultorio y del servicio.
+- El portal del vendedor usa cortes de actividad de **7 y 30 días** y `/admin` usa **7 y
+  14** (`UsersPanel.tsx`). Ya divergían antes de este lote; unificarlos es decisión de
+  producto.
+- El lint del frontend sigue en 123 errores preexistentes. No frena nada y no sirve de
+  señal — mismo agujero de siempre.
+
+---
+
 ## 2026-08-18 — Regresiones del QA: la prueba que se perdía y los errores en inglés ⏳ EN STAGING, ESPERANDO AL DUEÑO
 
 Cuatro reportes del dueño sobre staging. Dos eran bugs reales, uno **no era un bug de

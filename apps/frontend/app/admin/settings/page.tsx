@@ -42,6 +42,25 @@ const RATE_MANAGED_KEYS = new Set([
   'rate_source',
 ]);
 
+/**
+ * Ajustes cuyo valor es un TEXTO DE VARIAS LÍNEAS.
+ *
+ * El editor genérico usaba un `<input type="text">` para todo, y ahí Enter
+ * guarda en vez de saltar de renglón: cargar las instrucciones de pago de la
+ * plataforma —banco, RIF, beneficiario, una por línea— era imposible desde la
+ * pantalla. Estas keys se editan con un `<textarea>`.
+ *
+ * Además se detecta automáticamente cualquier valor que YA tenga saltos de
+ * línea, para no tener que anticipar cada key nueva.
+ */
+const MULTILINE_KEYS = new Set(['platform_payment_instructions']);
+
+/** Ayuda contextual para las keys donde el nombre técnico no alcanza. */
+const SETTING_HINTS: Record<string, string> = {
+  platform_payment_instructions:
+    'Se le muestra al especialista al pagar su plan. Una línea por dato; las que empiezan con "-" salen como viñeta y las que terminan en ":" como título.',
+};
+
 type Admin = {
   id: string;
   email: string;
@@ -829,6 +848,9 @@ export default function AdminSettingsPage() {
               {appSettings.map((setting) => {
                 const isRateKey = RATE_MANAGED_KEYS.has(setting.key);
                 const isEditing = editingKey === setting.key;
+                const isMultiline =
+                  MULTILINE_KEYS.has(setting.key) || (setting.value?.includes('\n') ?? false);
+                const hint = SETTING_HINTS[setting.key];
 
                 return (
                   <div key={setting.key} className="py-3">
@@ -851,39 +873,65 @@ export default function AdminSettingsPage() {
                         {isRateKey ? (
                           <p className="mt-1.5 text-sm text-slate-500 break-all">{setting.value}</p>
                         ) : isEditing ? (
-                          <div className="mt-1.5 flex items-center gap-2">
-                            <input
-                              type="text"
-                              value={editingValue}
-                              onChange={(e) => setEditingValue(e.target.value)}
-                              className="flex-1 px-3 py-1.5 border border-teal-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-200"
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter') saveSetting(setting.key, editingValue);
-                                if (e.key === 'Escape') setEditingKey(null);
-                              }}
-                              autoFocus
-                            />
-                            <button
-                              onClick={() => saveSetting(setting.key, editingValue)}
-                              disabled={savingSetting === setting.key}
-                              className="flex items-center gap-1 px-2.5 py-1.5 bg-teal-500 hover:bg-teal-600 text-white text-xs font-semibold rounded-lg disabled:opacity-50"
-                            >
-                              {savingSetting === setting.key ? (
-                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                              ) : (
-                                <Save className="w-3.5 h-3.5" />
-                              )}
-                              Guardar
-                            </button>
-                            <button
-                              onClick={() => setEditingKey(null)}
-                              className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg"
-                            >
-                              <X className="w-3.5 h-3.5" />
-                            </button>
+                          <div
+                            className={`mt-1.5 gap-2 ${isMultiline ? 'flex flex-col' : 'flex items-center'}`}
+                          >
+                            {hint && <p className="text-xs text-slate-500">{hint}</p>}
+                            {isMultiline ? (
+                              // Enter tiene que saltar de renglón, no guardar:
+                              // este valor son varias líneas.
+                              <textarea
+                                value={editingValue}
+                                onChange={(e) => setEditingValue(e.target.value)}
+                                rows={8}
+                                className="w-full px-3 py-2 border border-teal-300 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-teal-200 resize-y"
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Escape') setEditingKey(null);
+                                }}
+                                autoFocus
+                              />
+                            ) : (
+                              <input
+                                type="text"
+                                value={editingValue}
+                                onChange={(e) => setEditingValue(e.target.value)}
+                                className="flex-1 px-3 py-1.5 border border-teal-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-200"
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') saveSetting(setting.key, editingValue);
+                                  if (e.key === 'Escape') setEditingKey(null);
+                                }}
+                                autoFocus
+                              />
+                            )}
+                            <div className={isMultiline ? 'flex items-center gap-2' : 'contents'}>
+                              <button
+                                onClick={() => saveSetting(setting.key, editingValue)}
+                                disabled={savingSetting === setting.key}
+                                className="flex items-center gap-1 px-2.5 py-1.5 bg-teal-500 hover:bg-teal-600 text-white text-xs font-semibold rounded-lg disabled:opacity-50"
+                              >
+                                {savingSetting === setting.key ? (
+                                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                ) : (
+                                  <Save className="w-3.5 h-3.5" />
+                                )}
+                                Guardar
+                              </button>
+                              <button
+                                onClick={() => setEditingKey(null)}
+                                className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
                           </div>
                         ) : (
-                          <p className="mt-1.5 text-sm text-slate-800 break-all">
+                          <p
+                            className={`mt-1.5 text-sm text-slate-800 ${
+                              // Un texto de varias líneas se muestra tal cual:
+                              // con break-all a secas se leía todo corrido.
+                              isMultiline ? 'whitespace-pre-wrap break-words' : 'break-all'
+                            }`}
+                          >
                             {setting.value || <span className="text-slate-400 italic">vacío</span>}
                           </p>
                         )}

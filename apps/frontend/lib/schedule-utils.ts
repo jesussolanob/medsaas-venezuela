@@ -138,6 +138,47 @@ export function setDurationForAllBlocks(
   return schedule.map((b) => ({ ...b, slotDuration }));
 }
 
+/**
+ * Copia los bloques de un día a otros días, reemplazando lo que tuvieran.
+ *
+ * Es el "programá un día y copialo al resto" que pidió el dueño: cargar el mismo
+ * horario siete veces a mano es donde más se equivoca uno, y un día mal cargado
+ * se traduce en horarios ofrecidos que el especialista no puede atender.
+ *
+ * Reemplaza y no fusiona a propósito: "igualar el martes al lunes" significa que
+ * el martes queda como el lunes, no que se le sumen bloques encima — mezclarlos
+ * generaría solapamientos que el propio editor rechaza después.
+ *
+ * Se copia TODO el bloque (horas, duración propia y buffer), porque la duración
+ * por bloque es parte del horario desde el ADR-028.
+ *
+ * Un día destino sin bloques en el origen queda vacío y apagado, que es lo
+ * coherente: si el lunes no atiende, igualar el martes al lunes lo apaga.
+ */
+export function copyDayToOthers(
+  schedule: DaySchedule[],
+  sourceDay: number,
+  targetDays: readonly number[],
+): DaySchedule[] {
+  const targets = new Set(targetDays.filter((d) => d !== sourceDay));
+  if (targets.size === 0) return schedule;
+
+  const sourceBlocks = schedule.filter((b) => b.day === sourceDay);
+
+  // Se conservan los bloques del origen y de los días que no se tocan, en su
+  // orden original; los destinos se reescriben al final con la copia.
+  const untouched = schedule.filter((b) => !targets.has(b.day));
+
+  const copies: DaySchedule[] = [];
+  for (const day of targets) {
+    for (const block of sourceBlocks) {
+      copies.push({ ...block, day });
+    }
+  }
+
+  return [...untouched, ...copies];
+}
+
 /** Removes a block by index. If it was the day's only one, the day ends up with none. */
 export function removeBlock(schedule: DaySchedule[], blockIndex: number): DaySchedule[] {
   return schedule.filter((_, i) => i !== blockIndex);

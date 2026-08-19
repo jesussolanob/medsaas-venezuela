@@ -86,7 +86,7 @@ function ModalStep({ current, label }: { current: number; label: string }) {
         className="font-bold"
         style={{ color: 'var(--dh-turquoise-700)', fontFamily: 'var(--dh-font-mono)' }}
       >
-        {current}/4
+        {current}/3
       </span>
       <span>{label}</span>
     </div>
@@ -98,7 +98,12 @@ function ModalStep({ current, label }: { current: number; label: string }) {
 // ---------------------------------------------------------------------------
 
 export default function PlanPaymentModal({ planKey, planName, period, onClose, onSuccess }: Props) {
-  const [modalStep, setModalStep] = useState<1 | 2 | 3 | 4 | 'success'>(1);
+  // Eran CUATRO pasos. Subir el comprobante y escribir referencia+banco se
+  // unificaron en el paso 2 (pedido del dueño, 2026-08-19): son el mismo momento
+  // —el especialista tiene el comprobante delante y copia los datos de ahí— y
+  // separarlos lo obligaba a volver atrás para mirar el número que acababa de
+  // adjuntar. El paso 3 es el de confirmar, que antes era el 4.
+  const [modalStep, setModalStep] = useState<1 | 2 | 3 | 'success'>(1);
   // La periodicidad también se elige acá dentro: antes solo podía cambiarse en la
   // pantalla de atrás, así que el especialista tenía que cerrar el modal para
   // pasar de mensual a anual. Arranca con la que venía seleccionada.
@@ -234,18 +239,21 @@ export default function PlanPaymentModal({ planKey, planName, period, onClose, o
   // Step navigation
   // ---------------------------------------------------------------------------
 
+  /**
+   * Valida el paso 2 completo (comprobante + referencia + banco) y avanza.
+   *
+   * El orden importa: primero las validaciones LOCALES de los tres campos y
+   * recién después la subida del archivo. Al revés se subía el comprobante para
+   * después rebotar por un banco sin elegir, dejando un archivo huérfano en el
+   * storage y haciéndole esperar la subida para nada.
+   */
   async function goFromStep2ToStep3() {
+    let hasError = false;
+
     if (!selectedFile && !uploadedPath) {
       setFileError('Selecciona el comprobante de pago');
-      return;
+      hasError = true;
     }
-    const path = await uploadFile();
-    if (!path) return; // upload error shown in fileError
-    setModalStep(3);
-  }
-
-  function goFromStep3ToStep4() {
-    let hasError = false;
     if (!referenceNumber.trim()) {
       setRefError('El número de referencia es obligatorio');
       hasError = true;
@@ -255,7 +263,10 @@ export default function PlanPaymentModal({ planKey, planName, period, onClose, o
       hasError = true;
     }
     if (hasError) return;
-    setModalStep(4);
+
+    const path = await uploadFile();
+    if (!path) return; // el error de subida se muestra en fileError
+    setModalStep(3);
   }
 
   async function submitPayment() {
@@ -313,10 +324,8 @@ export default function PlanPaymentModal({ planKey, planName, period, onClose, o
                     modalStep === 1
                       ? 'Resumen del pago'
                       : modalStep === 2
-                        ? 'Subir comprobante'
-                        : modalStep === 3
-                          ? 'Datos de la transferencia'
-                          : 'Confirmar envío'
+                        ? 'Comprobante y datos de la transferencia'
+                        : 'Confirmar envío'
                   }
                 />
               </div>
@@ -464,11 +473,11 @@ export default function PlanPaymentModal({ planKey, planName, period, onClose, o
             </div>
           )}
 
-          {/* ── STEP 2: Upload receipt ── */}
-          {modalStep === 2 && (
-            <div className="px-6 py-5 space-y-4">
+          {/* ── STEP 2: comprobante + datos de la transferencia (unificados) ── */}
+          {modalStep === 2 && checkoutInfo && (
+            <div className="px-6 py-5 space-y-5">
               <p className="text-sm" style={{ color: 'var(--dh-gray-600)' }}>
-                Sube una imagen o PDF del comprobante de pago. Máximo 10 MB.
+                Sube el comprobante y copiá los datos de la transferencia. Máximo 10 MB.
               </p>
 
               {fileError && (
@@ -530,12 +539,11 @@ export default function PlanPaymentModal({ planKey, planName, period, onClose, o
                   />
                 </div>
               )}
-            </div>
-          )}
 
-          {/* ── STEP 3: Reference + bank ── */}
-          {modalStep === 3 && checkoutInfo && (
-            <div className="px-6 py-5 space-y-5">
+              {/* Datos de la transferencia — mismo paso que el comprobante:
+                  el número de referencia se lee del propio comprobante. */}
+              <div className="pt-1 border-t" style={{ borderColor: 'var(--dh-gray-100)' }} />
+
               {/* Reference number */}
               <div>
                 <label
@@ -603,8 +611,8 @@ export default function PlanPaymentModal({ planKey, planName, period, onClose, o
             </div>
           )}
 
-          {/* ── STEP 4: Confirm ── */}
-          {modalStep === 4 && checkoutInfo && (
+          {/* ── STEP 3: Confirm (antes era el 4) ── */}
+          {modalStep === 3 && checkoutInfo && (
             <div className="px-6 py-5 space-y-4">
               {submitError && (
                 <div className="flex items-start gap-2.5 rounded-xl px-4 py-3 bg-red-50 border border-red-200">
@@ -716,7 +724,7 @@ export default function PlanPaymentModal({ planKey, planName, period, onClose, o
               <button
                 type="button"
                 onClick={() =>
-                  setModalStep((s) => (typeof s === 'number' ? ((s - 1) as 1 | 2 | 3 | 4) : s))
+                  setModalStep((s) => (typeof s === 'number' ? ((s - 1) as 1 | 2 | 3) : s))
                 }
                 className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold border border-slate-200 hover:bg-slate-50 transition-colors"
                 style={{ color: 'var(--dh-gray-700)' }}
@@ -736,8 +744,7 @@ export default function PlanPaymentModal({ planKey, planName, period, onClose, o
               onClick={() => {
                 if (modalStep === 1) setModalStep(2);
                 else if (modalStep === 2) goFromStep2ToStep3();
-                else if (modalStep === 3) goFromStep3ToStep4();
-                else if (modalStep === 4) submitPayment();
+                else if (modalStep === 3) submitPayment();
               }}
               className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-white font-bold text-sm transition-all hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"
               style={{ background: 'var(--dh-turquoise)' }}
@@ -752,7 +759,7 @@ export default function PlanPaymentModal({ planKey, planName, period, onClose, o
                   <Loader2 className="w-4 h-4 animate-spin" />
                   Enviando...
                 </>
-              ) : modalStep === 4 ? (
+              ) : modalStep === 3 ? (
                 <>
                   <CheckCircle2 className="w-4 h-4" />
                   Enviar pago
