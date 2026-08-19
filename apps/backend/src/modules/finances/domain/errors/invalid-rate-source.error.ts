@@ -7,6 +7,6 @@ export class InvalidRateSourceError extends DomainError {
   readonly code = 'INVALID_RATE_SOURCE';
 
   constructor(source: string) {
-    super(`Unknown rate source: "${source}". Accepted values: binance, bcv, manual`);
+    super(`Fuente de tasa desconocida: "${source}". Valores aceptados: binance, bcv, manual`);
   }
 }

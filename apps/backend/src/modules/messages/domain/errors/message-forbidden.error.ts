@@ -6,6 +6,6 @@ export class MessageForbiddenError extends DomainError {
 
   // Return 404 semantics to avoid confirming resource existence for unauthorized callers.
   constructor() {
-    super('Message thread not found');
+    super('Conversación no encontrada');
   }
 }

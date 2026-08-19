@@ -179,7 +179,9 @@ export class AuthController {
     const configuredPassword = this.config.get<string>('REVIEWER_PASSWORD');
     const profileId = this.config.get<string>('REVIEWER_PROFILE_ID');
     if (!configuredEmail || !configuredPassword || !profileId) {
-      throw new ServiceUnavailableException('Reviewer access mis-configured');
+      throw new ServiceUnavailableException(
+        'El acceso de revisión no está configurado en este servidor.',
+      );
     }
 
     // Timing-safe email comparison — use fixed-length SHA-256 digests to avoid

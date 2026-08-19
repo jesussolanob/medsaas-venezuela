@@ -5,6 +5,6 @@ export class IncomeConceptNotFoundError extends DomainError {
   override readonly httpStatus = 404;
 
   constructor() {
-    super('Income concept not found');
+    super('Concepto de ingreso no encontrado');
   }
 }

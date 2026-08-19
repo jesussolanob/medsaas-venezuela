@@ -5,6 +5,6 @@ export class DoctorProfileNotFoundError extends DomainError {
   override readonly httpStatus = 404;
 
   constructor(_doctorId?: string) {
-    super('Doctor profile not found');
+    super('Perfil del especialista no encontrado');
   }
 }

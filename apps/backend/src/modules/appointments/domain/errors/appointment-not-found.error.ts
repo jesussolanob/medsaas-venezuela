@@ -4,6 +4,6 @@ export class AppointmentNotFoundError extends DomainError {
   readonly code = 'APPOINTMENT_NOT_FOUND';
 
   constructor(appointmentId: string) {
-    super(`Appointment not found: ${appointmentId}`);
+    super(`Cita no encontrada: ${appointmentId}`);
   }
 }

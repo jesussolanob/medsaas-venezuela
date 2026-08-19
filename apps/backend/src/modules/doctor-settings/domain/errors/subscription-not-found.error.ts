@@ -5,6 +5,6 @@ export class SubscriptionNotFoundError extends DomainError {
   override readonly httpStatus = 404;
 
   constructor(_doctorId?: string) {
-    super('Subscription not found for this doctor');
+    super('Este especialista no tiene una suscripción registrada');
   }
 }

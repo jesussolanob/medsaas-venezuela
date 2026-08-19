@@ -15,6 +15,6 @@ export class DecryptionError extends DomainError {
   readonly code = 'DECRYPTION_FAILED';
 
   constructor(_field: string) {
-    super('Failed to decrypt a clinical field. Contact support if this persists.');
+    super('No se pudo leer un dato clínico. Si el problema sigue, contactá a soporte.');
   }
 }

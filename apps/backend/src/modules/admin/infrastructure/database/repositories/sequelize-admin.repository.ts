@@ -392,46 +392,84 @@ export class SequelizeAdminRepository implements IAdminRepository {
   // Subscriptions
   // ---------------------------------------------------------------------------
 
+  /**
+   * Listado de suscripciones para el panel de admin.
+   *
+   * ⚠️ La fuente de verdad es `profiles` (plan · subscription_status ·
+   * subscription_expires_at): es EXACTAMENTE lo que lee el gating del
+   * especialista (`GetDoctorFeaturesV2UseCase`). Antes esta consulta leía la
+   * tabla legacy `subscriptions`, y cuando las dos divergían el admin veía un
+   * plan que no era el que gobernaba el acceso — pasó el 2026-08-18: la
+   * pantalla decía "Free Trial · 3 días" mientras el especialista tenía
+   * `profiles.plan = 'delta_free'` y los módulos bloqueados.
+   *
+   * De `subscriptions` solo se toman datos accesorios (id de la fila, precio y
+   * fin de prueba), que no deciden nada.
+   */
   async listSubscriptions(filters: SubscriptionListFilters): Promise<SubscriptionListResult> {
     const { page, limit, status, plan } = filters;
     const offset = (page - 1) * limit;
 
-    const where: Record<string, unknown> = {};
-    if (status) where.status = status;
-    if (plan) where.plan = plan;
+    const conditions = ["p.role = 'doctor'"];
+    if (status) conditions.push('p.subscription_status = :status');
+    if (plan) conditions.push('p.plan = :plan');
+    const whereSql = conditions.join(' AND ');
 
-    const { count, rows } = await this.subscriptionModel.findAndCountAll({
-      where,
-      limit,
-      offset,
-      order: [['createdAt', 'DESC']],
-    });
+    const replacements: Record<string, unknown> = { limit, offset };
+    if (status) replacements.status = status;
+    if (plan) replacements.plan = plan;
 
-    // Enrich with doctor profile data via secondary lookup
-    const doctorIds = rows.map((r) => r.doctorId);
-    const profiles =
-      doctorIds.length > 0 ? await this.profileModel.findAll({ where: { id: doctorIds } }) : [];
-    const profileById = new Map(profiles.map((p) => [p.id, p]));
+    const countRows = await this.sequelize.query<{ total: string }>(
+      `SELECT COUNT(*)::text AS total FROM profiles p WHERE ${whereSql}`,
+      { type: QueryTypes.SELECT, replacements },
+    );
 
-    const items: SubscriptionRow[] = rows.map((row) => {
-      const profile = profileById.get(row.doctorId);
-      return {
-        id: row.id,
-        doctorId: row.doctorId,
-        doctorName: profile?.fullName ?? '',
-        doctorEmail: profile?.email ?? '',
-        plan: row.plan,
-        status: row.status,
-        priceUsd: Number(row.priceUsd),
-        currentPeriodEnd: row.currentPeriodEnd,
-        trialEndsAt: row.trialEndsAt ?? null,
-        createdAt: row.createdAt,
-      };
-    });
+    const rows = await this.sequelize.query<{
+      id: string;
+      doctor_id: string;
+      doctor_name: string | null;
+      doctor_email: string | null;
+      plan: string | null;
+      status: string | null;
+      price_usd: string | null;
+      current_period_end: Date | null;
+      trial_ends_at: Date | null;
+      created_at: Date;
+    }>(
+      `SELECT COALESCE(s.id, p.id)     AS id,
+              p.id                     AS doctor_id,
+              p.full_name              AS doctor_name,
+              p.email                  AS doctor_email,
+              p.plan                   AS plan,
+              p.subscription_status    AS status,
+              s.price_usd              AS price_usd,
+              p.subscription_expires_at AS current_period_end,
+              s.trial_ends_at          AS trial_ends_at,
+              p.created_at             AS created_at
+         FROM profiles p
+         LEFT JOIN subscriptions s ON s.doctor_id = p.id
+        WHERE ${whereSql}
+        ORDER BY p.created_at DESC
+        LIMIT :limit OFFSET :offset`,
+      { type: QueryTypes.SELECT, replacements },
+    );
+
+    const items: SubscriptionRow[] = rows.map((row) => ({
+      id: row.id,
+      doctorId: row.doctor_id,
+      doctorName: row.doctor_name ?? '',
+      doctorEmail: row.doctor_email ?? '',
+      plan: row.plan as SubscriptionPlan,
+      status: row.status as SubscriptionStatus,
+      priceUsd: Number(row.price_usd ?? 0),
+      currentPeriodEnd: row.current_period_end as Date,
+      trialEndsAt: row.trial_ends_at ?? null,
+      createdAt: row.created_at,
+    }));
 
     return {
       items,
-      total: typeof count === 'number' ? count : 0,
+      total: parseInt(countRows[0]?.total ?? '0', 10),
       page,
       limit,
     };

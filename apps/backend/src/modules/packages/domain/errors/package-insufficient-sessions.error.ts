@@ -8,6 +8,6 @@ export class PackageInsufficientSessionsError extends DomainError {
   readonly code = 'PACKAGE_INSUFFICIENT_SESSIONS';
 
   constructor(packageId: string) {
-    super(`Package ${packageId} could not decrement sessions — exhausted or concurrently modified`);
+    super(`No quedan sesiones disponibles en el combo ${packageId}`);
   }
 }

@@ -98,7 +98,7 @@ function parseOptionalMonth(value: string | undefined, param: string): string | 
   if (!value) return undefined;
   if (!/^\d{4}-(?:0[1-9]|1[0-2])$/.test(value)) {
     throw new BadRequestException(
-      `Query parameter "${param}" must be in YYYY-MM format with a valid month (01–12)`,
+      `El parámetro "${param}" debe tener el formato AAAA-MM con un mes válido (01–12)`,
     );
   }
   return value;

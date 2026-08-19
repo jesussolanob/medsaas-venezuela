@@ -5,6 +5,6 @@ export class LeadNotOwnedError extends DomainError {
   override readonly httpStatus = 403;
 
   constructor() {
-    super('Lead does not belong to the authenticated doctor');
+    super('Ese contacto no pertenece a este especialista');
   }
 }

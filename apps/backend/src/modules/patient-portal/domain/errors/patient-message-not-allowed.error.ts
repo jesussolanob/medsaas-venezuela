@@ -10,6 +10,6 @@ export class PatientMessageNotAllowedError extends DomainError {
   override readonly httpStatus = 403;
 
   constructor() {
-    super('You do not have a patient relationship with this doctor');
+    super('No sos paciente de este especialista');
   }
 }

@@ -12,6 +12,6 @@ export class ConsultationCodeConflictError extends DomainError {
   readonly code = 'CONSULTATION_CODE_CONFLICT';
 
   constructor(code: string) {
-    super(`Consultation code "${code}" is already in use`);
+    super(`El código de consulta "${code}" ya está en uso`);
   }
 }

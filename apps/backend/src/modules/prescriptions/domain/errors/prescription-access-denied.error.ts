@@ -11,6 +11,6 @@ export class PrescriptionAccessDeniedError extends DomainError {
   readonly code = 'PRESCRIPTION_NOT_FOUND';
 
   constructor() {
-    super('Prescription not found');
+    super('Receta no encontrada');
   }
 }

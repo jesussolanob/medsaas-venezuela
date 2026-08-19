@@ -12,6 +12,6 @@ export class EmailTemplateAdminNotFoundError extends DomainError {
   override readonly httpStatus = 404;
 
   constructor(name: string) {
-    super(`Email template '${name}' not found`);
+    super(`La plantilla de correo '${name}' no existe`);
   }
 }

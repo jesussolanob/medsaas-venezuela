@@ -9,6 +9,6 @@ export class LastSuperAdminError extends DomainError {
   override readonly httpStatus = 422;
 
   constructor() {
-    super('Cannot demote the last super_admin — at least one super_admin must remain');
+    super('No se puede quitar el último administrador: debe quedar al menos uno');
   }
 }

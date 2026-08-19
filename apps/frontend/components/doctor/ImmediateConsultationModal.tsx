@@ -330,6 +330,15 @@ export default function ImmediateConsultationModal({
               <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
               <input
                 autoFocus
+                // type="search" + autocomplete apagado: Chrome veía este campo y
+                // el de "Nombre y apellido" como un formulario de dirección y
+                // repartía el autorrelleno entre los dos — el nombre caía en el
+                // buscador y el apellido en el campo del paciente.
+                type="search"
+                name="deltaPatientQuery"
+                autoComplete="off"
+                data-lpignore="true"
+                data-1p-ignore
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="Buscar por nombre o cédula…"
@@ -353,7 +362,19 @@ export default function ImmediateConsultationModal({
 
             {!showCreate ? (
               <button
-                onClick={() => setShowCreate(true)}
+                onClick={() => {
+                  // Lo que ya escribió en el buscador es el nombre del paciente:
+                  // se arrastra al formulario en vez de obligarlo a re-tipearlo
+                  // (y evita que quede texto suelto arriba confundiendo la vista).
+                  const typed = query.trim();
+                  if (typed && !/^\d+$/.test(typed)) {
+                    setNewPatient((prev) => ({ ...prev, full_name: prev.full_name || typed }));
+                  } else if (/^\d+$/.test(typed)) {
+                    setNewPatient((prev) => ({ ...prev, cedula: prev.cedula || typed }));
+                  }
+                  setQuery('');
+                  setShowCreate(true);
+                }}
                 className="inline-flex items-center gap-1.5 text-xs font-semibold text-teal-600 hover:text-teal-700"
               >
                 <UserPlus className="w-3.5 h-3.5" /> Es un paciente nuevo
@@ -361,6 +382,11 @@ export default function ImmediateConsultationModal({
             ) : (
               <div className="space-y-2 border border-slate-200 rounded-lg p-3">
                 <input
+                  autoFocus
+                  name="deltaNewPatientName"
+                  autoComplete="off"
+                  data-lpignore="true"
+                  data-1p-ignore
                   value={newPatient.full_name}
                   onChange={(e) => setNewPatient({ ...newPatient, full_name: e.target.value })}
                   placeholder="Nombre y apellido"
@@ -368,12 +394,20 @@ export default function ImmediateConsultationModal({
                 />
                 <div className="flex gap-2">
                   <input
+                    name="deltaNewPatientCedula"
+                    autoComplete="off"
+                    data-lpignore="true"
+                    data-1p-ignore
                     value={newPatient.cedula}
                     onChange={(e) => setNewPatient({ ...newPatient, cedula: e.target.value })}
                     placeholder="Cédula"
                     className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:border-teal-400 outline-none"
                   />
                   <input
+                    name="deltaNewPatientPhone"
+                    autoComplete="off"
+                    data-lpignore="true"
+                    data-1p-ignore
                     value={newPatient.phone}
                     onChange={(e) => setNewPatient({ ...newPatient, phone: e.target.value })}
                     placeholder="Teléfono"

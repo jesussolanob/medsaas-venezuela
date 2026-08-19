@@ -14,6 +14,6 @@ export class InvalidEventError extends DomainError {
   override readonly httpStatus = 422;
 
   constructor(detail: string) {
-    super(`Event rejected — invalid format: ${detail}`);
+    super(`Evento rechazado — formato inválido: ${detail}`);
   }
 }

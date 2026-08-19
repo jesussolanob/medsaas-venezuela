@@ -9,6 +9,6 @@ export class SharedFileNotFoundError extends DomainError {
   override readonly httpStatus = 404;
 
   constructor() {
-    super('Shared file not found');
+    super('Archivo compartido no encontrado');
   }
 }

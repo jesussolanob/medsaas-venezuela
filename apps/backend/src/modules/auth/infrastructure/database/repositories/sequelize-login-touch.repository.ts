@@ -49,20 +49,88 @@ export class SequelizeLoginTouchRepository implements ILoginTouchRepository {
     return { isActive: row.is_active !== false, deactivatedBy: row.deactivated_by ?? null };
   }
 
-  async reactivateAsFreeAndTouch(profileId: string, freePlanKey: string): Promise<void> {
-    await this.sequelize.query(
-      `UPDATE profiles
-          SET is_active           = true,
-              deactivated_by      = NULL,
-              plan                = :freePlanKey,
-              subscription_status = 'active',
-              last_sign_in_at     = NOW(),
-              updated_at          = NOW()
-        WHERE id = :profileId
-          AND is_active = false
-          AND deactivated_by = 'self'`,
-      { type: QueryTypes.UPDATE, replacements: { profileId, freePlanKey } },
-    );
+  async reactivateAndTouch(profileId: string, freePlanKey: string): Promise<void> {
+    const t = await this.sequelize.transaction();
+    try {
+      // 1. Encender la cuenta. El plan se CONSERVA mientras no haya vencido;
+      //    sin fecha de vencimiento, o ya vencido, cae al gratuito permanente.
+      //    El WHERE es la guarda: solo re-enciende bajas hechas por el dueño.
+      const rows = await this.sequelize.query<{ plan: string | null }>(
+        `UPDATE profiles
+            SET is_active           = true,
+                deactivated_by      = NULL,
+                plan                = CASE
+                                        WHEN subscription_expires_at IS NOT NULL
+                                         AND subscription_expires_at > NOW()
+                                        THEN plan
+                                        ELSE :freePlanKey
+                                      END,
+                subscription_status = 'active',
+                last_sign_in_at     = NOW(),
+                updated_at          = NOW()
+          WHERE id = :profileId
+            AND is_active = false
+            AND deactivated_by = 'self'
+        RETURNING plan`,
+        { type: QueryTypes.SELECT, replacements: { profileId, freePlanKey }, transaction: t },
+      );
+
+      const reactivated = rows[0];
+      if (!reactivated) {
+        // Nada que reactivar (carrera, o baja hecha por un admin): sin cambios.
+        await t.commit();
+        return;
+      }
+
+      // 2. Sincronizar `subscriptions` con lo que quedó en `profiles`. Sin esto
+      //    las dos tablas divergen y el panel de admin muestra un plan que no
+      //    es el que gobierna el acceso del especialista.
+      //    `profiles.plan` es TEXT libre y `subscriptions.plan` es un ENUM: si el
+      //    perfil trae un valor que el enum no tiene, el CAST reventaría y la
+      //    transacción entera dejaría al especialista sin poder entrar. Por eso
+      //    el plan solo se copia cuando el enum lo admite.
+      await this.sequelize.query(
+        `UPDATE subscriptions
+            SET plan = CASE
+                         WHEN :plan IN (
+                           SELECT unnest(enum_range(NULL::subscription_plan))::text
+                         )
+                         THEN CAST(:plan AS subscription_plan)
+                         ELSE plan
+                       END,
+                status = 'active',
+                updated_at = NOW()
+          WHERE doctor_id = :profileId`,
+        {
+          type: QueryTypes.UPDATE,
+          replacements: { profileId, plan: reactivated.plan ?? freePlanKey },
+          transaction: t,
+        },
+      );
+
+      // 3. Asiento inmutable: quién volvió y con qué plan quedó.
+      await this.sequelize.query(
+        `INSERT INTO subscription_changes_log
+           (id, doctor_id, action, actor_id, actor_role, reason, metadata, created_at)
+         VALUES
+           (uuid_generate_v4(), :profileId, 'self_reactivation', :profileId,
+            'doctor', 'Cuenta reactivada por su dueño al volver a entrar',
+            CAST(:metadata AS jsonb), NOW())`,
+        {
+          type: QueryTypes.INSERT,
+          replacements: {
+            profileId,
+            metadata: JSON.stringify({ plan: reactivated.plan ?? freePlanKey }),
+          },
+          transaction: t,
+        },
+      );
+
+      await t.commit();
+    } catch (error) {
+      await t.rollback();
+      throw error;
+    }
   }
 
   async findSubscriptionByDoctorId(doctorId: string): Promise<LoginTouchSubscription | null> {

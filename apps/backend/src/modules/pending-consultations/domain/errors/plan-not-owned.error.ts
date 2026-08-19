@@ -9,6 +9,6 @@ export class PlanNotOwnedError extends DomainError {
   override readonly httpStatus = 404;
 
   constructor(_planId?: string) {
-    super('Plan not found');
+    super('Servicio no encontrado');
   }
 }

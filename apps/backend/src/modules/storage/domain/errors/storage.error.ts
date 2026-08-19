@@ -9,7 +9,7 @@ export class StorageUploadError extends DomainError {
   override readonly httpStatus = 502;
 
   constructor(cause?: string) {
-    super(cause ? `Storage upload failed: ${cause}` : 'Storage upload failed');
+    super(cause ? `No se pudo subir el archivo: ${cause}` : 'No se pudo subir el archivo');
   }
 }
 

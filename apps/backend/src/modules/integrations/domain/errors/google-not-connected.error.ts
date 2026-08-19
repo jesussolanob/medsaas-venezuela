@@ -14,6 +14,6 @@ export class GoogleNotConnectedError extends DomainError {
   override readonly httpStatus = 422;
 
   constructor(_doctorId?: string) {
-    super('Google integration not available');
+    super('La integración con Google no está disponible');
   }
 }

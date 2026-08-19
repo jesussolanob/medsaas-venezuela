@@ -45,7 +45,7 @@ export const UpdateSpecialtyDtoSchema = z
   })
   .strict()
   .refine((data) => Object.keys(data).length > 0, {
-    message: 'At least one field must be provided',
+    message: 'Debés enviar al menos un campo',
   });
 
 export type UpdateSpecialtyDto = z.infer<typeof UpdateSpecialtyDtoSchema>;

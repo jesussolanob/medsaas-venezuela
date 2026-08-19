@@ -22,11 +22,14 @@ export async function POST(req: NextRequest) {
       : '';
 
   if (!doctorId || !action) {
-    return NextResponse.json({ error: 'Missing doctorId or action' }, { status: 400 });
+    return NextResponse.json(
+      { error: 'Falta el id del especialista o la acción' },
+      { status: 400 },
+    );
   }
   if (!['suspend', 'activate'].includes(action)) {
     return NextResponse.json(
-      { error: 'Invalid action. Must be suspend or activate' },
+      { error: 'Acción inválida: debe ser suspender o activar' },
       { status: 400 },
     );
   }

@@ -17,7 +17,7 @@ export const UpdateIncomeConceptDtoSchema = z
     sortOrder: z.number().int().min(0).optional(),
   })
   .strict()
-  .refine((v) => Object.keys(v).length > 0, { message: 'At least one field required' });
+  .refine((v) => Object.keys(v).length > 0, { message: 'Debés enviar al menos un campo' });
 
 export type UpdateIncomeConceptDto = z.infer<typeof UpdateIncomeConceptDtoSchema>;
 
@@ -25,7 +25,7 @@ export type UpdateIncomeConceptDto = z.infer<typeof UpdateIncomeConceptDtoSchema
 export const UpdateTransactionDtoSchema = z
   .object({
     description: z.string().min(1).max(500).optional(),
-    amount: z.number().positive({ message: 'Amount must be greater than zero' }).optional(),
+    amount: z.number().positive({ message: 'El monto debe ser mayor a cero' }).optional(),
     currency: z.enum(['USD', 'BS']).optional(),
     transactionDate: z.string().datetime({ offset: true }).optional(),
     /** Only applies to income transactions. Pass null to unlink. */
@@ -37,6 +37,6 @@ export const UpdateTransactionDtoSchema = z
     patientId: z.string().uuid().nullable().optional(),
   })
   .strict()
-  .refine((v) => Object.keys(v).length > 0, { message: 'At least one field required' });
+  .refine((v) => Object.keys(v).length > 0, { message: 'Debés enviar al menos un campo' });
 
 export type UpdateTransactionDto = z.infer<typeof UpdateTransactionDtoSchema>;

@@ -11,6 +11,6 @@ export class AppointmentConfirmInvalidTokenError extends DomainError {
   override readonly httpStatus = 404;
 
   constructor() {
-    super('Appointment not found or confirmation link is invalid');
+    super('La cita no existe o el enlace de confirmación no es válido');
   }
 }

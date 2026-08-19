@@ -6,6 +6,6 @@ export class PricingPlanNotFoundError extends DomainError {
   override readonly httpStatus = 404;
 
   constructor(_planId?: string) {
-    super('Pricing plan not found');
+    super('Servicio no encontrado');
   }
 }

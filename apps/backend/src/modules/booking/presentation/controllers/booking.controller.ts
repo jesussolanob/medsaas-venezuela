@@ -137,7 +137,7 @@ export class BookingController {
     const parsed = DateQuerySchema.safeParse(rawDate);
     if (!parsed.success) {
       throw new BadRequestException({
-        message: 'Validation failed',
+        message: 'La fecha indicada no es válida',
         errors: parsed.error.issues.map((i) => ({ path: 'date', message: i.message })),
       });
     }

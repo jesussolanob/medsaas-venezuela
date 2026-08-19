@@ -9,7 +9,7 @@ export class ResolveSecretNotConfiguredError extends DomainError {
   override readonly httpStatus = 503;
 
   constructor() {
-    super('Identity resolution is not available: server configuration error');
+    super('No se pudo validar tu identidad por un problema de configuración del servidor.');
   }
 }
 

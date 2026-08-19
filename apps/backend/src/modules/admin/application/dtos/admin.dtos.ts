@@ -197,7 +197,7 @@ export const UpdatePlanFullBodySchema = z
       b.sort_order !== undefined ||
       b.is_permanent !== undefined ||
       b.description !== undefined,
-    { message: 'At least one field must be provided' },
+    { message: 'Debés enviar al menos un campo' },
   );
 
 export type UpdatePlanFullBody = z.infer<typeof UpdatePlanFullBodySchema>;
