@@ -103,6 +103,32 @@ describe('ExtendDoctorSubscriptionUseCase', () => {
     expect(newExpiresAt.getDate()).toBe(28);
   });
 
+  /**
+   * Regression test for 2026-08-19 bug: legacy profiles can have
+   * subscription_expires_at = NULL while subscriptions.current_period_end is still
+   * in the future. getSubscriptionSnapshot must COALESCE both columns (same rule as
+   * listSubscriptions). This test verifies the use-case anchors at the coalesced
+   * date, not at "now", when the repo returns a non-null expiresAt.
+   */
+  it('anchors at coalesced expiresAt when profile.subscriptionExpiresAt was null but subscription had currentPeriodEnd', async () => {
+    // The repo already resolved the COALESCE — it returns expiresAt = currentPeriodEnd (2 days ahead)
+    const subscriptionEnd = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000);
+    const repo = makeRepo({
+      doctorId: DOCTOR,
+      plan: 'basic',
+      status: 'active',
+      expiresAt: subscriptionEnd,
+    });
+    const uc = new ExtendDoctorSubscriptionUseCase(repo);
+
+    const { newExpiresAt } = await uc.execute({ doctorId: DOCTOR, days: 10, actorId: ACTOR });
+
+    // Must land at subscriptionEnd + 10 days, NOT now + 10 days
+    const expected = new Date(subscriptionEnd);
+    expected.setDate(expected.getDate() + 10);
+    expect(newExpiresAt.getTime()).toBe(expected.getTime());
+  });
+
   it('throws DoctorNotFoundError when no snapshot', async () => {
     const uc = new ExtendDoctorSubscriptionUseCase(makeRepo(null));
     await expect(

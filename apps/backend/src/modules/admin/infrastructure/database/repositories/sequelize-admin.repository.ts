@@ -542,17 +542,35 @@ export class SequelizeAdminRepository implements IAdminRepository {
   }
 
   /**
-   * Reads the current subscription snapshot from the profiles row (always present
-   * for a doctor; the subscriptions row may not exist). Returns null if no profile.
+   * Reads the current subscription snapshot for a doctor.
+   *
+   * expiresAt resolution rule:
+   *   COALESCE(profiles.subscription_expires_at, subscriptions.current_period_end)
+   *
+   * ⚠️  This is the SAME rule used by listSubscriptions (~line 466).
+   * If either site changes, the other MUST change too (ADR-029 / ADR-031).
+   *
+   * Legacy doctors can have profiles.subscription_expires_at = NULL while still
+   * holding valid time in subscriptions.current_period_end. Without the fallback,
+   * extend/suspend/reactivate would anchor at "now" and silently discard remaining
+   * subscription time (bug surfaced 2026-08-19 with day-extension).
+   *
+   * Returns null if no profile exists for the given doctorId.
    */
   async getSubscriptionSnapshot(doctorId: string): Promise<SubscriptionSnapshot | null> {
     const profile = await this.profileModel.findByPk(doctorId);
     if (!profile) return null;
+
+    // Fetch the subscription row for the COALESCE fallback.
+    // May be absent for very old / partially-created profiles.
+    const subscription = await this.subscriptionModel.findOne({ where: { doctorId } });
+
     return {
       doctorId,
       plan: (profile.plan ?? null) as SubscriptionPlan | null,
       status: (profile.subscriptionStatus ?? null) as SubscriptionStatus | null,
-      expiresAt: profile.subscriptionExpiresAt ?? null,
+      // COALESCE — same rule as listSubscriptions. See note above.
+      expiresAt: profile.subscriptionExpiresAt ?? subscription?.currentPeriodEnd ?? null,
     };
   }
 
