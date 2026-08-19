@@ -4,11 +4,17 @@
 > ⚠️ Orden: **la entrada más nueva va ARRIBA**. La del 2026-08-11 quedó al final
 > del archivo por error; no se movió para no ensuciar el diff.
 
-## 2026-08-18 — Regresiones del QA: la prueba que se perdía y los errores en inglés
+## 2026-08-18 — Regresiones del QA: la prueba que se perdía y los errores en inglés ⏳ EN STAGING, ESPERANDO AL DUEÑO
 
 Cuatro reportes del dueño sobre staging. Dos eran bugs reales, uno **no era un bug de
 permisos** aunque lo parecía, y el cuarto era el navegador. El diagnóstico se hizo
 **contra la BD y los logs de Cloud Run**, no mirando la pantalla.
+
+**Estado de entrega:** 6 commits por la cadena `feature/qa-18-agosto-regresiones` →
+`develop` → `staging`. **Tres despliegues, los tres verdes** (revisiones
+`delta-backend-staging-00197` y `delta-frontend-staging-00197`), sin un solo 5xx ni WARNING
+en los logs desde el primero. `nx test backend`: **404 suites · 3.898 tests · 0 fallas**;
+`tsc --noEmit` limpio en backend y frontend. **Nada en `main`.**
 
 ### 1. Un especialista con 3 días de prueba veía los módulos bloqueados 🔴 BUG REAL
 

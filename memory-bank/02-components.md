@@ -698,3 +698,20 @@ auditoría, no un UPDATE suelto.
 pacientes y finanzas). Pedir `limit=500` **no trae 500: trae 100 y no avisa.** Como el Paginator con
 "Todas" asegura estar mostrando todo, el tope quedaba disimulado. Cualquier listado nuevo que ofrezca
 "Todas" tiene que recorrer páginas, no pedir un número grande. Ver ADR-038.
+
+### Aviso de cambio de sesión en `/admin` (2026-08-18)
+
+| Componente                                  | Qué hace                                                                                                                                                                                                   |
+| ------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `components/admin/AdminSessionWatchdog.tsx` | Consulta `GET /api/session` al montar, al recuperar el foco y cada 60s. Si la sesión dejó de ser de administrador, bloquea la pantalla con un modal que nombra la causa. Montado en `app/admin/layout.tsx` |
+| `app/api/session/route.ts`                  | Devuelve solo `{ authenticated, role }` del propio solicitante — sin PII, sin datos de terceros                                                                                                            |
+
+⚠️ **Por qué existe:** la sesión de Auth0 es una cookie **del perfil del navegador, no de la
+pestaña**. Si alguien entra con otra cuenta en otra pestaña de la misma ventana, el panel abierto
+sigue mostrando lo que cargó y cada acción nueva viaja con la otra identidad. El backend la rechaza
+bien, pero en pantalla se lee como un permiso mal configurado — pasó el 18/08 y costó una sesión
+entera de diagnóstico. Ver **ADR-043**.
+
+⚠️ **El rol que espera el watchdog es el MISMO que exigen los guards** (`requireSuperAdmin` en el
+BFF y `@Roles('super_admin')` en el backend). El día que `/admin` admita también al rol `admin`,
+hay que ampliarlo en los tres lugares o la pantalla va a bloquear a alguien con permiso.
