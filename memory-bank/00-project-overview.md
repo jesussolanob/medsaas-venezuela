@@ -24,7 +24,12 @@ patients, consultations}` (+ Consultorios/Plantillas, sin moduleKey). SIN bookin
 > está vacía (suscripciones se resuelven por plan efectivo + downgrade perezoso).
 
 **Gating del doctor** = capacidades del ROL (`role_capabilities`) **∩** features del
-PLAN (`plan_features`). Módulo no habilitado → candado → `/doctor/upgrade`. La página
+PLAN (`plan_features`). Módulo no habilitado → candado → `/doctor/upgrade`.
+⚠️ **El plan que decide todo esto vive en `profiles.plan` + `profiles.subscription_status`**
+(`subscriptions` es legacy y solo aporta precio y fin de prueba). Toda pantalla que muestre
+el plan tiene que leer de `profiles`, y ninguna escritura puede tocar una sola de las dos
+tablas — ver **ADR-042**, que nació de un caso real donde el admin veía "Free Trial · 3 días"
+y el especialista tenía los módulos bloqueados. La página
 pública `/book/:doctorId` se gatea con la feature `booking` (Free=off → "Reservas no
 disponibles"; backend rechaza el POST con `BookingNotEnabledError` 403). Al expirar:
 **downgrade perezoso** a Delta Free SIN perder datos (se persiste al **login**, sin cron).

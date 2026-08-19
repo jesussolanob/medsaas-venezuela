@@ -197,3 +197,45 @@ frontend` falla, así que no frena nada — mismo agujero que los tests que no c
   Bloquea de más, no de menos.
 - El encabezado de la agenda dice "Citas cada 30 min" aunque el día tenga bloques de otra
   duración.
+
+---
+
+## Regresiones halladas por el dueño el 18 de agosto de 2026 — arregladas y desplegadas
+
+Cuatro reportes sobre staging. **Dos eran bugs reales, uno NO era de permisos aunque lo
+pareciera, y el cuarto era el navegador.** Detalle completo en `05-progress-log.md`
+(entrada 2026-08-18) y decisiones en **ADR-042** y **ADR-043**.
+
+### Lo que hay que probar
+
+1. 🔴 **Especialista con prueba vigente ve TODO.** Entrar como `marcovillegas1197@gmail.com`
+   (le quedan días): Agenda, Consultorio, Finanzas, Marketing, Pacientes y Consultas sin
+   candado. Su fila quedó reparada a mano en staging.
+2. 🔴 **Baja y vuelta conserva el plan.** Con un especialista en prueba: Configuración → dar
+   de baja → volver a entrar. Antes caía a Delta Free y perdía los días; ahora los conserva.
+   Con la prueba **ya vencida** sí debe quedar en Delta Free.
+3. 🔴 **El panel de admin dice lo mismo que ve el especialista.** `/admin/suscripciones`
+   tiene que mostrar el mismo plan; deben seguir apareciendo las 15 filas de siempre, con
+   fecha y estado.
+4. 🔴 **Extender días y cambiar plan** con la cuenta de administrador: funcionan (nunca
+   estuvieron rotos). Si falla, el error ahora está en español y dice si la causa es la sesión.
+5. 🔴 **Aviso de sesión.** Con `/admin` abierto, entrar en OTRA pestaña de la MISMA ventana
+   como especialista: en ≤60s (o al volver el foco) el panel se bloquea con "Esta ventana
+   cambió de cuenta".
+6. 🔴 **Consulta inmediata → "Es un paciente nuevo":** el nombre tecleado cae en "Nombre y
+   apellido" y Chrome ya no parte el nombre entre el buscador y el formulario.
+7. 🔴 **Barrido de idioma:** ~110 mensajes de error traducidos en la fuente. Al toparte con
+   un error en cualquier módulo, tiene que estar en español.
+
+⚠️ **Cada cuenta en una ventana de incógnito SEPARADA.** Dos pestañas de la misma ventana
+comparten la sesión de Auth0 y fabrican falsos errores de permisos — que es exactamente lo
+que pasó el 18/08.
+
+### Cabos sueltos nuevos
+
+- **`nx lint backend` está rojo** con 3 errores triviales preexistentes (import sin usar,
+  escape innecesario, espacio irregular) en archivos ajenos al lote. Mismo agujero que el
+  lint del frontend: no frena nada y no sirve como señal.
+- **Dos filas más divergen** entre `profiles` y `subscriptions` en staging y necesitan
+  decisión del dueño: `jesussolano4@gmail.com` (el perfil dice `cancelled`, la tabla vieja
+  decía `active`) y `mamutstudio.ve@gmail.com` (plan NULL, se comporta como Delta Free).
