@@ -449,6 +449,24 @@ export default function ImmediateConsultationModal({
                     className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:border-teal-400 outline-none"
                   />
                 </div>
+                {/*
+                  El error del alta se muestra ACÁ.
+
+                  `createPatient` siempre escribió en `error`, pero el único
+                  bloque que lo pintaba vivía en la otra rama del ternario —la
+                  que se renderiza cuando YA hay paciente elegido—, así que
+                  cuando el backend rechazaba (cédula repetida, validación) el
+                  mensaje se escribía y no tenía dónde salir: el especialista
+                  tocaba "Crear y continuar" y no pasaba absolutamente nada.
+                  Ese era el reporte "no avanza", y arreglar solo el tipo del
+                  error no alcanzaba: hacía falta un lugar donde mostrarlo.
+                */}
+                {error && (
+                  <div className="flex items-start gap-2 rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-xs text-red-700">
+                    <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                    <span>{error}</span>
+                  </div>
+                )}
                 <button
                   onClick={() => void createPatient()}
                   disabled={creatingPatient}
