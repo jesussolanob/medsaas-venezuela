@@ -410,7 +410,11 @@ export class SequelizeAdminRepository implements IAdminRepository {
     const { page, limit, status, plan } = filters;
     const offset = (page - 1) * limit;
 
-    const conditions = ["p.role = 'doctor'"];
+    // Población: los especialistas MÁS cualquier perfil que ya tenga fila en
+    // `subscriptions`. Filtrar solo por rol haría desaparecer de la pantalla
+    // filas que el admin venía viendo (un super_admin o un vendedor con
+    // suscripción vieja) — este cambio arregla qué plan se muestra, no a quién.
+    const conditions = ["(p.role = 'doctor' OR s.id IS NOT NULL)"];
     if (status) conditions.push('p.subscription_status = :status');
     if (plan) conditions.push('p.plan = :plan');
     const whereSql = conditions.join(' AND ');
@@ -420,7 +424,10 @@ export class SequelizeAdminRepository implements IAdminRepository {
     if (plan) replacements.plan = plan;
 
     const countRows = await this.sequelize.query<{ total: string }>(
-      `SELECT COUNT(*)::text AS total FROM profiles p WHERE ${whereSql}`,
+      `SELECT COUNT(*)::text AS total
+         FROM profiles p
+         LEFT JOIN subscriptions s ON s.doctor_id = p.id
+        WHERE ${whereSql}`,
       { type: QueryTypes.SELECT, replacements },
     );
 
@@ -440,14 +447,28 @@ export class SequelizeAdminRepository implements IAdminRepository {
               p.id                     AS doctor_id,
               p.full_name              AS doctor_name,
               p.email                  AS doctor_email,
-              p.plan                   AS plan,
-              p.subscription_status    AS status,
+              -- Mismo default que aplica el gating (profile.plan ?? delta_free):
+              -- la pantalla tiene que decir exactamente lo que gobierna el acceso.
+              COALESCE(p.plan, 'delta_free') AS plan,
+              -- Un plan permanente (delta_free) no vence, así que el gating lo
+              -- da por vigente aunque el perfil no tenga estado guardado. Sin
+              -- este CASE esas filas salían con la insignia de estado vacía.
+              CASE
+                WHEN p.subscription_status IS NOT NULL THEN p.subscription_status
+                WHEN pc.is_permanent THEN 'active'
+                ELSE NULL
+              END                      AS status,
               s.price_usd              AS price_usd,
-              p.subscription_expires_at AS current_period_end,
+              -- El vencimiento que de verdad corta el acceso lo evalúa
+              -- ProcessLoginTouch contra subscriptions.current_period_end;
+              -- profiles.subscription_expires_at puede venir NULL en perfiles
+              -- viejos. Sin el COALESCE esos doctores se mostraban con "0 días".
+              COALESCE(p.subscription_expires_at, s.current_period_end) AS current_period_end,
               s.trial_ends_at          AS trial_ends_at,
               p.created_at             AS created_at
          FROM profiles p
          LEFT JOIN subscriptions s ON s.doctor_id = p.id
+         LEFT JOIN plan_configs pc ON pc.plan_key = COALESCE(p.plan, 'delta_free')
         WHERE ${whereSql}
         ORDER BY p.created_at DESC
         LIMIT :limit OFFSET :offset`,
