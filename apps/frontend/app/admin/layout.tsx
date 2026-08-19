@@ -38,6 +38,7 @@ import AdminNotifications from './AdminNotifications';
 import SearchCommandPalette from './SearchCommandPalette';
 import { HelpButton } from '@/components/help/HelpButton';
 import { Toaster } from '@/components/ui/Toaster';
+import AdminSessionWatchdog from '@/components/admin/AdminSessionWatchdog';
 import { DeltaMark } from '@/components/dh';
 import { getMyCapabilities } from '@/app/capabilities-actions';
 import { can, EMPTY_CAPABILITIES, type Capabilities } from '@/lib/capabilities';
@@ -165,6 +166,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   return (
     <>
       <Toaster />
+      <AdminSessionWatchdog />
       <style>{`
         .admin-shell { font-family: var(--dh-font-body); color: var(--dh-ink); }
         .admin-shell .nav-item-active { background: var(--dh-turquoise-50); color: var(--dh-turquoise-700); }

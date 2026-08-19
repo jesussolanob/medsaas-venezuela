@@ -5,6 +5,6 @@ export class SpecialtyNotFoundError extends DomainError {
   override readonly httpStatus = 404;
 
   constructor(id: string) {
-    super(`Specialty with id "${id}" was not found`);
+    super(`No se encontró la especialidad con id "${id}"`);
   }
 }

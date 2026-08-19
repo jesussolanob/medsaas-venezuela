@@ -154,7 +154,7 @@ export class AdminController {
   private static assertKeyFormat(value: string, paramName: string): void {
     if (!/^[a-z0-9_]+$/.test(value)) {
       throw new BadRequestException(
-        `Invalid ${paramName} '${value}'. Must match /^[a-z0-9_]+$/ (lowercase alphanumeric and underscores only).`,
+        `${paramName} inválido: '${value}'. Solo se permiten minúsculas, números y guion bajo.`,
       );
     }
   }
@@ -308,7 +308,7 @@ export class AdminController {
       !(VALID_ACTIVITY_STATUSES as readonly string[]).includes(activityStatusRaw)
     ) {
       throw new BadRequestException(
-        `Invalid activity_status '${activityStatusRaw}'. Must be one of: ${VALID_ACTIVITY_STATUSES.join(', ')}`,
+        `activity_status inválido: '${activityStatusRaw}'. Debe ser uno de: ${VALID_ACTIVITY_STATUSES.join(', ')}`,
       );
     }
     if (
@@ -316,7 +316,7 @@ export class AdminController {
       !(VALID_SUBSCRIPTION_STATUSES as readonly string[]).includes(subscriptionStatusRaw)
     ) {
       throw new BadRequestException(
-        `Invalid subscription_status '${subscriptionStatusRaw}'. Must be one of: ${VALID_SUBSCRIPTION_STATUSES.join(', ')}`,
+        `subscription_status inválido: '${subscriptionStatusRaw}'. Debe ser uno de: ${VALID_SUBSCRIPTION_STATUSES.join(', ')}`,
       );
     }
 
@@ -569,7 +569,7 @@ export class AdminController {
       !(VALID_SUBSCRIPTION_STATUSES as readonly string[]).includes(statusRaw)
     ) {
       throw new BadRequestException(
-        `Invalid status '${statusRaw}'. Must be one of: ${VALID_SUBSCRIPTION_STATUSES.join(', ')}`,
+        `Estado inválido: '${statusRaw}'. Debe ser uno de: ${VALID_SUBSCRIPTION_STATUSES.join(', ')}`,
       );
     }
     if (
@@ -577,7 +577,7 @@ export class AdminController {
       !(VALID_SUBSCRIPTION_PLANS as readonly string[]).includes(planRaw)
     ) {
       throw new BadRequestException(
-        `Invalid plan '${planRaw}'. Must be one of: ${VALID_SUBSCRIPTION_PLANS.join(', ')}`,
+        `Plan inválido: '${planRaw}'. Debe ser uno de: ${VALID_SUBSCRIPTION_PLANS.join(', ')}`,
       );
     }
 

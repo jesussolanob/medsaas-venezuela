@@ -10,6 +10,6 @@ export class QuickItemNotFoundError extends DomainError {
   override readonly httpStatus = 404;
 
   constructor() {
-    super('Quick item not found');
+    super('Atajo no encontrado');
   }
 }

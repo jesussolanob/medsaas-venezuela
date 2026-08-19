@@ -5,6 +5,6 @@ export class ReminderSettingsInvalidChannelError extends DomainError {
   override readonly httpStatus = 400;
 
   constructor(channel: string) {
-    super(`Invalid reminder channel: "${channel}". Must be one of: whatsapp, email, both`);
+    super(`Canal de recordatorio inválido: "${channel}". Debe ser whatsapp, email o ambos`);
   }
 }

@@ -9,7 +9,7 @@ export class Auth0TokenMissingError extends DomainError {
   override readonly httpStatus = 401;
 
   constructor() {
-    super('Missing or malformed Auth0 token');
+    super('Tu sesión no es válida. Volvé a iniciar sesión.');
   }
 }
 
@@ -25,7 +25,7 @@ export class Auth0TokenInvalidError extends DomainError {
   override readonly httpStatus = 401;
 
   constructor() {
-    super('Invalid Auth0 token');
+    super('Tu sesión expiró. Volvé a iniciar sesión.');
   }
 }
 
@@ -38,7 +38,7 @@ export class Auth0EmailMissingError extends DomainError {
   override readonly httpStatus = 401;
 
   constructor() {
-    super('Auth0 token does not contain a valid email claim');
+    super('No pudimos leer tu correo de la sesión. Volvé a iniciar sesión.');
   }
 }
 

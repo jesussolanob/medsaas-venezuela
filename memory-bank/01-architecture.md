@@ -662,3 +662,25 @@ status='active'` con `QueryTypes.UPDATE` (devuelve `[undefined, affectedCount]`;
   ⚠️ **Desde el 1/10/2026 Meta cobra los mensajes de servicio** (~US$ 0,0068). Las respuestas
   humanas escritas desde la app de WhatsApp Business siguen gratis. Plan completo en
   `memory-bank/12-plan-whatsapp-ventas.md`.
+
+- **ADR-042 (2026-08-18):** **El plan del especialista vive en `profiles`, y toda pantalla que
+  lo muestre tiene que leer de ahí.** El acceso a los módulos lo decide
+  `GetDoctorFeaturesV2UseCase` con `profiles.plan` + `profiles.subscription_status`;
+  `subscriptions` es legacy y solo aporta datos accesorios (precio, fin de prueba). Hasta hoy el
+  panel `/admin/subscriptions` leía `subscriptions`: cuando las dos tablas divergían, el admin veía
+  "Free Trial · 3 días" mientras el especialista tenía `delta_free` y los módulos bloqueados —
+  imposible de diagnosticar desde la pantalla. Ahora `listSubscriptions` sale de `profiles`.
+  **Regla general:** ninguna escritura puede tocar una de las dos tablas sola; si toca el plan,
+  toca las dos en la misma transacción y deja asiento en `subscription_changes_log`.
+  Corolario: `profiles.plan` es **TEXT libre** y `subscriptions.plan` es el ENUM
+  `subscription_plan` — copiar de una a otra SIEMPRE con guarda contra `enum_range`, o el día que
+  aparezca un valor nuevo la transacción explota y deja al especialista sin poder entrar.
+
+- **ADR-043 (2026-08-18):** **Una pantalla de admin tiene que darse cuenta de que la sesión
+  cambió debajo.** La sesión de Auth0 es una cookie del **perfil del navegador, no de la
+  pestaña**: si alguien entra con otra cuenta en otra pestaña de la misma ventana, el panel abierto
+  sigue mostrando lo que cargó y cada acción nueva viaja con la otra identidad. El backend la
+  rechaza correctamente, pero en pantalla se lee como un permiso mal configurado — pasó el
+  2026-08-18 y costó una sesión entera de diagnóstico. `AdminSessionWatchdog` consulta
+  `GET /api/session` al montar, al recuperar el foco y cada 60s, y bloquea con un mensaje que
+  nombra la causa. Los 403 de rutas de admin dicen lo mismo en vez de "no tenés permisos" a secas.

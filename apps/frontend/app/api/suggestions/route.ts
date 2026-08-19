@@ -96,7 +96,7 @@ export async function POST(request: Request) {
   const { subject, message, category } = body ?? {};
 
   if (!subject || !message) {
-    return NextResponse.json({ error: 'Subject and message required' }, { status: 400 });
+    return NextResponse.json({ error: 'El asunto y el mensaje son obligatorios' }, { status: 400 });
   }
 
   const result = await backendPost<SuggestionDto>('/api/doctor/suggestions', {
@@ -126,14 +126,17 @@ export async function PATCH(request: Request) {
   // Admin-only route — the backend also enforces @Roles('super_admin'); this is
   // defense in depth so a non-admin gets a clean 403 from the BFF.
   if (user.role !== 'super_admin') {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    return NextResponse.json(
+      { error: 'No tenés permisos para realizar esta acción.' },
+      { status: 403 },
+    );
   }
 
   const body = await request.json();
   const { id, status, admin_response } = body ?? {};
 
   if (!id) {
-    return NextResponse.json({ error: 'id required' }, { status: 400 });
+    return NextResponse.json({ error: 'Falta el id de la sugerencia' }, { status: 400 });
   }
 
   const result = await backendPut<SuggestionDto>(`/api/admin/suggestions/${id}`, {

@@ -14,6 +14,6 @@ export class InvalidMonthFormatError extends DomainError {
   override readonly httpStatus = 400;
 
   constructor() {
-    super('Month parameter must be in YYYY-MM format with a valid month (01–12)');
+    super('El mes debe tener el formato AAAA-MM con un mes válido (01–12)');
   }
 }

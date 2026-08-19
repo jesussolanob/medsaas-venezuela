@@ -10,6 +10,6 @@ export class SubscriptionPaymentAlreadyResolvedError extends DomainError {
   readonly code = 'SUBSCRIPTION_PAYMENT_ALREADY_RESOLVED';
 
   constructor(id: string, currentStatus: SubscriptionPaymentStatus) {
-    super(`Subscription payment ${id} is already resolved (status: ${currentStatus})`);
+    super(`El pago de suscripción ${id} ya fue resuelto (estado: ${currentStatus})`);
   }
 }

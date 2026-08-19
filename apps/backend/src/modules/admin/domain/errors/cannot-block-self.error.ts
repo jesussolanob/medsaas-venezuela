@@ -9,6 +9,6 @@ export class CannotBlockSelfError extends DomainError {
   override readonly httpStatus = 422;
 
   constructor() {
-    super('Cannot block your own account');
+    super('No podés bloquear tu propia cuenta');
   }
 }

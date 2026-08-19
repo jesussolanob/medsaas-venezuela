@@ -20,12 +20,12 @@ describe('EmailSendError', () => {
 
   it('uses a default message when no cause is provided', () => {
     const error = new EmailSendError();
-    expect(error.message).toBe('Email delivery failed');
+    expect(error.message).toBe('No se pudo enviar el correo');
   });
 
   it('includes the cause in the message when provided', () => {
     const error = new EmailSendError('invalid_api_key');
-    expect(error.message).toBe('Email delivery failed: invalid_api_key');
+    expect(error.message).toBe('No se pudo enviar el correo: invalid_api_key');
   });
 
   it('has the correct name matching the class', () => {

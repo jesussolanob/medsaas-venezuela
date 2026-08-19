@@ -5,6 +5,6 @@ export class PlanConflictError extends DomainError {
   override readonly httpStatus = 409;
 
   constructor(planKey: string) {
-    super(`Plan '${planKey}' already exists`);
+    super(`El plan '${planKey}' ya existe`);
   }
 }

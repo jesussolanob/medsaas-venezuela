@@ -5,6 +5,6 @@ export class DoctorServiceNotFoundError extends DomainError {
   override readonly httpStatus = 404;
 
   constructor(_serviceId?: string) {
-    super('Service (pricing plan) not found');
+    super('Servicio no encontrado');
   }
 }

@@ -5,6 +5,6 @@ export class PackageNotOwnedError extends DomainError {
   readonly code = 'PACKAGE_NOT_OWNED';
 
   constructor(packageId: string) {
-    super(`Package ${packageId} does not belong to the requesting doctor`);
+    super(`El combo ${packageId} no pertenece a este especialista`);
   }
 }

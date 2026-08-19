@@ -141,7 +141,7 @@ interface UpdateProfileResponse {
 // ---------------------------------------------------------------------------
 
 const SendMessageBodySchema = z.object({
-  doctor_id: z.string().uuid('doctor_id must be a valid UUID'),
+  doctor_id: z.string().uuid('doctor_id debe ser un UUID válido'),
   body: z.string().min(1, 'body is required').max(5000, 'body must be at most 5000 characters'),
 });
 type SendMessageBody = z.infer<typeof SendMessageBodySchema>;
@@ -302,7 +302,7 @@ export class PatientController {
     let validatedDoctorId: string | undefined;
     if (doctorId !== undefined) {
       if (!z.string().uuid().safeParse(doctorId).success) {
-        throw new BadRequestException('doctor_id must be a valid UUID');
+        throw new BadRequestException('doctor_id debe ser un UUID válido');
       }
       validatedDoctorId = doctorId;
     }

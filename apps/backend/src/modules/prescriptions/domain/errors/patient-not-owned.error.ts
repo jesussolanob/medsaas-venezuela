@@ -9,6 +9,6 @@ export class PatientNotOwnedError extends DomainError {
   readonly code = 'PATIENT_NOT_FOUND';
 
   constructor() {
-    super('Patient not found');
+    super('Paciente no encontrado');
   }
 }

@@ -9,6 +9,6 @@ export class SubscriptionPaymentNotFoundError extends DomainError {
   override readonly httpStatus = 404;
 
   constructor(id: string) {
-    super(`Subscription payment not found: ${id}`);
+    super(`Pago de suscripción no encontrado: ${id}`);
   }
 }

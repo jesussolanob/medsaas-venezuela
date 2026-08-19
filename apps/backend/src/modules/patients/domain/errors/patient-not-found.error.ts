@@ -6,6 +6,6 @@ export class PatientNotFoundError extends DomainError {
   // Message is intentionally generic — never include the patientId in the response
   // to prevent resource-existence enumeration by unauthorized callers.
   constructor(_patientId?: string) {
-    super('Patient not found');
+    super('Paciente no encontrado');
   }
 }

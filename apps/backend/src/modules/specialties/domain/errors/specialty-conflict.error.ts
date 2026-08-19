@@ -5,6 +5,6 @@ export class SpecialtyConflictError extends DomainError {
   override readonly httpStatus = 409;
 
   constructor(name: string) {
-    super(`A specialty named "${name}" already exists`);
+    super(`Ya existe una especialidad llamada "${name}"`);
   }
 }

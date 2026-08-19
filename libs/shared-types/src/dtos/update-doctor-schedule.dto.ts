@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 /** Validates an HH:MM time string (24-hour format). */
 const TimeStringSchema = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, {
-  message: 'Must be a valid HH:MM time (24h)',
+  message: 'La hora debe tener el formato HH:MM (24h)',
 });
 
 export const UpdateDoctorScheduleDtoSchema = z

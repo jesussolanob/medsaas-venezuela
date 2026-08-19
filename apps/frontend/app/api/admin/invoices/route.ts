@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
   const { doctorId, amount, currency, description } = await req.json();
 
   if (!doctorId || !amount) {
-    return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+    return NextResponse.json({ error: 'Faltan campos obligatorios' }, { status: 400 });
   }
 
   const result = await backendPost<BackendInvoice>('/api/admin/invoices', {

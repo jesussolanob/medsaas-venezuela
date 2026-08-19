@@ -64,7 +64,7 @@ export class SettingsController {
   @UseGuards(AppAuthGuard)
   async getBcvRate(@Query('date') date?: string): Promise<SuccessResponse<GetBcvRateByDateOutput>> {
     if (date !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-      throw new BadRequestException('date must be in YYYY-MM-DD format');
+      throw new BadRequestException('La fecha debe tener el formato AAAA-MM-DD');
     }
 
     // Default to today when no date is given.

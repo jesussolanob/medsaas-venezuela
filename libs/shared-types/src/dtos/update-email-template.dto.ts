@@ -21,7 +21,7 @@ export const UpdateEmailTemplateDtoSchema = z
       data.html !== undefined ||
       data.text !== undefined ||
       data.is_active !== undefined,
-    { message: 'At least one field must be provided' },
+    { message: 'Debés enviar al menos un campo' },
   );
 
 export type UpdateEmailTemplateDto = z.infer<typeof UpdateEmailTemplateDtoSchema>;

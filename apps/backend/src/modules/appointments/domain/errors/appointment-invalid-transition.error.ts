@@ -5,6 +5,6 @@ export class AppointmentInvalidTransitionError extends DomainError {
   readonly code = 'APPOINTMENT_INVALID_TRANSITION';
 
   constructor(from: AppointmentStatus, to: AppointmentStatus) {
-    super(`Cannot transition appointment from '${from}' to '${to}'`);
+    super(`No se puede pasar la cita de '${from}' a '${to}'`);
   }
 }

@@ -6,6 +6,6 @@ export class PrescriptionNotFoundError extends DomainError {
   // Message is intentionally generic — never include the ID to prevent
   // resource-existence enumeration by unauthorized callers.
   constructor() {
-    super('Prescription not found');
+    super('Receta no encontrada');
   }
 }

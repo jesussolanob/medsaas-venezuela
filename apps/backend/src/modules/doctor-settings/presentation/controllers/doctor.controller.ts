@@ -271,7 +271,7 @@ export class DoctorController {
   ): Promise<SuccessResponse<DoctorExchangeRateOutput>> {
     if (dto.mode === 'custom' && (dto.custom_rate == null || dto.custom_rate <= 0)) {
       throw new BadRequestException(
-        'custom_rate is required and must be > 0 when mode is "custom"',
+        'Con tasa personalizada tenés que indicar un valor mayor a cero.',
       );
     }
     const result = await this.setDoctorExchangeRate.execute(user.sub, {

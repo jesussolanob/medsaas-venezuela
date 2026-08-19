@@ -16,11 +16,11 @@ describe('GoogleNotConnectedError', () => {
     const err = new GoogleNotConnectedError('doctor-abc');
     // doctorId must NOT appear in the message — it propagates to the client
     expect(err.message).not.toContain('doctor-abc');
-    expect(err.message).toBe('Google integration not available');
+    expect(err.message).toBe('La integración con Google no está disponible');
   });
 
   it('returns the same generic message when no doctorId is given', () => {
     const err = new GoogleNotConnectedError();
-    expect(err.message).toBe('Google integration not available');
+    expect(err.message).toBe('La integración con Google no está disponible');
   });
 });

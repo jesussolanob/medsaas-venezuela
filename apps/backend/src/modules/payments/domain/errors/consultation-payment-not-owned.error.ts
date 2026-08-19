@@ -4,6 +4,6 @@ export class ConsultationPaymentNotOwnedError extends DomainError {
   readonly code = 'CONSULTATION_PAYMENT_NOT_OWNED';
 
   constructor() {
-    super('Not authorized to access or modify this payment');
+    super('No tenés permiso para ver o modificar este cobro');
   }
 }

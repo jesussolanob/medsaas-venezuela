@@ -12,6 +12,6 @@ export class EmailSendError extends DomainError {
   override readonly httpStatus = 502;
 
   constructor(cause?: string) {
-    super(cause ? `Email delivery failed: ${cause}` : 'Email delivery failed');
+    super(cause ? `No se pudo enviar el correo: ${cause}` : 'No se pudo enviar el correo');
   }
 }

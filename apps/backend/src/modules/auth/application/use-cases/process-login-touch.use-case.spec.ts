@@ -11,7 +11,7 @@ const DOCTOR_ID = PROFILE_ID; // doctor's profile id == doctor_id on subscriptio
 function makeRepo(): jest.Mocked<ILoginTouchRepository> {
   return {
     findAccountState: jest.fn().mockResolvedValue({ isActive: true, deactivatedBy: null }),
-    reactivateAsFreeAndTouch: jest.fn(),
+    reactivateAndTouch: jest.fn(),
     findSubscriptionByDoctorId: jest.fn(),
     findPlanConfigByKey: jest.fn(),
     persistDowngradeAndTouch: jest.fn(),
@@ -278,7 +278,7 @@ describe('ProcessLoginTouchUseCase — reingreso tras darse de baja', () => {
 
     const result = await useCase.execute({ profileId: PROFILE_ID, role: 'doctor' });
 
-    expect(repo.reactivateAsFreeAndTouch).toHaveBeenCalledWith(PROFILE_ID, 'delta_free');
+    expect(repo.reactivateAndTouch).toHaveBeenCalledWith(PROFILE_ID, 'delta_free');
     expect(result.reactivated).toBe(true);
     // No sigue con la lógica de vencimiento: la cuenta ya quedó en el plan gratuito.
     expect(repo.findSubscriptionByDoctorId).not.toHaveBeenCalled();
@@ -291,7 +291,7 @@ describe('ProcessLoginTouchUseCase — reingreso tras darse de baja', () => {
 
     const result = await useCase.execute({ profileId: PROFILE_ID, role: 'doctor' });
 
-    expect(repo.reactivateAsFreeAndTouch).not.toHaveBeenCalled();
+    expect(repo.reactivateAndTouch).not.toHaveBeenCalled();
     expect(result.reactivated).toBeUndefined();
   });
 
@@ -302,7 +302,7 @@ describe('ProcessLoginTouchUseCase — reingreso tras darse de baja', () => {
 
     await useCase.execute({ profileId: PROFILE_ID, role: 'patient' });
 
-    expect(repo.reactivateAsFreeAndTouch).not.toHaveBeenCalled();
+    expect(repo.reactivateAndTouch).not.toHaveBeenCalled();
     expect(repo.touchLastSignInAt).toHaveBeenCalledWith(PROFILE_ID);
   });
 });

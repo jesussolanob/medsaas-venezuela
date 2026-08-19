@@ -12,7 +12,7 @@ export async function POST(req: NextRequest) {
   const { invoiceId } = await req.json();
 
   if (!invoiceId) {
-    return NextResponse.json({ error: 'Missing invoiceId' }, { status: 400 });
+    return NextResponse.json({ error: 'Falta el id de la factura' }, { status: 400 });
   }
 
   const result = await backendPut<unknown>(`/api/admin/invoices/${invoiceId}/paid`, {});
