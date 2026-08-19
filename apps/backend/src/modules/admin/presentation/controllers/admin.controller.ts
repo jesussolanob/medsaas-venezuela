@@ -501,8 +501,8 @@ export class AdminController {
   }
 
   /**
-   * POST /api/admin/subscriptions/extend — extend a doctor's subscription by N months.
-   * Body: { doctor_id, months, reason? }
+   * POST /api/admin/subscriptions/extend — extend a doctor's subscription by N days or months.
+   * Body: { doctor_id, months?, days?, reason? } — exactly one of months or days is required.
    */
   @Post('subscriptions/extend')
   async extendSubscription(
@@ -512,6 +512,7 @@ export class AdminController {
     const result = await this.extendSubscriptionOp.execute({
       doctorId: body.doctor_id,
       months: body.months,
+      days: body.days,
       actorId: user.sub,
       reason: body.reason ?? null,
     });

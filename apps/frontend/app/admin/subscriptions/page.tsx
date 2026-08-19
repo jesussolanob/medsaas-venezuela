@@ -199,6 +199,12 @@ function DoctorsTab() {
   const [search, setSearch] = useState('');
   const [actioning, setActioning] = useState<string | null>(null);
   const [changePlanTarget, setChangePlanTarget] = useState<ChangePlanTarget | null>(null);
+  // Especialista al que se le está extendiendo la suscripción (null = modal cerrado).
+  const [extendTarget, setExtendTarget] = useState<{
+    doctor_id: string;
+    doctor_name: string;
+    current_period_end: string | null;
+  } | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -218,22 +224,30 @@ function DoctorsTab() {
     load();
   }, [load]);
 
-  async function extendDoctor(doctor_id: string, doctor_name: string) {
-    const months = prompt(`Extender suscripción de ${doctor_name}\n\n¿Cuántos meses?`, '1');
-    if (!months) return;
-    const m = Number(months);
-    if (!Number.isFinite(m) || m < 1 || m > 36) {
-      showToast({ type: 'error', message: 'Entre 1 y 36 meses' });
-      return;
-    }
-    const reason = prompt('Razón / nota (opcional)') || undefined;
-
+  /**
+   * Aplica la extensión que se armó en el modal.
+   *
+   * Antes esto se pedía con DOS `prompt()` nativos encadenados —el de Chrome,
+   * con el "staging.deltasalud.app dice" arriba— y solo admitía meses. Ahora la
+   * pregunta vive en un modal de la app (`ExtendModal`), con selector de unidad
+   * y la nota en la misma pantalla.
+   */
+  async function aplicarExtension(
+    doctor_id: string,
+    cantidad: number,
+    unidad: 'dias' | 'meses',
+    reason?: string,
+  ) {
     setActioning(doctor_id);
     try {
       const r = await fetch('/api/admin/subscriptions/extend', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ doctor_id, months: m, reason }),
+        body: JSON.stringify({
+          doctor_id,
+          ...(unidad === 'meses' ? { months: cantidad } : { days: cantidad }),
+          reason,
+        }),
       });
       const j = await r.json();
       if (!r.ok) throw new Error(j.error);
@@ -241,6 +255,7 @@ function DoctorsTab() {
         type: 'success',
         message: `Extendido. Nueva fecha: ${new Date(j.new_expires_at).toLocaleDateString('es-VE')}`,
       });
+      setExtendTarget(null);
       load();
     } catch (e: any) {
       showToast({ type: 'error', message: `Error: ${e.message}` });
@@ -300,6 +315,18 @@ function DoctorsTab() {
 
   return (
     <>
+      {/* Modal extender suscripción */}
+      {extendTarget && (
+        <ExtendModal
+          target={extendTarget}
+          saving={actioning === extendTarget.doctor_id}
+          onClose={() => setExtendTarget(null)}
+          onConfirm={(cantidad, unidad, reason) =>
+            aplicarExtension(extendTarget.doctor_id, cantidad, unidad, reason)
+          }
+        />
+      )}
+
       {/* Modal cambiar plan */}
       {changePlanTarget && (
         <ChangePlanModal
@@ -426,7 +453,13 @@ function DoctorsTab() {
                         <td className="px-4 py-3 text-right">
                           <div className="inline-flex items-center gap-1">
                             <button
-                              onClick={() => extendDoctor(d.doctor_id, d.doctor_name)}
+                              onClick={() =>
+                                setExtendTarget({
+                                  doctor_id: d.doctor_id,
+                                  doctor_name: d.doctor_name,
+                                  current_period_end: d.current_period_end,
+                                })
+                              }
                               disabled={actioning === d.doctor_id}
                               title="Extender N meses"
                               className="p-1.5 text-teal-600 hover:bg-teal-50 rounded-md disabled:opacity-40"
@@ -534,7 +567,13 @@ function DoctorsTab() {
 
                     <div className="flex items-center gap-2 flex-wrap">
                       <button
-                        onClick={() => extendDoctor(d.doctor_id, d.doctor_name)}
+                        onClick={() =>
+                          setExtendTarget({
+                            doctor_id: d.doctor_id,
+                            doctor_name: d.doctor_name,
+                            current_period_end: d.current_period_end,
+                          })
+                        }
                         disabled={actioning === d.doctor_id}
                         className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-bold text-teal-700 bg-teal-50 hover:bg-teal-100 rounded-lg disabled:opacity-40"
                       >
@@ -577,6 +616,181 @@ function DoctorsTab() {
 }
 
 // ─── CHANGE PLAN MODAL ──────────────────────────────────────────────────────
+/**
+ * Modal para extender la suscripción de un especialista.
+ *
+ * Reemplaza dos `prompt()` nativos encadenados. Además de verse como el resto
+ * de la app, esto permite lo que el `prompt` no podía: **elegir la unidad**.
+ * Antes solo se podían sumar meses, así que regalar diez días de prueba —el
+ * caso comercial más común— era imposible.
+ *
+ * La nota va en la MISMA pantalla: era un segundo `prompt` que aparecía después
+ * de aceptar el primero, y encadenar dos diálogos del navegador para una sola
+ * acción es donde la gente cancela por reflejo.
+ */
+function ExtendModal({
+  target,
+  saving,
+  onClose,
+  onConfirm,
+}: {
+  target: { doctor_name: string; current_period_end: string | null };
+  saving: boolean;
+  onClose: () => void;
+  onConfirm: (cantidad: number, unidad: 'dias' | 'meses', reason?: string) => void;
+}) {
+  const [unidad, setUnidad] = useState<'dias' | 'meses'>('dias');
+  const [cantidad, setCantidad] = useState('30');
+  const [reason, setReason] = useState('');
+
+  const n = Number(cantidad);
+  // Los topes son los del backend: 1..3650 días, 1..120 meses.
+  const tope = unidad === 'dias' ? 3650 : 120;
+  const valido = Number.isInteger(n) && n >= 1 && n <= tope;
+
+  /** Fecha resultante, para que el admin vea a dónde llega ANTES de confirmar. */
+  const nuevaFecha = (() => {
+    if (!valido) return null;
+    const ahora = new Date();
+    const desde =
+      target.current_period_end && new Date(target.current_period_end) > ahora
+        ? new Date(target.current_period_end)
+        : ahora;
+    const d = new Date(desde);
+    if (unidad === 'dias') d.setDate(d.getDate() + n);
+    else d.setMonth(d.getMonth() + n);
+    return d;
+  })();
+
+  return (
+    <div
+      className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white rounded-2xl shadow-2xl w-full max-w-sm"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-slate-100">
+          <div className="min-w-0">
+            <h3 className="font-bold text-slate-900 text-base">Extender suscripción</h3>
+            <p className="text-xs text-slate-500 mt-0.5 truncate max-w-[220px]">
+              {target.doctor_name}
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors"
+            aria-label="Cerrar"
+          >
+            <XCircle className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="px-5 py-4 space-y-4">
+          <div>
+            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
+              Cuánto extender
+            </label>
+            <div className="flex gap-2">
+              <input
+                type="number"
+                min={1}
+                max={tope}
+                step={1}
+                value={cantidad}
+                onChange={(e) => setCantidad(e.target.value)}
+                aria-label="Cantidad"
+                autoFocus
+                className="w-24 px-3 py-2 border border-slate-200 rounded-lg text-sm text-slate-800 focus:ring-2 focus:ring-teal-500 outline-none"
+              />
+              <select
+                value={unidad}
+                onChange={(e) => {
+                  const u = e.target.value as 'dias' | 'meses';
+                  setUnidad(u);
+                  // Un default sensato por unidad: 30 días o 1 mes. Dejar "30"
+                  // al pasar a meses ofrecería extender por 30 MESES.
+                  setCantidad(u === 'dias' ? '30' : '1');
+                }}
+                aria-label="Unidad"
+                className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-sm text-slate-800 focus:ring-2 focus:ring-teal-500 outline-none bg-white"
+              >
+                <option value="dias">días</option>
+                <option value="meses">meses</option>
+              </select>
+            </div>
+            {!valido && cantidad.trim() !== '' && (
+              <p className="text-[11px] text-red-600 mt-1">
+                Indicá un número entero entre 1 y {tope}.
+              </p>
+            )}
+          </div>
+
+          {nuevaFecha && (
+            <div className="rounded-lg bg-slate-50 border border-slate-200 px-3 py-2">
+              <p className="text-[11px] text-slate-500 uppercase tracking-wider font-semibold">
+                Queda vigente hasta
+              </p>
+              <p className="text-sm font-bold text-slate-800 mt-0.5">
+                {nuevaFecha.toLocaleDateString('es-VE', {
+                  weekday: 'long',
+                  day: 'numeric',
+                  month: 'long',
+                  year: 'numeric',
+                })}
+              </p>
+              {target.current_period_end && new Date(target.current_period_end) > new Date() && (
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  Se suma a lo que ya tenía, no lo reemplaza.
+                </p>
+              )}
+            </div>
+          )}
+
+          <div>
+            <label
+              htmlFor="ext-reason"
+              className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5"
+            >
+              Nota <span className="normal-case font-normal text-slate-400">(opcional)</span>
+            </label>
+            <input
+              id="ext-reason"
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              placeholder="Ej. cortesía comercial"
+              maxLength={500}
+              className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm text-slate-800 focus:ring-2 focus:ring-teal-500 outline-none"
+            />
+            <p className="text-[11px] text-slate-400 mt-1">
+              Queda en el historial de cambios de la suscripción.
+            </p>
+          </div>
+        </div>
+
+        <div className="flex gap-2 px-5 pb-5">
+          <button
+            onClick={onClose}
+            disabled={saving}
+            className="flex-1 py-2.5 border border-slate-200 rounded-lg text-sm font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={() => onConfirm(n, unidad, reason.trim() || undefined)}
+            disabled={saving || !valido}
+            className="flex-1 py-2.5 bg-teal-500 text-white rounded-lg text-sm font-semibold hover:bg-teal-600 disabled:opacity-40 inline-flex items-center justify-center gap-2"
+          >
+            {saving && <Loader2 className="w-4 h-4 animate-spin" />}
+            Extender
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ChangePlanModal({
   target,
   onClose,
