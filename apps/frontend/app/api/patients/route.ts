@@ -14,6 +14,7 @@ import 'server-only';
 
 import { NextRequest, NextResponse } from 'next/server';
 import { backendFetch } from '@/lib/api-client.server';
+import { resolveIdentity } from '@/lib/identity.server';
 
 export const dynamic = 'force-dynamic';
 
@@ -42,7 +43,33 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     );
   }
 
-  const result = await backendFetch('/api/patients', { method: 'POST', body });
+  // `doctor_id` lo pone el SERVIDOR, a partir de la sesión.
+  //
+  // El DTO del backend lo exige (`z.string().uuid()`) y este handler reenviaba
+  // el cuerpo tal cual: quien posteaba acá sin incluirlo —el modal de consulta
+  // inmediata— recibía siempre un 400 y **nunca pudo crear un paciente**. El
+  // camino de /doctor/patients no lo sufría porque su server action sí lo
+  // agrega.
+  //
+  // Se resuelve de la sesión y NO se acepta del cuerpo, que es la regla
+  // anti-IDOR del proyecto: si viniera del cliente, cualquiera podría crear
+  // pacientes en la ficha de otro especialista.
+  let identidad;
+  try {
+    identidad = await resolveIdentity();
+  } catch {
+    return NextResponse.json(
+      { success: false, error: { message: 'No autenticado', status: 401 } },
+      { status: 401 },
+    );
+  }
+
+  const cuerpo =
+    typeof body === 'object' && body !== null
+      ? { ...(body as Record<string, unknown>), doctor_id: identidad.id }
+      : { doctor_id: identidad.id };
+
+  const result = await backendFetch('/api/patients', { method: 'POST', body: cuerpo });
   if (!result.ok) {
     // 409 Conflict: el paciente ya existe — retornar el error del backend
     // que puede incluir existingId para que el caller lo use.
