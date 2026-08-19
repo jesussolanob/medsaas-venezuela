@@ -15,6 +15,11 @@
  * Chequea al montar, al volver el foco a la ventana y cada 60s. Solo bloquea
  * ante una respuesta CONCLUYENTE del servidor: un error de red no interrumpe a
  * nadie (se reintenta en el próximo ciclo).
+ *
+ * ⚠️ El rol que se espera acá es el MISMO que exigen los guards (`requireSuperAdmin`
+ * en el BFF y `@Roles('super_admin')` en el backend). El día que `/admin` admita
+ * también al rol `admin`, hay que ampliarlo en los tres lugares o esta pantalla
+ * va a bloquear a alguien que sí tiene permiso.
  */
 
 import { useCallback, useEffect, useState } from 'react';
