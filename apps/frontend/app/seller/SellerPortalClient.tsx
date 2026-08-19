@@ -16,7 +16,17 @@
  */
 
 import { useCallback, useEffect, useState } from 'react';
-import { Users, Copy, Check, Loader2, UserPlus, AlertCircle, X, Share2 } from 'lucide-react';
+import {
+  Users,
+  Copy,
+  Check,
+  Loader2,
+  UserPlus,
+  AlertCircle,
+  X,
+  Share2,
+  LogOut,
+} from 'lucide-react';
 import { showToast } from '@/components/ui/Toaster';
 
 type SpecialistDetail = SpecialistRow & {
@@ -114,6 +124,9 @@ function estadoSeguimiento(row: { lastSignInAt?: string | null; onboardingComple
 export default function SellerPortalClient() {
   const [code, setCode] = useState<string | null>(null);
   const [rows, setRows] = useState<SpecialistRow[]>([]);
+  // Nombre del vendedor: acompaña al botón de cerrar sesión, para que en una
+  // máquina compartida se vea de quién es la sesión antes de cerrarla.
+  const [nombre, setNombre] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
@@ -147,8 +160,11 @@ export default function SellerPortalClient() {
         fetch('/api/seller/specialists', { cache: 'no-store' }),
       ]);
       if (meRes.ok) {
-        const j = (await meRes.json()) as { data?: { sellerCode: string | null } };
+        const j = (await meRes.json()) as {
+          data?: { sellerCode: string | null; fullName?: string | null };
+        };
         setCode(j.data?.sellerCode ?? null);
+        setNombre(j.data?.fullName ?? null);
       }
       if (listRes.ok) {
         const j = (await listRes.json()) as { data?: SpecialistRow[] };
@@ -158,6 +174,21 @@ export default function SellerPortalClient() {
       setLoading(false);
     }
   }, []);
+
+  /**
+   * Cierra la sesión. Mismo comportamiento que los layouts de admin, doctor y
+   * paciente: con Auth0 hay que pasar por su `/v2/logout`, porque borrar las
+   * cookies locales NO cierra la sesión real y el vendedor seguiría dentro.
+   */
+  function cerrarSesion() {
+    if (process.env.NEXT_PUBLIC_AUTH_MODE === 'auth0') {
+      window.location.href = '/auth/logout';
+      return;
+    }
+    document.cookie = 'dev_user_id=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+    document.cookie = 'dev_user_role=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+    window.location.href = '/login';
+  }
 
   useEffect(() => {
     // En un tick aparte: arrancar la carga desde el cuerpo del efecto encadena
@@ -232,16 +263,36 @@ export default function SellerPortalClient() {
           <div>
             <h1 className="text-2xl font-bold text-slate-900">Mis especialistas</h1>
             <p className="text-sm text-slate-500">
-              Los que registraste vos o que se registraron con tu código.
+              {nombre ? `${nombre} — ` : ''}los que registraste vos o que se registraron con tu
+              código.
             </p>
           </div>
-          <button
-            onClick={() => setShowForm(true)}
-            className="flex items-center gap-2 px-4 py-2 g-bg text-white rounded-lg text-sm font-semibold hover:opacity-90 transition-opacity"
-          >
-            <UserPlus className="w-4 h-4" />
-            Registrar especialista
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowForm(true)}
+              className="flex items-center gap-2 px-4 py-2 g-bg text-white rounded-lg text-sm font-semibold hover:opacity-90 transition-opacity"
+            >
+              <UserPlus className="w-4 h-4" />
+              Registrar especialista
+            </button>
+            {/*
+              Cerrar sesión.
+
+              El portal del vendedor es la única pantalla de la app SIN barra
+              lateral —los portales de especialista, admin y paciente tienen la
+              suya con este botón—, así que quedó sin ninguna forma de salir:
+              el vendedor tenía que borrar cookies o cerrar el navegador. En una
+              máquina compartida, que es donde trabaja un equipo comercial, eso
+              deja la sesión abierta para el siguiente.
+            */}
+            <button
+              onClick={cerrarSesion}
+              className="flex items-center gap-2 px-3 py-2 border border-slate-200 rounded-lg text-sm font-semibold text-slate-500 hover:text-red-600 hover:border-red-200 hover:bg-red-50 transition-colors"
+            >
+              <LogOut className="w-4 h-4" />
+              <span className="hidden sm:inline">Cerrar sesión</span>
+            </button>
+          </div>
         </header>
 
         {/* El código, arriba de todo: es lo que tiene que compartir */}
