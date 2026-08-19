@@ -15,8 +15,15 @@ export class NoImmediateSlotError extends DomainError {
   override readonly httpStatus = 409;
 
   constructor(availableMinutes: number) {
+    // El especialista LEE este mensaje: se le muestra al intentar registrar la
+    // consulta inmediata. Estaba en inglés — se escapó del barrido de idioma
+    // del 18/08 porque el detector buscaba mensajes sin acentos ni palabras en
+    // español, y éste no tiene ninguna de las dos cosas sin ser español.
+    const minutos =
+      availableMinutes === 1 ? 'queda 1 minuto libre' : `quedan ${availableMinutes} minutos libres`;
     super(
-      `Not enough time for an immediate consultation: only ${availableMinutes} minute(s) available before the next appointment`,
+      `No hay tiempo para una consulta inmediata: solo ${minutos} antes de la próxima cita. ` +
+        'Podés registrarla igual y se va a cruzar con esa cita.',
     );
   }
 }
