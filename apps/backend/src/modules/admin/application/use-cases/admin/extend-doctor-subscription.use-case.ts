@@ -8,7 +8,8 @@ import { DoctorNotFoundError } from '../../../domain/errors/doctor-not-found.err
 
 export interface ExtendDoctorSubscriptionInput {
   doctorId: string;
-  months: number;
+  months?: number;
+  days?: number;
   actorId: string;
   reason?: string | null;
 }
@@ -18,7 +19,27 @@ export interface ExtendDoctorSubscriptionOutput {
 }
 
 /**
- * Manually extends a doctor's subscription by N months (admin grant).
+ * Adds `months` to `date` without overflowing into the following month.
+ *
+ * JS `Date.setMonth` overflows when the source day doesn't exist in the
+ * target month: e.g. Jan 31 + 1 month → March 3 instead of Feb 28.
+ * Fix: set the day to 1 before shifting the month, then clamp back to
+ * min(original_day, last_day_of_target_month).
+ */
+function addMonthsClamped(date: Date, months: number): Date {
+  const result = new Date(date);
+  const originalDay = result.getDate();
+  // Reset to day 1 to avoid overflow while changing the month
+  result.setDate(1);
+  result.setMonth(result.getMonth() + months);
+  // Last day of the resulting month (day 0 of the next month)
+  const lastDayOfMonth = new Date(result.getFullYear(), result.getMonth() + 1, 0).getDate();
+  result.setDate(Math.min(originalDay, lastDayOfMonth));
+  return result;
+}
+
+/**
+ * Manually extends a doctor's subscription by N days or months (admin grant).
  *
  * Stripe-style anchor: if the current expiry is in the future, extend from it;
  * otherwise extend from now. Sets status 'active' and migrates a 'trial' plan to
@@ -40,11 +61,21 @@ export class ExtendDoctorSubscriptionUseCase {
     const now = new Date();
     const currentEnd = snapshot.expiresAt;
     const anchor = currentEnd && currentEnd > now ? currentEnd : now;
-    const newExpiresAt = new Date(anchor);
-    newExpiresAt.setMonth(newExpiresAt.getMonth() + input.months);
+
+    let newExpiresAt: Date;
+    if (input.days !== undefined) {
+      newExpiresAt = new Date(anchor);
+      newExpiresAt.setDate(newExpiresAt.getDate() + input.days);
+    } else {
+      // months is guaranteed by the DTO refine (exactly one of days/months)
+      newExpiresAt = addMonthsClamped(anchor, input.months!);
+    }
 
     const newPlan: SubscriptionPlan =
       snapshot.plan === 'trial' ? 'basic' : (snapshot.plan ?? 'basic');
+
+    const metadata =
+      input.days !== undefined ? { days_added: input.days } : { months_added: input.months! };
 
     await this.repo.applyManualSubscriptionChange({
       doctorId: input.doctorId,
@@ -55,7 +86,7 @@ export class ExtendDoctorSubscriptionUseCase {
       newStatus: 'active',
       newExpiresAt,
       newPlan,
-      metadata: { months_added: input.months },
+      metadata,
     });
 
     return { newExpiresAt };
