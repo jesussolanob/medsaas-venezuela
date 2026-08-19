@@ -461,7 +461,7 @@ function DoctorsTab() {
                                 })
                               }
                               disabled={actioning === d.doctor_id}
-                              title="Extender N meses"
+                              title="Extender la suscripción (días o meses)"
                               className="p-1.5 text-teal-600 hover:bg-teal-50 rounded-md disabled:opacity-40"
                             >
                               <Plus className="w-4 h-4" />
