@@ -250,7 +250,14 @@ consultations}` (+ Consultorios/Plantillas sin moduleKey); deshabilitados agenda
   db-g1-small, **aislado — NUNCA apunta a prod**; se puede DETENER cuando no se usa → paga solo storage). Secreto
   `DATABASE_URL_STAGING` (mismo URL de prod cambiando solo la instancia). **Reusa las MISMAS llaves de cifrado de
   prod** (obligatorio: la BD clonada está cifrada con esa llave). Salvaguardas por tener datos reales clonados:
-  **`EMAIL_DRIVER=noop`** (NO manda correos a pacientes) + **Sentry off**. Workflow `.github/workflows/staging.yml`
+  ~~`EMAIL_DRIVER=noop`~~ + **Sentry off**. Workflow `.github/workflows/staging.yml`
+  🚨 **CORREGIDO 2026-08-19: staging YA NO tiene la salvaguarda del correo.** Desde el 2026-08-09
+  el workflow fija **`EMAIL_DRIVER=resend`** (verificado en el servicio desplegado y en
+  `staging.yml:153`), así que **staging envía correo REAL al destinatario REAL sobre una base
+  clonada con pacientes de verdad**. Este ADR afirmó lo contrario durante diez días. Consecuencia
+  para el QA: cualquier acción que dispare un correo —reservar, compartir documentos,
+  recordatorios— le llega a la persona real. **Probar envíos SOLO con pacientes de prueba y
+  direcciones inventadas.**
   dispara en push a la rama **`staging`** (imágenes `staging-<sha>`, `NEXT_PUBLIC_URL=https://staging.deltasalud.app`).
   Dominio: domain mapping → `delta-frontend-staging` + CNAME Cloudflare `staging → ghs.googlehosted.com` **DNS-only**
   (cert managed de Cloud Run, VIVO). Backend por IAM/`.run.app` (sin dominio, como prod; `api.deltasalud.app` + LB/Armor
