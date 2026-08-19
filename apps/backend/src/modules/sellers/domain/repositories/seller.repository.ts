@@ -75,6 +75,15 @@ export interface SellerSpecialistRow {
   createdAt: Date;
   /** Null when the specialist has never logged in. */
   lastSignInAt: Date | null;
+  /**
+   * true = el especialista completó el alta (tiene consultorio + servicio activos).
+   * false = se registró pero nunca terminó el onboarding.
+   *
+   * El vendedor necesita este flag para distinguir "cuenta activa" de
+   * "usuario a la mitad del proceso" y hacer el seguimiento comercial.
+   * La columna ya existe en `profiles` desde la migración 20260617000004.
+   */
+  onboardingCompleted: boolean;
 }
 
 // ---------------------------------------------------------------------------

@@ -110,6 +110,8 @@ function toSpecialistDto(row: SellerSpecialistRow) {
     subscriptionStatus: row.subscriptionStatus,
     createdAt: row.createdAt,
     lastSignInAt: row.lastSignInAt,
+    // Distingue "alta incompleta" de "cuenta activa" en el portal del vendedor.
+    onboardingCompleted: row.onboardingCompleted,
   };
 }
 

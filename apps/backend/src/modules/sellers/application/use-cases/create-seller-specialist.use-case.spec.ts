@@ -19,6 +19,7 @@ function makeSpecialist(overrides: Partial<SellerSpecialistRow> = {}): SellerSpe
     subscriptionStatus: 'trialing',
     createdAt: new Date('2026-08-16T10:00:00Z'),
     lastSignInAt: null,
+    onboardingCompleted: false,
     ...overrides,
   };
 }
@@ -110,5 +111,35 @@ describe('CreateSellerSpecialistUseCase', () => {
     await expect(
       useCase.execute({ sellerId: SELLER_ID, fullName: 'X', email: 'x@x.com' }),
     ).rejects.toBe(error);
+  });
+
+  describe('onboardingCompleted — distingue alta completa de incompleta', () => {
+    it('devuelve onboardingCompleted=false para un especialista que no terminó el alta', async () => {
+      repoMock.createSoldSpecialist.mockResolvedValue(
+        makeSpecialist({ onboardingCompleted: false }),
+      );
+
+      const result = await useCase.execute({
+        sellerId: SELLER_ID,
+        fullName: 'Dr. Incompleto',
+        email: 'incompleto@example.com',
+      });
+
+      expect(result.onboardingCompleted).toBe(false);
+    });
+
+    it('devuelve onboardingCompleted=true para un especialista que completó el alta', async () => {
+      repoMock.createSoldSpecialist.mockResolvedValue(
+        makeSpecialist({ onboardingCompleted: true }),
+      );
+
+      const result = await useCase.execute({
+        sellerId: SELLER_ID,
+        fullName: 'Dr. Completo',
+        email: 'completo@example.com',
+      });
+
+      expect(result.onboardingCompleted).toBe(true);
+    });
   });
 });

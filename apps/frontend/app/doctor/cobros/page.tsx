@@ -20,6 +20,7 @@ import {
   removePaymentItem,
 } from '@/app/doctor/finances/payments-actions';
 import { formatPaymentMethod } from '@/lib/payment-methods';
+import { entriesOf } from '@/lib/payment-details';
 import { buildReceiptHtml } from '@/lib/receipt-pdf';
 import { waLink } from '@/lib/phone-utils';
 import { getDoctorProfile } from '@/app/doctor/actions';
@@ -130,9 +131,8 @@ export default function CobrosPage() {
 
   // 7.10: métodos de pago del doctor para el mensaje de WhatsApp
   const [doctorPaymentMethods, setDoctorPaymentMethods] = useState<string[]>([]);
-  const [doctorPaymentDetails, setDoctorPaymentDetails] = useState<
-    Record<string, Record<string, string>>
-  >({});
+  // Un método puede traer un juego de datos o varios — ver lib/payment-details.
+  const [doctorPaymentDetails, setDoctorPaymentDetails] = useState<Record<string, unknown>>({});
   const [sendingWa, setSendingWa] = useState(false);
 
   // TAREA 2: estado de edición de detalles del pago
@@ -783,37 +783,44 @@ export default function CobrosPage() {
     const paymentLines: string[] = [];
     for (const methodId of doctorPaymentMethods) {
       const label = PAYMENT_LABELS[methodId] ?? methodId;
-      const details = doctorPaymentDetails[methodId];
+      // Un método puede tener VARIOS juegos de datos (dos bancos, dos pagos
+      // móviles). Se manda una línea por cada uno: el paciente elige el que le
+      // sirve. Con uno solo el mensaje queda igual que siempre.
+      const opciones = entriesOf(doctorPaymentDetails, methodId);
 
-      if (!details || Object.keys(details).length === 0) {
+      if (opciones.length === 0) {
         paymentLines.push(`• *${label}*`);
         continue;
       }
 
-      const parts: string[] = [];
-      if (methodId === 'pago_movil') {
-        if (details.phone) parts.push(`Tlf: ${details.phone}`);
-        if (details.bank) parts.push(`Banco: ${details.bank}`);
-        if (details.id_number) parts.push(`C.I./RIF: ${details.id_number}`);
-        if (details.holder) parts.push(`Titular: ${details.holder}`);
-      } else if (methodId === 'transferencia') {
-        if (details.bank) parts.push(`Banco: ${details.bank}`);
-        if (details.account) parts.push(`Cuenta: ${details.account}`);
-        if (details.account_type) parts.push(`Tipo: ${details.account_type}`);
-        if (details.id_number) parts.push(`C.I./RIF: ${details.id_number}`);
-        if (details.holder) parts.push(`Titular: ${details.holder}`);
-      } else if (methodId === 'zelle') {
-        if (details.email) parts.push(`Email: ${details.email}`);
-        if (details.holder) parts.push(`Nombre: ${details.holder}`);
-        if (details.bank) parts.push(`Banco: ${details.bank}`);
-      } else if (methodId === 'binance') {
-        if (details.binance_id) parts.push(`ID: ${details.binance_id}`);
-        if (details.email) parts.push(`Email: ${details.email}`);
-      } else if (methodId === 'pos') {
-        if (details.bank) parts.push(`Banco del POS: ${details.bank}`);
-      }
+      opciones.forEach((details, i) => {
+        const parts: string[] = [];
+        if (methodId === 'pago_movil') {
+          if (details.phone) parts.push(`Tlf: ${details.phone}`);
+          if (details.bank) parts.push(`Banco: ${details.bank}`);
+          if (details.id_number) parts.push(`C.I./RIF: ${details.id_number}`);
+          if (details.holder) parts.push(`Titular: ${details.holder}`);
+        } else if (methodId === 'transferencia') {
+          if (details.bank) parts.push(`Banco: ${details.bank}`);
+          if (details.account) parts.push(`Cuenta: ${details.account}`);
+          if (details.account_type) parts.push(`Tipo: ${details.account_type}`);
+          if (details.id_number) parts.push(`C.I./RIF: ${details.id_number}`);
+          if (details.holder) parts.push(`Titular: ${details.holder}`);
+        } else if (methodId === 'zelle') {
+          if (details.email) parts.push(`Email: ${details.email}`);
+          if (details.holder) parts.push(`Nombre: ${details.holder}`);
+          if (details.bank) parts.push(`Banco: ${details.bank}`);
+        } else if (methodId === 'binance') {
+          if (details.binance_id) parts.push(`ID: ${details.binance_id}`);
+          if (details.email) parts.push(`Email: ${details.email}`);
+        } else if (methodId === 'pos') {
+          if (details.bank) parts.push(`Banco del POS: ${details.bank}`);
+        }
 
-      paymentLines.push(`• *${label}:* ${parts.join(' | ')}`);
+        // Se numera solo cuando hay más de uno, para no ensuciar el caso normal.
+        const etiqueta = opciones.length > 1 ? `${label} ${i + 1}` : label;
+        paymentLines.push(`• *${etiqueta}:* ${parts.join(' | ')}`);
+      });
     }
 
     const noMethodsNote =

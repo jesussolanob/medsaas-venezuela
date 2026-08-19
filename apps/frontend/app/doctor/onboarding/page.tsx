@@ -102,6 +102,7 @@ export default async function DoctorOnboardingPage() {
           initialCedulaPrefix={initialCedulaPrefix}
           initialCedulaNumber={initialCedulaNumber}
           initialSpecialty={profile?.specialty ?? ''}
+          initialPhone={profile?.phone ?? ''}
           specialties={specialties}
           initialStep={initialStep}
         />

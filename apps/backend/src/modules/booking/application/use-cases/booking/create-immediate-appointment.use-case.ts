@@ -207,6 +207,17 @@ export class CreateImmediateAppointmentUseCase {
         skipPatientBookingRules: true,
         // force=true → skip the doctor overlap check (patient overlap is NEVER skipped).
         skipDoctorOverlapCheck: dto.force,
+        // La consulta inmediata nace CONFIRMADA, no agendada.
+        //
+        // ⚠️ NO usar `doctorInitiated` aquí: como `scheduledAt` es "ahora", para el
+        // momento en que el ternario de doctorInitiated se evalúa el instante ya es
+        // pasado → la cita nacería `completed`, que es incorrecto: el especialista
+        // recién va a atender al paciente.
+        //
+        // `forceConfirmed` se evalúa primero (antes del ternario) y fuerza directamente
+        // el estado a `confirmed`, que es el correcto para un walk-in que el doctor
+        // acaba de crear.
+        forceConfirmed: true,
       },
     );
 

@@ -13,7 +13,7 @@
  * API pública (no cambiar): Props + AppointmentContext
  */
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   AlertCircle,
@@ -274,6 +274,37 @@ export default function NewAppointmentFlow({ open, onClose, onSuccess, initialCo
   const flow = useAppointmentFlow(open, onClose, onSuccess, initialContext);
   // Divisa del especialista para el resumen del paso — no dólar fijo.
   const { format } = useBcvRate();
+
+  /**
+   * Una consulta con fecha PASADA abre su detalle sola.
+   *
+   * El especialista que carga una consulta de ayer viene a llenarla: ya atendió
+   * al paciente y lo único que le falta es escribir. Como la cita nace
+   * `completed` (ADR-032), la pantalla de "Cita agendada" con un botón "Ir a la
+   * consulta" es un paso de más entre él y lo único que iba a hacer. Para una
+   * cita futura el resumen SÍ tiene sentido: no hay nada que escribir todavía.
+   *
+   * El ref evita que un re-render dispare la navegación dos veces.
+   */
+  const autoOpenedRef = useRef<string | null>(null);
+  const successResult = flow.successResult;
+  const successScheduledAt = flow.scheduledAt;
+  const hasDeferred = !!flow.deferredContext;
+
+  useEffect(() => {
+    if (!successResult || hasDeferred) return;
+    const consultationId = successResult.consultationId;
+    if (!consultationId) return;
+    if (!successScheduledAt) return;
+    if (new Date(successScheduledAt).getTime() >= Date.now()) return;
+    if (autoOpenedRef.current === consultationId) return;
+
+    autoOpenedRef.current = consultationId;
+    flow.clearSuccessResult();
+    onClose();
+    onSuccess?.(successResult);
+    router.push(`/doctor/consultations?open=${consultationId}`);
+  }, [successResult, successScheduledAt, hasDeferred, flow, onClose, onSuccess, router]);
 
   if (!open) return null;
 

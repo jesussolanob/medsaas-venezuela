@@ -30,6 +30,7 @@ import {
   type PatientLookup,
 } from '@/components/appointment-flow/appointment-flow.utils';
 import { showToast } from '@/components/ui/Toaster';
+import { apiErrorCode, apiErrorMessage } from '@/lib/api-error';
 
 /**
  * ⚠️ `/api/doctor/services` devuelve DOS formas según el parámetro: sin
@@ -204,9 +205,12 @@ export default function ImmediateConsultationModal({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newPatient),
       });
-      const json = (await res.json()) as { data?: Record<string, unknown>; error?: string };
+      const json = (await res.json()) as { data?: Record<string, unknown> };
       if (!res.ok || !json.data) {
-        setError(json.error || 'No se pudo crear el paciente.');
+        // `error` viaja como OBJETO {code, message, status}, no como string.
+        // Asignarlo crudo a un useState<string> rompía el render de React y el
+        // botón se veía como si no hiciera nada. Ver lib/api-error.ts.
+        setError(apiErrorMessage(json, 'No se pudo crear el paciente.'));
         return;
       }
       setPatient(normalizePatient(json.data));
@@ -249,13 +253,30 @@ export default function ImmediateConsultationModal({
       });
       const json = (await res.json()) as {
         data?: { appointmentId: string; consultationId?: string | null; effectiveDuration: number };
-        error?: string;
-        code?: string;
       };
 
       if (!res.ok) {
-        // 409 = no queda espacio antes de la próxima cita. Se avisa y decide él.
-        setError(json.error || 'No se pudo registrar la consulta.');
+        setError(apiErrorMessage(json, 'No se pudo registrar la consulta.'));
+
+        // 409 = no queda espacio antes de la próxima cita.
+        //
+        // La ventana se pide UNA vez al elegir el servicio, así que entre ese
+        // momento y el submit puede haber entrado otra cita: el backend rechaza
+        // pero `noRoom` sigue derivado de la ventana vieja, el botón sigue
+        // diciendo "Registrar y atender" y cada click repite el MISMO pedido
+        // fallido. El especialista quedaba encerrado sin ver nunca la salida.
+        // Al enterarnos por el rechazo, marcamos la ventana como sin espacio
+        // para que el botón pase a "Registrar igual" y el próximo click mande
+        // force.
+        if (apiErrorCode(json) === 'no_immediate_slot' || res.status === 409) {
+          setWindow((prev) => ({
+            nextAppointmentAt: prev?.nextAppointmentAt ?? null,
+            effectiveDuration: prev?.effectiveDuration ?? duration,
+            availableMinutes: 0,
+            fits: false,
+          }));
+        }
+
         setSaving(false);
         return;
       }
@@ -326,39 +347,53 @@ export default function ImmediateConsultationModal({
             <label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">
               Paciente
             </label>
-            <div className="relative">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-              <input
-                autoFocus
-                // type="search" + autocomplete apagado: Chrome veía este campo y
-                // el de "Nombre y apellido" como un formulario de dirección y
-                // repartía el autorrelleno entre los dos — el nombre caía en el
-                // buscador y el apellido en el campo del paciente.
-                type="search"
-                name="deltaPatientQuery"
-                autoComplete="off"
-                data-lpignore="true"
-                data-1p-ignore
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Buscar por nombre o cédula…"
-                className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg text-sm focus:border-teal-400 outline-none"
-              />
-              {searching && (
-                <Loader2 className="w-4 h-4 text-slate-400 animate-spin absolute right-3 top-1/2 -translate-y-1/2" />
-              )}
-            </div>
+            {/*
+              El buscador se DESMONTA al pasar a "paciente nuevo".
 
-            {results.map((p) => (
-              <button
-                key={p.id}
-                onClick={() => setPatient(p)}
-                className="w-full text-left px-3 py-2 rounded-lg border border-slate-200 hover:border-teal-300 hover:bg-teal-50/40 transition-colors"
-              >
-                <p className="text-sm font-semibold text-slate-800">{p.full_name}</p>
-                <p className="text-xs text-slate-400">{p.cedula || p.phone || '—'}</p>
-              </button>
-            ))}
+              Ese es el arreglo de fondo del autorrelleno partido: mientras los
+              dos grupos de campos conviven en pantalla —y sin un <form> que los
+              separe— Chrome los trata como un único formulario sin dueño y
+              reparte el autocompletado de contacto entre ellos, dejando el
+              nombre en el buscador y el apellido en "Nombre y apellido".
+              `autocomplete="off"` NO alcanza: Chrome lo ignora a propósito en
+              campos que clasifica como nombre o dirección. Los atributos
+              data-lpignore/data-1p-ignore tampoco, porque solo hablan con
+              LastPass y 1Password. Lo único que lo corta es que el campo no
+              exista mientras se llena el otro.
+            */}
+            {!showCreate && (
+              <>
+                <div className="relative">
+                  <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    autoFocus
+                    type="search"
+                    name="deltaPatientQuery"
+                    autoComplete="off"
+                    data-lpignore="true"
+                    data-1p-ignore
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    placeholder="Buscar por nombre o cédula…"
+                    className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg text-sm focus:border-teal-400 outline-none"
+                  />
+                  {searching && (
+                    <Loader2 className="w-4 h-4 text-slate-400 animate-spin absolute right-3 top-1/2 -translate-y-1/2" />
+                  )}
+                </div>
+
+                {results.map((p) => (
+                  <button
+                    key={p.id}
+                    onClick={() => setPatient(p)}
+                    className="w-full text-left px-3 py-2 rounded-lg border border-slate-200 hover:border-teal-300 hover:bg-teal-50/40 transition-colors"
+                  >
+                    <p className="text-sm font-semibold text-slate-800">{p.full_name}</p>
+                    <p className="text-xs text-slate-400">{p.cedula || p.phone || '—'}</p>
+                  </button>
+                ))}
+              </>
+            )}
 
             {!showCreate ? (
               <button
@@ -421,6 +456,21 @@ export default function ImmediateConsultationModal({
                 >
                   {creatingPatient && <Loader2 className="w-4 h-4 animate-spin" />}
                   Crear y continuar
+                </button>
+                {/*
+                  El buscador está desmontado mientras se llena esto (ver arriba),
+                  así que sin esta salida quien toca "Es un paciente nuevo" por
+                  error queda encerrado en el formulario.
+                */}
+                <button
+                  onClick={() => {
+                    setShowCreate(false);
+                    setError('');
+                  }}
+                  disabled={creatingPatient}
+                  className="w-full text-xs font-semibold text-slate-500 hover:text-slate-700 disabled:opacity-50"
+                >
+                  Volver a buscar
                 </button>
               </div>
             )}

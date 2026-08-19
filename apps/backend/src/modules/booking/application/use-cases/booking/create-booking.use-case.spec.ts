@@ -3,6 +3,7 @@ import {
   DoctorNotFoundError,
   PatientNotFoundError,
 } from './create-booking.use-case';
+import { SessionOutsideOfficeHoursError } from '../../../domain/errors/session-outside-office-hours.error';
 import { Office } from '../../../../offices/domain/entities/office.entity';
 import { BookingNotEnabledError } from '../../../domain/errors/booking-not-enabled.error';
 import { ChiefComplaintRequiredError } from '../../../domain/errors/chief-complaint-required.error';
@@ -1369,6 +1370,333 @@ describe('CreateBookingUseCase', () => {
       expect(mockAppointmentRepo.hasOverlap).toHaveBeenCalledWith(
         expect.objectContaining({ durationMinutes: 30 }),
       );
+    });
+  });
+
+  // ─── forceConfirmed — consulta inmediata nace confirmada ─────────────────
+
+  describe('forceConfirmed — la cita nace confirmed', () => {
+    const prepareSlot = () => {
+      mockDoctorLoader.findById.mockResolvedValue(DOCTOR);
+      mockAppointmentRepo.hasOverlap.mockResolvedValue(false);
+      mockAppointmentRepo.hasPatientOverlap.mockResolvedValue(false);
+      mockPatientRepo.findByEmailHash.mockResolvedValue(makePatient());
+      mockAppointmentRepo.save.mockImplementation(async (a) => a);
+    };
+
+    it('nace confirmed cuando forceConfirmed=true, independientemente de si la fecha es futura', async () => {
+      prepareSlot();
+
+      await useCase.execute(makeDto({ scheduled_at: '2099-03-05T14:00:00Z' }), {
+        forceConfirmed: true,
+      });
+
+      expect(mockAppointmentRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({ status: 'confirmed' }),
+        FAKE_TRANSACTION,
+      );
+    });
+
+    it('nace confirmed cuando forceConfirmed=true aunque la fecha sea pasada (no completed)', async () => {
+      // Este es el escenario clave: scheduled_at = "ahora" (pasado inmediato).
+      // Con doctorInitiated nacería completed; con forceConfirmed nace confirmed.
+      prepareSlot();
+
+      await useCase.execute(makeDto({ scheduled_at: '2020-03-05T14:00:00Z' }), {
+        forceConfirmed: true,
+      });
+
+      expect(mockAppointmentRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({ status: 'confirmed' }),
+        FAKE_TRANSACTION,
+      );
+    });
+
+    it('sigue naciendo scheduled en un booking público normal', async () => {
+      prepareSlot();
+
+      await useCase.execute(makeDto({ scheduled_at: '2099-03-05T14:00:00Z' }));
+
+      expect(mockAppointmentRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({ status: 'scheduled' }),
+        FAKE_TRANSACTION,
+      );
+    });
+
+    it('doctorInitiated + fecha pasada sigue naciendo completed (backward compat)', async () => {
+      prepareSlot();
+
+      await useCase.execute(makeDto({ scheduled_at: '2020-03-05T14:00:00Z' }), {
+        doctorInitiated: true,
+      });
+
+      expect(mockAppointmentRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({ status: 'completed' }),
+        FAKE_TRANSACTION,
+      );
+    });
+  });
+
+  // ─── consultationCode en el resultado ────────────────────────────────────
+
+  describe('consultationCode — viaja en el resultado del booking', () => {
+    function makeUseCaseWithConsultationUC(createConsultationUC: {
+      execute: jest.Mock;
+    }): CreateBookingUseCase {
+      return new CreateBookingUseCase(
+        mockAppointmentRepo,
+        mockPatientRepo,
+        mockDoctorLoader,
+        mockConsumeUseCase,
+        mockCrypto as unknown as import('../../../../../infrastructure/crypto/crypto.service').CryptoService,
+        mockSequelize as unknown as import('sequelize-typescript').Sequelize,
+        null, // paymentRepo
+        mockResolveIdentity,
+        null, // officeRepo
+        null, // notificationService
+        null, // featureChecker
+        null, // scheduleRepo
+        createConsultationUC as unknown as import('../../../../consultations/application/use-cases/consultations/create-consultation.use-case').CreateConsultationUseCase,
+      );
+    }
+
+    beforeEach(() => {
+      mockDoctorLoader.findById.mockResolvedValue(DOCTOR);
+      mockAppointmentRepo.hasOverlap.mockResolvedValue(false);
+      mockAppointmentRepo.hasPatientOverlap.mockResolvedValue(false);
+      mockPatientRepo.findByEmailHash.mockResolvedValue(makePatient());
+      mockAppointmentRepo.save.mockResolvedValue(makeAppointment());
+      // updateConsultationId returns Promise<Appointment>; return the saved appointment.
+      mockAppointmentRepo.updateConsultationId.mockResolvedValue(makeAppointment());
+    });
+
+    it('devuelve consultationCode cuando la consulta se crea exitosamente', async () => {
+      const mockConsultationUC = {
+        execute: jest.fn().mockResolvedValue({
+          id: 'cons-uuid-001',
+          consultationCode: 'DLT-202508-0042',
+        }),
+      };
+      const uc = makeUseCaseWithConsultationUC(mockConsultationUC);
+
+      const result = await uc.execute(makeDto());
+
+      expect(result.consultationCode).toBe('DLT-202508-0042');
+      expect(result.consultationId).toBe('cons-uuid-001');
+    });
+
+    it('devuelve consultationCode=null cuando la creación de consulta falla (best-effort)', async () => {
+      const mockConsultationUC = {
+        execute: jest.fn().mockRejectedValue(new Error('DB error')),
+      };
+      const uc = makeUseCaseWithConsultationUC(mockConsultationUC);
+
+      // La falla de la consulta NO debe romper el booking
+      const result = await uc.execute(makeDto());
+
+      expect(result.appointment).toBeDefined();
+      expect(result.consultationCode).toBeNull();
+    });
+
+    it('devuelve consultationCode=null cuando createConsultationUC no está inyectado', async () => {
+      // El useCase de la suite principal no tiene createConsultationUC (null)
+      const result = await useCase.execute(makeDto());
+
+      expect(result.consultationCode).toBeNull();
+    });
+  });
+
+  // ─── SessionOutsideOfficeHoursError — sesiones extra fuera del horario ───
+
+  describe('sesiones adicionales de paquete fuera del horario del consultorio', () => {
+    const PLAN_ID = 'plan-hours-test-uuid-1234-5678';
+
+    /**
+     * Consultorio con un bloque el miércoles de 06:00 a 12:00 Caracas.
+     * 2026-07-01 es miércoles. UTC 10:00 = Caracas 06:00 (dentro del bloque).
+     * UTC 17:00 = Caracas 13:00 (fuera del bloque).
+     */
+    function makeOfficeWithWednesdayMorningBlock(): Office {
+      return Office.create({
+        id: 'off-002',
+        doctorId: 'doc-001',
+        name: 'Consultorio Horario',
+        address: 'Av. Test',
+        city: 'Caracas',
+        phone: '04141234567',
+        slotDuration: 30,
+        bufferMinutes: 0,
+        isActive: true,
+        modality: 'both',
+        mapUrl: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        schedule: [
+          {
+            day: 2, // miércoles (0=lunes … 6=domingo)
+            enabled: true,
+            start: '06:00', // Caracas local
+            end: '12:00', // Caracas local
+          },
+        ],
+      });
+    }
+
+    const makePricingPlan3Sessions = () => ({
+      id: PLAN_ID,
+      doctorId: 'doc-001',
+      officeId: null,
+      name: 'Paquete 3 sesiones',
+      priceUsd: 90,
+      durationMinutes: 30,
+      sessionsCount: 3,
+      validityDays: null,
+      description: null,
+      type: 'plan' as const,
+      showInBooking: true,
+      isActive: true,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      isPubliclyVisible: () => true,
+      isApplicableForOffice: () => true,
+    });
+
+    function makeUseCaseWithOfficeAndMultiSession(
+      office: Office,
+      pricingPlanRepo: { findById: jest.Mock },
+    ): CreateBookingUseCase {
+      const mockOfficeRepo = { findById: jest.fn().mockResolvedValue(office) };
+      const mockCreatePendingUC = { execute: jest.fn().mockResolvedValue([]) };
+      return new CreateBookingUseCase(
+        mockAppointmentRepo,
+        mockPatientRepo,
+        mockDoctorLoader,
+        mockConsumeUseCase,
+        mockCrypto as unknown as import('../../../../../infrastructure/crypto/crypto.service').CryptoService,
+        mockSequelize as unknown as import('sequelize-typescript').Sequelize,
+        null, // paymentRepo
+        mockResolveIdentity,
+        mockOfficeRepo as unknown as import('../../../../offices/domain/repositories/office.repository').IOfficeRepository,
+        null, // notificationService
+        null, // featureChecker
+        null, // scheduleRepo
+        null, // createConsultationUC
+        pricingPlanRepo as unknown as import('../../../../packages/domain/repositories/pricing-plan.repository').IPricingPlanRepository,
+        mockCreatePendingUC as unknown as import('../../../../pending-consultations/application/use-cases/create-pending-consultations.use-case').CreatePendingConsultationsUseCase,
+      );
+    }
+
+    beforeEach(() => {
+      mockDoctorLoader.findById.mockResolvedValue(DOCTOR);
+      mockAppointmentRepo.hasOverlap.mockResolvedValue(false);
+      mockAppointmentRepo.hasPatientOverlap.mockResolvedValue(false);
+      mockPatientRepo.findByEmailHash.mockResolvedValue(makePatient());
+      mockAppointmentRepo.save.mockResolvedValue(makeAppointment());
+    });
+
+    it('permite una sesión adicional dentro del horario del consultorio', async () => {
+      const mockPricingPlanRepo = {
+        findById: jest.fn().mockResolvedValue(makePricingPlan3Sessions()),
+      };
+      const uc = makeUseCaseWithOfficeAndMultiSession(
+        makeOfficeWithWednesdayMorningBlock(),
+        mockPricingPlanRepo,
+      );
+
+      // Extra session: Wednesday 2026-07-08 UTC 10:00 = Caracas 06:00 → dentro del bloque
+      await expect(
+        uc.execute(
+          makeDto({
+            office_id: 'off-002',
+            scheduled_at: '2026-07-01T10:00:00Z',
+            plan_id: PLAN_ID,
+            additional_sessions: [{ scheduled_at: '2026-07-08T10:00:00Z' }],
+          }),
+        ),
+      ).resolves.toBeDefined();
+    });
+
+    it('lanza SessionOutsideOfficeHoursError cuando la sesión extra cae fuera del horario', async () => {
+      const mockPricingPlanRepo = {
+        findById: jest.fn().mockResolvedValue(makePricingPlan3Sessions()),
+      };
+      const uc = makeUseCaseWithOfficeAndMultiSession(
+        makeOfficeWithWednesdayMorningBlock(),
+        mockPricingPlanRepo,
+      );
+
+      // Extra session: Wednesday 2026-07-08 UTC 17:00 = Caracas 13:00 → fuera del bloque 06:00–12:00
+      await expect(
+        uc.execute(
+          makeDto({
+            office_id: 'off-002',
+            scheduled_at: '2026-07-01T10:00:00Z',
+            plan_id: PLAN_ID,
+            additional_sessions: [{ scheduled_at: '2026-07-08T17:00:00Z' }],
+          }),
+        ),
+      ).rejects.toBeInstanceOf(SessionOutsideOfficeHoursError);
+    });
+
+    it('el error SessionOutsideOfficeHoursError tiene httpStatus 422', async () => {
+      const mockPricingPlanRepo = {
+        findById: jest.fn().mockResolvedValue(makePricingPlan3Sessions()),
+      };
+      const uc = makeUseCaseWithOfficeAndMultiSession(
+        makeOfficeWithWednesdayMorningBlock(),
+        mockPricingPlanRepo,
+      );
+
+      try {
+        await uc.execute(
+          makeDto({
+            office_id: 'off-002',
+            scheduled_at: '2026-07-01T10:00:00Z',
+            plan_id: PLAN_ID,
+            additional_sessions: [{ scheduled_at: '2026-07-08T17:00:00Z' }],
+          }),
+        );
+        fail('debería haber lanzado SessionOutsideOfficeHoursError');
+      } catch (err) {
+        expect((err as SessionOutsideOfficeHoursError).httpStatus).toBe(422);
+        expect((err as SessionOutsideOfficeHoursError).code).toBe('SESSION_OUTSIDE_OFFICE_HOURS');
+      }
+    });
+
+    it('omite la validación de horario cuando no hay consultorio enlazado (backward compat)', async () => {
+      // pricingPlanRepo retorna plan con 2 sesiones; no hay officeRepo → sin chequeo de horario
+      const planRepo = { findById: jest.fn().mockResolvedValue(makePricingPlan3Sessions()) };
+      const mockOfficeRepo = { findById: jest.fn().mockResolvedValue(null) }; // office not found
+      const mockCreatePendingUC = { execute: jest.fn().mockResolvedValue([]) };
+
+      const uc = new CreateBookingUseCase(
+        mockAppointmentRepo,
+        mockPatientRepo,
+        mockDoctorLoader,
+        mockConsumeUseCase,
+        mockCrypto as unknown as import('../../../../../infrastructure/crypto/crypto.service').CryptoService,
+        mockSequelize as unknown as import('sequelize-typescript').Sequelize,
+        null,
+        mockResolveIdentity,
+        mockOfficeRepo as unknown as import('../../../../offices/domain/repositories/office.repository').IOfficeRepository,
+        null,
+        null,
+        null,
+        null,
+        planRepo as unknown as import('../../../../packages/domain/repositories/pricing-plan.repository').IPricingPlanRepository,
+        mockCreatePendingUC as unknown as import('../../../../pending-consultations/application/use-cases/create-pending-consultations.use-case').CreatePendingConsultationsUseCase,
+      );
+
+      // office_id provided but findById returns null → resolvedOffice=null → no hours check
+      await expect(
+        uc.execute(
+          makeDto({
+            office_id: 'off-does-not-exist',
+            plan_id: PLAN_ID,
+            additional_sessions: [{ scheduled_at: '2026-07-08T03:00:00Z' }], // 3am UTC = 11pm Caracas
+          }),
+        ),
+      ).resolves.toBeDefined();
     });
   });
 });

@@ -164,6 +164,8 @@ export class BookingController {
         appointmentId: result.appointment.id,
         scheduledAt: result.appointment.scheduledAt,
         // patientId intentionally omitted — no internal IDs on public endpoints.
+        // consultationCode: DLT-YYYYMM-NNNN. Null when auto-creation failed (best-effort).
+        consultationCode: result.consultationCode,
       },
     };
   }
