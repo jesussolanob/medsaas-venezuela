@@ -89,9 +89,80 @@ está repartido por el código y va a volver a pasar.
    incompleto" / "Sin actividad"; el alta pide cédula y el onboarding **precarga el
    teléfono**.
 
+### Lo que encontró el QA CON NAVEGADOR (mismo día, después del lote)
+
+El lote se cerró con verificación estática. Probarlo después en un navegador real
+—público en staging, y los tres roles contra la BD real levantando la app en local con
+`AUTH_MODE=dev`— destapó **seis defectos más**, tres de ellos en funcionalidad que el
+lote daba por arreglada. Vale como lección: **verde en tests no es verde en pantalla.**
+
+1. 🔴 **"Crear y continuar" NUNCA funcionó** — y el arreglo del lote solo tapó la mitad.
+   Dos causas encadenadas: (a) el DTO del backend exige `doctor_id` y el route handler
+   `POST /api/patients` reenviaba el cuerpo tal cual, así que **devolvía 400 siempre**;
+   el camino de `/doctor/patients` no lo sufría porque su server action sí lo agrega.
+   Ahora el handler lo resuelve de la sesión con `resolveIdentity()` y lo impone sobre el
+   cuerpo (regla anti-IDOR: si viniera del cliente, cualquiera crearía pacientes en la
+   ficha de otro). (b) El mensaje de error **no tenía dónde renderizarse**: el único
+   bloque que lo pinta vive en la rama del ternario que se dibuja _cuando ya hay paciente
+   elegido_. Arreglar el tipo del error evitó que React reventara, pero el botón seguía
+   pareciendo muerto.
+2. **Los rótulos de los datos de pago salían en inglés** al paciente ("Bank", "Phone",
+   "Holder", "Id_number"). Con un solo bloque pasaba desapercibido; salta con dos.
+   `fieldLabel()` en `lib/payment-details`.
+3. **`NoImmediateSlotError` estaba en inglés.** Se escapó del barrido del 18/08 porque el
+   detector buscaba mensajes sin acentos ni palabras en español, y ése no tiene ninguna
+   de las dos cosas sin ser español.
+4. **`AppointmentConflictError` imprimía `toISOString()` crudo**: "El horario de las
+   2026-08-19T17:27:44.419Z ya está ocupado" — UTC con milisegundos, y encima no es la
+   hora que el especialista ve en su agenda.
+5. **El editor de `/admin/settings` era un input de UNA línea**, donde Enter guarda. Con
+   eso **era imposible cargar** las instrucciones de pago de la plataforma, que son varias
+   líneas. Ése era el contenido real de la observación #21: el modal de pago ya las
+   mostraba; lo que faltaba era poder escribirlas.
+6. **El rol `seller` no existía en el modo de auth local** (`DevUserRole`), así que era
+   imposible entrar al portal del vendedor en local. Solo afecta a `AUTH_MODE=dev`.
+
+⚠️ **Y un defecto de DOCUMENTACIÓN con impacto de seguridad:** el ADR-024 y el guion 07
+afirmaban que staging tiene `EMAIL_DRIVER=noop`. **Es falso desde el 2026-08-09**: el
+workflow fija `resend`, así que **staging manda correo REAL a pacientes REALES** sobre una
+base clonada. Diez días de documentación engañosa sobre algo que puede alcanzar a una
+persona. Corregido en los dos documentos.
+
+### Pedidos del dueño sobre `/admin/subscriptions` (mismo día)
+
+- **Extender abría un `alert` de Chrome.** Eran DOS `prompt()` encadenados. Ahora es un
+  modal propio (`ExtendModal`), con la nota en la misma pantalla — encadenar dos diálogos
+  del navegador para una sola acción es donde uno cancela por reflejo.
+- **Solo se podía en MESES.** Regalar diez días de prueba, el caso comercial más común, no
+  se podía expresar. Ahora hay selector de unidad, de punta a punta: el DTO acepta
+  `months` **O** `days` (XOR), el use case suma con `setDate` o por meses, y el `metadata`
+  de `subscription_changes_log` refleja la unidad usada.
+- ⚠️ **Arreglado de paso: `setMonth` DESBORDA.** Extender por un mes una suscripción que
+  vence el **31 de enero** daba **3 de marzo**, no fin de febrero: dos días regalados en
+  cada extensión de fin de mes, en silencio. `addMonthsClamped()` fija el día al último
+  del mes destino cuando el original no existe ahí.
+- **El portal del vendedor no tenía cómo cerrar sesión.** Es la única pantalla de la app
+  **sin barra lateral**, que es donde viven los botones de salir de los otros cuatro
+  portales. El vendedor tenía que borrar cookies; en una máquina compartida —donde trabaja
+  un equipo comercial— la sesión quedaba abierta para el siguiente.
+
+### Cómo se probaron los módulos autenticados (sin credenciales del dueño)
+
+No se puede hacer login por Google/Auth0 sin la contraseña del dueño, y el acceso de
+reviewer está apagado desde el 27/07. La salida: **levantar la app en local con
+`AUTH_MODE=dev` apuntando a la BD REAL de staging** por `cloud-sql-proxy`, y actuar como
+cada rol seteando las cookies `dev_user_id` / `dev_user_role` con el UUID real del perfil.
+⚠️ Requiere las **llaves de cifrado de staging** o el PII de pacientes no se descifra.
+⚠️ Prueba el MISMO código y los MISMOS datos, pero en un build local — no el artefacto de
+Cloud Run.
+
 ### Cabos sueltos
 
 - **#14 sigue abierta** — necesita el nombre del consultorio y del servicio.
+- **La observación #4 (demora al abrir la consulta) NO se midió.** El arreglo está.
+- **Datos de prueba dejados en staging:** especialista `lucas.rivas.55+qa19@gmail.com`,
+  paciente "Paciente Prueba Lote19", consultas `DLT-202608-0024` y `0025`. ⚠️ La segunda
+  cita **quedó encimada** con otra porque se creó con `force`.
 - El portal del vendedor usa cortes de actividad de **7 y 30 días** y `/admin` usa **7 y
   14** (`UsersPanel.tsx`). Ya divergían antes de este lote; unificarlos es decisión de
   producto.

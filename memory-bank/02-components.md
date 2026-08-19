@@ -731,6 +731,31 @@ validación de horario en sesiones adicionales), `CreateImmediateAppointmentUseC
 `lib/payment-details`. El del mensaje de cobro por WhatsApp es el más frágil: tiene los
 campos escritos a mano por método.
 
+### Hallazgos del QA con navegador y pedidos de admin (2026-08-19, mismo día)
+
+| Componente / módulo                                    | Qué cambió                                                                                                                                   |
+| ------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `app/api/patients/route.ts`                            | **Inyecta `doctor_id` desde la sesión.** El DTO lo exige y el handler reenviaba el cuerpo tal cual → el alta desde el modal daba 400 SIEMPRE |
+| `components/doctor/ImmediateConsultationModal.tsx`     | El error del alta se pinta **dentro del formulario**: el único bloque que lo mostraba vivía en la otra rama del ternario                     |
+| **`app/admin/subscriptions/page.tsx` → `ExtendModal`** | Modal propio que reemplaza DOS `prompt()` nativos · **selector de unidad días/meses** · muestra la fecha resultante · nota adentro           |
+| `app/api/admin/subscriptions/extend/route.ts`          | Acepta `months` **o** `days`, exactamente uno                                                                                                |
+| `app/seller/SellerPortalClient.tsx`                    | **Cerrar sesión** (era la única pantalla sin barra lateral, y no había forma de salir) + nombre del vendedor en el encabezado                |
+| `lib/dev-auth.edge.ts`                                 | `DevUserRole` acepta **`seller`**. Sin esto era imposible entrar al portal del vendedor en local. Solo afecta a `AUTH_MODE=dev`              |
+| `lib/payment-details.ts`                               | `fieldLabel()` — los datos de pago salían al paciente con los rótulos en inglés ("Bank", "Phone", "Holder")                                  |
+| `app/admin/settings/page.tsx`                          | Ya venía del lote: `<textarea>` en valores multilínea                                                                                        |
+
+**Backend:** `ExtendSubscriptionBodySchema` (XOR `months`/`days`),
+`ExtendDoctorSubscriptionUseCase` (rama de días + `addMonthsClamped`), `admin.controller`,
+y dos mensajes de dominio: `NoImmediateSlotError` (estaba en inglés) y
+`AppointmentConflictError` (imprimía `toISOString()` crudo).
+
+⚠️ **`setMonth` desborda.** `new Date('2026-01-31').setMonth(+1)` da **3 de marzo**. Toda
+suma de meses sobre una fecha de fin de mes tiene que pasar por `addMonthsClamped`.
+
+⚠️ **El `force` de la consulta inmediata NO saltea el solape del PACIENTE**, solo el del
+doctor (ADR-036, deliberado). Al probar con un paciente que ya tenía su consulta corriendo
+parece que "Registrar igual" está roto, y no lo está.
+
 ### Aviso de cambio de sesión en `/admin` (2026-08-18)
 
 | Componente                                  | Qué hace                                                                                                                                                                                                   |

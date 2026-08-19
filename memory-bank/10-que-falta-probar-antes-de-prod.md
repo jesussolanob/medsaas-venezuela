@@ -262,6 +262,22 @@ corre sobre una **base clonada con pacientes reales**, así que cualquier acció
 correo —reservar, compartir documentos, recordatorios— **le llega a la persona real**. Probar
 envíos SOLO con pacientes de prueba y direcciones inventadas.
 
+### Agregado el 19/08 después del lote — probar también
+
+11. 🔴 **`/admin/subscriptions` → Extender:** abre un **modal de la app**, no un alert de
+    Chrome · **selector de días/meses** · muestra la fecha resultante y aclara que se suma
+    a lo que ya tenía · la nota está en la misma pantalla.
+12. 🔴 **Extender por días de verdad**: regalar 10 días a un especialista y verificar la
+    fecha. ⚠️ Probar además el caso de fin de mes: uno que venza un **31**, extendido por
+    **1 mes**, NO puede caer en el mes siguiente al esperado (antes daba 3 de marzo).
+13. 🔴 **Portal del vendedor: cerrar sesión.** Ahora existe el botón. Verificar que
+    realmente salga (con Auth0 tiene que pasar por `/auth/logout`, no solo borrar cookies).
+14. 🔴 **Consulta inmediata → paciente nuevo**: el alta **nunca funcionó** hasta este
+    arreglo. Crear uno y que avance. Y provocar un rechazo (cédula repetida) para ver que
+    ahora **muestre el error** en vez de no hacer nada.
+15. 🔴 **Los datos de pago que ve el paciente** salen con rótulos en español: "Banco",
+    "Teléfono", "Titular", "Cédula/RIF" — no "Bank", "Phone", "Holder", "Id_number".
+
 ### Abierto — necesita al dueño
 
 - ⚠️ **Servicio de 30' que no se asocia a un consultorio de 30+10: NO REPRODUCIBLE.** La
