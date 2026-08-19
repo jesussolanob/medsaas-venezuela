@@ -5,6 +5,6 @@ export class AppointmentConflictError extends DomainError {
   readonly code = 'APPOINTMENT_CONFLICT';
 
   constructor(scheduledAt: Date) {
-    super(`The slot at ${scheduledAt.toISOString()} is already taken`);
+    super(`El horario de las ${scheduledAt.toISOString()} ya está ocupado`);
   }
 }

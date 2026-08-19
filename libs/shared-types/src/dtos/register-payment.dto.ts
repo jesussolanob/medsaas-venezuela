@@ -10,7 +10,7 @@ export const RegisterPaymentDtoSchema = z
   .object({
     consultation_id: z.string().uuid({ message: 'consultation_id must be a valid UUID' }),
     patient_id: z.string().uuid({ message: 'patient_id must be a valid UUID' }),
-    amount: z.number().positive({ message: 'Amount must be greater than zero' }),
+    amount: z.number().positive({ message: 'El monto debe ser mayor a cero' }),
     currency: z.string().min(1).max(10).default('USD'),
     payment_method: z.string().min(1).max(100),
     reference_number: z.string().max(200).nullable().optional(),

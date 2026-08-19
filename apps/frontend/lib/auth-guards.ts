@@ -63,7 +63,7 @@ type Guard = GuardOk | GuardFail;
  * NOTE: `user.email` and `profile.email` are always null in Etapa 1 because
  * the dev-stub does not store email. Auth0 (Etapa 2) will populate them.
  */
-export async function requireRole(allowed: UserRole[]): Promise<Guard> {
+export async function requireRole(allowed: UserRole[], forbiddenMessage?: string): Promise<Guard> {
   // resolveIdentity() resolves per AUTH_MODE: dev cookies (never throws) or the
   // Auth0 session. In auth0 mode it THROWS when there is no session, so we fail
   // closed with a 401 instead of leaking a fallback identity.
@@ -87,7 +87,11 @@ export async function requireRole(allowed: UserRole[]): Promise<Guard> {
   if (!(allowed as string[]).includes(identity.role)) {
     return {
       ok: false,
-      response: NextResponse.json({ error: 'Forbidden' }, { status: 403 }),
+      // Este texto se pinta tal cual en la UI (modales de admin, toasts): español.
+      response: NextResponse.json(
+        { error: forbiddenMessage ?? 'No tenés permisos para realizar esta acción.' },
+        { status: 403 },
+      ),
     };
   }
 
@@ -104,9 +108,19 @@ export async function requireRole(allowed: UserRole[]): Promise<Guard> {
   };
 }
 
-/** Requires authentication + role super_admin. */
+/**
+ * Requires authentication + role super_admin.
+ *
+ * El mensaje del 403 nombra la causa más frecuente y no es teoría: el 2026-08-18
+ * la sesión del navegador cambió a la de un especialista (otra pestaña, misma
+ * ventana) y la pantalla de admin abierta empezó a recibir 403 en cada acción.
+ * Un "no tenés permisos" a secas se lee como un rol mal configurado.
+ */
 export async function requireSuperAdmin(): Promise<Guard> {
-  return requireRole(['super_admin']);
+  return requireRole(
+    ['super_admin'],
+    'Tu sesión no tiene permisos de administrador. Si iniciaste sesión con otra cuenta en esta ventana, cerrá sesión y volvé a entrar.',
+  );
 }
 
 /** Requires authentication of any role. */

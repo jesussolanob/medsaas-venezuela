@@ -16,6 +16,6 @@ export class BookingNotEnabledError extends DomainError {
   override readonly httpStatus = 403;
 
   constructor() {
-    super('Online booking is not available for this doctor');
+    super('Este especialista no tiene habilitadas las reservas en línea');
   }
 }

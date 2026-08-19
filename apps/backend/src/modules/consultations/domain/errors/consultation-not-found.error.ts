@@ -6,6 +6,6 @@ export class ConsultationNotFoundError extends DomainError {
   // Message is intentionally generic — never include the ID in the response
   // to prevent resource-existence enumeration by unauthorized callers.
   constructor() {
-    super('Consultation not found');
+    super('Consulta no encontrada');
   }
 }

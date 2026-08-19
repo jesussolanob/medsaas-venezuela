@@ -25,6 +25,6 @@ export abstract class DomainError extends Error {
 export class UnauthorizedError extends DomainError {
   readonly code = 'UNAUTHORIZED';
   constructor() {
-    super('Not authorized to access this resource');
+    super('No tenés permiso para acceder a este recurso');
   }
 }

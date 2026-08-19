@@ -4,6 +4,91 @@
 > ⚠️ Orden: **la entrada más nueva va ARRIBA**. La del 2026-08-11 quedó al final
 > del archivo por error; no se movió para no ensuciar el diff.
 
+## 2026-08-18 — Regresiones del QA: la prueba que se perdía y los errores en inglés
+
+Cuatro reportes del dueño sobre staging. Dos eran bugs reales, uno **no era un bug de
+permisos** aunque lo parecía, y el cuarto era el navegador. El diagnóstico se hizo
+**contra la BD y los logs de Cloud Run**, no mirando la pantalla.
+
+### 1. Un especialista con 3 días de prueba veía los módulos bloqueados 🔴 BUG REAL
+
+`marcovillegas1197@gmail.com` tenía en la BD:
+
+| tabla           | plan         | estado   |
+| --------------- | ------------ | -------- |
+| `profiles`      | `delta_free` | `active` |
+| `subscriptions` | `free_trial` | `active` |
+
+El gating (`GetDoctorFeaturesV2UseCase`) lee **`profiles`** → `delta_free` = 4 de 18
+features → candado en casi todo. El panel de admin leía **`subscriptions`** → mostraba
+"Free Trial · 3 días". **Una pantalla, dos fuentes de verdad.**
+
+Quién lo escribió: `ProcessLoginTouchUseCase`. Un especialista que se da de baja él mismo
+y vuelve a entrar era reactivado **siempre** en `delta_free` (`reactivateAsFreeAndTouch`),
+aunque le quedaran días de prueba o de plan pago — y esa escritura **no tocaba
+`subscriptions`**, que es como las dos tablas divergieron.
+
+Arreglado en tres frentes:
+
+- `reactivateAndTouch` **conserva el plan mientras no venció**; solo cae al gratuito si
+  ya venció. Escribe `profiles` **y** `subscriptions` en la misma transacción y deja
+  asiento en `subscription_changes_log` (`self_reactivation`).
+- El `CAST` a `subscription_plan` va con guarda contra `enum_range`: `profiles.plan` es
+  TEXT libre y el enum podría no tener el valor — sin la guarda, la transacción explota
+  y el especialista no puede entrar (ver el historial de `trialing` y `seller`).
+- `listSubscriptions` del admin ahora sale de **`profiles`** (LEFT JOIN a `subscriptions`
+  solo por precio/fin de prueba). El admin ve el plan que realmente gobierna el acceso.
+
+SQL validado contra el esquema real de staging dentro de una transacción con `ROLLBACK`
+(plan vigente → conserva · vencido → `delta_free` · baja hecha por admin → no reactiva).
+Fila de Marco reparada a mano en staging con asiento `plan_restored`.
+
+### 2 y 3. "Insufficient permissions" y "Forbidden" al extender días o cambiar plan ⚠️ NO ERA UN BUG DE PERMISOS
+
+Los logs de Cloud Run lo cierran sin ambigüedad:
+
+```
+22:49:50–22:50:08  200  /api/admin/dashboard · /api/admin/subscriptions?limit=200
+22:50:51 en adelante  403  TODO, incluido /api/admin/doctors/recent (el poll de 60s)
+22:53:51  el especialista marcovillegas1197 registra last_sign_in_at
+```
+
+La sesión de Auth0 es una cookie **del perfil del navegador, no de la pestaña**. Alguien
+entró como especialista en otra pestaña de la misma ventana; la pestaña de `/admin` siguió
+mostrando la tabla cargada 40 segundos antes, y cada acción nueva viajó con la identidad
+del especialista. `marco.villegas@deltasalud.app` **es** `super_admin` y **sí** puede
+extender días y cambiar planes.
+
+Lo que sí había que arreglar es que eso fuera indistinguible de un permiso roto:
+
+- **`AdminSessionWatchdog`** (`/admin`, chequea al montar, al volver el foco y cada 60s
+  contra el nuevo `GET /api/session`): si la sesión dejó de ser de administrador, bloquea
+  la pantalla y lo dice — "Esta ventana cambió de cuenta" — con botón para volver a entrar.
+- Los 403 de admin nombran la causa en vez de decir "no tenés permisos" a secas.
+
+### 4. El nombre del paciente se partía en dos (nota de voz)
+
+En "Consulta inmediata", Chrome veía el buscador y "Nombre y apellido" como un formulario
+de dirección y repartía el autorrelleno: el nombre arriba, el apellido abajo. El buscador
+pasó a `type="search"` con autocompletado apagado en los cuatro campos, y al tocar "Es un
+paciente nuevo" lo ya tecleado se arrastra al campo correcto (si son solo dígitos, a Cédula).
+
+### Barrido de idioma — de raíz, no en el toast
+
+Los errores en inglés volvían porque se arreglaban donde se veían. La fuente son los
+mensajes que el `GlobalExceptionFilter` reenvía **tal cual** al navegador: `DomainError.message`
+y `HttpException.message`. Se tradujeron **~110** (errores de dominio de todos los módulos,
+validaciones de controladores, guards y los mensajes Zod de `libs/shared-types`), más los 6
+tests que afirmaban los textos viejos. Detector para no volver atrás: buscar en
+`apps/backend/src` mensajes sin acentos ni palabras en español dentro de `super(...)` /
+`new XxxException(...)`.
+
+### Lo que dejó el QA como lección
+
+El QA se hizo con la cuenta del dueño: `super_admin`, plan permanente. Esa cuenta **no puede
+detectar** ni fallas de gating ni de roles. Un lote no se cierra sin pasar el guion con un
+especialista en prueba por vencer, uno con plan pago, un admin y un vendedor.
+
 ## 2026-08-16 — Lista de la fundadora CERRADA 12/12 ⏳ TODO EN STAGING, SIN VALIDAR
 
 Se cerró la lista completa de 12 observaciones en una jornada. **Nada en `main`**, que arrastra

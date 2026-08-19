@@ -35,7 +35,7 @@ function parseOptionalPaymentStatus(value: string | undefined): PaymentStatus | 
   if (!value) return undefined;
   if (!PAYMENT_STATUS_VALUES.includes(value as PaymentStatus)) {
     throw new BadRequestException(
-      `Query parameter "status" must be one of: ${PAYMENT_STATUS_VALUES.join(', ')}`,
+      `El parámetro "status" debe ser uno de: ${PAYMENT_STATUS_VALUES.join(', ')}`,
     );
   }
   return value as PaymentStatus;
@@ -50,7 +50,7 @@ function parsePositiveInt(
   if (!value) return defaultVal;
   const parsed = parseInt(value, 10);
   if (isNaN(parsed) || parsed < 0) {
-    throw new BadRequestException(`Query parameter "${name}" must be a non-negative integer`);
+    throw new BadRequestException(`El parámetro "${name}" debe ser un número entero no negativo`);
   }
   return max !== undefined ? Math.min(parsed, max) : parsed;
 }

@@ -5,6 +5,6 @@ export class PlanPriceUpsertError extends DomainError {
   override readonly httpStatus = 500;
 
   constructor(planKey: string, period: string) {
-    super(`Failed to upsert plan price for plan='${planKey}' period='${period}'`);
+    super(`No se pudo guardar el precio del plan '${planKey}' para el período '${period}'`);
   }
 }

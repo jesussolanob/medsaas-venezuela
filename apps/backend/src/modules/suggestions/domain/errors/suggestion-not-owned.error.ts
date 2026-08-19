@@ -5,6 +5,6 @@ export class SuggestionNotOwnedError extends DomainError {
   override readonly httpStatus = 403;
 
   constructor() {
-    super('Access denied to this suggestion');
+    super('No tenés permiso para ver esta sugerencia');
   }
 }

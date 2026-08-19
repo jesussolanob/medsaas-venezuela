@@ -5,6 +5,6 @@ export class MessageNotFoundError extends DomainError {
   override readonly httpStatus = 404;
 
   constructor() {
-    super('Message thread not found');
+    super('Conversación no encontrada');
   }
 }

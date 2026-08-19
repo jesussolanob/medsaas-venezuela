@@ -5,6 +5,6 @@ export class BlockEndsBeforeStartsError extends DomainError {
   override readonly httpStatus = 422;
 
   constructor() {
-    super('Block ends_at must be strictly after starts_at');
+    super('La hora de fin del bloqueo debe ser posterior a la de inicio');
   }
 }

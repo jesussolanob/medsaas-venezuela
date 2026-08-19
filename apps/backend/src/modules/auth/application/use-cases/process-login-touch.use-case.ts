@@ -50,16 +50,14 @@ export class ProcessLoginTouchUseCase {
     const isDoctor = input.role === 'doctor';
 
     // Volver a entrar reactiva la cuenta que el propio especialista dio de baja:
-    // queda en el plan gratuito, con todos sus datos intactos, y puede mejorar su
-    // plan sin pedirle nada a un administrador. Un bloqueo hecho por un admin NO
-    // se toca acá — ese sigue necesitando al admin.
+    // conserva sus datos y el plan que todavía no venció (si venció, queda en el
+    // gratuito), y puede mejorar su plan sin pedirle nada a un administrador. Un
+    // bloqueo hecho por un admin NO se toca acá — ese sigue necesitando al admin.
     if (isDoctor) {
       const estado = await this.loginTouchRepo.findAccountState(input.profileId);
       if (estado && !estado.isActive && estado.deactivatedBy === 'self') {
-        await this.loginTouchRepo.reactivateAsFreeAndTouch(input.profileId, FREE_PLAN_KEY);
-        this.logger.log(
-          'Login touch: cuenta dada de baja por su dueño reactivada en plan gratuito',
-        );
+        await this.loginTouchRepo.reactivateAndTouch(input.profileId, FREE_PLAN_KEY);
+        this.logger.log('Login touch: cuenta dada de baja por su dueño reactivada');
         return { downgraded: false, reactivated: true };
       }
     }

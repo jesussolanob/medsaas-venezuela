@@ -52,7 +52,7 @@ function parseOptionalIsoDate(value: string | undefined, param: string): string 
   if (!value) return undefined;
   const ts = Date.parse(value);
   if (isNaN(ts)) {
-    throw new BadRequestException(`Query parameter "${param}" must be a valid ISO date string`);
+    throw new BadRequestException(`El parámetro "${param}" debe ser una fecha válida (ISO 8601)`);
   }
   return value;
 }
@@ -67,7 +67,7 @@ function parseOptionalPaymentStatus(value: string | undefined): PaymentStatus | 
   if (!value) return undefined;
   if (!PAYMENT_STATUS_VALUES.includes(value as PaymentStatus)) {
     throw new BadRequestException(
-      `Query parameter "payment_status" must be one of: ${PAYMENT_STATUS_VALUES.join(', ')}`,
+      `El parámetro "payment_status" debe ser uno de: ${PAYMENT_STATUS_VALUES.join(', ')}`,
     );
   }
   return value as PaymentStatus;

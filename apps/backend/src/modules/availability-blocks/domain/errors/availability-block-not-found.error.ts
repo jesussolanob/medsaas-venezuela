@@ -5,6 +5,6 @@ export class AvailabilityBlockNotFoundError extends DomainError {
   override readonly httpStatus = 404;
 
   constructor() {
-    super('Availability block not found');
+    super('Bloqueo de agenda no encontrado');
   }
 }

@@ -5,6 +5,6 @@ export class TransactionNotFoundError extends DomainError {
   override readonly httpStatus = 404;
 
   constructor() {
-    super('Financial transaction not found');
+    super('Movimiento financiero no encontrado');
   }
 }

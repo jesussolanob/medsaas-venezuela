@@ -24,7 +24,7 @@ describe('StorageUploadError', () => {
 
   it('uses generic message when no cause provided', () => {
     const err = new StorageUploadError();
-    expect(err.message).toBe('Storage upload failed');
+    expect(err.message).toBe('No se pudo subir el archivo');
   });
 });
 

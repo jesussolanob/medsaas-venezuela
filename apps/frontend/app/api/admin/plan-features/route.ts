@@ -47,7 +47,7 @@ export async function PUT(req: NextRequest) {
 
   if (!plan || !featureKey || typeof enabled !== 'boolean') {
     return NextResponse.json(
-      { error: 'Missing or invalid parameters: plan, feature_key, enabled' },
+      { error: 'Faltan parámetros o son inválidos: plan, feature_key, enabled' },
       { status: 400 },
     );
   }

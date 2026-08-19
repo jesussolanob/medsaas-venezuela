@@ -6,6 +6,6 @@ export class EhrRecordNotFoundError extends DomainError {
   // Message is intentionally generic — never include the ID to prevent
   // resource-existence enumeration by unauthorized callers.
   constructor() {
-    super('EHR record not found');
+    super('Registro de historia clínica no encontrado');
   }
 }

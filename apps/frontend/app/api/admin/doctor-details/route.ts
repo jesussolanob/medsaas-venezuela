@@ -31,7 +31,7 @@ interface BackendDoctorDetail {
 export async function GET(req: NextRequest) {
   const doctorId = req.nextUrl.searchParams.get('id');
   if (!doctorId) {
-    return NextResponse.json({ error: 'Missing doctor id' }, { status: 400 });
+    return NextResponse.json({ error: 'Falta el id del especialista' }, { status: 400 });
   }
   // Validate UUID before interpolating into the backend path (anti path-traversal).
   const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

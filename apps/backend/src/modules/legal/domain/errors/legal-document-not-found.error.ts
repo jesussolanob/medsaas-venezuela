@@ -5,6 +5,6 @@ export class LegalDocumentNotFoundError extends DomainError {
   override readonly httpStatus = 404;
 
   constructor(docType: string) {
-    super(`No current legal document found for type "${docType}"`);
+    super(`No hay un documento legal vigente del tipo "${docType}"`);
   }
 }

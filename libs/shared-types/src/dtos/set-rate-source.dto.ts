@@ -13,7 +13,7 @@ export const SetRateSourceDtoSchema = z
   .object({
     source: z.enum(['binance', 'bcv', 'manual']),
     /** Rate value in BS per USD. Required only when source='manual'. */
-    value: z.number().positive({ message: 'Rate value must be greater than zero' }).optional(),
+    value: z.number().positive({ message: 'La tasa debe ser mayor a cero' }).optional(),
   })
   .strict()
   .superRefine((data, ctx) => {

@@ -9,6 +9,6 @@ export class PatientNotUnderDoctorError extends DomainError {
   override readonly httpStatus = 404;
 
   constructor() {
-    super('Patient not found');
+    super('Paciente no encontrado');
   }
 }

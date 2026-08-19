@@ -9,6 +9,6 @@ export class SharedFileAccessDeniedError extends DomainError {
   override readonly httpStatus = 403;
 
   constructor() {
-    super('Access denied to this shared file');
+    super('No tenés permiso para ver este archivo');
   }
 }

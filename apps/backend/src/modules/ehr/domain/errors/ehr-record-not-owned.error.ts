@@ -11,6 +11,6 @@ export class EhrRecordNotOwnedError extends DomainError {
   readonly code = 'EHR_RECORD_NOT_FOUND';
 
   constructor() {
-    super('EHR record not found');
+    super('Registro de historia clínica no encontrado');
   }
 }
