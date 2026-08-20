@@ -4,18 +4,39 @@
 > ⚠️ Orden: **la entrada más nueva va ARRIBA**. La del 2026-08-11 quedó al final
 > del archivo por error; no se movió para no ensuciar el diff.
 
-## 2026-08-19 — Lote de 25 observaciones del QA manual del 18/08 ⏳ EN STAGING, ESPERANDO AL DUEÑO
+## 2026-08-19 — Lote de 25 observaciones + QA con navegador + admin ⏳ EN STAGING, ESPERANDO AL DUEÑO
+
+> **Resumen de la sesión, para retomar rápido.** Empezó como "arreglar 25 observaciones" y
+> terminó destapando **nueve defectos que NO estaban en la lista**, seis de ellos hallados
+> únicamente por probar en un navegador real. Tres tocaban plata o tiempo del especialista:
+> extender le **borraba los días** que tenía, `setMonth` **regalaba dos días** en fin de
+> mes, y reactivar **regalaba un mes** a quien seguía vigente. Ninguno lo veía un test.
+>
+> **La lección de la sesión:** el lote se cerró con todo verde —405 suites, tsc, build,
+> boot del dist— y aun así "Crear y continuar" **nunca había funcionado**. Verde en tests
+> no es verde en pantalla.
 
 El dueño entregó una lista de 27 puntos (`Pruebas 18-08.txt`). **Dos ya estaban
 resueltos** —son las regresiones que se arreglaron esa misma noche—, **uno no se pudo
 reproducir** y los **25 restantes** entraron en un solo lote.
 
-**Entrega:** rama `feature/qa-19-agosto-lote` → `develop` → `staging`.
-`nx test backend`: **405 suites · 3.918 tests · 0 fallas** (línea base 404/3.898).
-`tsc` limpio en ambas apps. Build de las dos apps OK. **Dist booteado contra la BD real
-de staging: 249 rutas mapeadas, 0 errores de inyección**, y curl real a
-`/api/booking/:id/info` y `/slots`. Lint del frontend: **123 errores / 177 avisos, los
-mismos con y sin el lote** (medido con `git stash`) — cero regresiones.
+**Entrega:** rama `feature/qa-19-agosto-lote` → `develop` → `staging`. La sesión creció
+más allá del lote: terminó con **6 despliegues a staging**, el último `1cf61213`, **vivo y
+sin un solo WARNING** (verificado en los logs de Cloud Run y con la imagen de la revisión:
+backend y frontend corren `staging-1cf61213`).
+
+`nx test backend` al cierre: **405 suites · 3.923 tests · 0 fallas** (línea base
+404/3.898). `tsc` limpio en ambas apps. Build de las dos OK. **Dist booteado contra la BD
+real de staging: 249 rutas mapeadas, 0 errores de inyección**, y curl real. Lint del
+frontend: **123 errores / 177 avisos, los mismos con y sin el lote** (medido con
+`git stash`) — cero regresiones.
+
+⚠️ **Gotcha operativo:** empujar documentación encima de un despliegue en curso lo
+**cancela** (concurrencia de GitHub Actions). Pasó con el arreglo del ancla: quedó
+cancelado y lo salvó el push siguiente, que iba sobre un commit que ya lo incluía. Al
+desplegar algo que corrige datos, **esperar a que termine antes de empujar los docs** — y
+verificar siempre la **imagen de la revisión**, no solo que el workflow diga verde: hubo un
+run sobre un commit anterior corriendo en paralelo que podría haber quedado último.
 
 ### Lo que NO era trabajo nuevo
 
