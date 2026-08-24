@@ -4,6 +4,82 @@
 > ⚠️ Orden: **la entrada más nueva va ARRIBA**. La del 2026-08-11 quedó al final
 > del archivo por error; no se movió para no ensuciar el diff.
 
+## 2026-08-24 — Correcciones del QA del 23/08 ✅ DESPLEGADO Y VERIFICADO EN STAGING
+
+> **La lección de esta sesión:** de seis observaciones, **cuatro tenían el código ya escrito
+> y bien cableado** — y ninguna funcionaba. Ninguna se podía diagnosticar leyendo: las cuatro
+> cayeron abriendo un navegador contra staging. Es la tercera sesión seguida con el mismo
+> patrón (ver [[codigo-completo-que-nadie-llama]] y la entrada del 19/08).
+
+**Estado:** desplegado en `d0635b25`, deploy verde, y **los arreglos verificados EN VIVO con
+Playwright** — no solo "los tests pasan".
+
+### Lo que reportó el QA y qué resultó ser
+
+| #   | Observación                                     | Causa real                                                          |
+| --- | ----------------------------------------------- | ------------------------------------------------------------------- |
+| 1   | La consulta con fecha pasada no abre su detalle | El controller **descartaba `consultationId`** al armar la respuesta |
+| 2   | Crear consultorio no pregunta por los servicios | El filtro **excluía los servicios generales**, que son casi todos   |
+| 3   | "Me deja asociar 1 de 4"                        | **La misma causa que la #2**                                        |
+| 4   | El monto sube de a céntimos                     | `step="0.01"`                                                       |
+| 5   | El link público carga en `$` y salta a `€`      | La página pública **leía la sesión del visitante**                  |
+| 6   | No existe el botón de alta del vendedor         | El botón existe: **es blanco sobre fondo blanco**                   |
+
+### Los tres hallazgos que valen más que el lote
+
+**1 · El id de la consulta se caía en el mapeo de la respuesta.**
+`CreateBookingUseCase` crea la consulta y devuelve su id; el handler `@Post()` de
+`doctor-booking.controller.ts` no lo incluía en `data`. Todo lo de arriba —BFF, hook, efecto,
+botón "Ir a la consulta"— estaba correctamente cableado para un valor que nunca llegaba.
+El handler `/immediate`, **en el mismo archivo**, sí lo devuelve: se corrigió ése el 19/08 y
+éste quedó afuera. **El controller no tenía NINGÚN spec** mientras el público sí — un campo
+que se cae en el mapeo no rompe ningún test de use case. Se agregó
+`doctor-booking.controller.spec.ts` apuntando al **contrato de la respuesta**.
+
+**2 · `.g-bg` nunca estuvo en la hoja global.** Se usa **105 veces en 24 archivos** y el
+CLAUDE.md la documenta como el gradiente de marca, pero cada **página** la redefinía en su
+propio `<style>` inline. Los modales y componentes extraídos después se llevaron la clase y
+no el `<style>`: **8 archivos quedaron sin cobertura** y, como llevan `text-white`, quedaron
+invisibles pero clickeables. `/seller` es la única pantalla propia de un componente sin
+página que la declare, y por eso salió ahí. Verificado en el navegador: el botón medía
+201×36 px con `background-image: none`. Ahora se define una vez en `globals.css`; el
+`<style>` de cada página se inyecta después y sigue ganando por orden.
+
+**3 · La divisa del link público dependía de la sesión del visitante.** El hook preguntaba
+`if (override?.mode)` —la verdad del MODO, no la presencia del override—, así que con
+`currencyMode: null` caía a la rama autenticada y consultaba `/api/doctor/exchange-rate`.
+El parpadeo `$`→`€` que reportó el QA era el síntoma **en el navegador del especialista**;
+en el de un paciente ese endpoint da 401 y la página **se queda en `$` para siempre**.
+Segundo defecto en el mismo bloque: sin tasa BCV del euro, el `else if` hacía
+`setMode('usd_bcv')` y le cambiaba los precios a dólares al especialista sin avisar.
+
+### Decisión de producto
+
+**Asociar servicios a un consultorio nuevo (decisión del dueño):** el modal lista TODOS los
+servicios activos; los generales van **tildados y bloqueados** con "Ya disponible acá
+(General)" y solo los atados a otro consultorio son accionables, avisando que asociarlos
+**los saca de donde están**. `pricing_plans.office_id` es una FK única — un servicio vive en
+un consultorio o es general. Se descartó la tabla de unión (servicio en N consultorios) por
+ser un lote aparte con migración.
+
+### Hallazgo abierto 🔴
+
+**`/api/ehr/patient/:id` no existe en el BFF.** El backend sí lo expone
+(`ehr.controller.ts:49`) y la server action de `/doctor/ehr` lo alcanza bien, pero
+`ConsultationsClient.tsx:1830` y `GenerateDocumentModal.tsx:292` hacen `fetch` **desde el
+cliente** contra una ruta que no está en `app/api/ehr/**`. Impacto probable: **"Historia
+clínica" nunca se ofrece en Generar Documento**, porque ese modal la habilita según si el
+paciente tiene EHR (ADR-020). Detectado por un 404 en la consola al abrir una consulta.
+
+### Notas operativas
+
+- **El lint completo del backend crashea por falta de memoria** en la máquina del dueño (Node
+  OOM, no una regla). Con `NODE_OPTIONS=--max-old-space-size=8192` sobre los archivos tocados
+  pasa limpio.
+- Verificación del lote: 406 suites / 3927 tests · `tsc` frontend 0 · `nx build backend` 0.
+- Datos de prueba en staging (el dueño dijo que no importan): citas del 20 y 21/08 de
+  `Paciente Prueba Lote19`, consultas `DLT-202608-0030` y `0031`.
+
 ## 2026-08-19 — Lote de 25 observaciones + QA con navegador + admin ⏳ EN STAGING, ESPERANDO AL DUEÑO
 
 > **Resumen de la sesión, para retomar rápido.** Empezó como "arreglar 25 observaciones" y
