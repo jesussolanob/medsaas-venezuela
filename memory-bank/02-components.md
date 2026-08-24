@@ -756,6 +756,35 @@ suma de meses sobre una fecha de fin de mes tiene que pasar por `addMonthsClampe
 doctor (ADR-036, deliberado). Al probar con un paciente que ya tenía su consulta corriendo
 parece que "Registrar igual" está roto, y no lo está.
 
+### Correcciones del QA del 23/08 (2026-08-24)
+
+| Componente / módulo                                | Qué cambió                                                                                                                |
+| -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `doctor-booking.controller.ts` **(backend)**       | El `@Post()` devuelve `consultationId`. El use case lo producía y el handler lo **descartaba al mapear**                  |
+| `doctor-booking.controller.spec.ts` **(nuevo)**    | No existía. Prueba el **contrato de la respuesta**: qué campos promete el endpoint del alta del especialista              |
+| **`app/globals.css`**                              | Define `.g-bg` — **nunca estuvo en la hoja global**, cada página la redefinía en su `<style>` inline                      |
+| `app/doctor/offices/page.tsx`                      | El paso de asociar servicios lista TODOS los activos; los generales van tildados y bloqueados ("Ya disponible acá")       |
+| `app/doctor/consultations/ConsultationsClient.tsx` | `step="any"` en el monto cobrado: las flechas mueven de a 1 y los decimales siguen siendo válidos                         |
+| `lib/useBcvRate.tsx`                               | `if (override !== undefined)`: una página pública **nunca** consulta el endpoint autenticado. Y sin tasa EUR conserva `€` |
+| `app/book/[doctorId]/BookingClient.tsx`            | El gate de carga espera también la tasa: no se pinta ningún precio hasta tener todos los datos                            |
+
+⚠️ **`.g-bg` es una clase de PÁGINA convertida en global.** Los 16 `<style>` inline que la
+redefinían quedan redundantes y **no todos declaran el mismo gradiente** — la marca ya venía
+inconsistente. Limpiarlos es un lote aparte. Los 8 archivos que la usaban **sin declararla**
+(`SellerPortalClient`, `ConfirmDialog`, `AppointmentDetailModal`, `PatientFichaModal`,
+`NewAppointmentFlow`, `ApprovePaymentModal`, `PatientHistoryModal`, `PaymentMethodModal`)
+funcionaban solo si la página que los montaba la declaraba: **defensa accidental, no una regla.**
+
+⚠️ **Regla que nació acá: un controller que MAPEA a mano necesita una prueba del contrato.**
+Un campo que se cae entre el use case y el `data:` de la respuesta no rompe ningún test de
+use case, no lo ve `tsc` (el tipo de retorno es `unknown`) y no lo ve el build. Solo se ve en
+pantalla — o en un spec que mire las claves de la respuesta.
+
+🔴 **`/api/ehr/patient/:id` no existe en el BFF** y dos componentes cliente lo llaman
+(`ConsultationsClient.tsx:1830`, `GenerateDocumentModal.tsx:292`). El backend sí lo expone y
+la server action de `/doctor/ehr` lo alcanza. Probable consecuencia: "Historia clínica" nunca
+se ofrece en Generar Documento. **Sin arreglar.**
+
 ### Aviso de cambio de sesión en `/admin` (2026-08-18)
 
 | Componente                                  | Qué hace                                                                                                                                                                                                   |
