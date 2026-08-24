@@ -5078,10 +5078,16 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                           <label className="block text-[10px] text-slate-500 mb-1">
                             Monto cobrado ({currencyCode})
                           </label>
+                          {/*
+                            step="any" y NO step="1": las flechas mueven de a 1
+                            —un monto se corrige en dólares, no en céntimos— pero
+                            un importe con decimales (20.50) sigue siendo válido.
+                            Con step="1" el navegador lo marcaría como inválido.
+                          */}
                           <input
                             type="number"
                             min="0"
-                            step="0.01"
+                            step="any"
                             inputMode="decimal"
                             value={pagoAmount}
                             disabled={pagoDetailsSaving}
