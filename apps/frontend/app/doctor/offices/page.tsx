@@ -458,25 +458,48 @@ export default function OfficesPage() {
   // ---------------------------------------------------------------------------
 
   /**
-   * Busca los servicios del especialista y, si tiene alguno que todavía no se
-   * ofrece en este consultorio, abre el paso de asociación.
+   * Busca los servicios del especialista y abre el paso de asociación.
    *
-   * Se saltan los servicios GENERALES (`office_id === null`): esos ya aparecen
-   * en todos los consultorios, así que ofrecerlos sería prometer un cambio que
-   * no cambia nada — y peor, atarlos a este consultorio los sacaría del resto.
+   * Se listan TODOS los servicios activos, incluidos los GENERALES
+   * (`office_id === null`). Antes se filtraban, con el argumento de que ya
+   * aparecen en todos los consultorios y ofrecerlos no cambiaría nada — pero
+   * como la mayoría de los servicios nacen generales, el resultado real era que
+   * el paso NO SE ABRÍA NUNCA, o se abría mostrando uno solo de cuatro. El
+   * especialista leía eso como que sus servicios se habían perdido.
+   *
+   * Los generales se muestran tildados y bloqueados: la información que falta
+   * no es "cuáles puedo asociar" sino "qué se ofrece en este consultorio".
+   * Accionables son solo los atados a OTRO consultorio, y ésos avisan que
+   * asociarlos acá los saca de donde están (`office_id` es una FK única).
    */
   async function ofrecerAsociarServicios(nuevoOfficeId: string) {
     try {
       const servicios = await getDoctorServices();
-      const candidatos = servicios.filter(
-        (s) => s.is_active && s.office_id !== null && s.office_id !== nuevoOfficeId,
-      );
-      if (candidatos.length === 0) return;
-      setAsociar({ officeId: nuevoOfficeId, servicios: candidatos, elegidos: [] });
+      const activos = servicios.filter((s) => s.is_active && s.office_id !== nuevoOfficeId);
+      if (activos.length === 0) return;
+      setAsociar({ officeId: nuevoOfficeId, servicios: activos, elegidos: [] });
     } catch {
       // Es un ofrecimiento, no un paso obligatorio: si falla, el consultorio ya
       // quedó creado y el especialista puede asociar servicios desde Servicios.
     }
+  }
+
+  /** Un servicio general ya se ofrece en el consultorio nuevo: no hay nada que asociar. */
+  function yaCubierto(s: DoctorService): boolean {
+    return s.office_id === null;
+  }
+
+  /**
+   * Nombre del consultorio al que hoy está atado un servicio.
+   *
+   * Se resuelve contra `offices`, que en este punto ya incluye el recién creado
+   * (`fetchOffices()` corre antes de abrir el paso). Si el id no aparece —un
+   * consultorio desactivado, por ejemplo— se dice "otro consultorio" en vez de
+   * dejar el renglón a medias.
+   */
+  function nombreDeConsultorio(officeId: string | null): string {
+    if (!officeId) return 'General';
+    return offices.find((o) => o.id === officeId)?.name ?? 'otro consultorio';
   }
 
   async function confirmarAsociacion() {
@@ -564,8 +587,9 @@ export default function OfficesPage() {
         Asociar servicios al consultorio recién creado.
 
         Se ofrece, no se impone: cerrar sin elegir nada es una respuesta válida
-        y el consultorio ya quedó creado. Los servicios "General" no aparecen
-        acá — ya se ofrecen en todos los consultorios.
+        y el consultorio ya quedó creado. Los servicios "General" SÍ aparecen,
+        tildados y bloqueados, porque el especialista necesita ver qué se ofrece
+        acá — no solo qué puede cambiar.
       */}
       {asociar && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[70] p-4">
@@ -577,26 +601,32 @@ export default function OfficesPage() {
               <p className="text-xs text-slate-500 mt-1">
                 Ya tenés {asociar.servicios.length} servicio
                 {asociar.servicios.length === 1 ? '' : 's'} cargado
-                {asociar.servicios.length === 1 ? '' : 's'}. Marcá los que también atendés acá —
-                podés hacerlo después desde Servicios.
+                {asociar.servicios.length === 1 ? '' : 's'}. Los marcados ya se ofrecen acá; podés
+                sumar los demás ahora o después desde Servicios.
               </p>
             </div>
 
             <div className="space-y-1.5">
               {asociar.servicios.map((s) => {
-                const marcado = asociar.elegidos.includes(s.id);
+                const cubierto = yaCubierto(s);
+                // Un general ya se ofrece acá: se muestra tildado y bloqueado.
+                // Tildarlo lo ataría a este consultorio y lo sacaría del resto.
+                const marcado = cubierto || asociar.elegidos.includes(s.id);
                 return (
                   <label
                     key={s.id}
-                    className={`flex items-center gap-3 px-3 py-2.5 rounded-lg border cursor-pointer transition-colors ${
-                      marcado
-                        ? 'border-teal-400 bg-teal-50/60'
-                        : 'border-slate-200 hover:border-slate-300'
+                    className={`flex items-center gap-3 px-3 py-2.5 rounded-lg border transition-colors ${
+                      cubierto
+                        ? 'border-slate-200 bg-slate-50 cursor-default'
+                        : marcado
+                          ? 'border-teal-400 bg-teal-50/60 cursor-pointer'
+                          : 'border-slate-200 hover:border-slate-300 cursor-pointer'
                     }`}
                   >
                     <input
                       type="checkbox"
                       checked={marcado}
+                      disabled={cubierto}
                       onChange={() =>
                         setAsociar((prev) =>
                           prev
@@ -609,13 +639,29 @@ export default function OfficesPage() {
                             : prev,
                         )
                       }
-                      className="accent-teal-500"
+                      className="accent-teal-500 disabled:accent-slate-300"
                     />
                     <div className="min-w-0 flex-1">
-                      <p className="text-sm font-semibold text-slate-800 truncate">{s.name}</p>
+                      <p
+                        className={`text-sm font-semibold truncate ${
+                          cubierto ? 'text-slate-500' : 'text-slate-800'
+                        }`}
+                      >
+                        {s.name}
+                      </p>
                       <p className="text-xs text-slate-400">
                         {s.duration_minutes} min · ${s.price_usd}
                       </p>
+                      {cubierto ? (
+                        <p className="text-[11px] text-slate-400 mt-0.5">
+                          Ya disponible acá (General)
+                        </p>
+                      ) : (
+                        <p className="text-[11px] text-amber-600 mt-0.5">
+                          Hoy solo en: {nombreDeConsultorio(s.office_id)} — asociarlo acá lo saca de
+                          ahí
+                        </p>
+                      )}
                     </div>
                   </label>
                 );
@@ -623,26 +669,39 @@ export default function OfficesPage() {
             </div>
 
             <p className="text-[11px] text-slate-400">
-              Un servicio se atiende en un consultorio a la vez: al marcarlo acá deja de estar
-              asociado al anterior.
+              Un servicio &quot;General&quot; ya se ofrece en todos tus consultorios. Los demás se
+              atienden en uno a la vez: al marcarlos acá dejan de estar asociados al anterior.
             </p>
 
-            <div className="flex gap-2 pt-1">
+            {/*
+              Sin servicios accionables (todos generales) el paso es informativo:
+              un "Asociar" permanentemente gris se lee como un botón roto.
+            */}
+            {asociar.servicios.every(yaCubierto) ? (
               <button
                 onClick={() => setAsociar(null)}
-                disabled={asociando}
-                className="flex-1 py-2.5 border border-slate-200 rounded-lg text-sm font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+                className="w-full py-2.5 bg-teal-500 text-white rounded-lg text-sm font-semibold hover:bg-teal-600"
               >
-                Ahora no
+                Entendido
               </button>
-              <button
-                onClick={() => void confirmarAsociacion()}
-                disabled={asociando || asociar.elegidos.length === 0}
-                className="flex-1 py-2.5 bg-teal-500 text-white rounded-lg text-sm font-semibold hover:bg-teal-600 disabled:opacity-40"
-              >
-                {asociando ? 'Asociando…' : 'Asociar'}
-              </button>
-            </div>
+            ) : (
+              <div className="flex gap-2 pt-1">
+                <button
+                  onClick={() => setAsociar(null)}
+                  disabled={asociando}
+                  className="flex-1 py-2.5 border border-slate-200 rounded-lg text-sm font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+                >
+                  Ahora no
+                </button>
+                <button
+                  onClick={() => void confirmarAsociacion()}
+                  disabled={asociando || asociar.elegidos.length === 0}
+                  className="flex-1 py-2.5 bg-teal-500 text-white rounded-lg text-sm font-semibold hover:bg-teal-600 disabled:opacity-40"
+                >
+                  {asociando ? 'Asociando…' : 'Asociar'}
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}

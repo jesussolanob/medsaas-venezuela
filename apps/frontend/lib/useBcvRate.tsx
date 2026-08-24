@@ -97,11 +97,19 @@ export function useBcvRate(override?: ExchangeRateOverride): BcvRateData {
       let customRate: number | null = null;
       let customLabel = '';
 
-      if (override?.mode) {
+      if (override !== undefined) {
         // La preferencia llega por props (booking público, sin sesión): se usa
-        // esa y NO se consulta el endpoint autenticado, que ahí responde 401
-        // y dejaba al paciente viendo la divisa equivocada.
-        prefMode = override.mode;
+        // esa y NO se consulta el endpoint autenticado.
+        //
+        // La condición mira si HAY override, no si `override.mode` es verdadero.
+        // Con `if (override?.mode)` un payload sin modo —el backend lo devuelve
+        // null cuando el perfil nunca lo fijó, y la respuesta de `/info` está
+        // cacheada 60s— caía al `else` y consultaba `/api/doctor/exchange-rate`.
+        // En el navegador del propio especialista ese endpoint responde 200 con
+        // SU preferencia: la página arrancaba en `$` y saltaba a `€`. Peor: lo
+        // que veía el visitante dependía de si había una sesión de médico
+        // abierta en ese navegador. Una página pública no puede leer una sesión.
+        prefMode = override.mode || 'usd_bcv';
         customRate = override.customRate ?? null;
       } else {
         try {
@@ -133,11 +141,19 @@ export function useBcvRate(override?: ExchangeRateOverride): BcvRateData {
       const bcvRes = await fetch('/api/admin/bcv-rate', { cache: 'no-store' });
       if (bcvRes.ok) {
         const bcv = await bcvRes.json();
-        if (prefMode === 'eur_bcv' && typeof bcv?.eur_rate === 'number' && bcv.eur_rate > 0) {
-          setRate(bcv.eur_rate);
+        if (prefMode === 'eur_bcv') {
+          // La DIVISA es del especialista y no depende de que el BCV publique
+          // la tasa del euro. Antes, si `eur_rate` faltaba o venía en 0, este
+          // bloque caía al `else if` y hacía `setMode('usd_bcv')`: sus precios
+          // pasaban a mostrarse en dólares sin que nadie lo pidiera ni lo
+          // avisara. Ahora se conserva `€` y, sin tasa, el equivalente en
+          // bolívares queda en "—" — que es la verdad.
           setMode('eur_bcv');
           setLabel('EUR → BsS (BCV)');
-          setDateLabel(bcv.eur_date || bcv.date || '');
+          if (typeof bcv?.eur_rate === 'number' && bcv.eur_rate > 0) {
+            setRate(bcv.eur_rate);
+            setDateLabel(bcv.eur_date || bcv.date || '');
+          }
         } else if (typeof bcv?.rate === 'number' && bcv.rate > 0) {
           setRate(bcv.rate);
           setMode('usd_bcv');

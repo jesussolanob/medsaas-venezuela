@@ -343,7 +343,12 @@ export default function BookingClient({
   customRate?: number | null;
 }) {
   // BCV rate for dual currency — con la preferencia del especialista.
-  const { rate: bcvRate, toBs, format } = useBcvRate({ mode: currencyMode, customRate });
+  const {
+    rate: bcvRate,
+    toBs,
+    format,
+    loading: rateLoading,
+  } = useBcvRate({ mode: currencyMode, customRate });
 
   // Auth state
   // ETAPA 1: Auth0 not available — booking always runs in guest mode.
@@ -998,8 +1003,13 @@ export default function BookingClient({
       </div>
     );
 
-  // ── Auth Gate ─────────────────────────────────────────────────────────────
-  if (!authReady)
+  // ── Auth Gate + tasa ──────────────────────────────────────────────────────
+  //
+  // Se espera también a que resuelva la tasa antes de pintar nada. El precio es
+  // lo primero que mira un paciente y verlo cambiar —de divisa o de monto en
+  // bolívares— mientras decide es peor que esperar 200ms más: deja la duda de
+  // cuál de los dos números era el bueno. Pedido del dueño (2026-08-23).
+  if (!authReady || rateLoading)
     return (
       <div
         className="min-h-screen flex items-center justify-center"

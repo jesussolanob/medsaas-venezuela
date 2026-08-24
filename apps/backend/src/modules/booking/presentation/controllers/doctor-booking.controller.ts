@@ -70,7 +70,8 @@ export class DoctorBookingController {
    *      the value sent in the request body.
    *
    * Response shape (matches the public endpoint for easy BFF normalisation):
-   *   { success: true, data: { appointmentId, appointmentCode, scheduledAt, meetLink } }
+   *   { success: true, data: { appointmentId, appointmentCode, scheduledAt, meetLink,
+   *                            consultationId } }
    */
   @Post()
   async create(
@@ -98,6 +99,16 @@ export class DoctorBookingController {
         appointmentCode: result.appointmentCode,
         scheduledAt: result.appointment.scheduledAt,
         meetLink: result.meetLink,
+        // El use case crea la consulta y devuelve su id; este handler lo
+        // DESCARTABA. Todo lo de arriba estaba bien cableado para un valor que
+        // nunca llegaba: el BFF lo reenvía, el hook lo guarda y
+        // `NewAppointmentFlow` lo necesita para abrir sola la consulta de una
+        // fecha pasada — y el botón "Ir a la consulta" del paso de éxito solo
+        // se pinta si viene. Con null, el especialista que registraba una
+        // consulta de ayer quedaba en "Cita agendada" con un único botón
+        // "Cerrar" y sin forma de llegar a lo que iba a escribir.
+        // `/immediate`, acá al lado, sí lo devuelve.
+        consultationId: result.consultationId,
       },
     };
   }
