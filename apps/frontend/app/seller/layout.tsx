@@ -20,10 +20,12 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState } from 'react';
-import { Home, Users, LogOut, Menu, X } from 'lucide-react';
+import { Home, Users, Menu, X } from 'lucide-react';
 import { clsx } from 'clsx';
 import { Toaster } from '@/components/ui/Toaster';
 import { DeltaMark } from '@/components/dh';
+import TermsModal from '@/components/legal/TermsModal';
+import { SidebarUtilityBar } from '@/components/doctor/SidebarUtilityBar';
 
 type NavLeaf = {
   name: string;
@@ -49,6 +51,8 @@ function esActivo(pathname: string, href: string): boolean {
 export default function SellerLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [termsModalOpen, setTermsModalOpen] = useState(false);
+  const [privacyModalOpen, setPrivacyModalOpen] = useState(false);
 
   const titulo = NAV.find((n) => esActivo(pathname, n.href))?.name ?? 'Portal del vendedor';
 
@@ -157,25 +161,28 @@ export default function SellerLayout({ children }: { children: React.ReactNode }
             })}
           </nav>
 
-          <div className="px-3 py-4" style={{ borderTop: '1px solid var(--dh-gray-100)' }}>
-            <button
-              onClick={cerrarSesion}
-              className="flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm w-full transition-all"
-              style={{ color: 'var(--dh-gray-400)' }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.color = 'var(--dh-error)';
-                e.currentTarget.style.background = '#FEF2F2';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.color = 'var(--dh-gray-400)';
-                e.currentTarget.style.background = 'transparent';
-              }}
-            >
-              <LogOut className="w-4 h-4" />
-              Cerrar sesión
-            </button>
+          {/*
+            Términos, privacidad y cerrar sesión: la MISMA fila de iconos que el
+            especialista (`SidebarUtilityBar`), no una copia. Los documentos
+            legales aplican a todo el que usa la plataforma, y el vendedor es el
+            único perfil que no los tenía a mano — quedaban solo en el pie del
+            registro público.
+          */}
+          <div className="px-3 pb-3">
+            <SidebarUtilityBar
+              onOpenTerms={() => setTermsModalOpen(true)}
+              onOpenPrivacy={() => setPrivacyModalOpen(true)}
+              onLogout={cerrarSesion}
+            />
           </div>
         </aside>
+
+        <TermsModal open={termsModalOpen} onClose={() => setTermsModalOpen(false)} />
+        <TermsModal
+          docType="privacy"
+          open={privacyModalOpen}
+          onClose={() => setPrivacyModalOpen(false)}
+        />
 
         {/* Main */}
         <div className="flex-1 flex flex-col min-h-screen w-full lg:ml-[260px]">
