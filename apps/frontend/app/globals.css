@@ -157,6 +157,29 @@
   letter-spacing: 0.02em;
 }
 
+/*
+ * Gradiente de marca.
+ *
+ * `g-bg` se usa 105 veces en 24 archivos y el CLAUDE.md la documenta como el
+ * gradiente de la marca, pero NUNCA estuvo en la hoja global: cada PÁGINA la
+ * redefinía en su propio `<style>` inline. Los modales y componentes que se
+ * extrajeron después se llevaron la clase pero no el `<style>`, así que
+ * funcionaban solo si la página que los montaba la declaraba. Ocho archivos
+ * quedaron sin cobertura; como casi todos llevan además `text-white`, el
+ * resultado es texto blanco sobre fondo claro: invisible pero clickeable.
+ *
+ * Se descubrió con el botón "Registrar especialista" de `/seller` —la única
+ * pantalla propia de un componente sin página que declarara la clase—, que el
+ * QA reportó como "no existe el botón" (2026-08-23).
+ *
+ * Definirla acá no pisa a nadie: un `<style>` de página se inyecta después y
+ * gana por orden, así que las variantes propias (el degradado de tres paradas
+ * del inicio del especialista, por ejemplo) siguen mandando en su pantalla.
+ */
+.g-bg {
+  background: linear-gradient(135deg, #00c4cc 0%, var(--dh-turquoise-700) 100%);
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
