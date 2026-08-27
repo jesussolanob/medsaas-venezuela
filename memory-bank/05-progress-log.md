@@ -4,6 +4,76 @@
 > ⚠️ Orden: **la entrada más nueva va ARRIBA**. La del 2026-08-11 quedó al final
 > del archivo por error; no se movió para no ensuciar el diff.
 
+## 2026-08-27 — 🚀 PROMOCIÓN A PRODUCCIÓN: 290 commits y ocho lotes de QA
+
+> **El atraso se cerró.** Desde el 2026-07-31 (`eac4a1c`) no se promovía nada: `main` quedó
+> **290 commits** atrás con **ocho lotes sin validar**. El dueño dio la aprobación de QA y
+> todo eso entró a producción de una vez.
+
+**Qué viajó:** los lotes de agosto (mejoras + onboarding + servicios), la baja de cuenta,
+el lote de la fundadora (inasistencia, consulta retroactiva, hora libre, divisa del portal),
+el rol **vendedor** completo, la paginación de listados, las regresiones del 18/08, el lote de
+25 observaciones del 19/08 y las correcciones del 23–27/08.
+
+**7 migraciones nuevas**, todas ya probadas en staging contra un clon de la base real:
+
+| Migración        | Qué hace                                          |
+| ---------------- | ------------------------------------------------- |
+| `20260805000001` | soporte del lote de agosto                        |
+| `20260805000002` | checkout de pagos de suscripción del especialista |
+| `20260805000003` | avisos de inactividad                             |
+| `20260809000001` | baja de cuenta (`deactivated_by`)                 |
+| `20260810000001` | instrucciones de pago en viñetas                  |
+| `20260816000001` | rol vendedor (`seller_code`, `sold_by`)           |
+| `20260817000001` | **el valor `seller` en el ENUM `user_role`**      |
+
+⚠️ La última es la que evita que el módulo de vendedores devuelva 500 en producción con los
+tests en verde — es el mismo patrón que ya rompió prod dos veces (`trialing` y `seller`). Ver
+[[enums-de-postgres-sin-el-valor]].
+
+⚠️ **Al promover hay que DESPAUSAR el cron** `doctor-inactivity-notices`
+(`gcloud scheduler jobs resume doctor-inactivity-notices --location=us-east1`). Estaba en
+`PAUSED` desde que se creó, esperando justamente este momento. Sin eso queda muerto y **nadie
+se entera**: no falla, simplemente no corre.
+
+---
+
+## 2026-08-27 — Portal del vendedor con menú lateral + arreglos del QA
+
+**Portal del vendedor reestructurado.** Era una **página suelta sin barra lateral** — la única
+pantalla de la app con esa forma. Ahora replica la estructura de `/admin` y `/doctor` (mismos
+tokens `--dh-*`, 260px, mismo ítem activo) pero **sin fijado ni grupos colapsables**: con dos
+secciones esa maquinaria solo agrega estado que mantener.
+
+- **Inicio** — el código y el enlace arriba de todo (es lo que usa todo el día) + cuatro
+  métricas: **embudo de activación** (ordenado por urgencia comercial, no por volumen: arriba
+  va a quién llamar hoy), **tasa de activación**, **altas por mes** y **reparto por plan**.
+- **Especialistas** — la cartera, ahora **con buscador** (no tenía), más el alta y la ficha.
+
+Las métricas se derivan de la MISMA lista que muestra Especialistas; no hay endpoint de
+métricas y no hace falta. ⚠️ **La lista NO está paginada del lado del servidor**, y por eso
+métricas y filtro son exactos en el cliente. El día que se pagine, ambos tienen que mudarse al
+servidor o van a mentir sobre el total.
+
+**Términos y Privacidad en el menú del vendedor.** Era el único perfil sin los documentos
+legales a mano — quedaban solo en el pie del registro público. Reusa el MISMO
+`SidebarUtilityBar` y el MISMO `TermsModal` del especialista, no una copia.
+
+**El isotipo del booking público iba en gris.** Se lavaba **dos veces**: `brightness-200` lo
+llevaba casi a blanco y el contenedor le sumaba `opacity-70`. Ahora va a color sobre una
+pastilla blanca — el isotipo es coral + turquesa y el turquesa se perdía sobre el degradado
+turquesa del encabezado, así que a color "pelado" media marca quedaba invisible.
+
+**Borrado de `marcoviajes11@gmail.com` en staging** (pedido del dueño, para repetir el
+onboarding con datos limpios). Colgaban 17 pacientes, 34 citas, 34 consultas, 36 pagos, 14
+récipes, 3 consultorios y 5 servicios.
+⚠️ **`access_audit_log.actor_id` es `NOT NULL` con FK `NO ACTION`**: no cascadea ni admite
+nulo, así que **bloquea el borrado de un perfil** hasta que se borren sus filas de auditoría
+(153 en este caso). Todo lo demás cascadea. Se hizo en transacción con verificación adentro y
+barrido posterior de todas las tablas que referencian `profiles`: cero residuos.
+**No hace falta tocar Auth0**: el resolver busca por correo, no encuentra perfil y crea uno
+nuevo — que es exactamente el camino de onboarding limpio que se quería probar.
+
 ## 2026-08-24 — Correcciones del QA del 23/08 ✅ DESPLEGADO Y VERIFICADO EN STAGING
 
 > **La lección de esta sesión:** de seis observaciones, **cuatro tenían el código ya escrito

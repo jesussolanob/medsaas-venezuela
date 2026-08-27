@@ -133,7 +133,8 @@ BD local: `postgres://delta:delta_dev_password@localhost:5432/deltamedical`
 - GitHub: jesussolanob · Repo: github.com/jesussolanob/medsaas-venezuela
 - Ramas: **`main`** = prod (dispara `deploy.yml`) · **`staging`** = pre-prod (dispara `staging.yml`) ·
   **`develop`** = integración (**no dispara ningún deploy**) · `feature/*` desde `develop`.
-  `feature/migracion-backend` quedó obsoleta. Última promoción a prod: **2026-07-31** (`eac4a1c`).
+  `feature/migracion-backend` quedó obsoleta. Última promoción a prod: **2026-08-27** — cerró un
+  atraso de **290 commits y ocho lotes de QA** acumulados desde el 2026-07-31 (`eac4a1c`).
 
 ## Idioma
 

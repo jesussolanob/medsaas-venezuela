@@ -756,6 +756,27 @@ suma de meses sobre una fecha de fin de mes tiene que pasar por `addMonthsClampe
 doctor (ADR-036, deliberado). Al probar con un paciente que ya tenía su consulta corriendo
 parece que "Registrar igual" está roto, y no lo está.
 
+### Portal del vendedor: menú lateral, Inicio y buscador (2026-08-27)
+
+| Componente                              | Qué hace                                                                                                  |
+| --------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `app/seller/layout.tsx` **(nuevo)**     | Barra lateral como `/admin` y `/doctor`, sin fijado ni grupos. Incluye `SidebarUtilityBar` + `TermsModal` |
+| `app/seller/seller-data.ts` **(nuevo)** | Tipos, `PLAN_LABELS`, `normalizar`, `fmtDate`, `estadoSeguimiento` y el hook `useSellerData`              |
+| `app/seller/page.tsx`                   | Inicio: código + enlace arriba, y las cuatro métricas                                                     |
+| `app/seller/especialistas/page.tsx`     | La cartera con **buscador**, el alta y la ficha                                                           |
+| ~~`SellerPortalClient.tsx`~~            | **Eliminado** — su contenido se repartió entre las dos pantallas                                          |
+
+⚠️ **`estadoSeguimiento` vive en UN solo lugar a propósito.** Lo consumen el embudo del Inicio
+y la columna "Seguimiento" de la tabla; si cada pantalla se armara el suyo, podrían decir cosas
+distintas del mismo especialista.
+
+⚠️ **La lista del vendedor NO está paginada del lado del servidor.** Por eso las métricas y el
+filtro se calculan en el cliente y son exactos. Si algún día se pagina, ambos tienen que mudarse
+al servidor o van a mentir sobre el total — mismo error que el ADR-038.
+
+⚠️ **El buscador NO filtra por correo ni cédula**: esos campos no vienen en la lista, solo en la
+ficha, y filtrar por algo que la fila no muestra da resultados que el vendedor no puede explicar.
+
 ### Correcciones del QA del 23/08 (2026-08-24)
 
 | Componente / módulo                                | Qué cambió                                                                                                                |
