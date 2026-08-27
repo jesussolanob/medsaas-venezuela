@@ -49,7 +49,11 @@ import {
 // Pagination constants
 // ---------------------------------------------------------------------------
 
-const PATIENTS_PAGE_SIZE = 200; // Single-doctor list; backend max is 100 per request
+// El backend limita cada request a 100 (Math.min(100, limit) en patients.controller).
+// Pedir más NO trae más: devuelve 100 y el resto desaparece sin aviso. Para traer
+// el listado completo hay que paginar de a 100 (ver getPatients).
+const PATIENTS_REQUEST_LIMIT = 100; // tope duro del backend por request
+const PATIENTS_MAX_PAGES = 50; // corta en 5.000 pacientes: evita un bucle infinito si `total` miente
 const CONSULTATIONS_PAGE_SIZE = 100; // Per-patient history
 const ALL_CONSULTATIONS_PAGE_SIZE = 500; // Doctor-wide list for reporting
 
@@ -258,20 +262,40 @@ export async function getDoctorId(): Promise<string | null> {
  *   doctor_id from x-dev-user-id header, anti-IDOR).
  */
 export async function getPatients(_doctorId: string): Promise<Patient[]> {
-  const result = await backendGet<BackendPatientListItem[]>(
-    `/api/patients?page=1&limit=${PATIENTS_PAGE_SIZE}`,
-  );
+  const collected: BackendPatientListItem[] = [];
 
-  if (!result.ok) {
-    log.error('[getPatients] backend error', {
-      code: result.error.code,
-      status: result.error.status,
-    });
-    return [];
+  // Pagina de a 100 (tope del backend) hasta juntar `total`. Antes pedía limit=200
+  // de una sola vez: el backend recortaba a 100 y los pacientes 101+ no existían
+  // para el dashboard ni para finanzas, sin error ni aviso.
+  for (let page = 1; page <= PATIENTS_MAX_PAGES; page++) {
+    const result = await backendGetPaged<BackendPatientListItem>(
+      `/api/patients?page=${page}&limit=${PATIENTS_REQUEST_LIMIT}`,
+    );
+
+    if (!result.ok) {
+      log.error('[getPatients] backend error', {
+        code: result.error.code,
+        status: result.error.status,
+        page,
+      });
+      // Devuelve lo que sí se pudo traer; una página rota no debe vaciar la lista.
+      break;
+    }
+
+    collected.push(...result.value.items);
+
+    if (result.value.items.length < PATIENTS_REQUEST_LIMIT) break;
+    if (collected.length >= result.value.total) break;
+
+    if (page === PATIENTS_MAX_PAGES) {
+      log.error('[getPatients] tope de paginación alcanzado', {
+        collected: collected.length,
+        total: result.value.total,
+      });
+    }
   }
 
-  const items = Array.isArray(result.value) ? result.value : [];
-  return items.map(mapListItemToPatient);
+  return collected.map(mapListItemToPatient);
 }
 
 /**
@@ -279,18 +303,29 @@ export async function getPatients(_doctorId: string): Promise<Patient[]> {
  *
  * Backend: GET /api/patients?page=&limit= returns
  * { success, data: BackendPatientListItem[], meta: { total, page, limit } }.
- * Backend max is 100 items per request; use PAGE_SIZE_ALL (0) to fetch up to
- * 100 items (the back-end cap).
  *
- * @param opts.page     - 1-based page number.
- * @param opts.limit    - Items per page. Pass 0 (PAGE_SIZE_ALL) to fetch up to 100.
+ * `limit === PAGE_SIZE_ALL` (0) significa "Todas", y ahí el backend no alcanza:
+ * recorta a 100 por request. Antes esta función mapeaba PAGE_SIZE_ALL a 100 y
+ * devolvía esa única página, mientras el Paginator —que con "Todas" fija
+ * `totalPages = 1` y rotula "1–{total} de {total}"— aseguraba estar mostrando
+ * todo. Un especialista con 140 fichas veía 100, leía "1–140 de 140" y no tenía
+ * ninguna página siguiente que tocar. El tope seguía ahí, solo que disimulado.
+ *
+ * Ahora "Todas" pagina de a 100 hasta juntar `total`, igual que getPatients().
+ *
+ * @param opts.page     - 1-based page number. Se ignora con PAGE_SIZE_ALL.
+ * @param opts.limit    - Items por página. 0 (PAGE_SIZE_ALL) = todas.
  */
 export async function getPatientsPaged(opts: {
   page: number;
   limit: number;
 }): Promise<PagedResult<Patient>> {
-  // Backend caps at 100 per request. PAGE_SIZE_ALL (0) maps to the cap.
-  const effectiveLimit = opts.limit === 0 ? 100 : Math.min(opts.limit, 100);
+  if (opts.limit === 0) {
+    const todos = await getPatients('');
+    return { items: todos, total: todos.length };
+  }
+
+  const effectiveLimit = Math.min(opts.limit, PATIENTS_REQUEST_LIMIT);
 
   const result = await backendGetPaged<BackendPatientListItem>(
     `/api/patients?page=${opts.page}&limit=${effectiveLimit}`,
@@ -639,6 +674,72 @@ export type PatientPackageInfo = {
   totalSessions: number;
   usedSessions: number;
 };
+
+/**
+ * Consumo real de un combo de sesiones, por paciente y por servicio.
+ *
+ * OJO: esto NO sale de `patient_packages` — esa tabla está vacía y ninguna
+ * pantalla la escribe. El modelo vivo es `pricing_plans.sessions_count` +
+ * `pending_consultations`, y el backend deriva los contadores de ahí.
+ *
+ * `noShow` va aparte a propósito: una inasistencia NO consume sesión
+ * (consumida = atendida, decisión del dueño 2026-08-16).
+ */
+/** Forma EXACTA del wire. El módulo pending-consultations serializa snake_case
+ *  (mirá `toResponse` en su controller), a diferencia de offices que manda
+ *  camelCase. Verificado leyendo el controller, no asumido. */
+type BackendPackageUsage = {
+  patient_id: string;
+  plan_name: string;
+  total_sessions: number | null;
+  attended: number;
+  scheduled: number;
+  no_show: number;
+  pending_scheduling: number;
+};
+
+export type PackageUsage = {
+  patientId: string;
+  planName: string;
+  /** Sesiones contratadas del servicio. null si el servicio ya no está en el catálogo. */
+  totalSessions: number | null;
+  attended: number;
+  scheduled: number;
+  noShow: number;
+  pendingScheduling: number;
+};
+
+/**
+ * GET /api/doctor/pending-consultations/usage[?patient_id=]
+ *
+ * Sin `patientId` trae el consumo de TODOS los pacientes del doctor (una sola
+ * consulta agrupada, no una por paciente).
+ */
+export async function getPackageUsage(patientId?: string): Promise<PackageUsage[]> {
+  const qs = patientId ? `?patient_id=${encodeURIComponent(patientId)}` : '';
+  const result = await backendGet<BackendPackageUsage[]>(
+    `/api/doctor/pending-consultations/usage${qs}`,
+  );
+
+  if (!result.ok) {
+    log.error('[getPackageUsage] backend error', {
+      code: result.error.code,
+      status: result.error.status,
+    });
+    return [];
+  }
+
+  const rows = Array.isArray(result.value) ? result.value : [];
+  return rows.map((r) => ({
+    patientId: r.patient_id,
+    planName: r.plan_name,
+    totalSessions: r.total_sessions,
+    attended: r.attended,
+    scheduled: r.scheduled,
+    noShow: r.no_show,
+    pendingScheduling: r.pending_scheduling,
+  }));
+}
 
 /**
  * Fetch active packages for a specific patient.

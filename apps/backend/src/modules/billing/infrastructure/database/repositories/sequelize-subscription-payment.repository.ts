@@ -1,11 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/sequelize';
 import { randomUUID } from 'crypto';
-import { QueryTypes } from 'sequelize';
+import { QueryTypes, UniqueConstraintError } from 'sequelize';
 import { Sequelize } from 'sequelize-typescript';
 import type {
   ISubscriptionPaymentRepository,
   CreateSubscriptionPaymentParams,
+  CreateDoctorPaymentParams,
   ApproveSubscriptionPaymentParams,
   SaveApprovedAndExtendParams,
   SubscriptionPaymentListFilters,
@@ -19,11 +20,34 @@ import {
   SubscriptionPayment,
   type SubscriptionPaymentStatus,
 } from '../../../domain/entities/subscription-payment.entity';
+import { PendingPaymentExistsError } from '../../../domain/errors/pending-payment-exists.error';
 import { SubscriptionPaymentModel } from '../models/subscription-payment.model';
 import { SubscriptionChangeLogModel } from '../models/subscription-change-log.model';
 import { ProfileAdminModel } from '../../../../admin/infrastructure/database/models/profile.model';
 import { AdminSubscriptionModel } from '../../../../admin/infrastructure/database/models/subscription.model';
 import type { SubscriptionPlan, SubscriptionStatus } from '@delta/shared-types';
+
+/** Postgres error code for a unique_violation (23505). */
+const PG_UNIQUE_VIOLATION_CODE = '23505';
+
+/**
+ * Detects a unique-constraint violation regardless of how Sequelize surfaces it:
+ *   - `model.create()` normally throws `UniqueConstraintError` directly.
+ *   - Some code paths (raw queries, certain driver versions) instead throw a
+ *     generic `DatabaseError` wrapping the raw pg error, which still carries
+ *     `original.code === '23505'`.
+ * Never matches on the error message string — codes are stable, messages are not.
+ */
+function isUniqueViolation(err: unknown): boolean {
+  if (err instanceof UniqueConstraintError) return true;
+  if (err && typeof err === 'object' && 'original' in err) {
+    const original = (err as { original?: unknown }).original;
+    if (original && typeof original === 'object' && 'code' in original) {
+      return (original as { code?: unknown }).code === PG_UNIQUE_VIOLATION_CODE;
+    }
+  }
+  return false;
+}
 
 /**
  * Sequelize implementation of ISubscriptionPaymentRepository.
@@ -31,8 +55,9 @@ import type { SubscriptionPlan, SubscriptionStatus } from '@delta/shared-types';
  * The approveAndExtend method executes atomically using a managed transaction:
  *   1. Mark payment approved
  *   2. Extend subscriptions.current_period_end
- *   3. Sync profiles snapshot
- *   4. Insert subscription_changes_log
+ *   3. If newPlanKey is set: change profiles.plan + subscriptions.plan
+ *   4. Sync profiles snapshot
+ *   5. Insert subscription_changes_log
  */
 @Injectable()
 export class SequelizeSubscriptionPaymentRepository implements ISubscriptionPaymentRepository {
@@ -47,6 +72,10 @@ export class SequelizeSubscriptionPaymentRepository implements ISubscriptionPaym
     private readonly subscriptionModel: typeof AdminSubscriptionModel,
     private readonly sequelize: Sequelize,
   ) {}
+
+  // ---------------------------------------------------------------------------
+  // Listing
+  // ---------------------------------------------------------------------------
 
   async list(filters: SubscriptionPaymentListFilters): Promise<SubscriptionPaymentListResult> {
     const where: Record<string, unknown> = {};
@@ -69,10 +98,48 @@ export class SequelizeSubscriptionPaymentRepository implements ISubscriptionPaym
     };
   }
 
+  async listByDoctor(
+    doctorId: string,
+    page: number,
+    limit: number,
+  ): Promise<SubscriptionPaymentListResult> {
+    const offset = (page - 1) * limit;
+
+    const { count, rows } = await this.model.findAndCountAll({
+      where: { doctorId },
+      limit,
+      offset,
+      order: [['createdAt', 'DESC']],
+    });
+
+    return {
+      items: rows.map((r) => this.rowToDomain(r)),
+      total: typeof count === 'number' ? count : 0,
+      page,
+      limit,
+    };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Single-row lookups
+  // ---------------------------------------------------------------------------
+
   async findById(id: string): Promise<SubscriptionPayment | null> {
     const row = await this.model.findByPk(id);
     return row ? this.rowToDomain(row) : null;
   }
+
+  async findPendingByDoctor(doctorId: string): Promise<SubscriptionPayment | null> {
+    const row = await this.model.findOne({
+      where: { doctorId, status: 'pending' as SubscriptionPaymentStatus },
+      order: [['createdAt', 'DESC']],
+    });
+    return row ? this.rowToDomain(row) : null;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Creation
+  // ---------------------------------------------------------------------------
 
   async save(params: CreateSubscriptionPaymentParams): Promise<SubscriptionPayment> {
     const row = await this.model.create({
@@ -88,6 +155,55 @@ export class SequelizeSubscriptionPaymentRepository implements ISubscriptionPaym
     });
     return this.rowToDomain(row);
   }
+
+  /**
+   * Persists a doctor self-service payment.
+   *
+   * RACE CONDITION: the caller (SubmitDoctorPaymentUseCase) pre-checks
+   * findPendingByDoctor() for a friendly error on the common non-concurrent
+   * path, but that check is NOT sufficient under concurrency — two requests
+   * from the same doctor can both pass it before either INSERT commits. The
+   * real guard is the DB-level unique partial index
+   * uq_subscription_payments_one_pending_per_doctor (migration 20260805000002),
+   * which allows only one 'pending' row per doctor_id. When it fires, this
+   * method translates the violation into the same PendingPaymentExistsError
+   * the pre-check throws, so the caller sees one consistent error type
+   * regardless of which guard caught the race — same pattern as
+   * SequelizeConsultationRepository.save() translating UniqueConstraintError
+   * into ConsultationCodeConflictError.
+   */
+  async saveDoctorPayment(params: CreateDoctorPaymentParams): Promise<SubscriptionPayment> {
+    try {
+      const row = await this.model.create({
+        id: params.id,
+        doctorId: params.doctorId,
+        amountUsd: params.amountUsd,
+        amountBs: params.amountBs,
+        bcvRateUsed: params.bcvRateUsed,
+        method: params.method,
+        referenceNumber: params.referenceNumber,
+        durationMonths: params.durationMonths,
+        planKey: params.planKey,
+        period: params.period,
+        bankCode: params.bankCode,
+        receiptUrl: params.receiptUrl,
+        notes: params.notes,
+        status: 'pending' as SubscriptionPaymentStatus,
+        reviewedBy: null,
+        reviewedAt: null,
+      });
+      return this.rowToDomain(row);
+    } catch (err) {
+      if (isUniqueViolation(err)) {
+        throw new PendingPaymentExistsError();
+      }
+      throw err;
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Approval (atomic transaction)
+  // ---------------------------------------------------------------------------
 
   async approveAndExtend(
     params: ApproveSubscriptionPaymentParams,
@@ -121,8 +237,6 @@ export class SequelizeSubscriptionPaymentRepository implements ISubscriptionPaym
 
       if (doctorId) {
         // 3. Ensure subscription row exists, then extend current_period_end.
-        // findOrCreate guards against legacy doctors whose subscription row was
-        // never created (no-op for doctors already having one, since doctor_id is UNIQUE).
         const [, subCreated] = await this.subscriptionModel.findOrCreate({
           where: { doctorId },
           defaults: {
@@ -136,33 +250,39 @@ export class SequelizeSubscriptionPaymentRepository implements ISubscriptionPaym
           transaction: t,
         });
 
+        const subUpdate: Record<string, unknown> = {
+          status: 'active',
+          currentPeriodEnd: params.newExpiresAt,
+          updatedAt: now,
+        };
+        const profileUpdate: Record<string, unknown> = {
+          subscriptionStatus: 'active',
+          subscriptionExpiresAt: params.newExpiresAt,
+          updatedAt: now,
+        };
+
+        // 3b. Optional plan change (doctor self-service payment with specific planKey).
+        //     When planKey comes from the payment, the approval ALSO switches the
+        //     doctor's effective plan so the new features are available immediately.
+        if (params.newPlanKey) {
+          subUpdate.plan = params.newPlanKey;
+          profileUpdate.plan = params.newPlanKey;
+        }
+
         if (!subCreated) {
-          await this.subscriptionModel.update(
-            {
-              status: 'active',
-              currentPeriodEnd: params.newExpiresAt,
-              updatedAt: now,
-            },
-            { where: { doctorId }, transaction: t },
-          );
+          await this.subscriptionModel.update(subUpdate, { where: { doctorId }, transaction: t });
         }
 
         // 4. Sync profiles snapshot
-        await this.profileModel.update(
-          {
-            subscriptionStatus: 'active',
-            subscriptionExpiresAt: params.newExpiresAt,
-            updatedAt: now,
-          },
-          { where: { id: doctorId }, transaction: t },
-        );
+        await this.profileModel.update(profileUpdate, { where: { id: doctorId }, transaction: t });
 
         // 5. Insert subscription_changes_log
+        const action = params.newPlanKey ? 'plan_changed_with_payment' : 'payment_approved';
         await this.logModel.create(
           {
             id: randomUUID(),
             doctorId,
-            action: 'payment_approved',
+            action,
             actorId: params.reviewerId,
             actorRole: meta.actorRole,
             reason: null,
@@ -172,6 +292,7 @@ export class SequelizeSubscriptionPaymentRepository implements ISubscriptionPaym
               method: meta.method,
               reference: meta.referenceNumber,
               months_added: meta.monthsAdded,
+              ...(params.newPlanKey ? { new_plan_key: params.newPlanKey } : {}),
             },
           },
           { transaction: t },
@@ -271,10 +392,13 @@ export class SequelizeSubscriptionPaymentRepository implements ISubscriptionPaym
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // Rejection
+  // ---------------------------------------------------------------------------
+
   async reject(paymentId: string, reviewerId: string, reason?: string): Promise<void> {
     const now = new Date();
 
-    // Use a transaction so we can also log the rejection
     const t = await this.sequelize.transaction();
     try {
       await this.model.update(
@@ -282,6 +406,8 @@ export class SequelizeSubscriptionPaymentRepository implements ISubscriptionPaym
           status: 'rejected' as SubscriptionPaymentStatus,
           reviewedBy: reviewerId,
           reviewedAt: now,
+          // Persist rejection_reason — requires migration 20260805000002.
+          rejectionReason: reason ?? null,
           updatedAt: now,
         },
         { where: { id: paymentId }, transaction: t },
@@ -300,6 +426,7 @@ export class SequelizeSubscriptionPaymentRepository implements ISubscriptionPaym
             subscriptionExpiresAt: null,
             metadata: {
               payment_id: paymentId,
+              ...(reason ? { reason } : {}),
             },
           },
           { transaction: t },
@@ -514,6 +641,14 @@ export class SequelizeSubscriptionPaymentRepository implements ISubscriptionPaym
       reviewedAt: row.reviewedAt,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
+      amountBs: row.amountBs != null ? Number(row.amountBs) : null,
+      bcvRateUsed: row.bcvRateUsed != null ? Number(row.bcvRateUsed) : null,
+      bankCode: row.bankCode,
+      receiptUrl: row.receiptUrl,
+      notes: row.notes,
+      planKey: row.planKey,
+      period: row.period,
+      rejectionReason: row.rejectionReason,
     });
   }
 }

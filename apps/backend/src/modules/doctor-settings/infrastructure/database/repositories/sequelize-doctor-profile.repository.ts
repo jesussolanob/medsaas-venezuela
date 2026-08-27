@@ -4,9 +4,11 @@ import {
   DoctorProfile,
   type DoctorProfileUpdateParams,
 } from '../../../domain/entities/doctor-profile.entity';
+import { QueryTypes } from 'sequelize';
 import type {
   IDoctorProfileRepository,
   ExchangeRateUpdateParams,
+  DoctorPlanSnapshot,
 } from '../../../domain/repositories/doctor-profile.repository';
 import { DoctorProfileNotFoundError } from '../../../domain/errors/doctor-profile-not-found.error';
 import { DoctorProfileModel } from '../models/doctor-profile.model';
@@ -104,6 +106,140 @@ export class SequelizeDoctorProfileRepository implements IDoctorProfileRepositor
       welcomeDismissedAt:
         row.welcomeDismissedAt != null ? new Date(row.welcomeDismissedAt).toISOString() : null,
       onboardingCompleted: row.onboardingCompleted ?? false,
+      consultationBlocksLayout: row.consultationBlocksLayout === 'vertical' ? 'vertical' : 'tabs',
+      onboardingCompletedAt: row.onboardingCompletedAt ?? null,
+      // hasActiveOffice / hasActiveService are enrichment fields — not persisted on profiles.
+      // They default to false here; GetDoctorProfileUseCase overrides them with live counts.
+      hasActiveOffice: false,
+      hasActiveService: false,
     });
+  }
+
+  /**
+   * Marks onboarding as completed for the given doctor.
+   *
+   * BOTH columns must be written. `onboarding_completed` is the flag the
+   * frontend gate actually reads; `onboarding_completed_at` is only the audit
+   * timestamp. Writing the timestamp alone left the flag false forever, so the
+   * gate bounced the doctor back through onboarding on every page load and
+   * dropped them on /doctor, losing the route they asked for.
+   *
+   * Idempotent: re-running just refreshes the timestamp.
+   */
+  async markOnboardingCompleted(doctorId: string): Promise<void> {
+    await this.model.update(
+      { onboardingCompleted: true, onboardingCompletedAt: new Date() } as Record<string, unknown>,
+      { where: { id: doctorId } },
+    );
+  }
+
+  /**
+   * Updates the consultation_blocks_layout column for the given doctor.
+   */
+  async updateBlocksLayout(doctorId: string, layout: 'tabs' | 'vertical'): Promise<void> {
+    await this.model.update({ consultationBlocksLayout: layout } as Record<string, unknown>, {
+      where: { id: doctorId },
+    });
+  }
+
+  /**
+   * Counts future appointments that still expect the doctor to show up.
+   *
+   * Raw SQL on purpose: reaching for AppointmentModel here would mean importing
+   * the appointments module into doctor-settings, and a DI cycle through that
+   * graph already took the backend down once in Cloud Run (mocked TestingModules
+   * do not catch it). A single scalar count needs no model registration.
+   *
+   * 'pending' and 'accepted' are legacy statuses still present in the SQL enum;
+   * they are included because a row in either state is also a patient waiting.
+   */
+  async countUpcomingAppointments(doctorId: string): Promise<number> {
+    const sequelize = this.model.sequelize;
+    if (!sequelize) throw new Error('Sequelize instance is not available');
+
+    const rows = (await sequelize.query(
+      `SELECT COUNT(*)::int AS count
+         FROM appointments
+        WHERE doctor_id = :doctorId
+          AND scheduled_at > NOW()
+          AND status IN ('scheduled', 'confirmed', 'pending', 'accepted')`,
+      {
+        replacements: { doctorId },
+        type: 'SELECT',
+      },
+    )) as unknown as Array<{ count: number }>;
+
+    return rows[0]?.count ?? 0;
+  }
+
+  /**
+   * Switches the account off at the owner's request.
+   *
+   * is_active carries the enforcement (AppAuthGuard and the public booking flow
+   * already honour it); the three deactivation columns carry the provenance so
+   * the portal shows "you deactivated your account" instead of "you were
+   * blocked", and the admin knows what they are reactivating.
+   */
+  async findPlanSnapshot(doctorId: string): Promise<DoctorPlanSnapshot | null> {
+    const rows = await this.model.sequelize!.query<{
+      plan: string | null;
+      subscription_status: string | null;
+      subscription_expires_at: Date | null;
+    }>(
+      `SELECT plan, subscription_status, subscription_expires_at
+         FROM profiles WHERE id = :doctorId LIMIT 1`,
+      { type: QueryTypes.SELECT, replacements: { doctorId } },
+    );
+    const row = rows[0];
+    if (!row) return null;
+    return {
+      plan: row.plan,
+      subscriptionStatus: row.subscription_status,
+      subscriptionExpiresAt: row.subscription_expires_at
+        ? new Date(row.subscription_expires_at)
+        : null,
+    };
+  }
+
+  async scheduleOwnAccountDeactivation(doctorId: string, reason: string | null): Promise<void> {
+    // La cuenta sigue ENCENDIDA: el especialista pagó esos días y los usa. Queda
+    // anotado quién y cuándo pidió la baja, y la suscripción marcada como
+    // cancelada para que no se renueve. El barrido la apaga al vencer.
+    await this.model.update(
+      {
+        deactivatedAt: new Date(),
+        deactivatedBy: 'self',
+        deactivationReason: reason,
+        subscriptionStatus: 'cancelled',
+      } as Record<string, unknown>,
+      { where: { id: doctorId } },
+    );
+  }
+
+  async applyExpiredScheduledDeactivations(freePlanKey: string): Promise<number> {
+    const [, affected] = await this.model.sequelize!.query(
+      `UPDATE profiles
+          SET is_active  = false,
+              plan       = :freePlanKey,
+              updated_at = NOW()
+        WHERE deactivated_by = 'self'
+          AND is_active = true
+          AND subscription_expires_at IS NOT NULL
+          AND subscription_expires_at < NOW()`,
+      { type: QueryTypes.UPDATE, replacements: { freePlanKey } },
+    );
+    return typeof affected === 'number' ? affected : 0;
+  }
+
+  async deactivateOwnAccount(doctorId: string, reason: string | null): Promise<void> {
+    await this.model.update(
+      {
+        isActive: false,
+        deactivatedAt: new Date(),
+        deactivatedBy: 'self',
+        deactivationReason: reason,
+      } as Record<string, unknown>,
+      { where: { id: doctorId } },
+    );
   }
 }

@@ -55,6 +55,7 @@ export interface VerificationListItemDto {
   verificationStatus: string;
   /** Whether the account is active. false means the account is hard-banned by super_admin. */
   isActive: boolean;
+  deactivatedBy: string | null;
   createdAt: Date;
 }
 
@@ -68,6 +69,7 @@ function toVerificationListItem(entity: DoctorRegistration): VerificationListIte
     colegiadoNumber: entity.colegiadoNumber,
     verificationStatus: entity.verificationStatus,
     isActive: entity.isActive,
+    deactivatedBy: entity.deactivatedBy,
     createdAt: entity.createdAt,
   };
 }
@@ -116,11 +118,13 @@ export class DoctorRegistrationController {
       doctorId: user.sub,
       fullName: body.full_name,
       cedula: body.cedula,
+      phone: body.phone,
       mppsNumber: body.mpps_number ?? null,
       colegiadoNumber: body.colegiado_number ?? null,
       specialty: body.specialty ?? null,
       gender: body.gender ?? null,
       acceptedTerms: body.accepted_terms,
+      sellerCode: body.seller_code ?? null,
     });
 
     return { success: true, data: result };

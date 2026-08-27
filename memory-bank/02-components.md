@@ -522,3 +522,303 @@ su propia lista hardcodeada, que se desincronizó.
 **Inicio (`app/doctor/page.tsx`) — patrón de refresco:** `refreshKey` incrementado por
 cada mutación, igual que `/doctor/finances`. NO extraer el loader a `useCallback`:
 `react-hooks/set-state-in-effect` lo marca como error.
+
+### Baja de cuenta por el especialista (2026-08-09)
+
+**`app/doctor/settings/DeactivateAccountCard.tsx`** — zona de baja al pie de "Mi perfil".
+Modal con confirmación **por frase tipeada** ("DAR DE BAJA"): un sí/no se toca por
+accidente. El 422 del backend por citas a futuro trae el conteo real y está redactado
+para el usuario, así que se muestra literal en vez de un error genérico.
+
+**Regla de vocabulario:** es DESACTIVACIÓN, nunca borrado. La información queda intacta y
+reactivable, así que la UI no dice "eliminar" en ningún lado — prometer un borrado que no
+ocurre es peor que no ofrecerlo.
+
+**`ACCOUNT_DEACTIVATED` vs `ACCOUNT_BLOCKED`** — dos códigos 403 sobre el MISMO flag
+`profiles.is_active`, distinguidos por `deactivated_by`. Recorrido completo:
+`AppAuthGuard` → `hooks/useAccountBlockedGuard.ts` (ahora pasa CUÁL de los dos al
+callback) → pantalla de cuenta apagada en `app/doctor/layout.tsx` → `blockedLogoutAction`
+→ `/login?deactivated=1`. **Si se agrega un tercer motivo, hay que tocar los cuatro
+puntos**; el hook filtra por un `Set` de códigos conocidos y todo lo demás lo ignora.
+
+A quien se dio de baja solo NO se le dice que "fue bloqueado": se lee como sanción.
+
+**`app/admin/verifications/VerificationsClient.tsx`** — badge ámbar "Se dio de baja"
+contra el rojo "Acceso bloqueado", y el botón pasa a "Reactivar cuenta". El admin
+necesita saber qué está reactivando antes de tocarlo.
+
+### Onboarding y servicios (2026-08-10)
+
+**`app/doctor/onboarding/OnboardingWelcome.tsx`** — lámina de bienvenida previa al paso 1.
+Solo se muestra si `initialStep === 1`: a quien el wizard dejó en el paso 2 o 3 darle la
+bienvenida se lee como que perdió el avance.
+
+**`lib/schedule-utils.ts` — ahora tiene las operaciones de bloques** (`toggleDay`, `addBlock`,
+`removeBlock`, `updateBlock`, `suggestNextStart`, `suggestNextEnd`) como **funciones puras**
+`(schedule, …) => nuevoSchedule`. Vivían duplicadas en `/doctor/offices/page.tsx`, y la copia
+del onboarding se quedó atrás admitiendo **un solo bloque por día**. **REGLA: cualquier cambio
+de horario va acá, no en una pantalla.**
+
+**Vocabulario de servicios — origen de un bug de QA.** `type: 'plan'` = **"Plan de consulta"**
+(una consulta) · `type: 'service'` = **"Servicio extra"** (limpieza, examen). El paso 3 del
+onboarding mandaba `'service'` mientras se titulaba "Tu primer servicio" y sugería "Consulta
+general". Al nombrar las cosas mal en la UI, el tipo equivocado pasó desapercibido.
+
+**Duración de servicio ↔ consultorio (`/doctor/services`).** La duración volvió (se había
+quitado el 12-07). **NO cambia el motor de turnos**: el booking usa `slot_duration` del
+consultorio. Condiciona la asociación — `officeFits = slot_duration >= duration_minutes`.
+Un servicio "General" debe entrar en TODOS los consultorios. Hay guarda al guardar porque la
+duración se puede cambiar DESPUÉS de elegir consultorio.
+
+**`components/doctor/PaymentInstructions.tsx`** — pinta `app_settings.platform_payment_instructions`
+en viñetas. El texto lo edita el super admin sin pasar por deploy, así que el parser es
+tolerante: líneas con `-`/`•`/`·` son ítems, una línea terminada en `:` es título, el resto
+párrafos, y un texto corrido **degrada a párrafo sin romperse**.
+
+---
+
+## Componentes tocados en el lote de QA (2026-08-11/12)
+
+| Componente                                              | Qué cambió                                                                                                       |
+| ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `app/doctor/patients/page.tsx`                          | El guard `if (!doctorId) return` del alta ya no es mudo: avisa. Era la causa raíz del "guardé y se perdió"       |
+| `app/doctor/patients/actions.ts`                        | `getPatients` pagina de a 100 (tope real del backend) en vez de pedir 200 y perder el resto                      |
+| `app/doctor/agenda/page.tsx`                            | Se eliminaron `acceptAppointment`/`rejectAppointment`: código muerto que ningún botón llamaba                    |
+| `components/appointment-flow/steps/StepSchedule.tsx`    | 30 días hacia atrás para el especialista; el horario pasado se marca en punteado pero NO se bloquea              |
+| `components/doctor/PlanPaymentModal.tsx`                | Lee `data.path` (no `j.path`), acepta PDF sin MIME por extensión, y permite cambiar la periodicidad adentro      |
+| `app/doctor/consultations/ConsultationsClient.tsx`      | Rótulo "Consulta 2 de 3" (helper `sessionLabel`) y **monto del cobro editable** en el panel de pago              |
+| `app/doctor/offices/page.tsx` + `lib/schedule-utils.ts` | Selector de duración POR BLOQUE con "aplicar a todos" (`setBlockDuration` / `setDurationForAllBlocks`)           |
+| `app/doctor/services/page.tsx`                          | `maxSlotOf()`: el servicio entra si ALGÚN bloque lo sostiene. Además corrige la lectura camelCase del wire       |
+| `app/doctor/onboarding/*`                               | Isotipo real (`DeltaMark`), soporte por WhatsApp, "tu primer servicio", y `irAlPaso()` que sube la vista al tope |
+| `app/doctor/settings/DeactivateAccountCard.tsx`         | Cuando la baja queda programada muestra hasta cuándo conserva el plan, en vez de cerrar la sesión                |
+
+**Backend:** `SearchPatientsUseCase` (normaliza como el hash), `SequelizeConsultationRepository`
+(sesión del combo), `SequelizeFinanceRepository` + `SequelizePaymentRepository` (ingreso =
+confirmado y pagado), `DaySchedule` VO + `GetAvailableSlotsUseCase` (duración por bloque),
+`ProcessLoginTouchUseCase` (reactivación), `DeactivateOwnAccountUseCase` +
+`ApplyScheduledDeactivationsUseCase` (baja programada). `normalizeForSearch` se exporta desde
+`@delta/shared-crypto` para que la búsqueda parcial use el MISMO criterio que el hash.
+
+## Componentes tocados en el lote de la fundadora (2026-08-16)
+
+| Componente                                           | Qué cambió                                                                                                            |
+| ---------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `components/doctor/NoShowModal.tsx` **(nuevo)**      | Resuelve la inasistencia entera: marca, multa opcional ($0 por defecto) y reagenda encadenando el RescheduleModal     |
+| `components/doctor/RescheduleModal.tsx`              | La ventana de días arranca HOY (antes mañana): no dejaba reagendar el mismo día, el caso típico de una inasistencia   |
+| `components/appointment-flow/steps/StepSchedule.tsx` | Pasado SIN tope (la ventana se deriva del offset, no de un arreglo fijo) + selector de fecha + aviso "queda atendida" |
+| `app/doctor/consultations/ConsultationsClient.tsx`   | El botón "No asistió" abre el modal nuevo en vez de un `confirm()` que solo cambiaba el estado                        |
+| `app/doctor/finances/page.tsx`                       | Los botones de editar/borrar de ingresos Y gastos dejan de depender del hover (no existían en táctil)                 |
+
+**Backend:** `appointment-status.policy` (la regla de 3 días extraída del use case porque ahora
+la usan dos), `CreateAppointmentUseCase` (fecha pasada → `completed`), `RescheduleAppointmentUseCase`
+(`no_show` reagendable + log con la transición real), `SequelizeFinanceRepository` +
+`SequelizePaymentRepository` (`no_show` como estado resuelto en los SEIS lugares que arman el
+criterio, y las consultas de monto 0 fuera de cobros).
+
+⚠️ **Ojo al tocar el modal de inasistencia:** lee el monto FRESCO de la consulta con
+`getConsultation()` en vez de recibirlo por props. La agenda solo conoce `plan_price`, que desde
+que el monto es editable (12/08) puede diferir del costo real — sumarle la multa al número
+equivocado daría un total falso. Es el mismo patrón de `tipos-que-mienten-sobre-la-api`.
+
+### Consumo de combos (2026-08-16, mismo lote)
+
+| Componente                                         | Qué cambió                                                                                      |
+| -------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `app/doctor/patients/page.tsx`                     | La tarjeta de paquetes y la insignia de la lista dejan de leer `patient_packages` (tabla vacía) |
+| `app/doctor/patients/actions.ts`                   | `getPackageUsage()` — tipo del wire (snake_case) separado del tipo de UI, con mapeo explícito   |
+| `app/doctor/consultations/ConsultationsClient.tsx` | Línea de consumo bajo el rótulo "Consulta 2 de 3", filtrada por el plan de esa cita             |
+
+**Backend:** `GetPackageUsageUseCase` + `getPackageUsage()` en el repositorio de
+`pending-consultations` (una sola consulta agrupada, con o sin paciente).
+
+⚠️ `patient_packages` sigue existiendo con su módulo `packages` completo (entidad, use cases,
+`POST /api/packages`) y **sigue sin que nadie la escriba**. La agenda todavía la lee para
+enriquecer `total_sessions` de las citas pendientes — otro consumidor muerto. Limpiar eso es
+un lote aparte que hay que decidir: o se llena de verdad, o se borra.
+
+### Hora libre y duración por bloque (2026-08-16)
+
+| Componente                                           | Qué cambió                                                                                      |
+| ---------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `components/appointment-flow/steps/StepSchedule.tsx` | Desplegable "Otra hora": hora + duración libres, fuera de la grilla del consultorio             |
+| `components/appointment-flow/useAppointmentFlow.ts`  | `customDuration` + `selectCustomSlot`; elegir de la grilla la descarta para que no quede pegada |
+| `app/api/doctor/appointments/route.ts`               | Reenvía `durationMinutes` como `duration_minutes` (el DTO es `.strict()`)                       |
+
+**Backend:** `src/domain/caracas-time` (conversión UTC→Caracas en un solo lugar),
+`Office.slotDurationAt()`, y los dos use cases de creación usándolo. Ver ADR-033.
+
+### Módulo de ventas (2026-08-16)
+
+| Componente                                       | Qué hace                                                                                         |
+| ------------------------------------------------ | ------------------------------------------------------------------------------------------------ |
+| `app/seller/page.tsx` + `SellerPortalClient.tsx` | Portal del vendedor: su código copiable, resumen por plan y lista con "cuánto hace que no entra" |
+| `app/doctor/onboarding/OnboardingForm.tsx`       | Campo "Código de vendedor" opcional, validado en vivo (verde con el nombre / rojo si no existe)  |
+| `app/api/seller/me/route.ts`                     | El vendedor lee su propio código — sin esto no puede compartirlo                                 |
+| `app/api/seller/specialists/route.ts`            | GET su lista · POST alta (el backend fija `sold_by` y el plan; no viajan desde el cliente)       |
+| `app/api/public/seller-code/[code]/route.ts`     | Validación pública; un código inválido responde 200 con `valid:false`, no un error               |
+| `proxy.ts`                                       | Guarda de `/seller` + `homeFor()`: cada rol cae en su portal en vez de en /login                 |
+
+**Agregado el 2026-08-17/18:**
+
+| Componente                                 | Qué hace                                                                                                                                                                                                                                                   |
+| ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `app/r/[code]/page.tsx`                    | **Enlace público del vendedor.** Valida el código, muestra a quién se acredita, lo guarda y sigue a `/login`. Un código inválido NO bloquea: avisa y deja seguir sin atribución (perder el lead sería peor)                                                |
+| `lib/seller-referral.ts`                   | Persistencia del referido en `localStorage`. Es lo que hace que funcione: entre el enlace y el onboarding está **el login de Auth0, que se lleva puesto el parámetro de la URL**. localStorage y no cookie a propósito: es dato de marketing, no de sesión |
+| `app/admin/sellers/page.tsx`               | Pantalla de vendedores para `super_admin`: alta y listado con cuántos especialistas registró cada uno                                                                                                                                                      |
+| `app/api/admin/sellers/route.ts`           | GET listado · POST alta de vendedor                                                                                                                                                                                                                        |
+| `app/api/seller/specialists/[id]/route.ts` | **Ficha completa** del especialista. Anti-IDOR: un id ajeno y uno inexistente devuelven el **mismo 422**                                                                                                                                                   |
+
+**Backend:** módulo `sellers` completo (`create-seller`, `create-seller-specialist`,
+`validate-seller-code`, `get-seller-profile`, `get-seller-specialist`, `list-sellers`),
+migración `20260816000001-seller-role` (`profiles.seller_code` único + `profiles.sold_by` con
+índice parcial) y `20260817000001-user-role-add-seller` (el valor `seller` en el ENUM `user_role`
+—faltaba, y el módulo entero devolvía 500 en staging con los tests en verde; ver la nota de enums
+de Postgres). Ver ADR-037.
+
+⚠️ **La ficha NO muestra MPPS ni colegiado** (decisión del dueño, 2026-08-17): son datos de
+habilitación profesional, le sirven a la verificación de admin y no al seguimiento comercial.
+
+⚠️ **`SpecialistNotInPortfolioError`** existe como error propio porque antes se reutilizaba
+`SellerCodeNotFoundError`: el bloqueo era correcto pero el vendedor leía "El código de vendedor
+ingresado no existe" al abrir una ficha, que no tiene nada que ver con lo que estaba haciendo.
+
+⚠️ **La atribución se escribe UNA vez y se garantiza en la BD** (`UPDATE … WHERE sold_by IS NULL`),
+no en el use case. Si alguna vez hay que "corregir" una atribución, es un cambio de diseño con
+auditoría, no un UPDATE suelto.
+
+### Paginación de listados (2026-08-18)
+
+| Componente                       | Qué hace                                                                                                    |
+| -------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `components/ui/Paginator.tsx`    | Selector de tamaño + páginas. Con `PAGE_SIZE_ALL` (0) fija `totalPages = 1` y rotula "1–{total} de {total}" |
+| `app/doctor/patients/actions.ts` | `getPatients` y **`getPatientsPaged`** paginan de a 100 hasta juntar `total`                                |
+| `app/doctor/finances/actions.ts` | `traerTodasLasPaginas()` — helper compartido por `getIncomePaged`, `getExpensesPaged` y `getExpenses`       |
+
+⚠️ **El backend recorta cualquier `limit` a 100** (`Math.min(100, …)` en los controllers de
+pacientes y finanzas). Pedir `limit=500` **no trae 500: trae 100 y no avisa.** Como el Paginator con
+"Todas" asegura estar mostrando todo, el tope quedaba disimulado. Cualquier listado nuevo que ofrezca
+"Todas" tiene que recorrer páginas, no pedir un número grande. Ver ADR-038.
+
+### Lote de QA del 19 de agosto de 2026
+
+| Componente / módulo                                  | Qué cambió                                                                                                                      |
+| ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| **`lib/api-error.ts`** _(nuevo)_                     | `apiErrorMessage`/`apiErrorCode`. El BFF devuelve `error` como OBJETO y varios componentes lo tipaban como string               |
+| **`lib/payment-details.ts`** _(nuevo)_               | `entriesOf`/`withEntries`/`entryLabel`. Varias entradas por método de pago, compatible hacia atrás (ADR-044)                    |
+| `lib/schedule-utils.ts`                              | `copyDayToOthers` — copiar el horario de un día a los que se elijan. **Cableado en Consultorios Y onboarding**                  |
+| `components/doctor/ImmediateConsultationModal.tsx`   | El buscador se **desmonta** al crear paciente (autorrelleno de Chrome) + "Volver a buscar" + un 409 pasa a "Registrar igual"    |
+| `components/doctor/NoShowModal.tsx`                  | `step="1"` en la multa, y una multa sin consulta vinculada avisa en vez de perderse                                             |
+| `components/doctor/AppointmentDetailModal.tsx`       | Tercer estado visible: **Pago** (Pagada / Por cobrar). El dato ya llegaba y solo se usaba para esconder "Cancelar"              |
+| `components/doctor/PlanPaymentModal.tsx`             | Comprobante y datos del pago en **un paso** (3 en vez de 4). Valida ANTES de subir, para no dejar comprobantes huérfanos        |
+| `components/appointment-flow/NewAppointmentFlow.tsx` | Una consulta con fecha pasada **abre su detalle sola**, sin el paso de "Ir a la consulta"                                       |
+| `app/doctor/consultations/ConsultationsClient.tsx`   | El fetch de `?open=` arranca al inicio del efecto (estaba detrás de cargar todos los pacientes) · default vertical · +hora      |
+| `app/doctor/offices/page.tsx` + `actions.ts`         | "Copiar a…" · `createOffice` **devuelve el id** · modal que ofrece asociar los servicios ya existentes                          |
+| `app/doctor/settings/page.tsx`                       | Métodos de pago con **varias entradas** por método; la validación de 20 dígitos corre sobre cada cuenta                         |
+| `app/doctor/upgrade/UpgradeClient.tsx`               | Monta `DeactivateAccountCard` al final, en gris (salió de "Mi perfil")                                                          |
+| `app/book/[doctorId]/BookingClient.tsx`              | Sesiones 2..N con **disponibilidad real** (era `datetime-local` libre) · muestra el código de CONSULTA · varias cuentas         |
+| `app/admin/settings/page.tsx`                        | **`<textarea>` en valores multilínea.** Con el `input` de antes, Enter guardaba y las instrucciones de pago no se podían cargar |
+| `app/seller/SellerPortalClient.tsx`                  | Columna **Seguimiento** ("Nunca entró" / "Registro incompleto" / "Sin actividad") + campo cédula en el alta                     |
+| `app/doctor/onboarding/OnboardingForm.tsx`           | `initialPhone`: no vuelve a pedir el teléfono que ya cargó el vendedor                                                          |
+| `lib/useBcvRate.tsx`                                 | El modo arranca del `override` que ya vino por props → sin parpadeo de $ a €                                                    |
+
+**Backend:** `CreateBookingUseCase` (`forceConfirmed`, `consultationCode` en el resultado,
+validación de horario en sesiones adicionales), `CreateImmediateAppointmentUseCase`,
+`BookingController`, `SessionOutsideOfficeHoursError` (nuevo, 422 en español), módulo
+`sellers` (`onboardingCompleted` de punta a punta) y `SequelizeConsultationBlockRepository`
+(default de disposición → `vertical`). **Sin migraciones nuevas.**
+
+⚠️ **`payment_details` no se lee directo en ningún lado.** Los tres consumidores pasan por
+`lib/payment-details`. El del mensaje de cobro por WhatsApp es el más frágil: tiene los
+campos escritos a mano por método.
+
+### Hallazgos del QA con navegador y pedidos de admin (2026-08-19, mismo día)
+
+| Componente / módulo                                    | Qué cambió                                                                                                                                   |
+| ------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `app/api/patients/route.ts`                            | **Inyecta `doctor_id` desde la sesión.** El DTO lo exige y el handler reenviaba el cuerpo tal cual → el alta desde el modal daba 400 SIEMPRE |
+| `components/doctor/ImmediateConsultationModal.tsx`     | El error del alta se pinta **dentro del formulario**: el único bloque que lo mostraba vivía en la otra rama del ternario                     |
+| **`app/admin/subscriptions/page.tsx` → `ExtendModal`** | Modal propio que reemplaza DOS `prompt()` nativos · **selector de unidad días/meses** · muestra la fecha resultante · nota adentro           |
+| `app/api/admin/subscriptions/extend/route.ts`          | Acepta `months` **o** `days`, exactamente uno                                                                                                |
+| `app/seller/SellerPortalClient.tsx`                    | **Cerrar sesión** (era la única pantalla sin barra lateral, y no había forma de salir) + nombre del vendedor en el encabezado                |
+| `lib/dev-auth.edge.ts`                                 | `DevUserRole` acepta **`seller`**. Sin esto era imposible entrar al portal del vendedor en local. Solo afecta a `AUTH_MODE=dev`              |
+| `lib/payment-details.ts`                               | `fieldLabel()` — los datos de pago salían al paciente con los rótulos en inglés ("Bank", "Phone", "Holder")                                  |
+| `app/admin/settings/page.tsx`                          | Ya venía del lote: `<textarea>` en valores multilínea                                                                                        |
+
+**Backend:** `ExtendSubscriptionBodySchema` (XOR `months`/`days`),
+`ExtendDoctorSubscriptionUseCase` (rama de días + `addMonthsClamped`), `admin.controller`,
+y dos mensajes de dominio: `NoImmediateSlotError` (estaba en inglés) y
+`AppointmentConflictError` (imprimía `toISOString()` crudo).
+
+⚠️ **`setMonth` desborda.** `new Date('2026-01-31').setMonth(+1)` da **3 de marzo**. Toda
+suma de meses sobre una fecha de fin de mes tiene que pasar por `addMonthsClamped`.
+
+⚠️ **El `force` de la consulta inmediata NO saltea el solape del PACIENTE**, solo el del
+doctor (ADR-036, deliberado). Al probar con un paciente que ya tenía su consulta corriendo
+parece que "Registrar igual" está roto, y no lo está.
+
+### Portal del vendedor: menú lateral, Inicio y buscador (2026-08-27)
+
+| Componente                              | Qué hace                                                                                                  |
+| --------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `app/seller/layout.tsx` **(nuevo)**     | Barra lateral como `/admin` y `/doctor`, sin fijado ni grupos. Incluye `SidebarUtilityBar` + `TermsModal` |
+| `app/seller/seller-data.ts` **(nuevo)** | Tipos, `PLAN_LABELS`, `normalizar`, `fmtDate`, `estadoSeguimiento` y el hook `useSellerData`              |
+| `app/seller/page.tsx`                   | Inicio: código + enlace arriba, y las cuatro métricas                                                     |
+| `app/seller/especialistas/page.tsx`     | La cartera con **buscador**, el alta y la ficha                                                           |
+| ~~`SellerPortalClient.tsx`~~            | **Eliminado** — su contenido se repartió entre las dos pantallas                                          |
+
+⚠️ **`estadoSeguimiento` vive en UN solo lugar a propósito.** Lo consumen el embudo del Inicio
+y la columna "Seguimiento" de la tabla; si cada pantalla se armara el suyo, podrían decir cosas
+distintas del mismo especialista.
+
+⚠️ **La lista del vendedor NO está paginada del lado del servidor.** Por eso las métricas y el
+filtro se calculan en el cliente y son exactos. Si algún día se pagina, ambos tienen que mudarse
+al servidor o van a mentir sobre el total — mismo error que el ADR-038.
+
+⚠️ **El buscador NO filtra por correo ni cédula**: esos campos no vienen en la lista, solo en la
+ficha, y filtrar por algo que la fila no muestra da resultados que el vendedor no puede explicar.
+
+### Correcciones del QA del 23/08 (2026-08-24)
+
+| Componente / módulo                                | Qué cambió                                                                                                                |
+| -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `doctor-booking.controller.ts` **(backend)**       | El `@Post()` devuelve `consultationId`. El use case lo producía y el handler lo **descartaba al mapear**                  |
+| `doctor-booking.controller.spec.ts` **(nuevo)**    | No existía. Prueba el **contrato de la respuesta**: qué campos promete el endpoint del alta del especialista              |
+| **`app/globals.css`**                              | Define `.g-bg` — **nunca estuvo en la hoja global**, cada página la redefinía en su `<style>` inline                      |
+| `app/doctor/offices/page.tsx`                      | El paso de asociar servicios lista TODOS los activos; los generales van tildados y bloqueados ("Ya disponible acá")       |
+| `app/doctor/consultations/ConsultationsClient.tsx` | `step="any"` en el monto cobrado: las flechas mueven de a 1 y los decimales siguen siendo válidos                         |
+| `lib/useBcvRate.tsx`                               | `if (override !== undefined)`: una página pública **nunca** consulta el endpoint autenticado. Y sin tasa EUR conserva `€` |
+| `app/book/[doctorId]/BookingClient.tsx`            | El gate de carga espera también la tasa: no se pinta ningún precio hasta tener todos los datos                            |
+
+⚠️ **`.g-bg` es una clase de PÁGINA convertida en global.** Los 16 `<style>` inline que la
+redefinían quedan redundantes y **no todos declaran el mismo gradiente** — la marca ya venía
+inconsistente. Limpiarlos es un lote aparte. Los 8 archivos que la usaban **sin declararla**
+(`SellerPortalClient`, `ConfirmDialog`, `AppointmentDetailModal`, `PatientFichaModal`,
+`NewAppointmentFlow`, `ApprovePaymentModal`, `PatientHistoryModal`, `PaymentMethodModal`)
+funcionaban solo si la página que los montaba la declaraba: **defensa accidental, no una regla.**
+
+⚠️ **Regla que nació acá: un controller que MAPEA a mano necesita una prueba del contrato.**
+Un campo que se cae entre el use case y el `data:` de la respuesta no rompe ningún test de
+use case, no lo ve `tsc` (el tipo de retorno es `unknown`) y no lo ve el build. Solo se ve en
+pantalla — o en un spec que mire las claves de la respuesta.
+
+🔴 **`/api/ehr/patient/:id` no existe en el BFF** y dos componentes cliente lo llaman
+(`ConsultationsClient.tsx:1830`, `GenerateDocumentModal.tsx:292`). El backend sí lo expone y
+la server action de `/doctor/ehr` lo alcanza. Probable consecuencia: "Historia clínica" nunca
+se ofrece en Generar Documento. **Sin arreglar.**
+
+### Aviso de cambio de sesión en `/admin` (2026-08-18)
+
+| Componente                                  | Qué hace                                                                                                                                                                                                   |
+| ------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `components/admin/AdminSessionWatchdog.tsx` | Consulta `GET /api/session` al montar, al recuperar el foco y cada 60s. Si la sesión dejó de ser de administrador, bloquea la pantalla con un modal que nombra la causa. Montado en `app/admin/layout.tsx` |
+| `app/api/session/route.ts`                  | Devuelve solo `{ authenticated, role }` del propio solicitante — sin PII, sin datos de terceros                                                                                                            |
+
+⚠️ **Por qué existe:** la sesión de Auth0 es una cookie **del perfil del navegador, no de la
+pestaña**. Si alguien entra con otra cuenta en otra pestaña de la misma ventana, el panel abierto
+sigue mostrando lo que cargó y cada acción nueva viaja con la otra identidad. El backend la rechaza
+bien, pero en pantalla se lee como un permiso mal configurado — pasó el 18/08 y costó una sesión
+entera de diagnóstico. Ver **ADR-043**.
+
+⚠️ **El rol que espera el watchdog es el MISMO que exigen los guards** (`requireSuperAdmin` en el
+BFF y `@Roles('super_admin')` en el backend). El día que `/admin` admita también al rol `admin`,
+hay que ampliarlo en los tres lugares o la pantalla va a bloquear a alguien con permiso.

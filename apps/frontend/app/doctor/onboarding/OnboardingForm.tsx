@@ -31,6 +31,11 @@ import {
 } from 'lucide-react';
 import { submitDoctorRegistration } from './actions';
 import TermsModal from '@/components/legal/TermsModal';
+import OnboardingStepOffice from './OnboardingStepOffice';
+import OnboardingStepService from './OnboardingStepService';
+import OnboardingWelcome from './OnboardingWelcome';
+import PhoneInput from '@/components/shared/PhoneInput';
+import { leerReferido, limpiarReferido, esCodigoValido } from '@/lib/seller-referral';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -46,12 +51,17 @@ interface Props {
   initialCedulaPrefix?: 'V' | 'E' | 'P';
   initialCedulaNumber?: string;
   initialSpecialty?: string;
+  /** Teléfono ya cargado en el perfil (p. ej. por el vendedor que dio el alta). */
+  initialPhone?: string;
   specialties: Specialty[];
+  /** Step to begin on (computed from profile state in page.tsx). */
+  initialStep?: 1 | 2 | 3;
 }
 
 interface FieldErrors {
   full_name?: string;
   cedula?: string;
+  phone?: string;
   specialty?: string;
 }
 
@@ -361,17 +371,98 @@ function SpecialtyCombobox({
 // OnboardingForm
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Wizard step indicator
+// ---------------------------------------------------------------------------
+
+const WIZARD_STEPS = [
+  { n: 1, label: 'Tus datos' },
+  { n: 2, label: 'Consultorio' },
+  // El paso 3 crea un "plan de consulta", no un servicio extra. Decía
+  // "Servicio" y era parte de la misma confusión que lo hacía guardarse con el
+  // tipo equivocado.
+  { n: 3, label: 'Consulta' },
+] as const;
+
+function WizardProgress({ current }: { current: 1 | 2 | 3 }) {
+  return (
+    <div className="flex items-center gap-0 px-6 sm:px-8 pt-5 pb-0">
+      {WIZARD_STEPS.map((s, idx) => {
+        const done = s.n < current;
+        const active = s.n === current;
+        return (
+          <div key={s.n} className="flex items-center flex-1 last:flex-none">
+            <div className="flex flex-col items-center gap-1 shrink-0">
+              <div
+                className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-all ${
+                  done
+                    ? 'bg-teal-500 text-white'
+                    : active
+                      ? 'border-2 border-teal-500 text-teal-600 bg-white'
+                      : 'border-2 border-slate-200 text-slate-400 bg-white'
+                }`}
+                aria-current={active ? 'step' : undefined}
+              >
+                {done ? (
+                  <svg viewBox="0 0 10 8" className="w-3 h-3" fill="none">
+                    <path
+                      d="M1 4l3 3 5-6"
+                      stroke="#fff"
+                      strokeWidth="1.8"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                ) : (
+                  s.n
+                )}
+              </div>
+              <span
+                className="text-[10px] font-semibold whitespace-nowrap"
+                style={{ color: active ? 'var(--dh-turquoise-700)' : 'var(--dh-gray-400)' }}
+              >
+                {s.label}
+              </span>
+            </div>
+            {idx < WIZARD_STEPS.length - 1 && (
+              <div
+                className="flex-1 h-0.5 mx-2 mt-[-12px]"
+                style={{ background: done ? 'var(--dh-turquoise)' : 'var(--dh-gray-200)' }}
+              />
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Main component
+// ---------------------------------------------------------------------------
+
 export default function OnboardingForm({
   initialFullName = '',
   initialCedulaPrefix = 'V',
   initialCedulaNumber = '',
   initialSpecialty = '',
+  initialPhone = '',
   specialties,
+  initialStep = 1,
 }: Props) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
 
   const [fullName, setFullName] = useState(initialFullName);
+  // Teléfono: obligatorio y primero — es el punto de contacto de Delta con el
+  // especialista (decisión del dueño, 2026-08-17). PhoneInput emite el canónico
+  // 'código de país + número', solo dígitos, y '' cuando está incompleto.
+  //
+  // Arranca con lo que YA está en el perfil. A un especialista dado de alta por
+  // un vendedor, el teléfono se lo cargaron al registrarlo: el formulario lo
+  // ignoraba y se lo volvía a pedir en blanco, que es justo lo que el dueño
+  // pidió evitar ("que no le pida datos ya registrados por el vendedor").
+  const [phone, setPhone] = useState(initialPhone);
   const [cedulaPrefix, setCedulaPrefix] = useState<'V' | 'E' | 'P'>(initialCedulaPrefix);
   const [cedulaNumber, setCedulaNumber] = useState(initialCedulaNumber);
   const [specialty, setSpecialty] = useState<string>(() => {
@@ -389,13 +480,105 @@ export default function OnboardingForm({
   const [gender, setGender] = useState('');
   const [mppsNumber, setMppsNumber] = useState('');
   const [colegiadoNumber, setColegiadoNumber] = useState('');
+  // Código del vendedor que lo trajo — OPCIONAL. Se valida mientras lo escribe
+  // porque un error de tipeo deja la venta sin acreditar y el vendedor se
+  // entera semanas después, cuando reclama.
+  const [sellerCode, setSellerCode] = useState('');
+  const [sellerName, setSellerName] = useState<string | null>(null);
+
+  /**
+   * Autopoblar el código del vendedor.
+   *
+   * Dos orígenes, en este orden:
+   *   1. `?ref=` en la URL — por si se llega directo con el parámetro.
+   *   2. localStorage — lo normal: lo dejó la página /r/<código> ANTES del login
+   *      de Auth0, que es donde el parámetro de la URL se pierde.
+   *
+   * Solo autopobla si el campo está vacío: si el especialista ya escribió algo,
+   * manda lo que él escribió.
+   */
+  useEffect(() => {
+    if (sellerCode) return;
+    // En un tick aparte, igual que el portal del vendedor: llamar setState
+    // directo desde el cuerpo del efecto encadena renders y lo marca el linter.
+    const t = setTimeout(() => {
+      const enUrl = new URLSearchParams(window.location.search).get('ref');
+      const candidato =
+        enUrl && esCodigoValido(enUrl) ? enUrl.trim().toUpperCase() : leerReferido();
+      if (candidato) setSellerCode(candidato);
+    }, 0);
+    return () => clearTimeout(t);
+    // Solo al montar: es una precarga, no un binding permanente.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const [sellerCodeInvalid, setSellerCodeInvalid] = useState(false);
+  const [checkingSellerCode, setCheckingSellerCode] = useState(false);
+
+  // Valida el código contra el backend mientras lo escribe. Público a
+  // propósito: acá todavía no hay sesión del vendedor, y el endpoint devuelve
+  // solo { valid, sellerName } — nada más del perfil.
+  useEffect(() => {
+    const code = sellerCode.trim();
+    if (code.length < 4) {
+      const clear = setTimeout(() => {
+        setSellerName(null);
+        setSellerCodeInvalid(false);
+      }, 0);
+      return () => clearTimeout(clear);
+    }
+    const timer = setTimeout(() => {
+      setCheckingSellerCode(true);
+      fetch(`/api/public/seller-code/${encodeURIComponent(code)}`)
+        .then((r) => (r.ok ? r.json() : { valid: false, sellerName: null }))
+        .then((j: { valid?: boolean; sellerName?: string | null }) => {
+          setSellerName(j.valid ? (j.sellerName ?? null) : null);
+          setSellerCodeInvalid(!j.valid);
+        })
+        .catch(() => {
+          // Si falla la verificación no se bloquea el registro: el campo es
+          // opcional y el backend vuelve a validarlo al guardar.
+          setSellerName(null);
+          setSellerCodeInvalid(false);
+        })
+        .finally(() => setCheckingSellerCode(false));
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [sellerCode]);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [serverError, setServerError] = useState<string | null>(null);
-  const [submitted, setSubmitted] = useState(false);
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [termsError, setTermsError] = useState(false);
   const [termsShakeKey, setTermsShakeKey] = useState(0);
   const [termsModalOpen, setTermsModalOpen] = useState(false);
+
+  // ---------------------------------------------------------------------------
+  // Wizard state (WP-F)
+  // ---------------------------------------------------------------------------
+  const [step, setStep] = useState<1 | 2 | 3>(initialStep);
+  /**
+   * Cambia de paso y sube la vista al principio del formulario.
+   *
+   * Sin esto, al pulsar "Continuar" el paso siguiente se montaba con el scroll
+   * donde estaba: el especialista aterrizaba a mitad (o al pie) del formulario
+   * nuevo y parecía que no había pasado nada.
+   */
+  function irAlPaso(siguiente: 1 | 2 | 3) {
+    setStep(siguiente);
+    if (typeof window !== 'undefined') {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  }
+  /**
+   * Lámina de bienvenida. Solo para quien arranca de cero: si el wizard lo dejó
+   * en el paso 2 o 3 es porque ya avanzó, y darle la bienvenida ahí se leería
+   * como que perdió lo hecho.
+   */
+  const [showWelcome, setShowWelcome] = useState(initialStep === 1);
+  const [officeId, setOfficeId] = useState<string | null>(null);
+  /** Duración del bloque del consultorio creado en el paso 2 — acota la duración
+   *  que se puede elegir en el paso 3. */
+  const [officeSlotDuration, setOfficeSlotDuration] = useState<number | null>(null);
+  const [wizardDone, setWizardDone] = useState(false);
 
   // ---------------------------------------------------------------------------
   // Validation
@@ -416,6 +599,10 @@ export default function OnboardingForm({
       }
     } else if (!/^\d{6,9}$/.test(cedulaNumber.trim())) {
       errors.cedula = 'Solo dígitos, entre 6 y 9 caracteres';
+    }
+
+    if (!phone.trim()) {
+      errors.phone = 'El teléfono es obligatorio';
     }
 
     const resolvedSpecialty = specialty === OTRO_VALUE ? customSpecialty.trim() : specialty;
@@ -448,10 +635,12 @@ export default function OnboardingForm({
       const result = await submitDoctorRegistration({
         full_name: fullName.trim(),
         cedula: cedulaFormatted,
+        phone: phone.trim(),
         specialty: resolvedSpecialty || undefined,
         gender: gender || null,
         mpps_number: mppsNumber.trim() || null,
         colegiado_number: colegiadoNumber.trim() || null,
+        seller_code: sellerCode.trim() || null,
         accepted_terms: true,
       });
 
@@ -460,7 +649,12 @@ export default function OnboardingForm({
         return;
       }
 
-      setSubmitted(true);
+      // Alta aceptada: se borra el referido para que en un equipo compartido
+      // el próximo especialista no quede acreditado al mismo vendedor.
+      limpiarReferido();
+
+      // Step 1 done — proceed to step 2
+      irAlPaso(2);
     });
   }
 
@@ -475,10 +669,11 @@ export default function OnboardingForm({
   const isSubmitDisabled = isPending;
 
   // ---------------------------------------------------------------------------
-  // Success screen
+  // Wizard routing — steps 2, 3 and final success screen
   // ---------------------------------------------------------------------------
 
-  if (submitted) {
+  // Final success screen (all 3 steps complete)
+  if (wizardDone) {
     return (
       <div className="bg-white border border-slate-200 rounded-2xl p-8 sm:p-10 space-y-6 text-center shadow-sm">
         <div
@@ -493,10 +688,11 @@ export default function OnboardingForm({
             className="font-bold text-xl"
             style={{ color: 'var(--dh-ink)', fontFamily: 'var(--dh-font-display)' }}
           >
-            Cuenta activada
+            ¡Ya puedes atender pacientes!
           </h2>
           <p className="text-sm leading-relaxed" style={{ color: 'var(--dh-gray-600)' }}>
-            Tus datos fueron recibidos correctamente. Ya puedes continuar al portal.
+            Tu cuenta está configurada. Tienes un consultorio y un servicio listos — puedes crear tu
+            primera consulta desde el portal.
           </p>
         </div>
 
@@ -514,7 +710,7 @@ export default function OnboardingForm({
             Verificación de credenciales
           </p>
           <p className="text-sm" style={{ color: 'var(--dh-turquoise-700)' }}>
-            Verificaremos tus credenciales profesionales. Si no logramos verificarte, nos
+            Verificaremos tus credenciales profesionales. Si no podemos verificarte, nos
             contactaremos a tu correo.
           </p>
         </div>
@@ -526,6 +722,44 @@ export default function OnboardingForm({
         >
           Ir al portal
         </button>
+      </div>
+    );
+  }
+
+  // Lámina de bienvenida — antes de cualquier formulario.
+  if (showWelcome) {
+    return <OnboardingWelcome fullName={initialFullName} onStart={() => setShowWelcome(false)} />;
+  }
+
+  // Step 2 — create first office
+  if (step === 2) {
+    return (
+      <div className="space-y-5">
+        <WizardProgress current={2} />
+        <OnboardingStepOffice
+          onBack={() => irAlPaso(1)}
+          onSuccess={(id, slot) => {
+            setOfficeId(id);
+            setOfficeSlotDuration(slot);
+            irAlPaso(3);
+          }}
+          existingOfficeId={officeId}
+        />
+      </div>
+    );
+  }
+
+  // Step 3 — create first service
+  if (step === 3) {
+    return (
+      <div className="space-y-5">
+        <WizardProgress current={3} />
+        <OnboardingStepService
+          officeId={officeId}
+          officeSlotDuration={officeSlotDuration}
+          onBack={() => irAlPaso(2)}
+          onSuccess={() => setWizardDone(true)}
+        />
       </div>
     );
   }
@@ -543,9 +777,15 @@ export default function OnboardingForm({
   // Form
   // ---------------------------------------------------------------------------
 
+  // ---------------------------------------------------------------------------
+  // Step 1 form
+  // ---------------------------------------------------------------------------
+
   return (
-    <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
-      <style>{`
+    <div className="space-y-5">
+      <WizardProgress current={1} />
+      <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+        <style>{`
         @keyframes terms-shake {
           0%, 100% { transform: translateX(0); }
           20% { transform: translateX(-5px); }
@@ -555,401 +795,456 @@ export default function OnboardingForm({
         }
         .terms-shake { animation: terms-shake 0.4s ease-in-out; }
       `}</style>
-      {/* Header */}
-      <div
-        className="px-6 sm:px-8 pt-8 pb-6"
-        style={{ borderBottom: '1px solid var(--dh-gray-100)' }}
-      >
-        <div className="flex items-start gap-3 mb-4">
-          <div
-            className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 mt-0.5"
-            style={{ background: 'var(--dh-turquoise-50)' }}
-          >
-            <ClipboardCheck className="w-5 h-5" style={{ color: 'var(--dh-turquoise)' }} />
-          </div>
-          <div>
-            <h2
-              className="font-bold text-lg leading-tight"
-              style={{ color: 'var(--dh-ink)', fontFamily: 'var(--dh-font-display)' }}
-            >
-              Activa tu cuenta
-            </h2>
-            <p className="text-xs mt-0.5" style={{ color: 'var(--dh-gray-400)' }}>
-              Paso obligatorio para acceder al portal médico
-            </p>
-          </div>
-        </div>
-
-        {/* Mandatory notice */}
+        {/* Header */}
         <div
-          className="rounded-xl p-3 flex items-start gap-2.5"
-          style={{
-            background: 'rgba(245, 158, 11, 0.08)',
-            border: '1px solid rgba(245, 158, 11, 0.25)',
-          }}
+          className="px-6 sm:px-8 pt-8 pb-6"
+          style={{ borderBottom: '1px solid var(--dh-gray-100)' }}
         >
-          <Lock className="w-4 h-4 shrink-0 mt-0.5" style={{ color: '#d97706' }} />
-          <p className="text-xs leading-relaxed" style={{ color: '#92400e' }}>
-            <strong>Este paso es obligatorio.</strong> Necesitas completar tu registro profesional
-            para acceder al portal. Solo tarda un minuto.
-          </p>
-        </div>
-      </div>
-
-      {/* Form body */}
-      <form onSubmit={handleSubmit} noValidate className="px-6 sm:px-8 py-6 space-y-5">
-        {/* Server error */}
-        {serverError && (
-          <div className="flex items-start gap-2.5 rounded-xl px-4 py-3 bg-red-50 border border-red-200">
-            <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-red-500" />
-            <p className="text-sm text-red-600">{serverError}</p>
-          </div>
-        )}
-
-        {/* Full name */}
-        <div>
-          <label
-            htmlFor="field-full-name"
-            className="block text-xs font-semibold mb-1.5"
-            style={{ color: 'var(--dh-gray-700)' }}
-          >
-            Nombre completo <span className="text-red-400">*</span>
-          </label>
-          <div className="relative">
-            <User
-              className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none"
-              style={{ color: 'var(--dh-gray-400)' }}
-            />
-            <input
-              id="field-full-name"
-              type="text"
-              value={fullName}
-              onChange={(e) => {
-                setFullName(e.target.value);
-                if (fieldErrors.full_name)
-                  setFieldErrors((prev) => ({ ...prev, full_name: undefined }));
-              }}
-              placeholder="Ej. María González Pérez"
-              className={`${fieldErrors.full_name ? inputError : inputNormal} pl-10`}
-              autoComplete="name"
-              aria-invalid={!!fieldErrors.full_name}
-              aria-describedby={fieldErrors.full_name ? 'err-full-name' : undefined}
-            />
-          </div>
-          {fieldErrors.full_name && (
-            <p id="err-full-name" role="alert" className="text-xs text-red-500 mt-1">
-              {fieldErrors.full_name}
-            </p>
-          )}
-        </div>
-
-        {/* Cédula — V/E selector + number */}
-        <div>
-          <label
-            htmlFor="field-cedula-number"
-            className="block text-xs font-semibold mb-1.5"
-            style={{ color: 'var(--dh-gray-700)' }}
-          >
-            {cedulaPrefix === 'P' ? 'Pasaporte' : 'Cédula de identidad'}{' '}
-            <span className="text-red-400">*</span>
-          </label>
-          <div className="flex gap-2">
-            {/* Prefix selector */}
-            <div className="relative shrink-0">
-              <select
-                value={cedulaPrefix}
-                onChange={(e) => {
-                  const next = e.target.value as 'V' | 'E' | 'P';
-                  // Clear number when switching between numeric (V/E) and alphanumeric (P)
-                  const wasPassport = cedulaPrefix === 'P';
-                  const willBePassport = next === 'P';
-                  if (wasPassport !== willBePassport) setCedulaNumber('');
-                  setCedulaPrefix(next);
-                  if (fieldErrors.cedula)
-                    setFieldErrors((prev) => ({ ...prev, cedula: undefined }));
-                }}
-                aria-label="Tipo de documento"
-                className="h-full appearance-none pl-3.5 pr-8 py-2.5 rounded-xl text-sm font-bold outline-none transition-all border-2 border-slate-200 bg-white focus:border-teal-400 cursor-pointer"
-                style={{ color: 'var(--dh-ink)', minWidth: 72 }}
-              >
-                <option value="V">V</option>
-                <option value="E">E</option>
-                <option value="P">P</option>
-              </select>
-              <ChevronDown
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 pointer-events-none"
-                style={{ color: 'var(--dh-gray-400)' }}
-              />
-            </div>
-
-            {/* Number input */}
-            <div className="flex-1 relative">
-              <span
-                className="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm font-bold pointer-events-none select-none"
-                style={{ color: 'var(--dh-gray-400)' }}
-                aria-hidden="true"
-              >
-                -
-              </span>
-              <input
-                id="field-cedula-number"
-                type="text"
-                inputMode={cedulaPrefix === 'P' ? 'text' : 'numeric'}
-                value={cedulaNumber}
-                onChange={(e) => {
-                  let clean: string;
-                  if (cedulaPrefix === 'P') {
-                    // Passport: alphanumeric uppercase, max 20 chars
-                    clean = e.target.value
-                      .toUpperCase()
-                      .replace(/[^A-Z0-9]/g, '')
-                      .slice(0, 20);
-                  } else {
-                    // Cédula: digits only, max 9 chars
-                    clean = e.target.value.replace(/\D/g, '').slice(0, 9);
-                  }
-                  setCedulaNumber(clean);
-                  if (fieldErrors.cedula)
-                    setFieldErrors((prev) => ({ ...prev, cedula: undefined }));
-                }}
-                placeholder={cedulaPrefix === 'P' ? 'AB1234567' : '12345678'}
-                maxLength={cedulaPrefix === 'P' ? 20 : 9}
-                className={`${fieldErrors.cedula ? inputError : inputNormal} pl-7`}
-                autoComplete="off"
-                aria-invalid={!!fieldErrors.cedula}
-                aria-describedby={fieldErrors.cedula ? 'err-cedula' : 'hint-cedula'}
-              />
-            </div>
-          </div>
-
-          {/* Preview */}
-          {cedulaNumber && !fieldErrors.cedula && (
-            <p
-              id="hint-cedula"
-              className="text-xs mt-1"
-              style={{ color: 'var(--dh-turquoise-700)' }}
+          <div className="flex items-start gap-3 mb-4">
+            <div
+              className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 mt-0.5"
+              style={{ background: 'var(--dh-turquoise-50)' }}
             >
-              Se guardará como:{' '}
-              <strong>
-                {cedulaPrefix}-{cedulaNumber}
-              </strong>
-              {cedulaPrefix === 'P' && (
-                <span style={{ color: 'var(--dh-gray-400)', fontWeight: 400 }}> (Pasaporte)</span>
-              )}
-            </p>
-          )}
-          {fieldErrors.cedula && (
-            <p id="err-cedula" role="alert" className="text-xs text-red-500 mt-1">
-              {fieldErrors.cedula}
-            </p>
-          )}
-        </div>
-
-        {/* Specialty */}
-        <div>
-          <label
-            className="block text-xs font-semibold mb-1.5"
-            style={{ color: 'var(--dh-gray-700)' }}
-          >
-            {/* "Especialidad" a secas: no todos los que se registran son médicos. */}
-            Especialidad <span className="text-red-400">*</span>
-          </label>
-          <SpecialtyCombobox
-            specialties={specialties}
-            value={specialty}
-            customValue={customSpecialty}
-            onChange={(val) => {
-              setSpecialty(val);
-              if (fieldErrors.specialty)
-                setFieldErrors((prev) => ({ ...prev, specialty: undefined }));
-            }}
-            onCustomChange={(txt) => {
-              setCustomSpecialty(txt);
-              if (fieldErrors.specialty)
-                setFieldErrors((prev) => ({ ...prev, specialty: undefined }));
-            }}
-            error={fieldErrors.specialty}
-          />
-          {fieldErrors.specialty && (
-            <p role="alert" className="text-xs text-red-500 mt-1">
-              {fieldErrors.specialty}
-            </p>
-          )}
-        </div>
-
-        {/* Género — opcional, con fines estadísticos */}
-        <div>
-          <label
-            htmlFor="field-gender"
-            className="block text-xs font-semibold mb-1.5"
-            style={{ color: 'var(--dh-gray-700)' }}
-          >
-            Género{' '}
-            <span className="font-normal" style={{ color: 'var(--dh-gray-400)' }}>
-              (opcional)
-            </span>
-          </label>
-          <select
-            id="field-gender"
-            value={gender}
-            onChange={(e) => setGender(e.target.value)}
-            className={inputNormal}
-          >
-            <option value="">Prefiero no decirlo</option>
-            <option value="F">Femenino</option>
-            <option value="M">Masculino</option>
-            <option value="O">Otro</option>
-          </select>
-        </div>
-
-        {/* MPPS — optional */}
-        <div>
-          <label
-            htmlFor="field-mpps"
-            className="block text-xs font-semibold mb-1.5"
-            style={{ color: 'var(--dh-gray-700)' }}
-          >
-            Número MPPS{' '}
-            <span className="font-normal" style={{ color: 'var(--dh-gray-400)' }}>
-              (opcional)
-            </span>
-          </label>
-          <input
-            id="field-mpps"
-            type="text"
-            value={mppsNumber}
-            onChange={(e) => setMppsNumber(e.target.value)}
-            placeholder="Ej. MPPS-12345"
-            className={inputNormal}
-            autoComplete="off"
-          />
-        </div>
-
-        {/* Colegiado — optional */}
-        <div>
-          <label
-            htmlFor="field-colegiado"
-            className="block text-xs font-semibold mb-1.5"
-            style={{ color: 'var(--dh-gray-700)' }}
-          >
-            Número de colegiado{' '}
-            <span className="font-normal" style={{ color: 'var(--dh-gray-400)' }}>
-              (opcional)
-            </span>
-          </label>
-          <input
-            id="field-colegiado"
-            type="text"
-            value={colegiadoNumber}
-            onChange={(e) => setColegiadoNumber(e.target.value)}
-            placeholder="Ej. CVM-56789"
-            className={inputNormal}
-            autoComplete="off"
-          />
-        </div>
-
-        {/* Terms acceptance */}
-        <div key={termsShakeKey} className={termsError ? 'terms-shake' : ''}>
-          <label
-            className={`flex items-start gap-3 cursor-pointer select-none rounded-xl p-3 -mx-3 transition-colors ${termsError ? 'bg-red-50' : ''}`}
-          >
-            <div className="relative shrink-0 mt-0.5">
-              <input
-                id="field-terms"
-                type="checkbox"
-                checked={termsAccepted}
-                onChange={(e) => {
-                  setTermsAccepted(e.target.checked);
-                  if (e.target.checked) setTermsError(false);
-                }}
-                className="sr-only peer"
-                aria-describedby={termsError ? 'err-terms' : undefined}
-                aria-invalid={termsError}
-              />
-              <div
-                className="rounded border-2 transition-all peer-focus:ring-2 peer-focus:ring-teal-300 flex items-center justify-center"
-                style={{
-                  width: 18,
-                  height: 18,
-                  borderColor: termsError
-                    ? '#ef4444'
-                    : termsAccepted
-                      ? 'var(--dh-turquoise)'
-                      : 'var(--dh-gray-300)',
-                  background: termsAccepted
-                    ? 'var(--dh-turquoise)'
-                    : termsError
-                      ? '#fef2f2'
-                      : '#fff',
-                }}
-                aria-hidden="true"
+              <ClipboardCheck className="w-5 h-5" style={{ color: 'var(--dh-turquoise)' }} />
+            </div>
+            <div>
+              <h2
+                className="font-bold text-lg leading-tight"
+                style={{ color: 'var(--dh-ink)', fontFamily: 'var(--dh-font-display)' }}
               >
-                {termsAccepted && (
-                  <svg viewBox="0 0 10 8" className="w-2.5 h-2.5" fill="none">
-                    <path
-                      d="M1 4l3 3 5-6"
-                      stroke="#fff"
-                      strokeWidth="1.8"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  </svg>
-                )}
+                Activa tu cuenta
+              </h2>
+              <p className="text-xs mt-0.5" style={{ color: 'var(--dh-gray-400)' }}>
+                Paso obligatorio para acceder al portal médico
+              </p>
+            </div>
+          </div>
+
+          {/* Mandatory notice */}
+          <div
+            className="rounded-xl p-3 flex items-start gap-2.5"
+            style={{
+              background: 'rgba(245, 158, 11, 0.08)',
+              border: '1px solid rgba(245, 158, 11, 0.25)',
+            }}
+          >
+            <Lock className="w-4 h-4 shrink-0 mt-0.5" style={{ color: '#d97706' }} />
+            <p className="text-xs leading-relaxed" style={{ color: '#92400e' }}>
+              <strong>Este paso es obligatorio.</strong> Necesitas completar tu registro profesional
+              para acceder al portal. Solo tarda un minuto.
+            </p>
+          </div>
+        </div>
+
+        {/* Form body */}
+        <form onSubmit={handleSubmit} noValidate className="px-6 sm:px-8 py-6 space-y-5">
+          {/* Server error */}
+          {serverError && (
+            <div className="flex items-start gap-2.5 rounded-xl px-4 py-3 bg-red-50 border border-red-200">
+              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-red-500" />
+              <p className="text-sm text-red-600">{serverError}</p>
+            </div>
+          )}
+
+          {/* Teléfono — PRIMERO y obligatorio: es el punto de contacto de Delta. */}
+          <div>
+            <label
+              htmlFor="field-phone"
+              className="block text-xs font-semibold mb-1.5"
+              style={{ color: 'var(--dh-gray-700)' }}
+            >
+              Teléfono <span className="text-red-400">*</span>
+            </label>
+            <PhoneInput
+              name="field-phone"
+              value={phone}
+              onChange={(canonical) => {
+                setPhone(canonical);
+                if (fieldErrors.phone) setFieldErrors((prev) => ({ ...prev, phone: undefined }));
+              }}
+              required
+              error={fieldErrors.phone}
+              autoFocus
+            />
+            <p className="text-xs mt-1" style={{ color: 'var(--dh-gray-400)' }}>
+              Es la vía por la que te vamos a contactar.
+            </p>
+          </div>
+
+          {/* Full name */}
+          <div>
+            <label
+              htmlFor="field-full-name"
+              className="block text-xs font-semibold mb-1.5"
+              style={{ color: 'var(--dh-gray-700)' }}
+            >
+              Nombre completo <span className="text-red-400">*</span>
+            </label>
+            <div className="relative">
+              <User
+                className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none"
+                style={{ color: 'var(--dh-gray-400)' }}
+              />
+              <input
+                id="field-full-name"
+                type="text"
+                value={fullName}
+                onChange={(e) => {
+                  setFullName(e.target.value);
+                  if (fieldErrors.full_name)
+                    setFieldErrors((prev) => ({ ...prev, full_name: undefined }));
+                }}
+                placeholder="Ej. María González Pérez"
+                className={`${fieldErrors.full_name ? inputError : inputNormal} pl-10`}
+                autoComplete="name"
+                aria-invalid={!!fieldErrors.full_name}
+                aria-describedby={fieldErrors.full_name ? 'err-full-name' : undefined}
+              />
+            </div>
+            {fieldErrors.full_name && (
+              <p id="err-full-name" role="alert" className="text-xs text-red-500 mt-1">
+                {fieldErrors.full_name}
+              </p>
+            )}
+          </div>
+
+          {/* Cédula — V/E selector + number */}
+          <div>
+            <label
+              htmlFor="field-cedula-number"
+              className="block text-xs font-semibold mb-1.5"
+              style={{ color: 'var(--dh-gray-700)' }}
+            >
+              {cedulaPrefix === 'P' ? 'Pasaporte' : 'Cédula de identidad'}{' '}
+              <span className="text-red-400">*</span>
+            </label>
+            <div className="flex gap-2">
+              {/* Prefix selector */}
+              <div className="relative shrink-0">
+                <select
+                  value={cedulaPrefix}
+                  onChange={(e) => {
+                    const next = e.target.value as 'V' | 'E' | 'P';
+                    // Clear number when switching between numeric (V/E) and alphanumeric (P)
+                    const wasPassport = cedulaPrefix === 'P';
+                    const willBePassport = next === 'P';
+                    if (wasPassport !== willBePassport) setCedulaNumber('');
+                    setCedulaPrefix(next);
+                    if (fieldErrors.cedula)
+                      setFieldErrors((prev) => ({ ...prev, cedula: undefined }));
+                  }}
+                  aria-label="Tipo de documento"
+                  className="h-full appearance-none pl-3.5 pr-8 py-2.5 rounded-xl text-sm font-bold outline-none transition-all border-2 border-slate-200 bg-white focus:border-teal-400 cursor-pointer"
+                  style={{ color: 'var(--dh-ink)', minWidth: 72 }}
+                >
+                  <option value="V">V</option>
+                  <option value="E">E</option>
+                  <option value="P">P</option>
+                </select>
+                <ChevronDown
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 pointer-events-none"
+                  style={{ color: 'var(--dh-gray-400)' }}
+                />
+              </div>
+
+              {/* Number input */}
+              <div className="flex-1 relative">
+                <span
+                  className="absolute left-3.5 top-1/2 -translate-y-1/2 text-sm font-bold pointer-events-none select-none"
+                  style={{ color: 'var(--dh-gray-400)' }}
+                  aria-hidden="true"
+                >
+                  -
+                </span>
+                <input
+                  id="field-cedula-number"
+                  type="text"
+                  inputMode={cedulaPrefix === 'P' ? 'text' : 'numeric'}
+                  value={cedulaNumber}
+                  onChange={(e) => {
+                    let clean: string;
+                    if (cedulaPrefix === 'P') {
+                      // Passport: alphanumeric uppercase, max 20 chars
+                      clean = e.target.value
+                        .toUpperCase()
+                        .replace(/[^A-Z0-9]/g, '')
+                        .slice(0, 20);
+                    } else {
+                      // Cédula: digits only, max 9 chars
+                      clean = e.target.value.replace(/\D/g, '').slice(0, 9);
+                    }
+                    setCedulaNumber(clean);
+                    if (fieldErrors.cedula)
+                      setFieldErrors((prev) => ({ ...prev, cedula: undefined }));
+                  }}
+                  placeholder={cedulaPrefix === 'P' ? 'AB1234567' : '12345678'}
+                  maxLength={cedulaPrefix === 'P' ? 20 : 9}
+                  className={`${fieldErrors.cedula ? inputError : inputNormal} pl-7`}
+                  autoComplete="off"
+                  aria-invalid={!!fieldErrors.cedula}
+                  aria-describedby={fieldErrors.cedula ? 'err-cedula' : 'hint-cedula'}
+                />
               </div>
             </div>
-            <span
-              className="text-xs leading-relaxed"
-              style={{ color: termsError ? '#b91c1c' : 'var(--dh-gray-600)' }}
-            >
-              He leído y acepto los{' '}
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.preventDefault();
-                  setTermsModalOpen(true);
-                }}
-                className="font-semibold underline transition-colors"
+
+            {/* Preview */}
+            {cedulaNumber && !fieldErrors.cedula && (
+              <p
+                id="hint-cedula"
+                className="text-xs mt-1"
                 style={{ color: 'var(--dh-turquoise-700)' }}
               >
-                Términos y Condiciones
-              </button>{' '}
-              de Delta Salud.
-            </span>
-          </label>
-          {termsError && (
-            <p id="err-terms" role="alert" className="text-xs text-red-500 mt-1 ml-3">
-              Debes aceptar los Términos y Condiciones para continuar.
-            </p>
-          )}
-        </div>
-
-        {/* Submit */}
-        <div className="pt-2">
-          <button
-            type="submit"
-            disabled={isSubmitDisabled}
-            className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-white font-bold text-sm transition-all hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"
-            style={{ background: 'var(--dh-turquoise)' }}
-          >
-            {isPending ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                Guardando...
-              </>
-            ) : (
-              <>
-                <CheckCircle2 className="w-4 h-4" />
-                Activar cuenta y continuar
-              </>
+                Se guardará como:{' '}
+                <strong>
+                  {cedulaPrefix}-{cedulaNumber}
+                </strong>
+                {cedulaPrefix === 'P' && (
+                  <span style={{ color: 'var(--dh-gray-400)', fontWeight: 400 }}> (Pasaporte)</span>
+                )}
+              </p>
             )}
-          </button>
-          <p className="text-center text-xs mt-2" style={{ color: 'var(--dh-gray-400)' }}>
-            Los campos marcados con <span className="text-red-400">*</span> son obligatorios
-          </p>
-        </div>
-      </form>
+            {fieldErrors.cedula && (
+              <p id="err-cedula" role="alert" className="text-xs text-red-500 mt-1">
+                {fieldErrors.cedula}
+              </p>
+            )}
+          </div>
 
-      <TermsModal open={termsModalOpen} onClose={() => setTermsModalOpen(false)} />
+          {/* Specialty */}
+          <div>
+            <label
+              className="block text-xs font-semibold mb-1.5"
+              style={{ color: 'var(--dh-gray-700)' }}
+            >
+              {/* "Especialidad" a secas: no todos los que se registran son médicos. */}
+              Especialidad <span className="text-red-400">*</span>
+            </label>
+            <SpecialtyCombobox
+              specialties={specialties}
+              value={specialty}
+              customValue={customSpecialty}
+              onChange={(val) => {
+                setSpecialty(val);
+                if (fieldErrors.specialty)
+                  setFieldErrors((prev) => ({ ...prev, specialty: undefined }));
+              }}
+              onCustomChange={(txt) => {
+                setCustomSpecialty(txt);
+                if (fieldErrors.specialty)
+                  setFieldErrors((prev) => ({ ...prev, specialty: undefined }));
+              }}
+              error={fieldErrors.specialty}
+            />
+            {fieldErrors.specialty && (
+              <p role="alert" className="text-xs text-red-500 mt-1">
+                {fieldErrors.specialty}
+              </p>
+            )}
+          </div>
+
+          {/* Género — opcional, con fines estadísticos */}
+          <div>
+            <label
+              htmlFor="field-gender"
+              className="block text-xs font-semibold mb-1.5"
+              style={{ color: 'var(--dh-gray-700)' }}
+            >
+              Género{' '}
+              <span className="font-normal" style={{ color: 'var(--dh-gray-400)' }}>
+                (opcional)
+              </span>
+            </label>
+            <select
+              id="field-gender"
+              value={gender}
+              onChange={(e) => setGender(e.target.value)}
+              className={inputNormal}
+            >
+              <option value="">Prefiero no decirlo</option>
+              <option value="F">Femenino</option>
+              <option value="M">Masculino</option>
+              <option value="O">Otro</option>
+            </select>
+          </div>
+
+          {/* MPPS — optional */}
+          <div>
+            <label
+              htmlFor="field-mpps"
+              className="block text-xs font-semibold mb-1.5"
+              style={{ color: 'var(--dh-gray-700)' }}
+            >
+              Número MPPS{' '}
+              <span className="font-normal" style={{ color: 'var(--dh-gray-400)' }}>
+                (opcional)
+              </span>
+            </label>
+            <input
+              id="field-mpps"
+              type="text"
+              value={mppsNumber}
+              onChange={(e) => setMppsNumber(e.target.value)}
+              placeholder="Ej. MPPS-12345"
+              className={inputNormal}
+              autoComplete="off"
+            />
+          </div>
+
+          {/* Colegiado — optional */}
+          <div>
+            <label
+              htmlFor="field-colegiado"
+              className="block text-xs font-semibold mb-1.5"
+              style={{ color: 'var(--dh-gray-700)' }}
+            >
+              Número de colegiado{' '}
+              <span className="font-normal" style={{ color: 'var(--dh-gray-400)' }}>
+                (opcional)
+              </span>
+            </label>
+            <input
+              id="field-colegiado"
+              type="text"
+              value={colegiadoNumber}
+              onChange={(e) => setColegiadoNumber(e.target.value)}
+              placeholder="Ej. CVM-56789"
+              className={inputNormal}
+              autoComplete="off"
+            />
+          </div>
+
+          {/* Código de vendedor — opcional, solo atribuye la venta */}
+          <div>
+            <label
+              htmlFor="field-seller-code"
+              className="block text-sm font-medium text-slate-700 mb-1.5"
+            >
+              Código de vendedor <span className="text-slate-400">(opcional)</span>
+            </label>
+            <input
+              id="field-seller-code"
+              type="text"
+              value={sellerCode}
+              onChange={(e) => setSellerCode(e.target.value.toUpperCase())}
+              placeholder="Si alguien te lo dio, escribilo acá"
+              className={sellerCodeInvalid ? inputError : inputNormal}
+              autoComplete="off"
+              autoCapitalize="characters"
+            />
+            {checkingSellerCode && <p className="text-xs text-slate-400 mt-1">Verificando…</p>}
+            {!checkingSellerCode && sellerName && (
+              <p className="text-xs text-emerald-600 mt-1 font-medium">Vendedor: {sellerName}</p>
+            )}
+            {!checkingSellerCode && sellerCodeInvalid && (
+              <p className="text-xs text-red-500 mt-1">
+                Ese código no existe. Revisalo o dejalo vacío.
+              </p>
+            )}
+          </div>
+
+          {/* Terms acceptance */}
+          <div key={termsShakeKey} className={termsError ? 'terms-shake' : ''}>
+            <label
+              className={`flex items-start gap-3 cursor-pointer select-none rounded-xl p-3 -mx-3 transition-colors ${termsError ? 'bg-red-50' : ''}`}
+            >
+              <div className="relative shrink-0 mt-0.5">
+                <input
+                  id="field-terms"
+                  type="checkbox"
+                  checked={termsAccepted}
+                  onChange={(e) => {
+                    setTermsAccepted(e.target.checked);
+                    if (e.target.checked) setTermsError(false);
+                  }}
+                  className="sr-only peer"
+                  aria-describedby={termsError ? 'err-terms' : undefined}
+                  aria-invalid={termsError}
+                />
+                <div
+                  className="rounded border-2 transition-all peer-focus:ring-2 peer-focus:ring-teal-300 flex items-center justify-center"
+                  style={{
+                    width: 18,
+                    height: 18,
+                    borderColor: termsError
+                      ? '#ef4444'
+                      : termsAccepted
+                        ? 'var(--dh-turquoise)'
+                        : 'var(--dh-gray-300)',
+                    background: termsAccepted
+                      ? 'var(--dh-turquoise)'
+                      : termsError
+                        ? '#fef2f2'
+                        : '#fff',
+                  }}
+                  aria-hidden="true"
+                >
+                  {termsAccepted && (
+                    <svg viewBox="0 0 10 8" className="w-2.5 h-2.5" fill="none">
+                      <path
+                        d="M1 4l3 3 5-6"
+                        stroke="#fff"
+                        strokeWidth="1.8"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                  )}
+                </div>
+              </div>
+              <span
+                className="text-xs leading-relaxed"
+                style={{ color: termsError ? '#b91c1c' : 'var(--dh-gray-600)' }}
+              >
+                He leído y acepto los{' '}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    setTermsModalOpen(true);
+                  }}
+                  className="font-semibold underline transition-colors"
+                  style={{ color: 'var(--dh-turquoise-700)' }}
+                >
+                  Términos y Condiciones
+                </button>{' '}
+                de Delta Salud.
+              </span>
+            </label>
+            {termsError && (
+              <p id="err-terms" role="alert" className="text-xs text-red-500 mt-1 ml-3">
+                Debes aceptar los Términos y Condiciones para continuar.
+              </p>
+            )}
+          </div>
+
+          {/* Submit */}
+          <div className="pt-2">
+            <button
+              type="submit"
+              disabled={isSubmitDisabled}
+              className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-white font-bold text-sm transition-all hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"
+              style={{ background: 'var(--dh-turquoise)' }}
+            >
+              {isPending ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Guardando...
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 className="w-4 h-4" />
+                  Guardar y continuar
+                </>
+              )}
+            </button>
+            <p className="text-center text-xs mt-2" style={{ color: 'var(--dh-gray-400)' }}>
+              Los campos marcados con <span className="text-red-400">*</span> son obligatorios
+            </p>
+          </div>
+        </form>
+
+        <TermsModal open={termsModalOpen} onClose={() => setTermsModalOpen(false)} />
+      </div>
     </div>
   );
 }

@@ -18,9 +18,20 @@
 // L1 (2026-04-29): se eliminó el botón "Mejorar con IA" por bloque.
 // La IA ahora vive en UN SOLO panel global "Asistente IA" en consultations/page.tsx
 // con tres modos: resumir historial, mejorar redacción y resumir informe.
+// WP-E (2026-08): rich_text y structured usan RichTextBlockEditor (TipTap) y RichTextView.
 
 import { useState } from 'react';
+import dynamic from 'next/dynamic';
 import { Calendar, FileText, List as ListIcon, ChevronDown, ChevronUp, Pencil } from 'lucide-react';
+import RichTextView from './RichTextView';
+
+// TipTap requires the DOM — load with ssr:false to keep it out of the server bundle.
+const RichTextBlockEditor = dynamic(() => import('./RichTextBlockEditor'), {
+  ssr: false,
+  loading: () => (
+    <div className="border border-slate-200 rounded-xl min-h-[5rem] bg-slate-50 animate-pulse" />
+  ),
+});
 
 export type SnapshotBlock = {
   key: string;
@@ -30,6 +41,38 @@ export type SnapshotBlock = {
   printable: boolean;
   send_to_patient: boolean;
 };
+
+const CONTENT_TYPES = ['rich_text', 'list', 'date', 'file', 'structured', 'numeric'] as const;
+
+/**
+ * Normalises a block that may arrive in either shape.
+ *
+ * The backend serialises blocks in camelCase (`contentType`, `sortOrder`,
+ * `sendToPatient`) and older `blocks_structure` rows were persisted that way,
+ * while this component reads snake_case. Reading the wrong one left
+ * `content_type` undefined, which silently routed every text block to the
+ * `default` branch below — a plain textarea instead of the rich-text editor.
+ *
+ * Accepts both shapes so historical rows keep working without a data migration.
+ * Falls back to 'rich_text' when the type is missing or unrecognised, which is
+ * the catalogue default for free-text blocks.
+ */
+export function normalizeBlockShape(raw: unknown): SnapshotBlock {
+  const b = (raw ?? {}) as Record<string, unknown>;
+  const rawType = b.content_type ?? b.contentType;
+  const contentType = CONTENT_TYPES.find((t) => t === rawType) ?? 'rich_text';
+  const sortOrder = b.sort_order ?? b.sortOrder;
+  const sendToPatient = b.send_to_patient ?? b.sendToPatient;
+
+  return {
+    key: typeof b.key === 'string' ? b.key : '',
+    label: typeof b.label === 'string' ? b.label : '',
+    content_type: contentType,
+    sort_order: typeof sortOrder === 'number' ? sortOrder : 0,
+    printable: b.printable !== false,
+    send_to_patient: sendToPatient !== false,
+  };
+}
 
 type Props = {
   blocks?: SnapshotBlock[] | null;
@@ -269,8 +312,23 @@ function BlockEditor({
       );
     }
 
-    case 'structured':
     case 'rich_text':
+    case 'structured': {
+      // WP-E: rich text blocks use TipTap editor (edit) and DOMPurify renderer (read-only).
+      // Backward compat: existing plain-text values are shown/converted correctly.
+      const s = typeof value === 'string' ? value : '';
+      if (readOnly) {
+        return <RichTextView value={s} />;
+      }
+      return (
+        <RichTextBlockEditor
+          value={s}
+          onChange={(html) => onChange(html)}
+          placeholder={`Escribe aquí: ${block.label.toLowerCase()}…`}
+        />
+      );
+    }
+
     case 'file':
     default: {
       const s = typeof value === 'string' ? value : '';

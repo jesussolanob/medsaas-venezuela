@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useBcvRate } from '@/lib/useBcvRate';
-import { formatUsd, formatBs, type PaymentRow } from '@/lib/finances';
+import { formatBs, type PaymentRow } from '@/lib/finances';
 import { reportError } from '@/lib/report-error';
 import {
   Users,
@@ -14,6 +14,7 @@ import {
   CheckCircle,
   Clock,
   ClipboardList,
+  Zap,
   ChevronLeft,
   ChevronRight as ChevronRightIcon,
   UserPlus,
@@ -28,6 +29,11 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { StatCard, Card } from '@/components/dh';
 import NewAppointmentFlow from '@/components/appointment-flow/NewAppointmentFlow';
+import ImmediateConsultationModal from '@/components/doctor/ImmediateConsultationModal';
+import AppointmentDetailModal, {
+  type RescheduleRequest,
+} from '@/components/doctor/AppointmentDetailModal';
+import RescheduleModal from '@/components/doctor/RescheduleModal';
 // L3 (2026-04-29): quick action "Crear paciente" en el dashboard reusa
 // el PatientForm unificado + addPatient action y muestra toast al guardar.
 import PatientForm, { type PatientFormData } from '@/components/patient/PatientForm';
@@ -124,7 +130,7 @@ const ACTIVE_WINDOW_MS = 60 * 60 * 1000;
 
 export default function DoctorDashboard() {
   const router = useRouter();
-  const { rate: bcvRate, toBs, toBsNum } = useBcvRate();
+  const { rate: bcvRate, toBs, toBsNum, format } = useBcvRate();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [todayAppointments, setTodayAppointments] = useState<Appointment[]>([]);
   const [financialData, setFinancialData] = useState<FinancialData>({
@@ -152,6 +158,9 @@ export default function DoctorDashboard() {
   // null = desconocido (cargando o fetch falló), true = tiene consultorios, false = sin consultorios
   const [hasOffices, setHasOffices] = useState<boolean | null>(null);
   // Controla si el doctor descartó el banner de plantillas en esta sesión.
+  // Modal de consulta inmediata (paciente sin cita).
+  const [showImmediate, setShowImmediate] = useState(false);
+
   // Modal "Nueva consulta"
   const [showNewFlow, setShowNewFlow] = useState(false);
   // L3 (2026-04-29): estado del modal "Crear paciente" (quick action) +
@@ -186,6 +195,10 @@ export default function DoctorDashboard() {
   // "Por confirmar" widget — citas con status=scheduled pendientes de confirmación.
   const [scheduledAppointments, setScheduledAppointments] = useState<ScheduledAppointment[]>([]);
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
+  // Cita seleccionada para ver detalle en AppointmentDetailModal.
+  const [detailApptId, setDetailApptId] = useState<string | null>(null);
+  // Target for RescheduleModal (emitted by AppointmentDetailModal.onReschedule).
+  const [rescheduleAppt, setRescheduleAppt] = useState<RescheduleRequest | null>(null);
 
   // "Registrar ingreso" modal — reutiliza el mismo IncomeModal de /doctor/finances.
   const [showIncomeModal, setShowIncomeModal] = useState(false);
@@ -862,6 +875,18 @@ export default function DoctorDashboard() {
                 <ClipboardList className="w-4 h-4" />
                 <span>Crear Consulta</span>
               </button>
+              {/* Paciente que llega SIN cita: se registra con la hora actual. */}
+              <button
+                onClick={() => setShowImmediate(true)}
+                className="flex items-center justify-center sm:justify-start gap-2 backdrop-blur text-white font-semibold text-[13px] px-4 py-2.5 rounded-full transition-colors"
+                style={{
+                  background: 'rgba(255,255,255,0.18)',
+                  border: '1px solid rgba(255,255,255,0.28)',
+                }}
+              >
+                <Zap className="w-4 h-4" />
+                <span>Consulta Inmediata</span>
+              </button>
               <button
                 onClick={() => setShowPatientForm(true)}
                 className="flex items-center justify-center sm:justify-start gap-2 backdrop-blur text-white font-semibold text-[13px] px-4 py-2.5 rounded-full transition-colors"
@@ -978,8 +1003,18 @@ export default function DoctorDashboard() {
                 return (
                   <div
                     key={apt.id}
-                    className="flex items-center gap-3 p-3 rounded-xl"
+                    className="flex items-center gap-3 p-3 rounded-xl cursor-pointer hover:bg-yellow-50 transition-colors"
                     style={{ background: 'rgba(255,255,255,0.7)', border: '1px solid #fde68a' }}
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`Ver detalles de la cita de ${apt.patientName ?? 'paciente'}`}
+                    onClick={() => setDetailApptId(apt.id)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        setDetailApptId(apt.id);
+                      }
+                    }}
                   >
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-semibold truncate" style={{ color: '#92400e' }}>
@@ -990,7 +1025,11 @@ export default function DoctorDashboard() {
                       </p>
                     </div>
                     <button
-                      onClick={() => void handleConfirmAppointment(apt.id)}
+                      onClick={(e) => {
+                        // Prevent row click from also firing
+                        e.stopPropagation();
+                        void handleConfirmAppointment(apt.id);
+                      }}
                       disabled={isConfirming || confirmingId !== null}
                       className="shrink-0 flex items-center gap-1.5 py-1.5 px-3 rounded-lg text-xs font-bold text-white transition-opacity hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
                       style={{ background: 'var(--dh-turquoise)' }}
@@ -1014,7 +1053,7 @@ export default function DoctorDashboard() {
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
           <StatCard
             label="Ingresos totales"
-            value={formatUsd(allTimeStats.total_revenue_lifetime)}
+            value={format(allTimeStats.total_revenue_lifetime)}
             icon={<DollarSign size={16} />}
             subtitle={
               bcvRate ? `≈ ${formatBs(toBsNum(allTimeStats.total_revenue_lifetime))}` : undefined
@@ -1163,7 +1202,7 @@ export default function DoctorDashboard() {
                     letterSpacing: '-0.02em',
                   }}
                 >
-                  {formatUsd(financialData.total_revenue)}
+                  {format(financialData.total_revenue)}
                 </p>
                 {bcvRate && (
                   <p className="text-sm font-semibold" style={{ color: 'var(--dh-turquoise)' }}>
@@ -1193,7 +1232,7 @@ export default function DoctorDashboard() {
                   </div>
                   <div className="text-right">
                     <p className="text-sm font-bold" style={{ color: '#92400e' }}>
-                      {formatUsd(financialData.pending_amount)}
+                      {format(financialData.pending_amount)}
                     </p>
                     {bcvRate && financialData.pending_amount > 0 && (
                       <p className="text-[11px]" style={{ color: '#b45309' }}>
@@ -1256,7 +1295,7 @@ export default function DoctorDashboard() {
                       fontSize: 22,
                     }}
                   >
-                    {formatUsd(
+                    {format(
                       financialData.appointment_count > 0
                         ? financialData.total_revenue / financialData.appointment_count
                         : 0,
@@ -1348,7 +1387,45 @@ export default function DoctorDashboard() {
         </div>
       </div>
 
-      {/* Modal: crear consulta (estilo acordeón) */}
+      {/* AppointmentDetailModal — se abre al hacer click en una cita "Por confirmar" */}
+      {detailApptId && (
+        <AppointmentDetailModal
+          appointmentId={detailApptId}
+          onClose={() => setDetailApptId(null)}
+          onChanged={() => setRefreshKey((k) => k + 1)}
+          onReschedule={(req: RescheduleRequest) => {
+            setDetailApptId(null);
+            setRescheduleAppt(req);
+          }}
+        />
+      )}
+
+      {/* RescheduleModal — abre cuando el doctor hace click en "Reagendar" desde el dashboard */}
+      {rescheduleAppt && (
+        <RescheduleModal
+          appointmentId={rescheduleAppt.id}
+          patientName={rescheduleAppt.patientName}
+          currentScheduledAt={rescheduleAppt.scheduledAt}
+          onClose={() => setRescheduleAppt(null)}
+          onSuccess={() => setRefreshKey((k) => k + 1)}
+        />
+      )}
+
+      {/* Modal: crear consulta (estilo acordeón).
+          onSuccess: el modal maneja la navegación internamente (success step).
+          Solo hacemos limpieza aquí y refrescamos el dashboard. */}
+      {showImmediate && (
+        <ImmediateConsultationModal
+          onClose={() => setShowImmediate(false)}
+          onCreated={(consultationId) => {
+            setShowImmediate(false);
+            setRefreshKey((k) => k + 1);
+            // El paciente está enfrente: se abre la consulta para atenderlo.
+            if (consultationId) router.push(`/doctor/consultations?open=${consultationId}`);
+          }}
+        />
+      )}
+
       <NewAppointmentFlow
         open={showNewFlow}
         onClose={() => {
@@ -1356,10 +1433,8 @@ export default function DoctorDashboard() {
           setPreselectPatientId(null);
         }}
         onSuccess={() => {
-          setShowNewFlow(false);
           setPreselectPatientId(null);
-          // Tras crear, ir al LISTADO de consultas (sin ?open= → NO abre el editor).
-          router.push('/doctor/consultations');
+          setRefreshKey((k) => k + 1);
         }}
         initialContext={{
           origin: 'dashboard_btn',
@@ -1521,7 +1596,7 @@ export default function DoctorDashboard() {
 
                         {/* Monto */}
                         <div className="text-right shrink-0">
-                          <p className="text-sm font-bold text-slate-900">{formatUsd(amount)}</p>
+                          <p className="text-sm font-bold text-slate-900">{format(amount)}</p>
                           {bcvRate && amount > 0 && (
                             <p className="text-[11px] text-slate-400">{toBs(amount)}</p>
                           )}

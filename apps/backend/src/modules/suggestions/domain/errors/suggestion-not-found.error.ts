@@ -6,6 +6,6 @@ export class SuggestionNotFoundError extends DomainError {
 
   // Intentionally generic — never include the ID to prevent resource enumeration.
   constructor() {
-    super('Suggestion not found');
+    super('Sugerencia no encontrada');
   }
 }

@@ -50,6 +50,17 @@ interface ConsultationEnrichedRow {
   patient_full_name_enc: string | null;
   /** Status from the linked appointments row — null when consultation has no appointment. */
   appointment_status: string | null;
+  /** Nº de sesión dentro del combo (1-based). Null cuando la cita no es de un paquete. */
+  session_number: number | null;
+  /**
+   * Total de sesiones del combo. Sale del paquete del paciente cuando existe y,
+   * si no, del servicio contratado (`pricing_plans.sessions_count` por nombre).
+   * En la BD real `appointments.package_id` viene NULL y `patient_packages` está
+   * vacía: el total vive en el servicio, así que sin ese fallback el rótulo
+   * "2 de 3" no se mostraría nunca. Subconsulta escalar a propósito — un JOIN por
+   * nombre duplicaría la consulta si el especialista repite el nombre del servicio.
+   */
+  package_total_sessions: number | null;
 }
 
 /** Raw row returned by queries against consultation_extra_items. */
@@ -116,10 +127,21 @@ export class SequelizeConsultationRepository implements IConsultationRepository 
          c.payment_reference, c.payment_receipt_url,
          c.blocks_snapshot, c.blocks_structure, c.created_at, c.updated_at,
          p.full_name AS patient_full_name_enc,
-         a.status    AS appointment_status
+         a.status    AS appointment_status,
+         a.session_number,
+         COALESCE(
+           pkg.total_sessions,
+           (SELECT pp.sessions_count
+              FROM pricing_plans pp
+             WHERE pp.doctor_id = c.doctor_id
+               AND pp.name      = a.plan_name
+             ORDER BY pp.is_active DESC, pp.created_at DESC
+             LIMIT 1)
+         ) AS package_total_sessions
        FROM consultations c
-       LEFT JOIN patients     p ON p.id = c.patient_id
-       LEFT JOIN appointments a ON a.id = c.appointment_id
+       LEFT JOIN patients         p   ON p.id  = c.patient_id
+       LEFT JOIN appointments     a   ON a.id  = c.appointment_id
+       LEFT JOIN patient_packages pkg ON pkg.id = a.package_id
        WHERE c.id = :id AND c.doctor_id = :doctorId
        LIMIT 1`,
       { replacements: { id, doctorId }, type: QueryTypes.SELECT },
@@ -233,6 +255,7 @@ export class SequelizeConsultationRepository implements IConsultationRepository 
         | 'notes'
         | 'blocksSnapshot'
         | 'blocksStructure'
+        | 'consultationDate'
       >
     >,
   ): Promise<Consultation> {
@@ -261,6 +284,10 @@ export class SequelizeConsultationRepository implements IConsultationRepository 
     // Stored as plain JSONB — block definitions are not PHI.
     if (fields.blocksStructure !== undefined) {
       updateData.blocksStructure = fields.blocksStructure;
+    }
+    // consultationDate: la escribe la reagenda para que la consulta siga a su cita.
+    if (fields.consultationDate !== undefined) {
+      updateData.consultationDate = fields.consultationDate;
     }
 
     return this.sequelize.transaction(async (t) => {
@@ -387,48 +414,92 @@ export class SequelizeConsultationRepository implements IConsultationRepository 
         throw new ConsultationNotFoundError();
       }
 
-      // Sync the linked payments row (if any) so Cobros stays consistent.
-      // The payment is located via: appointments.payment_id WHERE appointments.consultation_id = id.
-      // When no payment row is linked (consultation created directly), this is a no-op.
-      // SECURITY: AND pp.doctor_id = :doctorId ensures the UPDATE is always scoped to the owner.
-      const newStatus = patch.paymentStatus;
-      const syncFields: string[] = ['updated_at = now()'];
-      const syncReplacements: Record<string, unknown> = { consultationId: id, doctorId };
+      return this.toDomain(updated);
+    });
+  }
 
-      if (newStatus !== undefined) {
-        syncFields.push('status = :status');
-        syncReplacements['status'] = newStatus;
-        if (newStatus === 'approved') {
-          // Set paid_at only when it was NULL (preserve existing approval timestamp).
-          syncFields.push('paid_at = COALESCE(paid_at, now())');
-        }
-      }
-      if (patch.amount !== undefined && patch.amount !== null) {
-        syncFields.push('amount_usd = :amountUsd');
-        syncReplacements['amountUsd'] = patch.amount;
-      }
-      if (patch.paymentMethod !== undefined) {
-        syncFields.push('method_snapshot = :methodSnapshot');
-        syncReplacements['methodSnapshot'] = patch.paymentMethod;
-      }
-      if (patch.paymentReference !== undefined) {
-        syncFields.push('payment_reference = :paymentReference');
-        syncReplacements['paymentReference'] = patch.paymentReference;
-      }
-      if (patch.paymentReceiptUrl !== undefined) {
-        syncFields.push('payment_receipt_url = :paymentReceiptUrl');
-        syncReplacements['paymentReceiptUrl'] = patch.paymentReceiptUrl;
-      }
-
-      await this.sequelize.query(
-        `UPDATE payments pp
-           SET ${syncFields.join(', ')}
-           FROM appointments ap
-           WHERE ap.payment_id      = pp.id
-             AND ap.consultation_id = :consultationId
-             AND pp.doctor_id       = :doctorId`,
-        { replacements: syncReplacements, type: QueryTypes.UPDATE, transaction: t },
+  /**
+   * Atomically applies a no-show fee to a consultation that has a linked
+   * approved payment.
+   *
+   * Within a single DB transaction:
+   *   1. Updates consultations: amount = newAmount, payment_status = 'pending'.
+   *   2. Follows the reliable path consultations.appointment_id → appointments.payment_id
+   *      to find the linked payment (if any).
+   *   3. If a linked payment exists AND its current status is 'approved', updates it:
+   *      status = 'pending', amount_usd = newAmount, paid_at = NULL.
+   *      The WHERE status = 'approved' guard prevents touching already-pending payments.
+   *   4. Returns the updated Consultation entity.
+   *
+   * When the consultation has no appointment (doctor-created, no booking flow),
+   * or when the appointment has no linked payment, step 3 is a no-op — the
+   * method still succeeds and updates the consultation.
+   *
+   * ATOMICITY: if either update fails, the whole transaction rolls back. The caller
+   * can never end up with consultation updated but payment not synced.
+   *
+   * SECURITY: doctorId enforces ownership on both the consultation and the payment
+   * row (AND p.doctor_id = :doctorId), so the update is always scoped to the owner.
+   */
+  async applyNoShowFee(id: string, doctorId: string, newAmount: number): Promise<Consultation> {
+    return this.sequelize.transaction(async (t) => {
+      // 1. Update the consultation — amount and status.
+      await this.consultationModel.update(
+        { amount: newAmount, paymentStatus: 'pending' } as Partial<
+          InstanceType<typeof ConsultationModel>
+        >,
+        { where: { id, doctorId } as WhereOptions, transaction: t },
       );
+
+      const updated = await this.consultationModel.findOne({
+        where: { id, doctorId } as WhereOptions,
+        transaction: t,
+      });
+      if (!updated) {
+        throw new ConsultationNotFoundError();
+      }
+
+      // 2. If this consultation came from a booking, sync the linked payment.
+      //    Path: consultations.appointment_id → appointments.payment_id.
+      //    This is the reliable direction — consultation always knows its appointment;
+      //    the reverse (appointments.consultation_id) can be NULL for legacy rows.
+      //
+      //    Two behaviours based on newAmount:
+      //      newAmount === 0 (no-show without fee / waived charge):
+      //        Set payment to approved/$0 so it leaves "Por cobrar" in both count
+      //        and total. Applies to both pending and approved payments.
+      //      newAmount > 0 (no-show with fee):
+      //        Set payment to pending/newAmount. Applies to both pending (amount
+      //        update) and approved (un-approve) payments. The old guard
+      //        `AND p.status = 'approved'` was intentionally removed so pending
+      //        payments also get their amount_usd kept in sync.
+      if (updated.appointmentId) {
+        const sql =
+          newAmount === 0
+            ? `UPDATE payments p
+                 SET status    = 'approved',
+                     amount_usd = 0,
+                     paid_at   = now(),
+                     updated_at = now()
+                 FROM appointments ap
+                 WHERE ap.id         = :appointmentId
+                   AND ap.payment_id = p.id
+                   AND p.doctor_id   = :doctorId`
+            : `UPDATE payments p
+                 SET status    = 'pending',
+                     amount_usd = :newAmount,
+                     paid_at   = NULL,
+                     updated_at = now()
+                 FROM appointments ap
+                 WHERE ap.id         = :appointmentId
+                   AND ap.payment_id = p.id
+                   AND p.doctor_id   = :doctorId`;
+        await this.sequelize.query(sql, {
+          replacements: { newAmount, appointmentId: updated.appointmentId, doctorId },
+          type: QueryTypes.UPDATE,
+          transaction: t,
+        });
+      }
 
       return this.toDomain(updated);
     });
@@ -488,10 +559,21 @@ export class SequelizeConsultationRepository implements IConsultationRepository 
          c.payment_reference, c.payment_receipt_url,
          c.blocks_snapshot, c.blocks_structure, c.created_at, c.updated_at,
          p.full_name AS patient_full_name_enc,
-         a.status    AS appointment_status
+         a.status    AS appointment_status,
+         a.session_number,
+         COALESCE(
+           pkg.total_sessions,
+           (SELECT pp.sessions_count
+              FROM pricing_plans pp
+             WHERE pp.doctor_id = c.doctor_id
+               AND pp.name      = a.plan_name
+             ORDER BY pp.is_active DESC, pp.created_at DESC
+             LIMIT 1)
+         ) AS package_total_sessions
        FROM consultations c
-       LEFT JOIN patients     p ON p.id = c.patient_id
-       LEFT JOIN appointments a ON a.id = c.appointment_id
+       LEFT JOIN patients         p   ON p.id  = c.patient_id
+       LEFT JOIN appointments     a   ON a.id  = c.appointment_id
+       LEFT JOIN patient_packages pkg ON pkg.id = a.package_id
        WHERE ${where}
        ORDER BY ${orderBy}
        LIMIT :limit OFFSET :offset`,
@@ -679,10 +761,21 @@ export class SequelizeConsultationRepository implements IConsultationRepository 
            c.payment_reference, c.payment_receipt_url,
            c.blocks_snapshot, c.blocks_structure, c.created_at, c.updated_at,
            p.full_name AS patient_full_name_enc,
-           a.status    AS appointment_status
+           a.status    AS appointment_status,
+           a.session_number,
+           COALESCE(
+             pkg.total_sessions,
+             (SELECT pp.sessions_count
+                FROM pricing_plans pp
+               WHERE pp.doctor_id = c.doctor_id
+                 AND pp.name      = a.plan_name
+               ORDER BY pp.is_active DESC, pp.created_at DESC
+               LIMIT 1)
+           ) AS package_total_sessions
          FROM consultations c
-         LEFT JOIN patients     p ON p.id = c.patient_id
-         LEFT JOIN appointments a ON a.id = c.appointment_id
+         LEFT JOIN patients         p   ON p.id  = c.patient_id
+         LEFT JOIN appointments     a   ON a.id  = c.appointment_id
+         LEFT JOIN patient_packages pkg ON pkg.id = a.package_id
          WHERE c.id = :id AND c.doctor_id = :doctorId
          LIMIT 1`,
         { replacements: { id, doctorId }, type: QueryTypes.SELECT, transaction: t },
@@ -897,6 +990,8 @@ export class SequelizeConsultationRepository implements IConsultationRepository 
       updatedAt: new Date(row.updated_at),
       patientName,
       appointmentStatus: row.appointment_status ?? null,
+      sessionNumber: row.session_number ?? null,
+      packageTotalSessions: row.package_total_sessions ?? null,
       extraItems: extras,
     });
   }

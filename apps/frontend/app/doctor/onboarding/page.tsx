@@ -10,8 +10,16 @@
 
 import { getDoctorProfile } from '@/app/doctor/actions';
 import { backendGet } from '@/lib/api-client.server';
+import { completeOnboarding } from './actions';
+import { redirect } from 'next/navigation';
 import OnboardingForm from './OnboardingForm';
-import { Activity } from 'lucide-react';
+import { DeltaMark } from '@/components/dh/Logo';
+
+// Soporte por WhatsApp — mismo número que usa la pantalla de planes.
+const WHATSAPP_SOPORTE = '584221033582';
+const WHATSAPP_MENSAJE = encodeURIComponent(
+  'Hola, estoy creando mi cuenta de especialista en Delta Salud y tengo una duda.',
+);
 
 export const metadata = {
   title: 'Activa tu cuenta — Delta Salud',
@@ -53,29 +61,37 @@ export default async function DoctorOnboardingPage() {
     }
   }
 
+  // Determine which wizard step to start on based on profile state.
+  // hasActiveOffice/hasActiveService are new fields from the backend (WP-F).
+  // Fallback: if specialty filled → start at step 2, else step 1.
+  const hasActiveOffice = profile?.hasActiveOffice ?? false;
+  const hasActiveService = profile?.hasActiveService ?? false;
+
+  // Edge case: office + service both exist but onboardingCompleted was never sealed
+  // (e.g. the user navigated away between step 3 and success). Seal it server-side
+  // and redirect to the portal — no wizard UI needed.
+  if (hasActiveOffice && hasActiveService && !profile?.onboardingCompleted) {
+    await completeOnboarding();
+    redirect('/doctor');
+  }
+
+  const initialStep: 1 | 2 | 3 = hasActiveOffice ? 3 : profile?.specialty ? 2 : 1;
+
   return (
     <div className="min-h-screen flex flex-col items-center justify-center px-4 py-12">
       <div className="w-full max-w-lg space-y-6">
-        {/* Logo header */}
+        {/* Logo header — isotipo oficial del brand kit. Antes había un icono
+            genérico de lucide dentro de un cuadro con gradiente, que no es el
+            logo de Delta. */}
         <div className="flex items-center gap-3 justify-center">
-          <div
-            className="w-10 h-10 rounded-xl flex items-center justify-center"
-            style={{ background: 'linear-gradient(135deg, #00C4CC 0%, #0891b2 100%)' }}
-          >
-            <Activity className="w-5 h-5 text-white" />
-          </div>
+          <DeltaMark size={40} />
           <div className="text-left">
+            {/* Solo "Delta Salud" — la bajada "Medical CRM" se quitó a pedido del dueño. */}
             <p
               className="font-extrabold text-lg leading-none"
               style={{ color: 'var(--dh-ink)', fontFamily: 'var(--dh-font-display)' }}
             >
               Delta <span style={{ color: 'var(--dh-turquoise)' }}>Salud</span>
-            </p>
-            <p
-              className="text-[10px] font-semibold uppercase tracking-[0.16em]"
-              style={{ color: 'var(--dh-turquoise-700)', fontFamily: 'var(--dh-font-mono)' }}
-            >
-              Medical CRM
             </p>
           </div>
         </div>
@@ -86,17 +102,21 @@ export default async function DoctorOnboardingPage() {
           initialCedulaPrefix={initialCedulaPrefix}
           initialCedulaNumber={initialCedulaNumber}
           initialSpecialty={profile?.specialty ?? ''}
+          initialPhone={profile?.phone ?? ''}
           specialties={specialties}
+          initialStep={initialStep}
         />
 
         <p className="text-center text-xs" style={{ color: 'var(--dh-gray-400)' }}>
           ¿Tienes alguna duda?{' '}
           <a
-            href="mailto:soporte@delta-medical.app"
+            href={`https://wa.me/${WHATSAPP_SOPORTE}?text=${WHATSAPP_MENSAJE}`}
+            target="_blank"
+            rel="noopener noreferrer"
             className="font-semibold hover:underline"
             style={{ color: 'var(--dh-turquoise-700)' }}
           >
-            Contáctanos
+            Escríbenos por WhatsApp
           </a>
         </p>
       </div>

@@ -131,6 +131,18 @@ export interface IAppointmentRepository {
   findByIdForDoctor(id: string, doctorId: string): Promise<Appointment | null>;
 
   /**
+   * Finds a single appointment by ID scoped to doctorId and enriches it with:
+   *   - consultationCode from the linked consultation (LEFT JOIN)
+   *   - paymentStatus from the linked consultation
+   *   - officeName from the linked doctor_offices (LEFT JOIN)
+   *
+   * Returns null when the appointment does not exist or belongs to another doctor.
+   * This is the owner-scoped, full-PII endpoint for the appointment detail modal.
+   * NO PII masking is applied — the caller must enforce ownership before invoking.
+   */
+  findByIdScopedEnriched(id: string, doctorId: string): Promise<Appointment | null>;
+
+  /**
    * Persists the meet_link for an existing appointment (online booking flow).
    * Used after calendar event creation to store Google Meet or Jitsi URL.
    */

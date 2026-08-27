@@ -13,6 +13,7 @@ import {
   LayoutDashboard,
   Users,
   UsersRound,
+  Handshake,
   ClipboardCheck,
   CreditCard,
   TrendingUp,
@@ -37,6 +38,7 @@ import AdminNotifications from './AdminNotifications';
 import SearchCommandPalette from './SearchCommandPalette';
 import { HelpButton } from '@/components/help/HelpButton';
 import { Toaster } from '@/components/ui/Toaster';
+import AdminSessionWatchdog from '@/components/admin/AdminSessionWatchdog';
 import { DeltaMark } from '@/components/dh';
 import { getMyCapabilities } from '@/app/capabilities-actions';
 import { can, EMPTY_CAPABILITIES, type Capabilities } from '@/lib/capabilities';
@@ -80,6 +82,9 @@ const navItems: NavEntry[] = [
   { name: 'Verificaciones', href: '/admin/verifications', icon: BadgeCheck },
   { name: 'Especialidades', href: '/admin/specialties', icon: Stethoscope },
   { name: 'Plantillas de email', href: '/admin/email-templates', icon: Mail },
+  // Vendedores: SOLO super_admin. El backend lo aplica con @Roles('super_admin');
+  // la pantalla muestra un aviso si alguien más llega por URL.
+  { name: 'Vendedores', href: '/admin/sellers', icon: Handshake },
   { name: 'Roles', href: '/admin/roles', icon: Shield, moduleKey: 'roles' },
   {
     name: 'Sugerencias',
@@ -161,6 +166,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   return (
     <>
       <Toaster />
+      <AdminSessionWatchdog />
       <style>{`
         .admin-shell { font-family: var(--dh-font-body); color: var(--dh-ink); }
         .admin-shell .nav-item-active { background: var(--dh-turquoise-50); color: var(--dh-turquoise-700); }

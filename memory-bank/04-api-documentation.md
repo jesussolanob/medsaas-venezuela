@@ -235,15 +235,34 @@ Módulo `pending-consultations`. Envelope `{success,data}`. Doctor scoped por `u
 
 #### Subscription Payments (admin)
 
-| Endpoint                                       | Método | Roles       | Notas                                                                                                                                                                                     |
-| ---------------------------------------------- | ------ | ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/api/admin/subscription-payments`             | GET    | super_admin | Lista pagos de suscripción. Query: `?status=pending\|approved\|rejected`, `?page`, `?limit`.                                                                                              |
-| `/api/admin/subscription-payments/:id/approve` | PUT    | super_admin | Aprueba el pago. TRANSACCIONAL: marca payment approved + extiende subscriptions.current_period_end + sync profiles snapshot (status=active) + inserta subscription_changes_log. Sin body. |
-| `/api/admin/subscription-payments/:id/reject`  | PUT    | super_admin | Rechaza el pago. Body: `{ reason?: string }`. Inserta subscription_changes_log.                                                                                                           |
+| Endpoint                                           | Método | Roles       | Notas                                                                                                                                                                                                                                                       |
+| -------------------------------------------------- | ------ | ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/api/admin/subscription-payments`                 | POST   | super_admin | Registra pago manual (ya aprobado). Body: `{ doctor_id, amount_usd, method, duration_months, reference_number? }`. TRANSACCIONAL.                                                                                                                           |
+| `/api/admin/subscription-payments`                 | GET    | super_admin | Lista pagos. Query: `?status=pending\|approved\|rejected`, `?page`, `?limit`. Respuesta incluye: `amountBs, bcvRateUsed, bankCode, planKey, period, rejectionReason, hasReceipt`.                                                                           |
+| `/api/admin/subscription-payments/:id/approve`     | PUT    | super_admin | Aprueba el pago. TRANSACCIONAL: marca approved + extiende sub + si `payment.planKey` → cambia `profiles.plan` + `subscriptions.plan` + sync profiles snapshot + inserta subscription_changes_log. Sin body. Lanza 422 si ya resuelto, 404 si no encontrado. |
+| `/api/admin/subscription-payments/:id/reject`      | PUT    | super_admin | Rechaza el pago. Body: `{ reason?: string }`. Guarda `rejection_reason` en BD.                                                                                                                                                                              |
+| `/api/admin/subscription-payments/:id/receipt-url` | GET    | super_admin | Devuelve URL firmada (TTL 15 min) del comprobante. 404 si no existe o no tiene comprobante. NUNCA expone el path GCS crudo.                                                                                                                                 |
 
 > La extensión de suscripción parte de max(now, currentExpiresAt) + payment.duration_months.
 > Lanza SubscriptionPaymentNotFoundError(404) y SubscriptionPaymentAlreadyResolvedError(422) si procede.
 > Reemplaza: `app/api/admin/payments/route.ts` + `approve/route.ts` + `reject/route.ts`.
+
+#### Subscription Payments — autogestión del especialista (WP-B, 2026-08-05)
+
+| Endpoint                                          | Método | Roles  | Notas                                                                                                                                                                                                                                    |
+| ------------------------------------------------- | ------ | ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/api/doctor/subscription-payments/checkout-info` | GET    | doctor | Info de checkout: `{ planName, planKey, period, amountUsd, amountBs, bcvRate, bcvRateDate, banks[], paymentInstructions }`. Query: `?planKey=&period=`. Calcula `amountBs` en servidor (nunca del cliente). Lanza 503 si falta tasa BCV. |
+| `/api/doctor/subscription-payments`               | POST   | doctor | Envía comprobante. Body: `{ planKey, period, bankCode, referenceNumber, receiptPath, notes? }`. Anti-spam: 1 pago pendiente a la vez. Anti-IDOR: `receiptPath` debe empezar con `receipt/{doctorId}/`. `doctorId` siempre de `user.sub`. |
+| `/api/doctor/subscription-payments`               | GET    | doctor | Historial propio paginado. Respuesta: `{ id, planKey, period, amountUsd, amountBs, bcvRateUsed, bankCode, referenceNumber, status, rejectionReason, createdAt, reviewedAt, hasReceipt }`. NUNCA expone `receiptUrl` raw.                 |
+
+> **Errores de dominio nuevos (WP-B):**
+>
+> - `PlanNotFoundForCheckoutError` (422) — plan/período no existe o está inactivo
+> - `RateUnavailableError` (503) — no hay tasa BCV en app_settings
+> - `PendingPaymentExistsError` (409) — ya existe un pago pendiente para este doctor
+> - `ReceiptPathNotOwnedError` (422) — `receiptPath` no pertenece al doctor autenticado
+>
+> **Migración:** `20260805000002-subscription-payments-doctor-checkout.cjs` — agrega 8 columnas a `subscription_payments` + seed `platform_payment_instructions` en `app_settings`.
 
 #### Invoices — facturas de plataforma (admin)
 
@@ -624,3 +643,329 @@ ahí o el PUT responde **400 por clave no reconocida**.
 > Ambas usan `REPLACE`/`regexp_replace` sobre las columnas en vez de reinsertar la
 > plantilla, para no pisar los restyles previos. **Validadas con `SELECT` contra la BD de
 > staging ANTES de commitear** — una migración rota bloquea TODOS los despliegues.
+
+---
+
+## Lote agosto 2026 — WP-C (backend soporte transversal) — 2026-08-05
+
+### Migración `20260805000001-lote-agosto-backend-support.cjs`
+
+Añade a `profiles`:
+
+- `consultation_blocks_layout TEXT NOT NULL DEFAULT 'tabs'` — layout del editor de bloques.
+- `onboarding_completed_at TIMESTAMPTZ NULL` — timestamp del completado del onboarding gate.
+- Backfill: `UPDATE profiles SET onboarding_completed_at = NOW() WHERE role='doctor' AND specialty IS NOT NULL AND onboarding_completed_at IS NULL`.
+
+### `GET /api/doctor/consultation-blocks` — campo nuevo
+
+Ahora incluye `layout: 'tabs' | 'vertical'` en la respuesta. Retrocompatible.
+
+### `PUT /api/doctor/consultation-blocks` — campo nuevo
+
+Acepta `layout?: 'tabs' | 'vertical'` (opcional). Si presente, persiste en `profiles.consultation_blocks_layout`. Si ausente, solo guarda los bloques (comportamiento anterior).
+
+### `GET /api/appointments/:id` — enriquecido + anti-IDOR en repo
+
+- Respuesta ahora incluye `officeName: string | null`.
+- Anti-IDOR reforzado: `findByIdScopedEnriched(id, doctorId)` filtra por `doctor_id = :doctorId` en SQL WHERE (defensa en profundidad; antes: check a nivel use-case).
+- Acceso owner-scoped: devuelve PII completo sin enmascarar, sin audit log (ADR-005). Los campos `consultationCode` y `officeName` vienen de JOIN a `consultations` y `doctor_offices`.
+
+### `POST /api/appointments` — campo nuevo en respuesta
+
+Ahora devuelve `consultationId: string | null` (vía `toPlainAppointment`). Antes devolvía la entidad cruda; ahora retorna el plain object mapeado.
+
+### `POST /api/doctor/onboarding/complete` — endpoint nuevo
+
+| Endpoint                          | Método | Auth   | Body | Errores                               |
+| --------------------------------- | ------ | ------ | ---- | ------------------------------------- |
+| `/api/doctor/onboarding/complete` | POST   | doctor | —    | `422 ONBOARDING_REQUIREMENTS_NOT_MET` |
+
+Verifica server-side que el doctor tiene ≥1 consultorio activo Y ≥1 servicio activo. Si cumple, sella `profiles.onboarding_completed_at = NOW()` (idempotente). Respuesta: `{ onboardingCompleted: true }`.
+
+### `POST /api/doctor/account/deactivate` — endpoint nuevo (2026-08-09)
+
+| Endpoint                         | Método | Auth   | Body                        | Errores                                                                |
+| -------------------------------- | ------ | ------ | --------------------------- | ---------------------------------------------------------------------- |
+| `/api/doctor/account/deactivate` | POST   | doctor | `{ reason?: string\|null }` | `422 ACCOUNT_HAS_UPCOMING_APPOINTMENTS` · `422 CANNOT_DEACTIVATE_ROLE` |
+
+El especialista da de baja su **propia** cuenta desde Configuración → Mi perfil.
+Es una **desactivación, nunca un borrado**: toda la información queda bajo el mismo
+`profile id` y un super_admin la reactiva desde `/admin/verifications`. Respuesta:
+`{ deactivated: true }`.
+
+- **Anti-IDOR:** el body NO lleva id — el objetivo sale siempre de `user.sub`.
+- **Solo rol `doctor`:** un super_admin se encerraría fuera del panel que reactiva.
+- **422 si hay citas a futuro** (el mensaje trae la cantidad): apagar la cuenta
+  también baja el link público y deja sin acceso al único que podía cancelar.
+- Reusa el flag ya existente `profiles.is_active`, que `AppAuthGuard` y el booking
+  público ya respetan. La migración `20260809000001` agrega la **procedencia**:
+  `deactivated_at`, `deactivated_by` (`'self'|'admin'`, con CHECK) y
+  `deactivation_reason`.
+
+**Código 403 nuevo — `ACCOUNT_DEACTIVATED`.** Convive con `ACCOUNT_BLOCKED` sobre el
+MISMO flag; los distingue `deactivated_by`. Sin esta separación, a quien se dio de
+baja solo se le decía que "fue bloqueado", que se lee como sanción. `AppAuthGuard`
+elige uno u otro; el frontend lo propaga por `useAccountBlockedGuard` → pantalla del
+portal → `/login?deactivated=1`.
+
+### `GET /api/admin/doctor-verifications` — campos nuevos (2026-08-09)
+
+Cada ítem agrega `isActive: boolean` (el panel ya lo consumía sin estar declarado) y
+`deactivatedBy: 'self' | 'admin' | null`. La UI muestra "Se dio de baja" (ámbar) contra
+"Acceso bloqueado" (rojo), y el botón dice "Reactivar cuenta" en vez de "Desbloquear
+acceso" — el admin necesita saber qué está reactivando.
+
+### `GET /api/doctor/profile` — campos nuevos
+
+Ahora expone:
+
+- `consultationBlocksLayout: 'tabs' | 'vertical'` — layout del editor.
+- `onboardingCompletedAt: string | null` — ISO timestamp o null.
+- `hasActiveOffice: boolean` — el doctor tiene ≥1 consultorio activo (enrichment en el GET, no columna directa).
+- `hasActiveService: boolean` — el doctor tiene ≥1 servicio activo (enrichment en el GET).
+
+### Seguridad — `BlockContentSanitizer` (módulo consultations)
+
+`BlockContentSanitizer.sanitizeSnapshot()` limpia valores HTML en `blocks_snapshot` antes de persistir.
+
+- Allowlist estricta: `p, br, strong, b, em, i, u, s, ul, ol, li, h1–h6, blockquote, pre, code, hr, span`.
+- Zero atributos permitidos (onclick, style, href, src → todos eliminados).
+- Cap de 300 000 chars serializado: lanza `BlocksSnapshotTooLargeError` (422) si excede.
+- Invocado en `UpdateConsultationUseCase` antes de `repo.update()`.
+
+### Utilidades HTML — `libs/shared-utils`
+
+- `htmlToPlainText(input: string): string` — convierte HTML a texto plano (bloque→\n, li→"• item", entidades decodificadas). Sin dependencia de DOM.
+- `isProbablyHtml(input: string): boolean` — heurística por tag names (no dispara con `<3` ni `A < B`).
+- Usadas en `GetDocumentRenderDataUseCase.plainTextSnapshot()` para limpiar `blocksSnapshot` antes del PDF render.
+
+### `POST /api/cron/doctor-inactivity` — endpoint nuevo (2026-08-05)
+
+Cron de reactivación por inactividad del especialista. Máquina a máquina, sin usuario.
+
+| Endpoint                      | Método | Auth                                                          | Respuesta                                                      |
+| ----------------------------- | ------ | ------------------------------------------------------------- | -------------------------------------------------------------- |
+| `/api/cron/doctor-inactivity` | POST   | `CronSecretGuard` (header `x-cron-secret`) + IAM de Cloud Run | `{ success: true, data: { sent10, sent15, skipped, failed } }` |
+
+- Endpoint **separado** de `/api/cron/appointment-reminders`: este corre 1 vez al día, aquel cada 15 min.
+- Solo devuelve contadores agregados — NUNCA PII.
+- Idempotente vía `profiles.inactivity_notice_stage` (0/1/2): cada especialista recibe como
+  máximo 2 correos por ciclo. El inicio de sesión resetea el estado.
+- ⚠️ El backend solo acepta invocaciones de `delta-frontend-sa` y del `delta-backend-sa` del
+  job de Cloud Scheduler. Una cuenta de persona recibe **401 de IAM de Cloud Run** (no de la
+  app) al intentar llamarlo.
+
+### `PUT /api/appointments/:id/status` — regla nueva (2026-08-05)
+
+Cancelar una cita cuya consulta tiene el pago **aprobado** ahora falla:
+
+```
+409 { error: "Esta cita ya tiene un pago aprobado y no se puede cancelar. Para cambiar la
+     fecha, usa la opción de reagendar — el pago se mantiene vinculado a la nueva fecha.",
+     code: "APPOINTMENT_CANCEL_REQUIRES_RESCHEDULE" }
+```
+
+- Solo afecta la transición a `cancelled`. `confirmed` / `completed` / `no_show` no cambian.
+- **No existen créditos ni saldos a favor del paciente** — descartado explícitamente por el
+  dueño. La plata no se devuelve: se reagenda y el pago viaja con la cita, porque reagendar
+  solo toca `scheduled_at` y deja intacto el vínculo cita↔consulta↔pago.
+- Fail-open: si la cita no tiene consulta vinculada, la cancelación procede. Es regla de
+  negocio, no de seguridad.
+- El BFF `POST /api/doctor/appointment-status` propaga el 409 con su `code` para que la UI
+  abra el flujo de reagendar en vez de mostrar un error crudo.
+
+---
+
+## Cambios de contrato (2026-08-12)
+
+### `GET /api/doctor/offices` — el wire es camelCase, no snake_case
+
+El controller devuelve la **entidad tal cual**: `slotDuration`, `bufferMinutes`, `isActive`,
+`mapUrl`, `doctorId`. No hay mapper de presentación.
+
+⚠️ `/doctor/services` leía `slot_duration` (snake_case) y por eso el campo era SIEMPRE
+`undefined`: la regla de compatibilidad servicio↔consultorio comparaba contra 30 minutos fijos
+para todos los consultorios. Corregido el 2026-08-12. La página `/doctor/offices` nunca tuvo el
+problema porque consume el server action `listOffices()`, que sí mapea con `toView`.
+
+**Regla:** si consumís este endpoint por `fetch` directo desde el browser (thin-proxy), leé
+camelCase. Solo hay snake_case cuando pasás por un server action que mapea.
+
+### `DayScheduleSchema` — duración por bloque (opcional)
+
+Cada entrada de `schedule` acepta dos campos nuevos, ambos opcionales:
+
+| Campo           | Tipo                | Sin valor                     |
+| --------------- | ------------------- | ----------------------------- |
+| `slotDuration`  | int 5–480 (minutos) | hereda `office.slotDuration`  |
+| `bufferMinutes` | int 0–120 (minutos) | hereda `office.bufferMinutes` |
+
+Sin migración: los horarios ya guardados no traen los campos y siguen valiendo. Presente pero
+fuera de rango → el bloque entero se rechaza (`DaySchedule.validate` devuelve null). Ver ADR-028.
+
+### `GET /api/consultations` y `GET /api/consultations/:id` — sesión del combo
+
+La respuesta gana dos campos de solo lectura, poblados por JOIN:
+
+| Campo                    | De dónde sale                                                                                      |
+| ------------------------ | -------------------------------------------------------------------------------------------------- |
+| `session_number`         | `appointments.session_number` (null si la cita no es de un combo)                                  |
+| `package_total_sessions` | `patient_packages.total_sessions` y, si no hay, `pricing_plans.sessions_count` por nombre del plan |
+
+⚠️ En la BD real `appointments.package_id` viene **siempre NULL** y `patient_packages` está
+**vacía**: el total sale del SERVICIO. Se resuelve con **subconsulta escalar**, no con JOIN, porque
+un JOIN por nombre duplicaría la consulta si el especialista repite el nombre de un servicio.
+
+### `GET /api/finances/income` — solo lo efectivamente cobrado
+
+La rama de pagos ahora exige `status = 'approved'` **Y** cita confirmada/completada (o sin cita).
+Lo pendiente y lo aprobado-sin-confirmar viven en Cobros y en el "Por ingresar" del resumen. El
+filtro va con EXISTS (nunca JOIN) porque un pago puede cubrir varias citas. Ver ADR-029.
+
+## Cambios de contrato del lote de la fundadora (2026-08-16)
+
+### `PUT /api/appointments/:id/reschedule` — ahora acepta una cita en `no_show`
+
+`RESCHEDULABLE_STATUSES` pasa de `{scheduled, confirmed}` a `{scheduled, confirmed, no_show}`.
+`cancelled` y `completed` siguen dando `APPOINTMENT_NOT_RESCHEDULABLE` (409).
+
+Al reagendar desde `no_show` la cita **vuelve a un estado vigente** con la misma regla de 3 días
+de la creación: `confirmed` si la nueva fecha está a menos de 3 días, `scheduled` si no. En los
+demás casos el estado no se toca. El `appointment_changes_log` guarda la transición REAL
+(`no_show → confirmed|scheduled`), que es el único rastro de que el paciente faltó.
+
+### `POST /api/appointments` — fecha pasada creada por el especialista nace `completed`
+
+`computeInitialStatus` gana una rama previa a la auto-confirmación: actor `doctor`/`admin` +
+`scheduled_at` anterior a ahora → `completed`. El booking público no cambia (siempre `scheduled`).
+El backend nunca validó fechas pasadas, así que no hay validación nueva que sortear. Ver ADR-032.
+
+### Finanzas — `no_show` cuenta como cita RESUELTA
+
+El criterio COBRADA pasa a `a.status IN ('confirmed','completed','no_show')` en **los seis**
+lugares que lo arman: `COBRADA` (constante), `getIncomeBreakdown`, `listIncomePaginated`,
+la rama de aprobados de `listForDoctor`, `citaConfirmada` de `totalsForDoctor` y el resumen.
+Antes solo estaban documentados tres (ADR-029) y los otros tres tenían la lista inline.
+
+Además, la rama UNION de consultas pendientes sin fila en `payments` suma
+`AND COALESCE(c.amount, a.plan_price, 0) > 0`: una consulta de monto 0 no tiene nada que cobrar
+y no debe figurar en "Por cobrar". Ojo: `c.amount IS NULL` cae a `a.plan_price`, que sí puede ser
+mayor a 0 y tiene que seguir apareciendo.
+
+### `GET /api/doctor/pending-consultations/usage[?patient_id=]` — consumo de combos (NUEVO)
+
+Solo lectura. Devuelve, por paciente y por servicio, cuánto se atendió y cuánto falta.
+`patient_id` es **opcional**: sin él trae todos los pacientes del doctor en UNA consulta
+agrupada (la lista de pacientes pinta una insignia por fila y trae hasta 100 por página —
+de a uno sería un N+1). Con él, valida ownership del paciente (`PatientNotOwnedError`).
+
+⚠️ **El wire de este módulo es `snake_case`** (mirá `toResponse` en su controller), a
+diferencia de `offices` que manda camelCase. La mezcla de convenciones entre módulos es real:
+**mirá el controller antes de escribir el tipo del cliente**, no asumas.
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "patient_id": "…",
+      "plan_name": "Terapia Completa",
+      "total_sessions": 6,
+      "attended": 2,
+      "scheduled": 1,
+      "no_show": 1,
+      "pending_scheduling": 2
+    }
+  ]
+}
+```
+
+| Campo                | Significado                                                          |
+| -------------------- | -------------------------------------------------------------------- |
+| `total_sessions`     | `pricing_plans.sessions_count`; **null** si el servicio ya no existe |
+| `attended`           | citas `completed` — **lo único que consume sesión**                  |
+| `scheduled`          | citas `scheduled`/`confirmed` (todavía no ocurrieron)                |
+| `no_show`            | inasistencias; **NO consumen**, van en su propio balde               |
+| `pending_scheduling` | filas de `pending_consultations` sin agendar                         |
+
+Detalles que NO hay que romper:
+
+- Las citas `cancelled` no cuentan en ningún balde, y las filas `scheduled` de
+  `pending_consultations` tampoco: ya tienen su cita y se contarían **dos veces**.
+- Se agrupa por `(patient_id, plan_name)` y **no** por `payment_id`, que llega null cuando el
+  paquete lo carga el especialista a mano. Dos compras del mismo combo se suman en una fila.
+- El total sale de una **subconsulta escalar**, no de un JOIN: el especialista puede repetir
+  el nombre de un servicio y un JOIN por nombre duplicaría la fila (mismo criterio que ya usa
+  el repositorio de consultas para este dato).
+- Solo se devuelven combos de verdad (`sessions_count > 1` o con filas por agendar). Si no,
+  cinco consultas sueltas de "Consulta general" saldrían como "5 atendidas de 1".
+
+### `GET /api/booking/:doctorId/info` — divisa del especialista (2026-08-16)
+
+Dos campos nuevos, **camelCase** como el resto de ese payload:
+
+| Campo          | Tipo                           | Nota                                                    |
+| -------------- | ------------------------------ | ------------------------------------------------------- |
+| `currencyMode` | `usd_bcv \| eur_bcv \| custom` | `profiles.currency_mode`; null o valor raro → `usd_bcv` |
+| `customRate`   | `number \| null`               | **solo** cuando el modo es `custom`; en los demás, null |
+
+Existen porque la página pública NO tiene sesión: el hook del frontend consultaba el endpoint
+autenticado de la preferencia, recibía 401 y caía a dólar oficial — el paciente veía otra divisa
+y otro monto en bolívares que el especialista para el mismo servicio. Ver ADR-034.
+
+⚠️ `profiles.custom_rate` es DECIMAL y **pg lo entrega como string**: hay que convertirlo con
+`Number()` o el frontend recibe `"97.5"` donde espera un número.
+
+## Módulo de ventas (2026-08-16)
+
+Todos en **camelCase** (convención de estos controllers — verificada, no asumida).
+
+| Endpoint                            | Rol           | Devuelve                                                                           |
+| ----------------------------------- | ------------- | ---------------------------------------------------------------------------------- |
+| `GET /api/admin/sellers`            | `super_admin` | `{ id, fullName, email, sellerCode, specialistsCount, createdAt, lastSignInAt }[]` |
+| `POST /api/admin/sellers`           | `super_admin` | `{ id, sellerCode, createdAt }`                                                    |
+| `GET /api/seller/me`                | `seller`      | `{ sellerCode, fullName }`                                                         |
+| `GET /api/seller/specialists`       | `seller`      | `{ id, fullName, specialty, plan, subscriptionStatus, createdAt, lastSignInAt }[]` |
+| `GET /api/seller/specialists/:id`   | `seller`      | Igual, una fila. **422 si no es suyo** (anti-IDOR)                                 |
+| `POST /api/seller/specialists`      | `seller`      | Alta. `sold_by` y plan los fija el backend                                         |
+| `GET /api/public/seller-code/:code` | público       | `{ valid, sellerName }` — **nada más**                                             |
+
+> ⚠️ **Corregido 2026-08-17:** los endpoints de admin decían `@Roles('super_admin', 'admin')`,
+> pero **`'admin'` no existe** en `CurrentUserPayload['role']` — ninguna sesión puede tener ese
+> rol. Rompía el typecheck sin que nadie lo viera (el type-checker del build muere por OOM y el
+> deploy no corre tipos). Decisión del dueño: **solo `super_admin`** gestiona vendedores.
+> La pantalla es `/admin/sellers`; el BFF `app/api/admin/sellers/route.ts` (GET + POST).
+
+`POST /api/doctor/registration` gana el campo opcional **`seller_code`** (snake_case, como el
+resto de ese DTO). Errores: `SELLER_CODE_NOT_FOUND` (422).
+
+Reglas que no se pueden romper:
+
+- `sold_by` **solo se escribe si venía en null**, garantizado por SQL.
+- El vendedor **nunca** elige plan: el backend fija el de prueba e ignora el cuerpo.
+- `lastSignInAt` es null cuando el especialista nunca entró — es el dato que le dice al vendedor
+  si el registro se convirtió en uso real o quedó abandonado.
+
+## `GET /api/session` (BFF, 2026-08-18)
+
+Ruta del frontend, **no** del backend NestJS. Responde `{ authenticated: boolean, role: string | null }`
+del propio solicitante: sin PII y sin datos de terceros. La consume `AdminSessionWatchdog` para
+detectar que la sesión del navegador cambió debajo de una pantalla abierta (ADR-043). Nunca lanza:
+si no hay sesión responde `{ authenticated: false, role: null }`.
+
+## Idioma de los mensajes de error (barrido 2026-08-18)
+
+El `GlobalExceptionFilter` reenvía **tal cual** al navegador el `message` de `DomainError` y de
+`HttpException`; solo los errores inesperados se enmascaran como "Ocurrió un error inesperado".
+Por eso **todo mensaje nuevo nace en español**, en la clase que lo emite — nunca parcheado en el
+`catch` del frontend. Se tradujeron ~110 (errores de dominio de todos los módulos, validaciones de
+controladores, guards y los mensajes Zod de `libs/shared-types`).
+
+Detector rápido de regresiones: buscar en `apps/backend/src` mensajes sin acentos ni palabras en
+español dentro de `super(...)` / `new XxxException(...)`.
+
+## `GET /api/admin/subscriptions` — cambio de fuente (2026-08-18)
+
+Ahora sale de **`profiles`** (LEFT JOIN a `subscriptions` solo por precio y fin de prueba). Antes
+leía la tabla legacy y mostraba un plan distinto al que gobierna el acceso del especialista.
+Ver **ADR-042**. El contrato de respuesta no cambió.

@@ -6,6 +6,6 @@ export class OfficeNotFoundError extends DomainError {
 
   // Intentionally generic — never include the ID to prevent resource enumeration.
   constructor() {
-    super('Office not found');
+    super('Consultorio no encontrado');
   }
 }

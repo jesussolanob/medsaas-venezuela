@@ -5,6 +5,6 @@ export class InsufficientSessionsError extends DomainError {
   readonly code = 'INSUFFICIENT_SESSIONS';
 
   constructor(packageId: string) {
-    super(`Package ${packageId} has no remaining sessions`);
+    super(`El combo ${packageId} no tiene sesiones disponibles`);
   }
 }

@@ -18,10 +18,13 @@ import {
 import { getReportConsultations, type ReportConsultationRecord } from './actions';
 import Link from 'next/link';
 import { reportError } from '@/lib/report-error';
+import { useBcvRate } from '@/lib/useBcvRate';
 
 type ConsultationRecord = ReportConsultationRecord;
 
 export default function ReportsPage() {
+  // Montos en la divisa del especialista, no en dolar fijo.
+  const { format: fmtMoney, currencyCode } = useBcvRate();
   const [consultations, setConsultations] = useState<ConsultationRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
@@ -344,8 +347,8 @@ export default function ReportsPage() {
               </div>
               <span className="text-xs font-bold text-slate-400 uppercase">Ingresos</span>
             </div>
-            <p className="text-2xl font-bold text-slate-900">${totalAmount.toFixed(0)}</p>
-            <p className="text-xs text-slate-500 mt-1">USD en consultas</p>
+            <p className="text-2xl font-bold text-slate-900">{fmtMoney(totalAmount)}</p>
+            <p className="text-xs text-slate-500 mt-1">{currencyCode} en consultas</p>
           </div>
         </div>
 
@@ -499,7 +502,7 @@ export default function ReportsPage() {
                       {c.payment_method}
                     </td>
                     <td className="px-5 py-3 text-right font-semibold text-emerald-600">
-                      ${c.amount.toFixed(2)}
+                      {fmtMoney(c.amount)}
                     </td>
                     <td className="px-5 py-3 text-slate-600">
                       {new Date(c.consultation_date).toLocaleDateString('es-VE')}

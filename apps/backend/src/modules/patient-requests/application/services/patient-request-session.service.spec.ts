@@ -69,7 +69,12 @@ describe('PatientRequestSessionService', () => {
     it('throws InvalidSessionTokenError when signature is wrong', () => {
       const exp = new Date(Date.now() + 15 * 60 * 1000);
       const token = service.sign('req-1', 'tok-abc', exp);
-      const tampered = token.replace(/.$/, '0'); // flip last hex char
+      // El último carácter tiene que quedar DISTINTO del original. Antes se
+      // reemplazaba siempre por '0': cuando la firma ya terminaba en '0' el
+      // token "adulterado" era idéntico al bueno, la validación pasaba y el
+      // test fallaba. En hex eso salía 1 de cada 16 corridas.
+      const lastChar = token.slice(-1);
+      const tampered = token.slice(0, -1) + (lastChar === '0' ? '1' : '0');
       expect(() => service.validate(tampered, 'req-1', 'tok-abc')).toThrow(
         InvalidSessionTokenError,
       );

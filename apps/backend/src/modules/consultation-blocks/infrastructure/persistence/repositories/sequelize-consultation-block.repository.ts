@@ -112,6 +112,30 @@ export class SequelizeConsultationBlockRepository implements IConsultationBlockR
     return profile?.specialty ?? null;
   }
 
+  // ── getDoctorLayout ───────────────────────────────────────────────────────
+
+  async getDoctorLayout(doctorId: string): Promise<'tabs' | 'vertical'> {
+    const profile = await this.profileModel.findByPk(doctorId, {
+      attributes: ['consultation_blocks_layout'],
+    });
+    const raw = (profile as unknown as { consultation_blocks_layout?: string | null })
+      ?.consultation_blocks_layout;
+    // Sin preferencia guardada (columna nullable) el default es VERTICAL: la
+    // consulta se lee de corrido como una historia clínica, y en pestañas los
+    // bloques que no están al frente quedan invisibles. Un especialista que ya
+    // eligió 'tabs' lo conserva — por eso se compara contra 'tabs' y no al revés.
+    return raw === 'tabs' ? 'tabs' : 'vertical';
+  }
+
+  // ── setDoctorLayout ───────────────────────────────────────────────────────
+
+  async setDoctorLayout(doctorId: string, layout: 'tabs' | 'vertical'): Promise<void> {
+    await this.profileModel.update(
+      { consultationBlocksLayout: layout } as Record<string, unknown>,
+      { where: { id: doctorId } },
+    );
+  }
+
   // ── replaceDoctorBlocks ───────────────────────────────────────────────────
 
   async replaceDoctorBlocks(params: SaveDoctorBlocksParams): Promise<number> {

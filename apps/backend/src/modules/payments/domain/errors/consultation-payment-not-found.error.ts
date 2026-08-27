@@ -7,6 +7,6 @@ export class ConsultationPaymentNotFoundError extends DomainError {
   // Message is intentionally generic — never include the ID to prevent
   // resource-existence enumeration by unauthorized callers.
   constructor() {
-    super('Payment not found');
+    super('Cobro no encontrado');
   }
 }

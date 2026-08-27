@@ -3,12 +3,31 @@
 /**
  * UpgradeClient — vista de upsell para médicos.
  * Muestra tabla comparativa de planes activos con precios y features.
- * CTA informativo: contacto vía WhatsApp para completar el pago manual.
+ * CTA primario: "Pagar este plan" abre el modal de pago en la app.
+ * CTA secundario: WhatsApp solo como soporte.
  */
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
-import { Check, X, Zap, ArrowLeft, MessageCircle, Star, Lock } from 'lucide-react';
+import {
+  Check,
+  X,
+  Zap,
+  ArrowLeft,
+  MessageCircle,
+  ChevronRight,
+  Star,
+  Lock,
+  CreditCard,
+  Clock,
+  CheckCircle2,
+  XCircle,
+  Loader2,
+  AlertCircle,
+  History,
+} from 'lucide-react';
+import PlanPaymentModal from '@/components/doctor/PlanPaymentModal';
+import DeactivateAccountCard from '@/app/doctor/settings/DeactivateAccountCard';
 
 interface PlanFeature {
   feature_key: string;
@@ -73,10 +92,61 @@ const FEATURE_LABELS: Record<string, string> = {
   ai_reports: 'Reportes IA',
 };
 
-const WHATSAPP_NUMBER = '584221033582'; // WhatsApp de ventas Delta Salud (+58 422 103 3582)
+const WHATSAPP_NUMBER = '584221033582'; // WhatsApp de soporte Delta Salud (+58 422 103 3582)
 const WHATSAPP_MESSAGE = encodeURIComponent(
-  'Hola, soy especialista de Delta Salud y me interesa actualizar mi plan. ¿Pueden orientarme?',
+  'Hola, soy especialista de Delta Salud y tengo una consulta sobre mi plan.',
 );
+
+interface PaymentRow {
+  id: string;
+  plan_key: string;
+  period: string;
+  amount_usd: number;
+  amount_bs: number | null;
+  bcv_rate: number | null;
+  bank_name: string | null;
+  reference_number: string | null;
+  status: 'pending' | 'approved' | 'rejected';
+  rejection_reason: string | null;
+  created_at: string;
+}
+
+const STATUS_CONFIG = {
+  pending: {
+    label: 'En revisión',
+    icon: Clock,
+    color: '#D97706',
+    bg: '#FEF3C7',
+    border: '#FDE68A',
+  },
+  approved: {
+    label: 'Aprobado',
+    icon: CheckCircle2,
+    color: '#059669',
+    bg: '#D1FAE5',
+    border: '#A7F3D0',
+  },
+  rejected: {
+    label: 'Rechazado',
+    icon: XCircle,
+    color: '#DC2626',
+    bg: '#FEE2E2',
+    border: '#FECACA',
+  },
+} as const;
+
+const PERIOD_LABELS_SHORT: Record<string, string> = {
+  monthly: 'mensual',
+  quarterly: 'trimestral',
+  semiannual: 'semestral',
+  annual: 'anual',
+};
+
+interface ModalState {
+  planKey: string;
+  planName: string;
+  period: Period;
+}
 
 interface UpgradeClientProps {
   plans: Plan[];
@@ -86,6 +156,30 @@ interface UpgradeClientProps {
 
 export default function UpgradeClient({ plans, currentPlanKey }: UpgradeClientProps) {
   const [selectedPeriod, setSelectedPeriod] = useState<Period>('monthly');
+  const [modalState, setModalState] = useState<ModalState | null>(null);
+  const [payments, setPayments] = useState<PaymentRow[]>([]);
+  const [loadingPayments, setLoadingPayments] = useState(true);
+  const [paymentsError, setPaymentsError] = useState<string | null>(null);
+
+  const fetchPayments = useCallback(() => {
+    setLoadingPayments(true);
+    setPaymentsError(null);
+    fetch('/api/doctor/subscription-payments')
+      .then(async (r) => {
+        const j = await r.json();
+        if (!r.ok) throw new Error(j.error || 'Error al cargar historial');
+        setPayments(Array.isArray(j.payments) ? (j.payments as PaymentRow[]) : []);
+      })
+      .catch((e: unknown) => {
+        setPaymentsError(e instanceof Error ? e.message : 'Error desconocido');
+      })
+      .finally(() => setLoadingPayments(false));
+  }, []);
+
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => {
+    fetchPayments();
+  }, [fetchPayments]);
 
   function getPriceForPeriod(plan: Plan, period: Period): number | null {
     const price = plan.prices.find((p) => p.period === period && p.is_active);
@@ -196,8 +290,9 @@ export default function UpgradeClient({ plans, currentPlanKey }: UpgradeClientPr
           </div>
           <h1 className="text-2xl font-bold mb-2">Mejora tu plan Delta Salud</h1>
           <p className="text-white/80 text-sm max-w-xl">
-            Desbloquea todas las herramientas que necesitas para gestionar tu práctica médica. El
-            proceso de actualización es simple: contáctanos y te asignamos el plan en minutos.
+            Desbloquea todas las herramientas que necesitas para gestionar tu práctica médica. Elige
+            tu plan, paga desde aquí y sube tu comprobante: activamos el acceso apenas lo
+            verifiquemos.
           </p>
         </div>
       </div>
@@ -318,20 +413,33 @@ export default function UpgradeClient({ plans, currentPlanKey }: UpgradeClientPr
                     <Check className="w-4 h-4" />
                     Plan actual
                   </div>
-                ) : (
-                  <a
-                    href={`https://wa.me/${WHATSAPP_NUMBER}?text=${WHATSAPP_MESSAGE}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
+                ) : isPermanent ? (
+                  <div className="flex items-center justify-center gap-2 w-full px-4 py-2.5 rounded-lg text-sm font-semibold bg-slate-50 text-slate-400 border border-slate-100 cursor-default">
+                    Plan gratuito
+                  </div>
+                ) : price !== null ? (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setModalState({
+                        planKey: plan.plan_key,
+                        planName: plan.name,
+                        period: effectivePeriod,
+                      })
+                    }
                     className={`flex items-center justify-center gap-2 w-full px-4 py-2.5 rounded-lg text-sm font-semibold transition-colors ${
                       isFeatured
                         ? 'bg-teal-500 text-white hover:bg-teal-600'
                         : 'border border-slate-200 text-slate-700 hover:bg-slate-50'
                     }`}
                   >
-                    <MessageCircle className="w-4 h-4" />
-                    Contratar
-                  </a>
+                    <CreditCard className="w-4 h-4" />
+                    Pagar este plan
+                  </button>
+                ) : (
+                  <div className="flex items-center justify-center gap-2 w-full px-4 py-2.5 rounded-lg text-sm font-semibold bg-slate-50 text-slate-400 border border-slate-100 cursor-default">
+                    Precio no disponible
+                  </div>
                 )}
               </div>
 
@@ -416,16 +524,132 @@ export default function UpgradeClient({ plans, currentPlanKey }: UpgradeClientPr
         </div>
       )}
 
-      {/* Contact info */}
-      <div className="bg-blue-50 border border-blue-100 rounded-xl p-5">
-        <h3 className="text-sm font-bold text-blue-800 mb-1.5">¿Cómo funciona el proceso?</h3>
-        <ol className="text-xs text-blue-700 space-y-1 list-decimal list-inside">
-          <li>Escríbenos por WhatsApp indicando el plan que te interesa.</li>
-          <li>Te enviamos las instrucciones de pago (transferencia, Zelle, Pago Móvil).</li>
-          <li>Realizas el pago y envías el comprobante.</li>
-          <li>El equipo Delta Salud activa tu nuevo plan en minutos.</li>
-        </ol>
+      {/* Payment history */}
+      <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+        <div className="px-5 py-4 border-b border-slate-100 flex items-center gap-2">
+          <History className="w-4 h-4 text-teal-500" />
+          <h2 className="text-sm font-bold text-slate-800">Historial de pagos</h2>
+        </div>
+
+        {loadingPayments ? (
+          <div className="flex items-center justify-center py-8 gap-2 text-slate-400">
+            <Loader2 className="w-4 h-4 animate-spin" />
+            <span className="text-sm">Cargando historial...</span>
+          </div>
+        ) : paymentsError ? (
+          <div className="flex items-center gap-2.5 px-5 py-4 text-sm text-red-600">
+            <AlertCircle className="w-4 h-4 shrink-0" />
+            {paymentsError}
+          </div>
+        ) : payments.length === 0 ? (
+          <div className="px-5 py-8 text-center">
+            <p className="text-sm text-slate-400">No tienes pagos registrados aún.</p>
+          </div>
+        ) : (
+          <ul className="divide-y divide-slate-50">
+            {payments.map((p) => {
+              const st = STATUS_CONFIG[p.status] ?? STATUS_CONFIG.pending;
+              const StatusIcon = st.icon;
+              return (
+                <li
+                  key={p.id}
+                  className="px-5 py-3.5 flex items-start justify-between gap-4 hover:bg-slate-50/50 transition-colors"
+                >
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-slate-800">
+                      {p.plan_key.charAt(0).toUpperCase() + p.plan_key.slice(1)} ·{' '}
+                      <span className="font-normal text-slate-500">
+                        {PERIOD_LABELS_SHORT[p.period] ?? p.period}
+                      </span>
+                    </p>
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 mt-0.5">
+                      <span className="text-xs text-slate-500">
+                        ${p.amount_usd.toFixed(2)} USD
+                        {p.amount_bs !== null ? (
+                          <span className="ml-1 text-slate-400">
+                            · Bs.{' '}
+                            {p.amount_bs.toLocaleString('es-VE', {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 2,
+                            })}
+                          </span>
+                        ) : null}
+                      </span>
+                      {p.bank_name && <span className="text-xs text-slate-400">{p.bank_name}</span>}
+                      {p.reference_number && (
+                        <span className="text-xs text-slate-400 font-mono">
+                          #{p.reference_number}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-slate-400 mt-0.5">
+                      {new Intl.DateTimeFormat('es-VE', {
+                        day: '2-digit',
+                        month: 'short',
+                        year: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      }).format(new Date(p.created_at))}
+                    </p>
+                    {p.status === 'rejected' && p.rejection_reason && (
+                      <p className="text-[11px] text-red-500 mt-0.5 italic">{p.rejection_reason}</p>
+                    )}
+                  </div>
+                  <span
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold shrink-0"
+                    style={{ color: st.color, background: st.bg, border: `1px solid ${st.border}` }}
+                  >
+                    <StatusIcon className="w-3 h-3" />
+                    {st.label}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        )}
       </div>
+
+      {/* Secondary support link — la tarjeta ENTERA es el enlace: antes solo la
+          palabra "WhatsApp" era clickeable y el resto parecía botón muerto. */}
+      <a
+        href={`https://wa.me/${WHATSAPP_NUMBER}?text=${WHATSAPP_MESSAGE}`}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="group flex items-center gap-3 px-5 py-4 bg-slate-50 border border-slate-200 rounded-xl transition-colors hover:bg-green-50 hover:border-green-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-500 focus-visible:ring-offset-2"
+      >
+        <MessageCircle className="w-5 h-5 shrink-0 text-green-500" />
+        <div>
+          <p className="text-sm font-semibold text-slate-700">¿Necesitas ayuda?</p>
+          <p className="text-xs text-slate-500">
+            Escríbenos por{' '}
+            <span className="font-semibold text-green-600 group-hover:underline">WhatsApp</span>{' '}
+            para cualquier consulta sobre tu plan.
+          </p>
+        </div>
+        <ChevronRight className="w-4 h-4 ml-auto shrink-0 text-slate-400 transition-transform group-hover:translate-x-0.5 group-hover:text-green-600" />
+      </a>
+
+      {/*
+        Baja de cuenta — última de la página y en gris (pedido del dueño,
+        2026-08-19). Vivía al pie de "Mi perfil", donde aparecía mientras el
+        especialista hacía su trabajo diario. Acá está donde tiene sentido
+        buscarla —la pantalla de lo que paga— sin competir con los planes.
+      */}
+      <DeactivateAccountCard />
+
+      {/* Payment modal */}
+      {modalState && (
+        <PlanPaymentModal
+          planKey={modalState.planKey}
+          planName={modalState.planName}
+          period={modalState.period}
+          onClose={() => setModalState(null)}
+          onSuccess={() => {
+            setModalState(null);
+            fetchPayments();
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -55,6 +55,7 @@ describe('SchedulePendingConsultationUseCase', () => {
       bulkExpire: jest.fn(),
       findDueForReminder: jest.fn(),
       updateReminderStage: jest.fn(),
+      getPackageUsage: jest.fn(),
     };
 
     mockAppointmentRepo = {
@@ -76,6 +77,7 @@ describe('SchedulePendingConsultationUseCase', () => {
       deleteById: jest.fn(),
       findFirstCompletedByPaymentId: jest.fn().mockResolvedValue(null),
       findUpcomingWithoutCalendarEvent: jest.fn().mockResolvedValue([]),
+      findByIdScopedEnriched: jest.fn().mockResolvedValue(null),
     };
 
     mockSequelize = makeSequelizeMock();

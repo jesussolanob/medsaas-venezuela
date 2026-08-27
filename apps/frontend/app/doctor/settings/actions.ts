@@ -101,7 +101,9 @@ export interface SettingsProfileView {
   signature_url: string | null;
   license_number: string | null;
   payment_methods: string[];
-  payment_details: Record<string, Record<string, string>>;
+  /** Datos de cobro por método. Un método puede traer UN juego de datos
+   *  (forma histórica) o VARIOS en una lista — ver lib/payment-details. */
+  payment_details: Record<string, unknown>;
   phone: string;
   cedula: string | null;
   birth_date: string | null;
@@ -139,7 +141,7 @@ function profileToView(b: BackendDoctorProfile): SettingsProfileView {
     signature_url: b.signatureUrl ?? null,
     license_number: b.licenseNumber ?? null,
     payment_methods: b.paymentMethods ?? ['pago_movil', 'transferencia'],
-    payment_details: (b.paymentDetails as Record<string, Record<string, string>>) ?? {},
+    payment_details: (b.paymentDetails as Record<string, unknown>) ?? {},
     phone: b.phone ?? '',
     cedula: b.cedula ?? null,
     birth_date: b.birthDate ?? null,
@@ -250,7 +252,9 @@ export async function saveSettingsProfile(input: {
  */
 export async function savePaymentSettings(input: {
   payment_methods: string[];
-  payment_details: Record<string, Record<string, string>>;
+  /** Datos de cobro por método. Un método puede traer UN juego de datos
+   *  (forma histórica) o VARIOS en una lista — ver lib/payment-details. */
+  payment_details: Record<string, unknown>;
 }): Promise<ActionResult> {
   const result = await backendPut<BackendDoctorProfile>('/api/doctor/profile', {
     payment_methods: input.payment_methods,

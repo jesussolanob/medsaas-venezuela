@@ -269,6 +269,14 @@ export interface DoctorDetail {
   city: string | null;
   state: string | null;
   isActive: boolean | null;
+  /**
+   * Who switched the account off — 'self' | 'admin' | null. Lets the panel show
+   * whether this specialist left on their own or was banned from here; the
+   * is_active flag alone cannot tell those apart.
+   */
+  deactivatedBy: string | null;
+  deactivatedAt: Date | null;
+  deactivationReason: string | null;
   createdAt: Date;
   subscriptionStatus: string | null;
   subscriptionPlan: string | null;

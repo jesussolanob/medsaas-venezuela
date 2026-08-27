@@ -17,7 +17,18 @@
 
 import type { RequestCookies } from 'next/dist/compiled/@edge-runtime/cookies';
 
-export type DevUserRole = 'doctor' | 'super_admin' | 'patient';
+/**
+ * `seller` se agregó el 2026-08-19. El rol existe en el sistema desde el
+ * ADR-037 y el backend lo acepta por cabecera (`DevAuthGuard` reenvía
+ * `x-dev-user-role` tal cual), pero acá no estaba: `isValidRole('seller')`
+ * daba false y lo degradaba a `doctor`, así que **en modo local era imposible
+ * entrar al portal del vendedor** — su guarda en `proxy.ts` lo rechazaba y sus
+ * endpoints (`@Roles('seller')`) devolvían 403.
+ *
+ * Solo afecta a `AUTH_MODE=dev`. Staging y producción corren con `auth0`, donde
+ * el rol sale de `profiles.role` en la base y esta lista no participa.
+ */
+export type DevUserRole = 'doctor' | 'super_admin' | 'patient' | 'seller';
 
 export interface DevUser {
   id: string;
@@ -54,7 +65,7 @@ export const DEV_ADMIN_UUID = '00000000-0000-4000-8000-000000000003';
 const DEFAULT_USER_ROLE: DevUserRole = 'doctor';
 
 function isValidRole(value: string | null | undefined): value is DevUserRole {
-  return value === 'doctor' || value === 'super_admin' || value === 'patient';
+  return value === 'doctor' || value === 'super_admin' || value === 'patient' || value === 'seller';
 }
 
 export function resolveFromRaw(

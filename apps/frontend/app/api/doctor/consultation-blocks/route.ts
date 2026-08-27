@@ -17,6 +17,8 @@ interface BlocksResponse {
   resolved: unknown[];
   specialty_defaults: unknown[];
   doctor_specialty: string | null;
+  /** WP-E: preferred block layout. Backend may not have this field yet — defaults to 'tabs'. */
+  layout?: 'tabs' | 'vertical';
 }
 
 export async function GET() {
@@ -32,9 +34,14 @@ export async function GET() {
 
 export async function PUT(req: NextRequest) {
   const body = await req.json();
+  // WP-E: forward optional `layout` field alongside blocks
+  const payload: Record<string, unknown> = { blocks: body?.blocks };
+  if (body?.layout === 'tabs' || body?.layout === 'vertical') {
+    payload.layout = body.layout;
+  }
   const result = await backendPut<{ success: true; blocks_saved: number }>(
     '/api/doctor/consultation-blocks',
-    { blocks: body?.blocks },
+    payload,
   );
   if (!result.ok) {
     return NextResponse.json(

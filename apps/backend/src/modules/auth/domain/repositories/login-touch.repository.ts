@@ -27,7 +27,37 @@ export interface LoginTouchPlanConfig {
   isPermanent: boolean;
 }
 
+/** Estado de encendido de la cuenta, para decidir si corresponde reactivarla. */
+export interface LoginTouchAccountState {
+  isActive: boolean;
+  /** 'self' = se dio de baja el propio especialista · 'admin' = lo bloquearon. */
+  deactivatedBy: string | null;
+}
+
 export interface ILoginTouchRepository {
+  /**
+   * Estado de encendido del perfil. Null si el perfil no existe.
+   */
+  findAccountState(profileId: string): Promise<LoginTouchAccountState | null>;
+
+  /**
+   * Vuelve a encender una cuenta que su propio dueño había dado de baja,
+   * tocando además last_sign_in_at.
+   *
+   * CONSERVA el plan si todavía no venció (`subscription_expires_at > now`);
+   * recién cuando venció cae al plan gratuito permanente. Antes caía SIEMPRE
+   * al gratuito, así que un especialista con días de prueba por delante que
+   * se daba de baja y volvía a entrar perdía esos días y se encontraba con
+   * los módulos bloqueados — mientras el panel de admin seguía mostrando
+   * "Free Trial", porque leía la tabla `subscriptions` que nadie sincronizaba.
+   *
+   * Escribe `profiles` Y `subscriptions` en la misma transacción, y deja
+   * asiento en `subscription_changes_log`.
+   *
+   * NO toca las cuentas bloqueadas por un admin: esa condición la evalúa el
+   * caso de uso antes de llamar acá.
+   */
+  reactivateAndTouch(profileId: string, freePlanKey: string): Promise<void>;
   /**
    * Find the active/trial subscription for a doctor.
    * Returns null if the doctor has no subscription row.

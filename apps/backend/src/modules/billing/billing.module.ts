@@ -3,8 +3,9 @@ import { SequelizeModule } from '@nestjs/sequelize';
 
 // External modules
 import { EmailModule } from '../email/email.module';
+import { StorageModule } from '../storage/storage.module';
 
-// Models (new)
+// Models (own)
 import { SubscriptionPaymentModel } from './infrastructure/database/models/subscription-payment.model';
 import { InvoiceModel } from './infrastructure/database/models/invoice.model';
 import { BillingDocumentModel } from './infrastructure/database/models/billing-document.model';
@@ -13,16 +14,25 @@ import { SubscriptionChangeLogModel } from './infrastructure/database/models/sub
 // Models (imported from admin module — avoids redefining shared table mappings)
 import { ProfileAdminModel } from '../admin/infrastructure/database/models/profile.model';
 import { AdminSubscriptionModel } from '../admin/infrastructure/database/models/subscription.model';
+import { PlanConfigModel } from '../admin/infrastructure/database/models/plan-config.model';
+import { PlanPriceModel } from '../admin/infrastructure/database/models/plan-price.model';
+
+// Models (imported from finances module — app_settings for BCV rate)
+import { AppSettingModel } from '../finances/infrastructure/database/models/app-setting.model';
 
 // Repositories (bindings)
 import { SUBSCRIPTION_PAYMENT_REPOSITORY } from './domain/repositories/subscription-payment.repository';
 import { INVOICE_REPOSITORY } from './domain/repositories/invoice.repository';
 import { BILLING_DOCUMENT_REPOSITORY } from './domain/repositories/billing-document.repository';
 import { PROFILE_LOOKUP_REPOSITORY } from './domain/repositories/profile-lookup.repository';
+import { PLATFORM_RATE_PROVIDER } from './domain/repositories/platform-rate.provider';
+import { PLAN_PRICE_PROVIDER } from './domain/repositories/plan-price.provider';
 import { SequelizeSubscriptionPaymentRepository } from './infrastructure/database/repositories/sequelize-subscription-payment.repository';
 import { SequelizeInvoiceRepository } from './infrastructure/database/repositories/sequelize-invoice.repository';
 import { SequelizeBillingDocumentRepository } from './infrastructure/database/repositories/sequelize-billing-document.repository';
 import { SequelizeProfileLookupRepository } from './infrastructure/database/repositories/sequelize-profile-lookup.repository';
+import { BillingRateProvider } from './infrastructure/rate/billing-rate.provider';
+import { SequelizePlanPriceProvider } from './infrastructure/database/repositories/sequelize-plan-price.provider';
 
 // Use cases
 import { ListSubscriptionPaymentsUseCase } from './application/use-cases/billing/list-subscription-payments.use-case';
@@ -36,6 +46,10 @@ import { SendInvoiceEmailUseCase } from './application/use-cases/billing/send-in
 import { ListBillingDocumentsUseCase } from './application/use-cases/billing/list-billing-documents.use-case';
 import { CreateBillingDocumentUseCase } from './application/use-cases/billing/create-billing-document.use-case';
 import { GetFinanceStatsUseCase } from './application/use-cases/billing/get-finance-stats.use-case';
+import { GetCheckoutInfoUseCase } from './application/use-cases/billing/get-checkout-info.use-case';
+import { SubmitDoctorPaymentUseCase } from './application/use-cases/billing/submit-doctor-payment.use-case';
+import { ListDoctorPaymentsUseCase } from './application/use-cases/billing/list-doctor-payments.use-case';
+import { GetPaymentReceiptUrlUseCase } from './application/use-cases/billing/get-payment-receipt-url.use-case';
 
 // Guards
 import { RolesGuard } from '../../presentation/guards/roles.guard';
@@ -44,6 +58,7 @@ import { RolesGuard } from '../../presentation/guards/roles.guard';
 import { SubscriptionPaymentsController } from './presentation/controllers/subscription-payments.controller';
 import { InvoicesController } from './presentation/controllers/invoices.controller';
 import { BillingDocumentsController } from './presentation/controllers/billing-documents.controller';
+import { DoctorSubscriptionPaymentsController } from './presentation/controllers/doctor-subscription-payments.controller';
 
 /**
  * BillingModule — manages platform subscription payments, admin invoices,
@@ -53,11 +68,12 @@ import { BillingDocumentsController } from './presentation/controllers/billing-d
  * injected globally by SequelizeModule.forRootAsync in AppModule.
  * Adding it again here causes a crash in the dist build.
  *
- * ProfileAdminModel and AdminSubscriptionModel are registered via forFeature
- * so the approve flow can update the subscriptions and profiles tables.
- * They are NOT redefined — the same class objects from the admin module are
- * re-registered here, which is the correct pattern for multi-module access to
- * shared tables.
+ * Cross-module model re-registration pattern:
+ *   - ProfileAdminModel, AdminSubscriptionModel → approve flow (subscriptions + profiles tables)
+ *   - PlanConfigModel, PlanPriceModel → checkout price lookup
+ *   - AppSettingModel → BCV rate lookup (usdt_rate key written by finances module)
+ * Re-registering the same model class in multiple modules is the correct NestJS
+ * pattern for cross-module table access — no new model classes are created.
  */
 @Module({
   imports: [
@@ -68,11 +84,21 @@ import { BillingDocumentsController } from './presentation/controllers/billing-d
       SubscriptionChangeLogModel,
       ProfileAdminModel,
       AdminSubscriptionModel,
+      PlanConfigModel,
+      PlanPriceModel,
+      AppSettingModel,
     ]),
     // Provides EMAIL_PORT token and MailerService for SendInvoiceEmailUseCase
     EmailModule,
+    // Provides STORAGE_PORT for GetPaymentReceiptUrlUseCase (signed URL generation)
+    StorageModule,
   ],
-  controllers: [SubscriptionPaymentsController, InvoicesController, BillingDocumentsController],
+  controllers: [
+    SubscriptionPaymentsController,
+    InvoicesController,
+    BillingDocumentsController,
+    DoctorSubscriptionPaymentsController,
+  ],
   providers: [
     // Repository bindings: domain interfaces → Sequelize implementations
     {
@@ -91,15 +117,30 @@ import { BillingDocumentsController } from './presentation/controllers/billing-d
       provide: PROFILE_LOOKUP_REPOSITORY,
       useClass: SequelizeProfileLookupRepository,
     },
+    // Port bindings: domain provider interfaces → infrastructure implementations
+    {
+      provide: PLATFORM_RATE_PROVIDER,
+      useClass: BillingRateProvider,
+    },
+    {
+      provide: PLAN_PRICE_PROVIDER,
+      useClass: SequelizePlanPriceProvider,
+    },
 
     // Guards (stateless, required by DI in this module scope)
     RolesGuard,
 
-    // Use cases — subscription payments
+    // Use cases — subscription payments (admin)
     ListSubscriptionPaymentsUseCase,
     ApproveSubscriptionPaymentUseCase,
     RejectSubscriptionPaymentUseCase,
     RegisterManualPaymentUseCase,
+
+    // Use cases — doctor self-service payments (WP-B)
+    GetCheckoutInfoUseCase,
+    SubmitDoctorPaymentUseCase,
+    ListDoctorPaymentsUseCase,
+    GetPaymentReceiptUrlUseCase,
 
     // Use cases — invoices
     CreateInvoiceUseCase,

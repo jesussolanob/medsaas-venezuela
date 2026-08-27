@@ -12,6 +12,6 @@ export class PatientPortalAccessDeniedError extends DomainError {
   override readonly httpStatus = 403;
 
   constructor() {
-    super('Access denied to this patient resource');
+    super('No tenés permiso para acceder a esta información');
   }
 }

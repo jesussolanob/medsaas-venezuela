@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 // MIGRATED (Etapa 1): services CRUD → NestJS /api/doctor/services
 import {
   getDoctorServices,
@@ -26,6 +26,7 @@ import {
   Tag,
   Building2,
   AlertTriangle,
+  Clock,
 } from 'lucide-react';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import { showToast } from '@/components/ui/Toaster';
@@ -37,7 +38,31 @@ type DoctorOffice = {
   name: string;
   modality: 'in_person' | 'online' | 'both';
   address?: string | null;
+  /**
+   * Duración del bloque de cita del consultorio, en minutos.
+   *
+   * ⚠️ El wire de GET /api/doctor/offices es **camelCase**: el controller
+   * devuelve la entidad tal cual (`slotDuration`). Este archivo leía
+   * `slot_duration` y por eso SIEMPRE caía al default de 30 — la regla de
+   * compatibilidad servicio↔consultorio evaluaba 30 para todos, sin importar
+   * cómo tuviera configurado el consultorio. Se aceptan las dos formas por si
+   * algún consumidor viejo manda snake_case.
+   */
+  slotDuration?: number;
+  slot_duration?: number;
+  /**
+   * Bloques del horario. Cada uno puede traer su propia `slotDuration`; los que
+   * no, van con la del consultorio. Se usa para saber si el consultorio tiene
+   * ALGÚN bloque capaz de sostener el servicio.
+   */
+  schedule?: Array<{ enabled?: boolean; slotDuration?: number | null }> | null;
 };
+
+/** Opciones de duración de un servicio, en minutos. */
+const DURATION_OPTIONS = [15, 20, 30, 45, 60, 90] as const;
+
+/** Duración de bloque asumida cuando el consultorio no la informa. */
+const DEFAULT_SLOT_DURATION = 30;
 
 const inp =
   'w-full px-3 py-2.5 rounded-xl border border-slate-200 text-sm outline-none transition-all focus:border-teal-400 bg-white';
@@ -56,7 +81,7 @@ async function fetchOffices(): Promise<DoctorOffice[]> {
 }
 
 export default function ServicesPage() {
-  const { rate: bcvRate, toBs } = useBcvRate();
+  const { rate: bcvRate, toBs, format, currencyCode } = useBcvRate();
   const [items, setItems] = useState<DoctorService[]>([]);
   const [offices, setOffices] = useState<DoctorOffice[]>([]);
   const [loading, setLoading] = useState(true);
@@ -124,11 +149,73 @@ export default function ServicesPage() {
     setEditing(null);
   }
 
+  // ---------------------------------------------------------------------------
+  // Compatibilidad servicio ↔ consultorio
+  //
+  // La cita se agenda sobre un bloque del horario, así que un servicio de 45 min
+  // no entra en un bloque que atiende de 30 en 30: pisaría la cita siguiente.
+  //
+  // Cada bloque puede tener su propia duración, así que alcanza con que UNO la
+  // sostenga: un consultorio con la mañana de 45' y la tarde de 20' sí admite un
+  // servicio de 45'. Los bloques sin duración propia usan la del consultorio.
+  //
+  // Un servicio "General" aparece en todos los consultorios, así que tiene que
+  // entrar en todos.
+  // ---------------------------------------------------------------------------
+
+  const durationMins = parseInt(durationMinutes) || DEFAULT_SLOT_DURATION;
+
+  /** Duración del bloque de un consultorio, con default explícito. */
+  const slotOf = (o: DoctorOffice) => o.slotDuration ?? o.slot_duration ?? DEFAULT_SLOT_DURATION;
+
+  /**
+   * Duración más larga que el consultorio puede sostener en alguno de sus bloques.
+   *
+   * Es el número que decide la compatibilidad, así que TAMBIÉN es el que se le
+   * muestra al especialista cuando algo no entra. Los mensajes usaban `slotOf`
+   * (la duración del consultorio): un consultorio con la tarde en bloques de 60'
+   * rechazaba un servicio de 90' diciendo "atiende en bloques de 30 min", y el
+   * especialista terminaba cambiando el número equivocado.
+   */
+  const maxSlotOf = (o: DoctorOffice) => {
+    const bloques = (o.schedule ?? []).filter((b) => b?.enabled !== false);
+    if (bloques.length === 0) return slotOf(o);
+    return Math.max(...bloques.map((b) => b.slotDuration ?? slotOf(o)));
+  };
+
+  const officeFits = (o: DoctorOffice) => maxSlotOf(o) >= durationMins;
+
+  /** Consultorios donde el servicio, con la duración elegida, NO entra. */
+  const incompatibleOffices = useMemo(
+    () => offices.filter((o) => !officeFits(o)),
+    // `durationMins` entra vía officeFits; se declara para que el memo se recalcule.
+    [offices, durationMins],
+  );
+
+  /** "General" solo es válido si el servicio entra en TODOS los consultorios. */
+  const generalIsValid = incompatibleOffices.length === 0;
+
+  const selectedOffice = offices.find((o) => o.id === selectedOfficeId) ?? null;
+  const selectedOfficeFits = selectedOffice ? officeFits(selectedOffice) : generalIsValid;
+
   async function handleSave() {
     if (!name.trim() || !priceUsd) {
       showToast({ type: 'error', message: 'Nombre y precio son obligatorios' });
       return;
     }
+
+    // Guarda de último momento: la UI ya deshabilita las opciones que no
+    // entran, pero la duración se puede cambiar DESPUÉS de elegir consultorio.
+    if (!selectedOfficeFits) {
+      showToast({
+        type: 'error',
+        message: selectedOffice
+          ? `"${selectedOffice.name}" atiende en bloques de hasta ${maxSlotOf(selectedOffice)} min y este servicio dura ${durationMins}. Elige otro consultorio o reduce la duración.`
+          : `Para dejarlo en "General" el servicio debe entrar en todos los consultorios, y ${incompatibleOffices.length === 1 ? 'uno atiende' : `${incompatibleOffices.length} atienden`} en bloques más cortos que ${durationMins} min.`,
+      });
+      return;
+    }
+
     setSaving(true);
     const parsedSessions = parseInt(sessionsCount) || 1;
     const parsedValidity = validityDays.trim() !== '' ? parseInt(validityDays) : null;
@@ -436,14 +523,14 @@ export default function ServicesPage() {
                 <div className="mb-3">
                   <div className="flex items-baseline gap-1">
                     <span className="text-xl font-bold text-teal-600">
-                      ${item.price_usd.toFixed(2)}
+                      {format(item.price_usd)}
                     </span>
-                    <span className="text-xs text-slate-400">USD</span>
+                    <span className="text-xs text-slate-400">{currencyCode}</span>
                     {item.sessions_count > 1 && (
                       <span className="text-xs text-slate-500 ml-1">
                         × {item.sessions_count} ={' '}
                         <span className="font-semibold text-slate-700">
-                          ${(item.price_usd * item.sessions_count).toFixed(2)}
+                          {format(item.price_usd * item.sessions_count)}
                         </span>
                       </span>
                     )}
@@ -461,8 +548,8 @@ export default function ServicesPage() {
                   {item.sessions_count > 1 && (
                     <div className="flex items-center gap-1">
                       <Tag className="w-3 h-3" />
-                      {item.sessions_count} sesiones — $
-                      {(item.price_usd * item.sessions_count).toFixed(2)} total
+                      {item.sessions_count} sesiones —{' '}
+                      {format(item.price_usd * item.sessions_count)} total
                     </div>
                   )}
                   {item.sessions_count > 1 && item.validity_days != null && (
@@ -480,7 +567,16 @@ export default function ServicesPage() {
                     ) : (
                       <EyeOff className="w-3.5 h-3.5 text-slate-400" />
                     )}
-                    <span className="text-xs font-medium text-slate-600">Visible en booking</span>
+                    {/*
+                      El rótulo tiene que seguir al estado: estaba fijo en
+                      "Visible en booking", así que un servicio oculto se leía
+                      como visible aunque el ojo tachado y el interruptor
+                      dijeran lo contrario. El especialista no tenía forma de
+                      saber cuáles había sacado del link de reservas.
+                    */}
+                    <span className="text-xs font-medium text-slate-600">
+                      {item.show_in_booking ? 'Visible en booking' : 'Oculto en booking'}
+                    </span>
                   </div>
                   <button
                     onClick={() => toggleBooking(item)}
@@ -597,18 +693,35 @@ export default function ServicesPage() {
                     className={inp}
                     aria-label="Seleccionar consultorio"
                   >
-                    <option value="">General (todos los consultorios)</option>
-                    {offices.map((o) => (
-                      <option key={o.id} value={o.id}>
-                        {o.name}
-                      </option>
-                    ))}
+                    <option value="" disabled={!generalIsValid}>
+                      General (todos los consultorios)
+                      {!generalIsValid && ' — no entra en todos'}
+                    </option>
+                    {offices.map((o) => {
+                      const fits = officeFits(o);
+                      return (
+                        <option key={o.id} value={o.id} disabled={!fits}>
+                          {o.name}
+                          {!fits && ` — bloques de hasta ${maxSlotOf(o)} min`}
+                        </option>
+                      );
+                    })}
                   </select>
                 )}
-                <p className="text-[10px] text-slate-400 mt-1">
-                  &quot;General&quot; aparece en todos los consultorios. Elige uno para restringirlo
-                  a ese espacio.
-                </p>
+                {selectedOfficeFits ? (
+                  <p className="text-[10px] text-slate-400 mt-1">
+                    &quot;General&quot; aparece en todos los consultorios. Elige uno para
+                    restringirlo a ese espacio.
+                  </p>
+                ) : (
+                  <p className="text-[10px] text-red-500 mt-1">
+                    {selectedOffice
+                      ? `Este servicio dura ${durationMins} min y "${selectedOffice.name}" atiende en bloques de hasta ${maxSlotOf(selectedOffice)} min.`
+                      : `Para dejarlo en "General" tiene que entrar en todos los consultorios: ${incompatibleOffices
+                          .map((o) => `${o.name} (hasta ${maxSlotOf(o)} min)`)
+                          .join(', ')}.`}
+                  </p>
+                )}
               </div>
 
               <div>
@@ -623,11 +736,38 @@ export default function ServicesPage() {
                 />
               </div>
 
-              {/* Duración removida (PRUEBAS 12-07): la duración real de la cita se define
-                  a nivel de consultorio (doctor_offices.slot_duration), no por servicio. */}
+              {/* Duración. Se había quitado el 12-07 porque la cita se agenda con el
+                  bloque del consultorio; vuelve porque el especialista necesita
+                  registrar cuánto dura realmente cada servicio. No cambia cómo se
+                  generan los turnos: condiciona a qué consultorio se puede asociar
+                  (ver `officeFits`). */}
               <div>
                 <label className="block text-xs font-medium text-slate-600 mb-1.5">
-                  Precio USD unitario <span className="text-red-400">*</span>
+                  <span className="inline-flex items-center gap-1.5">
+                    <Clock className="w-3.5 h-3.5" />
+                    Duración
+                  </span>
+                </label>
+                <select
+                  value={durationMinutes}
+                  onChange={(e) => setDurationMinutes(e.target.value)}
+                  className={inp}
+                  aria-label="Duración del servicio"
+                >
+                  {DURATION_OPTIONS.map((v) => (
+                    <option key={v} value={v}>
+                      {v} min
+                    </option>
+                  ))}
+                </select>
+                <p className="text-[10px] text-slate-400 mt-1">
+                  Solo puede asociarse a consultorios cuyos bloques sean de al menos esta duración.
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1.5">
+                  Precio {currencyCode} unitario <span className="text-red-400">*</span>
                 </label>
                 <div className="relative">
                   <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
@@ -666,9 +806,9 @@ export default function ServicesPage() {
                       return (
                         <div className="mt-2 px-3 py-2 rounded-lg bg-teal-50 border border-teal-100">
                           <p className="text-xs font-semibold text-teal-700">
-                            Total del paquete: ${total.toFixed(2)}{' '}
+                            Total del paquete: {format(total)}{' '}
                             <span className="font-normal text-teal-600">
-                              (= ${p.toFixed(2)} USD × {s} sesiones)
+                              (= {format(p)} {currencyCode} × {s} sesiones)
                             </span>
                           </p>
                         </div>

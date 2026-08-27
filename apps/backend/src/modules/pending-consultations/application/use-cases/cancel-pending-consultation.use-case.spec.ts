@@ -35,6 +35,7 @@ describe('CancelPendingConsultationUseCase', () => {
       bulkExpire: jest.fn(),
       findDueForReminder: jest.fn(),
       updateReminderStage: jest.fn(),
+      getPackageUsage: jest.fn(),
     };
     useCase = new CancelPendingConsultationUseCase(mockRepo);
   });

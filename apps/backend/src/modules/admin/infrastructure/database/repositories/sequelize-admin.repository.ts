@@ -320,6 +320,9 @@ export class SequelizeAdminRepository implements IAdminRepository {
       city: row.city ?? null,
       state: row.state ?? null,
       isActive: row.isActive ?? null,
+      deactivatedBy: row.deactivatedBy ?? null,
+      deactivatedAt: row.deactivatedAt ?? null,
+      deactivationReason: row.deactivationReason ?? null,
       createdAt: row.createdAt,
       subscriptionStatus: base.subscriptionStatus,
       subscriptionPlan: base.subscriptionPlan,
@@ -389,46 +392,105 @@ export class SequelizeAdminRepository implements IAdminRepository {
   // Subscriptions
   // ---------------------------------------------------------------------------
 
+  /**
+   * Listado de suscripciones para el panel de admin.
+   *
+   * ⚠️ La fuente de verdad es `profiles` (plan · subscription_status ·
+   * subscription_expires_at): es EXACTAMENTE lo que lee el gating del
+   * especialista (`GetDoctorFeaturesV2UseCase`). Antes esta consulta leía la
+   * tabla legacy `subscriptions`, y cuando las dos divergían el admin veía un
+   * plan que no era el que gobernaba el acceso — pasó el 2026-08-18: la
+   * pantalla decía "Free Trial · 3 días" mientras el especialista tenía
+   * `profiles.plan = 'delta_free'` y los módulos bloqueados.
+   *
+   * De `subscriptions` solo se toman datos accesorios (id de la fila, precio y
+   * fin de prueba), que no deciden nada.
+   */
   async listSubscriptions(filters: SubscriptionListFilters): Promise<SubscriptionListResult> {
     const { page, limit, status, plan } = filters;
     const offset = (page - 1) * limit;
 
-    const where: Record<string, unknown> = {};
-    if (status) where.status = status;
-    if (plan) where.plan = plan;
+    // Población: los especialistas MÁS cualquier perfil que ya tenga fila en
+    // `subscriptions`. Filtrar solo por rol haría desaparecer de la pantalla
+    // filas que el admin venía viendo (un super_admin o un vendedor con
+    // suscripción vieja) — este cambio arregla qué plan se muestra, no a quién.
+    const conditions = ["(p.role = 'doctor' OR s.id IS NOT NULL)"];
+    if (status) conditions.push('p.subscription_status = :status');
+    if (plan) conditions.push('p.plan = :plan');
+    const whereSql = conditions.join(' AND ');
 
-    const { count, rows } = await this.subscriptionModel.findAndCountAll({
-      where,
-      limit,
-      offset,
-      order: [['createdAt', 'DESC']],
-    });
+    const replacements: Record<string, unknown> = { limit, offset };
+    if (status) replacements.status = status;
+    if (plan) replacements.plan = plan;
 
-    // Enrich with doctor profile data via secondary lookup
-    const doctorIds = rows.map((r) => r.doctorId);
-    const profiles =
-      doctorIds.length > 0 ? await this.profileModel.findAll({ where: { id: doctorIds } }) : [];
-    const profileById = new Map(profiles.map((p) => [p.id, p]));
+    const countRows = await this.sequelize.query<{ total: string }>(
+      `SELECT COUNT(*)::text AS total
+         FROM profiles p
+         LEFT JOIN subscriptions s ON s.doctor_id = p.id
+        WHERE ${whereSql}`,
+      { type: QueryTypes.SELECT, replacements },
+    );
 
-    const items: SubscriptionRow[] = rows.map((row) => {
-      const profile = profileById.get(row.doctorId);
-      return {
-        id: row.id,
-        doctorId: row.doctorId,
-        doctorName: profile?.fullName ?? '',
-        doctorEmail: profile?.email ?? '',
-        plan: row.plan,
-        status: row.status,
-        priceUsd: Number(row.priceUsd),
-        currentPeriodEnd: row.currentPeriodEnd,
-        trialEndsAt: row.trialEndsAt ?? null,
-        createdAt: row.createdAt,
-      };
-    });
+    const rows = await this.sequelize.query<{
+      id: string;
+      doctor_id: string;
+      doctor_name: string | null;
+      doctor_email: string | null;
+      plan: string | null;
+      status: string | null;
+      price_usd: string | null;
+      current_period_end: Date | null;
+      trial_ends_at: Date | null;
+      created_at: Date;
+    }>(
+      `SELECT COALESCE(s.id, p.id)     AS id,
+              p.id                     AS doctor_id,
+              p.full_name              AS doctor_name,
+              p.email                  AS doctor_email,
+              -- Mismo default que aplica el gating (profile.plan ?? delta_free):
+              -- la pantalla tiene que decir exactamente lo que gobierna el acceso.
+              COALESCE(p.plan, 'delta_free') AS plan,
+              -- Un plan permanente (delta_free) no vence, así que el gating lo
+              -- da por vigente aunque el perfil no tenga estado guardado. Sin
+              -- este CASE esas filas salían con la insignia de estado vacía.
+              CASE
+                WHEN p.subscription_status IS NOT NULL THEN p.subscription_status
+                WHEN pc.is_permanent THEN 'active'
+                ELSE NULL
+              END                      AS status,
+              s.price_usd              AS price_usd,
+              -- El vencimiento que de verdad corta el acceso lo evalúa
+              -- ProcessLoginTouch contra subscriptions.current_period_end;
+              -- profiles.subscription_expires_at puede venir NULL en perfiles
+              -- viejos. Sin el COALESCE esos doctores se mostraban con "0 días".
+              COALESCE(p.subscription_expires_at, s.current_period_end) AS current_period_end,
+              s.trial_ends_at          AS trial_ends_at,
+              p.created_at             AS created_at
+         FROM profiles p
+         LEFT JOIN subscriptions s ON s.doctor_id = p.id
+         LEFT JOIN plan_configs pc ON pc.plan_key = COALESCE(p.plan, 'delta_free')
+        WHERE ${whereSql}
+        ORDER BY p.created_at DESC
+        LIMIT :limit OFFSET :offset`,
+      { type: QueryTypes.SELECT, replacements },
+    );
+
+    const items: SubscriptionRow[] = rows.map((row) => ({
+      id: row.id,
+      doctorId: row.doctor_id,
+      doctorName: row.doctor_name ?? '',
+      doctorEmail: row.doctor_email ?? '',
+      plan: row.plan as SubscriptionPlan,
+      status: row.status as SubscriptionStatus,
+      priceUsd: Number(row.price_usd ?? 0),
+      currentPeriodEnd: row.current_period_end as Date,
+      trialEndsAt: row.trial_ends_at ?? null,
+      createdAt: row.created_at,
+    }));
 
     return {
       items,
-      total: typeof count === 'number' ? count : 0,
+      total: parseInt(countRows[0]?.total ?? '0', 10),
       page,
       limit,
     };
@@ -480,17 +542,35 @@ export class SequelizeAdminRepository implements IAdminRepository {
   }
 
   /**
-   * Reads the current subscription snapshot from the profiles row (always present
-   * for a doctor; the subscriptions row may not exist). Returns null if no profile.
+   * Reads the current subscription snapshot for a doctor.
+   *
+   * expiresAt resolution rule:
+   *   COALESCE(profiles.subscription_expires_at, subscriptions.current_period_end)
+   *
+   * ⚠️  This is the SAME rule used by listSubscriptions (~line 466).
+   * If either site changes, the other MUST change too (ADR-029 / ADR-031).
+   *
+   * Legacy doctors can have profiles.subscription_expires_at = NULL while still
+   * holding valid time in subscriptions.current_period_end. Without the fallback,
+   * extend/suspend/reactivate would anchor at "now" and silently discard remaining
+   * subscription time (bug surfaced 2026-08-19 with day-extension).
+   *
+   * Returns null if no profile exists for the given doctorId.
    */
   async getSubscriptionSnapshot(doctorId: string): Promise<SubscriptionSnapshot | null> {
     const profile = await this.profileModel.findByPk(doctorId);
     if (!profile) return null;
+
+    // Fetch the subscription row for the COALESCE fallback.
+    // May be absent for very old / partially-created profiles.
+    const subscription = await this.subscriptionModel.findOne({ where: { doctorId } });
+
     return {
       doctorId,
       plan: (profile.plan ?? null) as SubscriptionPlan | null,
       status: (profile.subscriptionStatus ?? null) as SubscriptionStatus | null,
-      expiresAt: profile.subscriptionExpiresAt ?? null,
+      // COALESCE — same rule as listSubscriptions. See note above.
+      expiresAt: profile.subscriptionExpiresAt ?? subscription?.currentPeriodEnd ?? null,
     };
   }
 
@@ -1406,8 +1486,15 @@ export class SequelizeAdminRepository implements IAdminRepository {
   // ---------------------------------------------------------------------------
 
   async setProfileActive(profileId: string, isActive: boolean): Promise<boolean> {
+    // Reactivating clears the deactivation provenance so the row does not keep
+    // claiming it is switched off; blocking stamps it as an admin action, which
+    // is what tells this apart from a specialist who deactivated themselves.
+    const provenance = isActive
+      ? { deactivatedAt: null, deactivatedBy: null, deactivationReason: null }
+      : { deactivatedAt: new Date(), deactivatedBy: 'admin' };
+
     const [affectedRows] = await this.profileModel.update(
-      { isActive },
+      { isActive, ...provenance } as Record<string, unknown>,
       { where: { id: profileId } },
     );
 

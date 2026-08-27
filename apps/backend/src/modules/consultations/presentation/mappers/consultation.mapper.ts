@@ -41,6 +41,11 @@ export function toConsultationResponse(consultation: Consultation): Record<strin
     patient_name: consultation.patientName,
     appointment_status: consultation.appointmentStatus,
     /**
+     * Combo de varias sesiones: "consulta 2 de 3". Null cuando la consulta es suelta.
+     */
+    session_number: consultation.sessionNumber,
+    package_total_sessions: consultation.packageTotalSessions,
+    /**
      * Extra service items. Populated by GET /consultations/:id (for modal pre-load).
      * Empty array in list endpoints (not loaded for performance — N+1 avoidance).
      */

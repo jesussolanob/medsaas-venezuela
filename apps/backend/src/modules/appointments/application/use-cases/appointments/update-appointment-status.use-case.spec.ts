@@ -2,6 +2,7 @@ import { UpdateAppointmentStatusUseCase } from './update-appointment-status.use-
 import type { IAppointmentRepository } from '../../../domain/repositories/appointment.repository';
 import { AppointmentNotFoundError } from '../../../domain/errors/appointment-not-found.error';
 import { AppointmentInvalidTransitionError } from '../../../domain/errors/appointment-invalid-transition.error';
+import { AppointmentCancelRequiresRescheduleError } from '../../../domain/errors/appointment-cancel-requires-reschedule.error';
 import {
   Appointment,
   type AppointmentCreateParams,
@@ -127,7 +128,21 @@ function makeConsultationRepo(
     deleteById: jest.fn().mockResolvedValue(undefined),
     findFirstCompletedByPaymentId: jest.fn().mockResolvedValue(null),
     listWithAppointment: jest.fn(),
+    applyNoShowFee: jest.fn(),
   } as jest.Mocked<IConsultationRepository>;
+}
+
+/**
+ * Builds a consultation-repo mock whose findByAppointmentId resolves to a
+ * fake consultation with the given paymentStatus (or null → no consultation
+ * found, distinct from the appointment simply not being linked to one).
+ */
+function makeConsultationRepoWithPaymentStatus(
+  paymentStatus: 'approved' | 'pending' | null,
+): jest.Mocked<IConsultationRepository> {
+  const consultation =
+    paymentStatus === null ? null : ({ id: CONSULTATION_ID, paymentStatus } as never);
+  return makeConsultationRepo(consultation);
 }
 
 describe('UpdateAppointmentStatusUseCase', () => {
@@ -501,6 +516,120 @@ describe('UpdateAppointmentStatusUseCase', () => {
 
       expect(createConsultationUC.execute).not.toHaveBeenCalled();
       expect(repo.updateConsultationId).not.toHaveBeenCalled();
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // Business rule (point 11, 2026-08): cannot cancel a paid appointment
+  // -----------------------------------------------------------------------
+  describe('business rule — cannot cancel an appointment with an approved payment', () => {
+    it('throws AppointmentCancelRequiresRescheduleError when the linked consultation has payment_status=approved, and does NOT change the appointment status', async () => {
+      const appt = makeAppointment({ status: 'scheduled', consultationId: CONSULTATION_ID });
+      repo = makeRepo(appt);
+      const consultationRepo = makeConsultationRepoWithPaymentStatus('approved');
+      useCase = new UpdateAppointmentStatusUseCase(repo, null, null, consultationRepo);
+
+      const dto: UpdateAppointmentStatusDto = {
+        id: APPT_ID,
+        status: 'cancelled',
+        actor_id: DOCTOR_ID,
+      };
+
+      await expect(useCase.execute(dto)).rejects.toBeInstanceOf(
+        AppointmentCancelRequiresRescheduleError,
+      );
+      expect(consultationRepo.findByAppointmentId).toHaveBeenCalledWith(APPT_ID, DOCTOR_ID);
+      // The status must NEVER be persisted when this rule blocks the cancellation.
+      expect(repo.updateStatus).not.toHaveBeenCalled();
+      expect(repo.logStatusChange).not.toHaveBeenCalled();
+    });
+
+    it('cancels normally when the linked consultation has payment_status=pending', async () => {
+      const appt = makeAppointment({ status: 'scheduled', consultationId: CONSULTATION_ID });
+      repo = makeRepo(appt);
+      const consultationRepo = makeConsultationRepoWithPaymentStatus('pending');
+      useCase = new UpdateAppointmentStatusUseCase(repo, null, null, consultationRepo);
+
+      const dto: UpdateAppointmentStatusDto = {
+        id: APPT_ID,
+        status: 'cancelled',
+        actor_id: DOCTOR_ID,
+      };
+
+      const result = await useCase.execute(dto);
+
+      expect(repo.updateStatus).toHaveBeenCalledWith(APPT_ID, 'cancelled');
+      expect(result.status).toBe('cancelled');
+    });
+
+    it('cancels normally when the appointment has no linked consultation', async () => {
+      const appt = makeAppointment({ status: 'scheduled', consultationId: null });
+      repo = makeRepo(appt);
+      const consultationRepo = makeConsultationRepoWithPaymentStatus('approved');
+      useCase = new UpdateAppointmentStatusUseCase(repo, null, null, consultationRepo);
+
+      const dto: UpdateAppointmentStatusDto = {
+        id: APPT_ID,
+        status: 'cancelled',
+        actor_id: DOCTOR_ID,
+      };
+
+      const result = await useCase.execute(dto);
+
+      // No consultationId on the appointment → the repo must not even be queried.
+      expect(consultationRepo.findByAppointmentId).not.toHaveBeenCalled();
+      expect(repo.updateStatus).toHaveBeenCalledWith(APPT_ID, 'cancelled');
+      expect(result.status).toBe('cancelled');
+    });
+
+    it('cancels normally (fail-open) when consultationRepo is not injected', async () => {
+      const appt = makeAppointment({ status: 'scheduled', consultationId: CONSULTATION_ID });
+      repo = makeRepo(appt);
+      // No consultationRepo injected — simulates legacy test/wiring contexts.
+      useCase = new UpdateAppointmentStatusUseCase(repo);
+
+      const dto: UpdateAppointmentStatusDto = {
+        id: APPT_ID,
+        status: 'cancelled',
+        actor_id: DOCTOR_ID,
+      };
+
+      const result = await useCase.execute(dto);
+
+      expect(repo.updateStatus).toHaveBeenCalledWith(APPT_ID, 'cancelled');
+      expect(result.status).toBe('cancelled');
+    });
+
+    it('does NOT affect other transitions (confirmed, completed, no_show) even with payment_status=approved', async () => {
+      const consultationRepo = makeConsultationRepoWithPaymentStatus('approved');
+
+      // scheduled → confirmed
+      let appt = makeAppointment({ status: 'scheduled', consultationId: CONSULTATION_ID });
+      repo = makeRepo(appt);
+      useCase = new UpdateAppointmentStatusUseCase(repo, null, null, consultationRepo);
+      let result = await useCase.execute({
+        id: APPT_ID,
+        status: 'confirmed',
+        actor_id: DOCTOR_ID,
+      });
+      expect(result.status).toBe('confirmed');
+
+      // confirmed → completed
+      appt = makeAppointment({ status: 'confirmed', consultationId: CONSULTATION_ID });
+      repo = makeRepo(appt);
+      useCase = new UpdateAppointmentStatusUseCase(repo, null, null, consultationRepo);
+      result = await useCase.execute({ id: APPT_ID, status: 'completed', actor_id: DOCTOR_ID });
+      expect(result.status).toBe('completed');
+
+      // confirmed → no_show
+      appt = makeAppointment({ status: 'confirmed', consultationId: CONSULTATION_ID });
+      repo = makeRepo(appt);
+      useCase = new UpdateAppointmentStatusUseCase(repo, null, null, consultationRepo);
+      result = await useCase.execute({ id: APPT_ID, status: 'no_show', actor_id: DOCTOR_ID });
+      expect(result.status).toBe('no_show');
+
+      // The payment-guard query must only ever run for the 'cancelled' transition.
+      expect(consultationRepo.findByAppointmentId).not.toHaveBeenCalled();
     });
   });
 });

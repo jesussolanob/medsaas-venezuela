@@ -11,12 +11,20 @@ import {
   NewPatientForm,
   GENERIC_PLAN,
   METHODS_WITH_RECEIPT,
+  fetchDoctorOffices,
   getTimeSlotsForDate,
+  getTimeSlotsWithDuration,
   isoToCaracasHHMM,
   normalizePatient,
   normalizeService,
 } from './appointment-flow.utils';
 import type { AppointmentContext } from './NewAppointmentFlow';
+import {
+  blockedTimes,
+  hhmmToMinutes,
+  DEFAULT_APPOINTMENT_MINUTES,
+  type BookedInterval,
+} from '@/lib/slot-availability';
 
 // ---------------------------------------------------------------------------
 // Fallback doctor UUID (Etapa 1 dev-stub)
@@ -26,6 +34,15 @@ const FALLBACK_DEV_DOCTOR_UUID = '00000000-0000-4000-8000-000000000001';
 // ---------------------------------------------------------------------------
 // Hook return type
 // ---------------------------------------------------------------------------
+
+/**
+ * Result returned to the parent once the appointment is fully created.
+ * Emitted via onSuccess after the user dismisses the in-modal success step.
+ */
+export type AppointmentSuccessResult = {
+  appointmentId: string;
+  consultationId: string | null;
+};
 
 /**
  * Context passed to the deferred-sessions prompt shown after a successful
@@ -64,6 +81,13 @@ export type AppointmentFlowState = {
    */
   deferredContext: DeferredSessionsContext | null;
   clearDeferredContext: () => void;
+  /**
+   * Populated after a successful submit; consumed by NewAppointmentFlow to
+   * render the in-modal success step with "Ir a la consulta" / "Cerrar".
+   * null while the form is active or after the user dismisses the step.
+   */
+  successResult: AppointmentSuccessResult | null;
+  clearSuccessResult: () => void;
 
   // Step 1 — Paciente
   patientQuery: string;
@@ -110,6 +134,10 @@ export type AppointmentFlowState = {
   setWeekOffset: (n: number) => void;
   unavailableTimes: Map<string, Set<string>>;
   loadingSlots: boolean;
+  /** Duración a medida para una hora libre. null = la decide el bloque. */
+  customDuration: number | null;
+  /** Fija hora y duración de una vez cuando se agenda fuera de la grilla. */
+  selectCustomSlot: (time: string, durationMinutes: number) => void;
 
   // Step 5 — Pago
   profilePaymentMethods: string[];
@@ -137,7 +165,7 @@ export type AppointmentFlowState = {
 export function useAppointmentFlow(
   open: boolean,
   onClose: () => void,
-  onSuccess: ((id: string) => void) | undefined,
+  onSuccess: ((result: AppointmentSuccessResult) => void) | undefined,
   initialContext: AppointmentContext,
 ): AppointmentFlowState {
   const [currentStep, setCurrentStep] = useState(1);
@@ -146,6 +174,7 @@ export function useAppointmentFlow(
   const [uploadingReceipt, setUploadingReceipt] = useState(false);
   const [globalError, setGlobalError] = useState<string | null>(null);
   const [deferredContext, setDeferredContext] = useState<DeferredSessionsContext | null>(null);
+  const [successResult, setSuccessResult] = useState<AppointmentSuccessResult | null>(null);
 
   // Step 1 — Paciente
   const [patientQuery, setPatientQuery] = useState('');
@@ -187,6 +216,12 @@ export function useAppointmentFlow(
   const [weekOffset, setWeekOffset] = useState(0);
   const [unavailableTimes, setUnavailableTimes] = useState<Map<string, Set<string>>>(new Map());
   const [loadingSlots, setLoadingSlots] = useState(false);
+  /**
+   * Duración elegida a mano cuando el especialista agenda a una hora libre
+   * (ej. 9:30 a 10:30 pisando dos bloques vacíos). null = la manda el bloque
+   * del consultorio, que es el caso normal.
+   */
+  const [customDuration, setCustomDuration] = useState<number | null>(null);
 
   // Step 5 — Pago
   const [profilePaymentMethods, setProfilePaymentMethods] = useState<string[]>([]);
@@ -309,25 +344,8 @@ export function useAppointmentFlow(
   useEffect(() => {
     if (!open) return;
     setLoadingOffices(true);
-    fetch('/api/doctor/offices', { cache: 'no-store' })
-      .then((r) => (r.ok ? r.json() : { data: [] }))
-      .then((json) => {
-        // El backend devuelve camelCase (slotDuration/bufferMinutes); el resto del
-        // flujo lee snake_case (slot_duration/buffer_minutes). Sin este mapeo, el
-        // buffer entre consultas quedaba en undefined→0 y los slots salían cada
-        // slot_duration en vez de slot_duration+buffer (p.ej. 9:00,9:30 en vez de 9:00,9:40).
-        const raw = Array.isArray(json.data) ? (json.data as Array<Record<string, unknown>>) : [];
-        const list: DoctorOffice[] = raw.map((o) => ({
-          ...(o as unknown as DoctorOffice),
-          slot_duration:
-            (o.slot_duration as number | null | undefined) ??
-            (o.slotDuration as number | null | undefined) ??
-            30,
-          buffer_minutes:
-            (o.buffer_minutes as number | null | undefined) ??
-            (o.bufferMinutes as number | null | undefined) ??
-            0,
-        }));
+    fetchDoctorOffices()
+      .then((list) => {
         setOffices(list);
         // Si el doctor tiene consultorios, auto-seleccionar el primero (ya no existe
         // la opción "Sin consultorio específico"). Solo si aún no hay uno elegido.
@@ -463,15 +481,24 @@ export function useAppointmentFlow(
       setLoadingSlots(true);
       const blocked = new Set<string>();
 
-      // Citas ya ocupadas para esa fecha
+      // Citas ya ocupadas para esa fecha.
+      // Se cruza por INTERVALO, no por hora de inicio: una cita de 45' a las
+      // 08:00 tiene que bloquear también el slot de las 08:30, y una cita a
+      // una hora libre (14:37) no aparece en la grilla pero igual ocupa.
+      const daySlots = getTimeSlotsWithDuration(selectedDate, selectedOffice);
       try {
         const apptRes = await fetch(
           `/api/doctor/appointments?date=${encodeURIComponent(selectedDate)}`,
         );
         if (apptRes.ok) {
-          const apptJson = (await apptRes.json()) as { data?: { bookedAt?: string[] } };
-          const bookedAt = apptJson?.data?.bookedAt ?? [];
-          bookedAt.forEach((iso) => blocked.add(isoToCaracasHHMM(iso)));
+          const apptJson = (await apptRes.json()) as {
+            data?: { booked?: { at: string; durationMinutes: number | null }[] };
+          };
+          const intervals: BookedInterval[] = (apptJson?.data?.booked ?? []).map((b) => ({
+            startMin: hhmmToMinutes(isoToCaracasHHMM(b.at)),
+            durationMin: b.durationMinutes ?? DEFAULT_APPOINTMENT_MINUTES,
+          }));
+          blockedTimes(daySlots, intervals).forEach((t) => blocked.add(t));
         }
       } catch {
         /* silent */
@@ -488,8 +515,7 @@ export function useAppointmentFlow(
           };
           const blockList = blocksJson?.data ?? [];
           // Verificar cada slot del día contra los bloques
-          const daySlots = getTimeSlotsForDate(selectedDate, selectedOffice);
-          daySlots.forEach((slotTime) => {
+          daySlots.forEach(({ time: slotTime }) => {
             const slotISO = new Date(`${selectedDate}T${slotTime}:00-04:00`);
             if (
               blockList.some(
@@ -518,6 +544,10 @@ export function useAppointmentFlow(
     setDeferredContext(null);
   }
 
+  function clearSuccessResult() {
+    setSuccessResult(null);
+  }
+
   function selectPatient(p: PatientLookup) {
     setSelectedPatient(p);
     setCurrentStep(2);
@@ -535,7 +565,21 @@ export function useAppointmentFlow(
 
   function selectTime(t: string) {
     setSelectedTime(t);
+    // Elegir de la grilla vuelve a la duración del bloque: si antes se había
+    // usado una hora libre, esa duración no debe quedar pegada.
+    setCustomDuration(null);
     // Auto-advance to step 5 after time selection
+    setCurrentStep(5);
+  }
+
+  /**
+   * Hora libre: el especialista escribe la hora y cuánto dura, sin atarse a la
+   * grilla del consultorio. El backend nunca exigió que la hora caiga en un
+   * slot — solo valida que no pise otra cita.
+   */
+  function selectCustomSlot(time: string, durationMinutes: number) {
+    setSelectedTime(time);
+    setCustomDuration(durationMinutes);
     setCurrentStep(5);
   }
 
@@ -660,22 +704,37 @@ export function useAppointmentFlow(
           // siempre en null → el consultorio del paso 2 no se vinculaba a la cita.
           officeId: selectedOffice?.id ?? null,
           packageId: usePackage,
+          // Solo viaja cuando se agendó a una hora libre. Sin esto el backend
+          // deriva la duración del bloque del consultorio, que es lo normal.
+          durationMinutes: customDuration ?? undefined,
         }),
       });
-      const j = (await r.json()) as { error?: string; appointmentId?: string };
+      const j = (await r.json()) as {
+        error?: string;
+        appointmentId?: string;
+        consultationId?: string | null;
+      };
       if (!r.ok) throw new Error(j.error ?? 'Error al crear cita');
 
       const createdAppointmentId = j.appointmentId ?? '';
-      showToast({ type: 'success', message: 'Cita agendada correctamente' });
-      onSuccess?.(createdAppointmentId);
+      const createdConsultationId = j.consultationId ?? null;
 
-      // Multi-session plan (not a package): offer to defer remaining sessions.
+      // Store the result so NewAppointmentFlow can render the success step.
+      // The toast is NOT shown here — the success step itself confirms creation.
+      // onSuccess is called from the success step after the user dismisses it.
+      setSuccessResult({
+        appointmentId: createdAppointmentId,
+        consultationId: createdConsultationId,
+      });
+
+      // Multi-session plan (not a package): show the deferred-sessions prompt instead.
       // Condition: plan has >1 session, we're not using an existing package,
       // and the plan has a real UUID (not the generic fallback).
       const planSessions = selectedPlan?.sessions_count ?? 1;
       const planId = selectedPlan?.id ?? 'generic';
       if (!usePackage && planSessions > 1 && planId !== 'generic' && selectedPatient) {
-        // Session numbers to defer: [2, 3, ..., planSessions] (session 1 just created).
+        // Clear successResult so the deferred modal takes priority.
+        setSuccessResult(null);
         setDeferredContext({
           appointmentId: createdAppointmentId,
           planId,
@@ -689,7 +748,8 @@ export function useAppointmentFlow(
         return;
       }
 
-      onClose();
+      // Single-session / package: successResult is already set above.
+      // Do NOT call onClose() — the success step in NewAppointmentFlow handles it.
     } catch (err: unknown) {
       setGlobalError(err instanceof Error ? err.message : 'Error desconocido');
     } finally {
@@ -734,6 +794,8 @@ export function useAppointmentFlow(
     submit,
     deferredContext,
     clearDeferredContext,
+    successResult,
+    clearSuccessResult,
 
     patientQuery,
     setPatientQuery,
@@ -772,6 +834,8 @@ export function useAppointmentFlow(
     setSelectedDate,
     selectedTime,
     selectTime,
+    customDuration,
+    selectCustomSlot,
     weekOffset,
     setWeekOffset,
     unavailableTimes,

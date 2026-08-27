@@ -130,6 +130,38 @@ export class DoctorProfileModel extends Model {
   @Column({ type: DataType.BOOLEAN, allowNull: true, field: 'is_active' })
   declare isActive: boolean | null;
 
+  /**
+   * Deactivation provenance for the is_active switch. Added by migration
+   * 20260809000001. All three are NULL while the account is live.
+   *
+   * deactivatedBy is 'self' (the specialist left) or 'admin' (banned) — the
+   * flag alone cannot tell those apart, and they need different copy.
+   */
+  @Column({ type: DataType.DATE, allowNull: true, field: 'deactivated_at' })
+  declare deactivatedAt: Date | null;
+
+  @Column({ type: DataType.TEXT, allowNull: true, field: 'deactivated_by' })
+  declare deactivatedBy: string | null;
+
+  @Column({ type: DataType.TEXT, allowNull: true, field: 'deactivation_reason' })
+  declare deactivationReason: string | null;
+
+  /**
+   * Consultation blocks display layout. Added by migration 20260805000001.
+   * Valid values: 'tabs' | 'vertical'. Default: 'tabs'.
+   */
+  @Default('tabs')
+  @Column({ type: DataType.TEXT, allowNull: false, field: 'consultation_blocks_layout' })
+  declare consultationBlocksLayout: string;
+
+  /**
+   * Timestamp when the doctor completed the expanded onboarding gate
+   * (≥1 active office + ≥1 active service). Null = onboarding not yet done.
+   * Added by migration 20260805000001.
+   */
+  @Column({ type: DataType.DATE, allowNull: true, field: 'onboarding_completed_at' })
+  declare onboardingCompletedAt: Date | null;
+
   @CreatedAt
   @Column({ field: 'created_at' })
   declare createdAt: Date;

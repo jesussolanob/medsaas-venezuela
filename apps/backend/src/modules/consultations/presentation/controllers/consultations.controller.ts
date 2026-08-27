@@ -36,6 +36,7 @@ import { UpdateConsultationUseCase } from '../../application/use-cases/consultat
 import { ApprovePaymentUseCase } from '../../application/use-cases/consultations/approve-payment.use-case';
 import { ApprovePaymentWithExtrasUseCase } from '../../application/use-cases/consultations/approve-payment-with-extras.use-case';
 import { UpdatePaymentDetailsUseCase } from '../../application/use-cases/consultations/update-payment-details.use-case';
+import { ApplyNoShowFeeUseCase } from '../../application/use-cases/consultations/apply-no-show-fee.use-case';
 import { GetConsultationByIdUseCase } from '../../application/use-cases/consultations/get-consultation-by-id.use-case';
 import { GetPatientConsultationHistoryUseCase } from '../../application/use-cases/consultations/get-patient-consultation-history.use-case';
 import { ListConsultationsUseCase } from '../../application/use-cases/consultations/list-consultations.use-case';
@@ -51,7 +52,7 @@ function parseOptionalIsoDate(value: string | undefined, param: string): string 
   if (!value) return undefined;
   const ts = Date.parse(value);
   if (isNaN(ts)) {
-    throw new BadRequestException(`Query parameter "${param}" must be a valid ISO date string`);
+    throw new BadRequestException(`El parámetro "${param}" debe ser una fecha válida (ISO 8601)`);
   }
   return value;
 }
@@ -66,7 +67,7 @@ function parseOptionalPaymentStatus(value: string | undefined): PaymentStatus | 
   if (!value) return undefined;
   if (!PAYMENT_STATUS_VALUES.includes(value as PaymentStatus)) {
     throw new BadRequestException(
-      `Query parameter "payment_status" must be one of: ${PAYMENT_STATUS_VALUES.join(', ')}`,
+      `El parámetro "payment_status" debe ser uno de: ${PAYMENT_STATUS_VALUES.join(', ')}`,
     );
   }
   return value as PaymentStatus;
@@ -122,6 +123,7 @@ export class ConsultationsController {
     private readonly approvePayment: ApprovePaymentUseCase,
     private readonly approvePaymentWithExtras: ApprovePaymentWithExtrasUseCase,
     private readonly updatePaymentDetailsUseCase: UpdatePaymentDetailsUseCase,
+    private readonly applyNoShowFeeUseCase: ApplyNoShowFeeUseCase,
     private readonly getById: GetConsultationByIdUseCase,
     private readonly getHistory: GetPatientConsultationHistoryUseCase,
     private readonly listConsultations: ListConsultationsUseCase,
@@ -306,8 +308,19 @@ export class ConsultationsController {
   /**
    * PATCH /api/consultations/:id/payment-details — edit payment details.
    *
-   * Editable at any time, including when the payment is already approved.
-   * All fields are optional; only provided fields are updated.
+   * Two distinct paths based on the presence of `no_show_fee` OR an explicit zero amount:
+   *
+   *   no_show_fee > 0 (AND amount provided):
+   *     Routes to ApplyNoShowFeeUseCase — atomically updates the consultation amount
+   *     and syncs the linked payment to the new total (pending + new amount).
+   *
+   *   amount === 0 (no-show without fee, or any waived charge):
+   *     Also routes to ApplyNoShowFeeUseCase with newAmount=0. The linked payment is
+   *     resolved as approved/$0 so it leaves "Por cobrar" in count AND total.
+   *
+   *   All other cases (method, reference, receipt_url, non-zero amount change):
+   *     Routes to UpdatePaymentDetailsUseCase — updates consultation fields only.
+   *     This path never touches the payments table.
    *
    * SECURITY: doctorId comes from user.sub (authenticated token) — never from the body.
    */
@@ -317,6 +330,24 @@ export class ConsultationsController {
     @Body(new ZodValidationPipe(UpdatePaymentDetailsDtoSchema)) dto: UpdatePaymentDetailsDto,
     @CurrentUser() user: CurrentUserPayload,
   ): Promise<SuccessResponse<unknown>> {
+    // No-show sync path — two triggers:
+    //   1. Explicit no-show fee: no_show_fee > 0 AND amount provided.
+    //   2. Zero-amount resolution: amount === 0 (no-show without penalty, or waived charge).
+    // Both cases need the linked payment row to stay consistent with the consultation amount.
+    const isNoShowSyncPath =
+      (dto.no_show_fee !== undefined && dto.no_show_fee > 0 && dto.amount != null) ||
+      dto.amount === 0;
+
+    if (isNoShowSyncPath) {
+      const consultation = await this.applyNoShowFeeUseCase.execute({
+        consultationId: id,
+        doctorId: user.sub,
+        newAmount: dto.amount ?? 0,
+      });
+      return { success: true, data: toConsultationResponse(consultation) };
+    }
+
+    // Normal edit path — payment fields only, never touches payments table.
     const consultation = await this.updatePaymentDetailsUseCase.execute({
       consultationId: id,
       doctorId: user.sub,

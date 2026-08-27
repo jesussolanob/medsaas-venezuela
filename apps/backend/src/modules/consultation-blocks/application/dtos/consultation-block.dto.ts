@@ -6,6 +6,9 @@ import { z } from 'zod';
  * blocks: full replacement array for the doctor's configuration.
  * Each item identifies a catalog key and optional overrides.
  * enabled defaults to true when omitted.
+ *
+ * layout (optional): when present, persists the display layout on profiles.
+ * Omitting layout leaves the current value untouched (retrocompatible).
  */
 export const SaveBlocksDtoSchema = z.object({
   blocks: z.array(
@@ -20,6 +23,11 @@ export const SaveBlocksDtoSchema = z.object({
       send_to_patient: z.boolean().nullable().optional(),
     }),
   ),
+  /**
+   * Optional display layout for consultation blocks.
+   * 'tabs' | 'vertical'. When omitted, the stored value is not modified.
+   */
+  layout: z.enum(['tabs', 'vertical']).optional(),
 });
 
 export type SaveBlocksDto = z.infer<typeof SaveBlocksDtoSchema>;

@@ -15,6 +15,6 @@ export class EmailTemplateNotFoundError extends DomainError {
   override readonly httpStatus = 500;
 
   constructor(name: string) {
-    super(`Email template '${name}' not found or inactive`);
+    super(`La plantilla de correo '${name}' no existe o está inactiva`);
   }
 }

@@ -6,6 +6,6 @@ export class PromotionNotFoundError extends DomainError {
 
   // Intentionally generic — never include the ID to prevent resource enumeration.
   constructor() {
-    super('Promotion not found');
+    super('Promoción no encontrada');
   }
 }

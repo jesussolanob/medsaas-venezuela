@@ -5,6 +5,6 @@ export class PackageExhaustedError extends DomainError {
   readonly code = 'PACKAGE_EXHAUSTED';
 
   constructor(packageId: string) {
-    super(`Package ${packageId} has no remaining sessions`);
+    super(`El combo ${packageId} no tiene sesiones disponibles`);
   }
 }

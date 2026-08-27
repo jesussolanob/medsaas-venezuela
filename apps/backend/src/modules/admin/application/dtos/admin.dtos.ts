@@ -60,11 +60,21 @@ export const VALID_ACTIVITY_STATUSES = ['active', 'cold', 'inactive'] as const;
 
 export const ExtendSubscriptionBodySchema = z
   .object({
-    doctor_id: z.string().uuid({ message: 'doctor_id must be a valid UUID' }),
-    months: z.number().int().min(1).max(120),
+    doctor_id: z.string().uuid({ message: 'doctor_id debe ser un UUID válido' }),
+    months: z.number().int().min(1).max(120).optional(),
+    days: z.number().int().min(1).max(3650).optional(),
     reason: z.string().max(500).nullable().optional(),
   })
-  .strict();
+  .strict()
+  .refine(
+    (data) => {
+      const hasMonths = data.months !== undefined;
+      const hasDays = data.days !== undefined;
+      // Exactly one must be present (XOR)
+      return hasMonths !== hasDays;
+    },
+    { message: 'Indicá la extensión en días o en meses, pero no en ambos' },
+  );
 export type ExtendSubscriptionBody = z.infer<typeof ExtendSubscriptionBodySchema>;
 
 export const SuspendSubscriptionBodySchema = z
@@ -197,7 +207,7 @@ export const UpdatePlanFullBodySchema = z
       b.sort_order !== undefined ||
       b.is_permanent !== undefined ||
       b.description !== undefined,
-    { message: 'At least one field must be provided' },
+    { message: 'Debés enviar al menos un campo' },
   );
 
 export type UpdatePlanFullBody = z.infer<typeof UpdatePlanFullBodySchema>;
@@ -271,7 +281,7 @@ export type SetDoctorAccessBody = z.infer<typeof SetDoctorAccessBodySchema>;
  */
 export const SetUserRoleBodySchema = z
   .object({
-    role: z.enum(['super_admin', 'doctor']),
+    role: z.enum(['super_admin', 'doctor', 'seller']),
   })
   .strict();
 

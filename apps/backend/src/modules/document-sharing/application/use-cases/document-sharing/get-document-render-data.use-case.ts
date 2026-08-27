@@ -40,6 +40,7 @@ import {
 } from '../../../../storage/application/ports/storage.port';
 import { resignGcsImageUrl } from '../../../../storage/application/helpers/resign-gcs-image.helper';
 import { GetConsultationBlocksUseCase } from '../../../../consultation-blocks/application/use-cases/consultation-blocks/get-consultation-blocks.use-case';
+import { htmlToPlainText, isProbablyHtml } from '@delta/shared-utils';
 
 export interface GetDocumentRenderDataInput {
   token: string;
@@ -285,7 +286,10 @@ export class GetDocumentRenderDataUseCase {
         diagnosis: consultation.diagnosis,
         treatment: consultation.treatment,
         notes: consultation.notes,
-        blocksSnapshot: consultation.blocksSnapshot,
+        // Strip HTML from block values before sending to PDF renderer.
+        // Only string values that look like HTML are converted — non-HTML strings
+        // and non-string values are passed through unchanged.
+        blocksSnapshot: this.plainTextSnapshot(consultation.blocksSnapshot),
       },
       patient: {
         fullName: patient?.fullName ?? 'Paciente',
@@ -313,6 +317,33 @@ export class GetDocumentRenderDataUseCase {
       })),
       templateConfig,
     };
+  }
+
+  /**
+   * Converts HTML-flavoured block values to plain text for PDF rendering.
+   *
+   * Only string values that `isProbablyHtml` recognises as HTML are processed —
+   * plain strings and non-string values (numbers, booleans, null, objects) pass
+   * through unchanged. The heuristic is conservative: a false-positive (treating
+   * a plain string as HTML) only costs an extra regex pass, which is harmless.
+   *
+   * @param snapshot - The raw blocks_snapshot, possibly null.
+   * @returns A new snapshot with HTML strings converted to plain text, or null.
+   */
+  private plainTextSnapshot(
+    snapshot: Record<string, unknown> | null,
+  ): Record<string, unknown> | null {
+    if (!snapshot) return null;
+
+    const result: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(snapshot)) {
+      if (typeof value === 'string' && isProbablyHtml(value)) {
+        result[key] = htmlToPlainText(value);
+      } else {
+        result[key] = value;
+      }
+    }
+    return result;
   }
 
   /**

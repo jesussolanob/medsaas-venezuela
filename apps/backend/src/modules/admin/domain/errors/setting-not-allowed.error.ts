@@ -8,6 +8,6 @@ export class SettingNotAllowedError extends DomainError {
   override readonly httpStatus = 422;
 
   constructor(key: string) {
-    super(`Setting key '${key}' is not allowed or is protected`);
+    super(`La configuración '${key}' no existe o está protegida`);
   }
 }

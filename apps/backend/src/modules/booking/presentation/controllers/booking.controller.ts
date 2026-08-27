@@ -137,7 +137,7 @@ export class BookingController {
     const parsed = DateQuerySchema.safeParse(rawDate);
     if (!parsed.success) {
       throw new BadRequestException({
-        message: 'Validation failed',
+        message: 'La fecha indicada no es válida',
         errors: parsed.error.issues.map((i) => ({ path: 'date', message: i.message })),
       });
     }
@@ -164,6 +164,8 @@ export class BookingController {
         appointmentId: result.appointment.id,
         scheduledAt: result.appointment.scheduledAt,
         // patientId intentionally omitted — no internal IDs on public endpoints.
+        // consultationCode: DLT-YYYYMM-NNNN. Null when auto-creation failed (best-effort).
+        consultationCode: result.consultationCode,
       },
     };
   }

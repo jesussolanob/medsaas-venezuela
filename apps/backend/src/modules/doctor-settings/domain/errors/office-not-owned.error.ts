@@ -6,6 +6,6 @@ export class OfficeNotOwnedError extends DomainError {
   override readonly httpStatus = 403;
 
   constructor() {
-    super('The specified office does not belong to this doctor');
+    super('Ese consultorio no pertenece a este especialista');
   }
 }

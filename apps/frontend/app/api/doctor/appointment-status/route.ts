@@ -21,6 +21,18 @@ import { backendPut } from '@/lib/api-client.server';
 
 export const dynamic = 'force-dynamic';
 
+/** Maps backend domain error codes to Spanish (es-VE) messages for the UI. */
+function spanishError(code: string, fallback: string): string {
+  switch (code) {
+    case 'APPOINTMENT_NOT_FOUND':
+      return 'Cita no encontrada';
+    case 'APPOINTMENT_INVALID_TRANSITION':
+      return 'No se puede cambiar la cita a ese estado desde su estado actual';
+    default:
+      return fallback;
+  }
+}
+
 // The UI sends: { appointment_id, new_status, reason? }
 // Backend PUT /:id/status expects: { status, actor_id?, reason? }
 export async function POST(req: NextRequest): Promise<NextResponse> {
@@ -54,19 +66,21 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
   if (!result.ok) {
     const { code, message, status } = result.error;
-    if (code === 'APPOINTMENT_NOT_FOUND') {
-      return NextResponse.json({ error: 'Cita no encontrada' }, { status: 404 });
-    }
     if (status === 403) {
       return NextResponse.json(
         { error: 'No tienes permiso para cambiar esta cita' },
         { status: 403 },
       );
     }
-    if (status === 400) {
-      return NextResponse.json({ error: message }, { status: 400 });
+    if (status === 409 || code === 'APPOINTMENT_CANCEL_REQUIRES_RESCHEDULE') {
+      // Cancelling an appointment with an approved payment requires rescheduling first.
+      // The backend message is already in Spanish; forward it to the UI intact.
+      return NextResponse.json(
+        { error: message, code: 'APPOINTMENT_CANCEL_REQUIRES_RESCHEDULE' },
+        { status: 409 },
+      );
     }
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ error: spanishError(code, message) }, { status: status || 500 });
   }
 
   return NextResponse.json({ success: true, new_status });

@@ -41,7 +41,8 @@ import {
 // Etapa 1: Supabase removed.
 // - pricing_plans → GET /api/doctor/services  (getDoctorServices)
 // - profiles.payment_methods → GET /api/doctor/profile  (getDoctorProfile)
-// - patient_packages → GET /api/packages/doctor?status=active (getAllActivePackages)
+// - consumo de combos → GET /api/pending-consultations/usage (getPackageUsage).
+//   OJO: NO se usa `patient_packages` — esa tabla está vacía y nadie la escribe.
 // - shared_files / @/lib/shared-files → Supabase-only lib, no backend endpoint in Etapa 1
 //   Tab "Seguimiento" shows placeholder; write ops are no-ops until Fase 5.
 // - AI button: supabase.auth.getSession() removed; calls /api/doctor/ai without token.
@@ -55,10 +56,10 @@ import {
   getConsultations,
   createConsultation,
   updateConsultationNotes,
-  getAllActivePackages,
+  getPackageUsage,
   type Patient,
   type Consultation,
-  type PatientPackageInfo,
+  type PackageUsage,
 } from './actions';
 import Paginator from '@/components/ui/Paginator';
 import { getDoctorServices } from '@/app/doctor/services/actions';
@@ -76,6 +77,7 @@ import { sanitizeHtml } from '@/lib/sanitize-html';
 import { showToast } from '@/components/ui/Toaster';
 import NewRequestModal from '@/components/patient-requests/NewRequestModal';
 import RequestDetailModal from '@/app/doctor/patient-requests/RequestDetailModal';
+import { useBcvRate } from '@/lib/useBcvRate';
 
 // Tipo alineado a la respuesta camelCase del backend shared-files.
 type SharedFile = {
@@ -128,8 +130,6 @@ function formatRequestDate(iso: string): string {
     year: 'numeric',
   }).format(new Date(iso));
 }
-
-// PatientPackageInfo imported from ./actions (same shape as the previous local interface).
 
 // Estados de PAGO: solo 2 — Pendiente | Aprobado. No existe "Cancelado" ni "Rechazado".
 const PAYMENT_STATUS = {
@@ -190,6 +190,8 @@ type DetailTab = 'consultas' | 'historial' | 'seguimiento';
 const SHOW_SHARED_FILES_CARDS = false;
 
 export default function PatientsPage() {
+  // Precios en la divisa del especialista, no en dolar fijo.
+  const { format: fmtMoney, currencyCode } = useBcvRate();
   const router = useRouter();
   // Deep-link: /doctor/patients?open=<patientId> abre directo la ficha del paciente
   // (usado desde el módulo de consultas). Se resuelve al cargar la lista.
@@ -323,7 +325,10 @@ export default function PatientsPage() {
   });
   const [consultError, setConsultError] = useState('');
   const [consultSuccess, setConsultSuccess] = useState('');
-  const [packageInfo, setPackageInfo] = useState<Record<string, PatientPackageInfo>>({});
+  // Consumo de combos por paciente. Antes salía de `patient_packages`, una tabla
+  // VACÍA que ninguna pantalla escribe — o sea que la tarjeta y la insignia
+  // nunca se veían. Ahora sale del modelo vivo (ver getPackageUsage).
+  const [packageUsage, setPackageUsage] = useState<Record<string, PackageUsage[]>>({});
 
   // Pricing plans + payment methods for new consultation
   const [pricingPlans, setPricingPlans] = useState<
@@ -445,11 +450,18 @@ export default function PatientsPage() {
   }, [search]);
 
   function loadPackageInfo() {
-    // Wire GET /api/packages/doctor?status=active → package counters per patient.
-    // On error, packageInfo stays empty so the sessions card simply doesn't render.
-    getAllActivePackages()
-      .then((map) => setPackageInfo(map))
-      .catch(() => setPackageInfo({}));
+    // GET /api/pending-consultations/usage (sin patient_id = todos los pacientes,
+    // en UNA consulta agrupada). Si falla, el mapa queda vacío y ni la tarjeta ni
+    // la insignia se dibujan.
+    getPackageUsage()
+      .then((rows) => {
+        const map: Record<string, PackageUsage[]> = {};
+        for (const row of rows) {
+          (map[row.patientId] ??= []).push(row);
+        }
+        setPackageUsage(map);
+      })
+      .catch(() => setPackageUsage({}));
   }
 
   function startEditPatient(p: Patient) {
@@ -660,7 +672,13 @@ export default function PatientsPage() {
 
   // RONDA 19b — handler UNICO para PatientForm. UPDATE si data.id existe, INSERT si no.
   async function handlePatientSubmit(formData: PatientFormData) {
-    if (!doctorId) return;
+    // El backend deriva el doctor del token (anti-IDOR) y `doctorId` aquí es solo
+    // compatibilidad de firma. Antes un `return` mudo cuando aún no había resuelto
+    // dejaba el click en "Guardar" sin request, sin error y sin toast: el
+    // especialista creía haber guardado un paciente que nunca se escribió.
+    if (!doctorId) {
+      throw new Error('Aún estamos cargando tu sesión. Intenta de nuevo en unos segundos.');
+    }
     setPatientFormSaving(true);
     try {
       if (formData.id) {
@@ -744,7 +762,10 @@ export default function PatientsPage() {
       setPatError(newBdError);
       return;
     }
-    if (!doctorId) return;
+    if (!doctorId) {
+      setPatError('Aún estamos cargando tu sesión. Intenta de nuevo en unos segundos.');
+      return;
+    }
     setPatError('');
     startTransition(async () => {
       const res = await addPatient(doctorId, {
@@ -951,7 +972,12 @@ export default function PatientsPage() {
           ) : (
             <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
               {filtered.map((p, i) => {
-                const pkg = packageInfo[p.id];
+                // Sesiones pagadas que todavía no tienen fecha, sumando todos
+                // los combos del paciente.
+                const porAgendar = (packageUsage[p.id] ?? []).reduce(
+                  (acc, u) => acc + u.pendingScheduling,
+                  0,
+                );
                 return (
                   <button
                     key={p.id}
@@ -986,10 +1012,10 @@ export default function PatientsPage() {
                             {SOURCE_LABELS[p.source] ?? p.source}
                           </span>
                         )}
-                        {pkg && pkg.pendingSessions > 0 && (
+                        {porAgendar > 0 && (
                           <span className="flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-violet-50 text-violet-600 shrink-0">
                             <Zap className="w-2.5 h-2.5" />
-                            {pkg.pendingSessions} cita{pkg.pendingSessions !== 1 ? 's' : ''}
+                            {porAgendar} por agendar
                           </span>
                         )}
                       </div>
@@ -1195,40 +1221,51 @@ export default function PatientsPage() {
               </div>
             </div>
 
-            {/* Active packages / sessions card */}
-            {packageInfo[selected.id] && packageInfo[selected.id].pendingSessions > 0 && (
-              <div className="bg-violet-50 border border-violet-200 rounded-xl p-4 sm:p-6">
-                <div className="flex items-center gap-2 mb-3">
+            {/* Consumo de los combos del paciente.
+                "Atendida" es lo ÚNICO que consume sesión: una inasistencia se
+                muestra aparte porque el paciente todavía tiene derecho a ella. */}
+            {(packageUsage[selected.id] ?? []).length > 0 && (
+              <div className="bg-violet-50 border border-violet-200 rounded-xl p-4 sm:p-6 space-y-4">
+                <div className="flex items-center gap-2">
                   <Zap className="w-4 h-4 text-violet-600" />
-                  <h3 className="text-sm font-semibold text-violet-800">
-                    Paquete de sesiones activo
-                  </h3>
+                  <h3 className="text-sm font-semibold text-violet-800">Paquetes de sesiones</h3>
                 </div>
-                <div className="flex items-center gap-6">
-                  <div>
-                    <p className="text-3xl font-extrabold text-violet-700">
-                      {packageInfo[selected.id].pendingSessions}
-                    </p>
-                    <p className="text-xs text-violet-500 font-medium mt-0.5">
-                      sesiones pagadas sin agendar
-                    </p>
-                  </div>
-                  <div className="flex-1">
-                    <div className="w-full h-3 bg-violet-200 rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-violet-500 rounded-full transition-all"
-                        style={{
-                          width: `${Math.max(5, ((packageInfo[selected.id].totalSessions - packageInfo[selected.id].pendingSessions) / packageInfo[selected.id].totalSessions) * 100)}%`,
-                        }}
-                      />
+
+                {(packageUsage[selected.id] ?? []).map((pkg) => {
+                  const total =
+                    pkg.totalSessions ??
+                    pkg.attended + pkg.scheduled + pkg.noShow + pkg.pendingScheduling;
+                  const pct = total > 0 ? Math.round((pkg.attended / total) * 100) : 0;
+                  return (
+                    <div key={pkg.planName} className="space-y-1.5">
+                      <div className="flex items-baseline justify-between gap-3">
+                        <p className="text-sm font-semibold text-violet-900 truncate">
+                          {pkg.planName}
+                        </p>
+                        <p className="text-xs font-bold text-violet-700 shrink-0">
+                          {pkg.attended} de {total} atendidas
+                        </p>
+                      </div>
+                      <div className="w-full h-3 bg-violet-200 rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-violet-500 rounded-full transition-all"
+                          style={{ width: `${Math.max(pkg.attended > 0 ? 5 : 0, pct)}%` }}
+                        />
+                      </div>
+                      <p className="text-xs text-violet-500">
+                        {[
+                          pkg.scheduled > 0
+                            ? `${pkg.scheduled} agendada${pkg.scheduled !== 1 ? 's' : ''}`
+                            : null,
+                          pkg.pendingScheduling > 0 ? `${pkg.pendingScheduling} por agendar` : null,
+                          pkg.noShow > 0 ? `${pkg.noShow} sin asistir` : null,
+                        ]
+                          .filter(Boolean)
+                          .join(' · ') || 'Sin sesiones pendientes'}
+                      </p>
                     </div>
-                    <p className="text-xs text-violet-400 mt-1">
-                      {packageInfo[selected.id].totalSessions -
-                        packageInfo[selected.id].pendingSessions}{' '}
-                      de {packageInfo[selected.id].totalSessions} usadas
-                    </p>
-                  </div>
-                </div>
+                  );
+                })}
               </div>
             )}
 
@@ -2607,7 +2644,7 @@ export default function PatientsPage() {
                       >
                         <p className="text-sm font-semibold text-slate-800">{plan.name}</p>
                         <p className="text-xs text-slate-500 mt-0.5">
-                          ${plan.price_usd} USD · {plan.duration_minutes} min
+                          {fmtMoney(plan.price_usd)} {currencyCode} · {plan.duration_minutes} min
                         </p>
                       </button>
                     ))}

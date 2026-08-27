@@ -6,6 +6,6 @@ export class LeadNotFoundError extends DomainError {
 
   // Intentionally generic — never include the ID to prevent resource enumeration.
   constructor() {
-    super('Lead not found');
+    super('Contacto no encontrado');
   }
 }

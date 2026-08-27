@@ -3,6 +3,7 @@ import type { UpdateAppointmentStatusDto } from '@delta/shared-types';
 import type { Appointment } from '../../../domain/entities/appointment.entity';
 import { AppointmentNotFoundError } from '../../../domain/errors/appointment-not-found.error';
 import { AppointmentInvalidTransitionError } from '../../../domain/errors/appointment-invalid-transition.error';
+import { AppointmentCancelRequiresRescheduleError } from '../../../domain/errors/appointment-cancel-requires-reschedule.error';
 import {
   APPOINTMENT_REPOSITORY,
   type IAppointmentRepository,
@@ -67,6 +68,28 @@ export class UpdateAppointmentStatusUseCase {
     // 3. Guard transition rules
     if (!appointment.canTransitionTo(dto.status)) {
       throw new AppointmentInvalidTransitionError(appointment.status, dto.status);
+    }
+
+    // 3.5. Business rule: an appointment whose linked consultation already has
+    //    an APPROVED payment cannot be cancelled — the money is not refunded
+    //    and no patient credit/balance is tracked (explicitly out of scope).
+    //    The doctor must reschedule instead: the payment stays linked to the
+    //    consultation, which stays linked to the appointment, so it simply
+    //    travels with the new date (see RescheduleAppointmentUseCase).
+    //    Only applies to the 'cancelled' transition — confirmed/completed/
+    //    no_show are unaffected regardless of payment status.
+    //    Fail-open when consultationRepo is not injected (@Optional, backward
+    //    compatibility with older wiring/tests) or when the appointment has
+    //    no linked consultation at all — this is a business rule, not a
+    //    security guard, so it must never block a cancellation it cannot verify.
+    if (dto.status === 'cancelled' && appointment.consultationId && this.consultationRepo) {
+      const consultation = await this.consultationRepo.findByAppointmentId(
+        appointment.id,
+        appointment.doctorId,
+      );
+      if (consultation?.paymentStatus === 'approved') {
+        throw new AppointmentCancelRequiresRescheduleError();
+      }
     }
 
     // 4. Persist new status

@@ -11,8 +11,11 @@ import {
 import { CronSecretGuard } from '../../../../infrastructure/guards/cron-secret.guard';
 import { DispatchDueRemindersUseCase } from '../../application/use-cases/reminders/dispatch-due-reminders.use-case';
 import type { DispatchDueRemindersResult } from '../../application/use-cases/reminders/dispatch-due-reminders.use-case';
+import { DispatchDoctorInactivityNoticesUseCase } from '../../application/use-cases/reminders/dispatch-doctor-inactivity-notices.use-case';
+import type { DispatchDoctorInactivityNoticesResult } from '../../application/use-cases/reminders/dispatch-doctor-inactivity-notices.use-case';
 import { DispatchPendingConsultationRemindersUseCase } from '../../../pending-consultations/application/use-cases/dispatch-pending-consultation-reminders.use-case';
 import type { DispatchPendingRemindersResult } from '../../../pending-consultations/application/use-cases/dispatch-pending-consultation-reminders.use-case';
+import { ApplyScheduledDeactivationsUseCase } from '../../../doctor-settings/application/use-cases/doctor-settings/apply-scheduled-deactivations.use-case';
 import { ExpireDuePendingConsultationsUseCase } from '../../../pending-consultations/application/use-cases/expire-due-pending-consultations.use-case';
 
 interface CronRunResult extends DispatchDueRemindersResult {
@@ -24,6 +27,8 @@ interface CronRunResult extends DispatchDueRemindersResult {
   pendingRemindersFailed: number;
   /** Pending consultations expired (past their expires_at). */
   pendingExpired: number;
+  /** Cuentas con baja programada que vencieron y pasaron a plan gratuito. */
+  scheduledDeactivationsApplied: number;
 }
 
 interface SuccessResponse<T> {
@@ -48,6 +53,10 @@ interface SuccessResponse<T> {
  * pending sub-task does NOT abort the appointment-reminder flow.
  * Both sub-tasks are @Optional() so the controller remains testable and
  * backwards-compatible if PendingConsultationsModule is not imported.
+ *
+ * POST /api/cron/doctor-inactivity is a SEPARATE endpoint (not folded into
+ * `run()` above) because it runs once a day, while appointment-reminders
+ * runs every 15 minutes — different Cloud Scheduler jobs.
  */
 @Controller('cron')
 export class CronRemindersController {
@@ -55,12 +64,16 @@ export class CronRemindersController {
 
   constructor(
     private readonly dispatchDueReminders: DispatchDueRemindersUseCase,
+    private readonly dispatchDoctorInactivityNotices: DispatchDoctorInactivityNoticesUseCase,
     @Optional()
     @Inject(DispatchPendingConsultationRemindersUseCase)
     private readonly dispatchPendingReminders: DispatchPendingConsultationRemindersUseCase | null,
     @Optional()
     @Inject(ExpireDuePendingConsultationsUseCase)
     private readonly expirePending: ExpireDuePendingConsultationsUseCase | null,
+    @Optional()
+    @Inject(ApplyScheduledDeactivationsUseCase)
+    private readonly applyScheduledDeactivations: ApplyScheduledDeactivationsUseCase | null,
   ) {}
 
   @Post('appointment-reminders')
@@ -96,15 +109,45 @@ export class CronRemindersController {
       }
     }
 
+    // 4. Bajas programadas que ya vencieron (best-effort): pasan a plan
+    //    gratuito y se apagan. Va acá y no en un cron nuevo porque este ya
+    //    corre una vez al día.
+    let bajasAplicadas = 0;
+    if (this.applyScheduledDeactivations) {
+      try {
+        bajasAplicadas = await this.applyScheduledDeactivations.execute();
+      } catch (err: unknown) {
+        this.logger.warn(
+          '[cron] applyScheduledDeactivations failed — appointment reminders unaffected: ' +
+            (err instanceof Error ? err.message : String(err)),
+        );
+      }
+    }
+
     return {
       success: true,
       data: {
         ...apptResult,
+        scheduledDeactivationsApplied: bajasAplicadas,
         pendingRemindersSent: pendingRemindersResult.sent,
         pendingRemindersSkipped: pendingRemindersResult.skipped,
         pendingRemindersFailed: pendingRemindersResult.failed,
         pendingExpired,
       },
     };
+  }
+
+  /**
+   * POST /api/cron/doctor-inactivity — invoked once a day by Cloud Scheduler.
+   *
+   * Dispatches "we miss you" notices to doctors inactive for 10+ / 15+ days.
+   * The response only ever exposes aggregate counts — never doctor PII.
+   */
+  @Post('doctor-inactivity')
+  @UseGuards(CronSecretGuard)
+  @HttpCode(HttpStatus.OK)
+  async runDoctorInactivity(): Promise<SuccessResponse<DispatchDoctorInactivityNoticesResult>> {
+    const data = await this.dispatchDoctorInactivityNotices.execute();
+    return { success: true, data };
   }
 }

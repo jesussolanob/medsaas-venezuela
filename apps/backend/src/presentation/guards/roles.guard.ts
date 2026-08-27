@@ -41,12 +41,22 @@ export class RolesGuard implements CanActivate {
     const user = request.user;
 
     if (!user) {
-      throw new ForbiddenException('Authentication required');
+      throw new ForbiddenException('Tu sesión expiró. Volvé a iniciar sesión.');
     }
 
     if (!requiredRoles.includes(user.role)) {
+      // El mensaje va a la pantalla del usuario: español, sin nombres de rol
+      // internos. El detalle técnico (rol requerido vs. rol real) queda en el log
+      // del GlobalExceptionFilter, no en la UI.
+      //
+      // Cuando la pantalla es de administración se nombra la causa más frecuente:
+      // el 2026-08-18 la sesión del navegador pasó a ser la de un especialista
+      // (otra pestaña de la misma ventana) y el panel abierto siguió mandando
+      // acciones. "Insufficient permissions" se leyó como un permiso roto.
       throw new ForbiddenException(
-        `Insufficient permissions. Required role: ${requiredRoles.join(' or ')}`,
+        requiredRoles.includes('super_admin')
+          ? 'Tu sesión no tiene permisos de administrador. Si iniciaste sesión con otra cuenta en esta ventana, cerrá sesión y volvé a entrar.'
+          : 'No tenés permisos para realizar esta acción.',
       );
     }
 

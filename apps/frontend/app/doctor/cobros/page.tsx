@@ -9,7 +9,7 @@
 //   - Realtime refresh → removed (no WS in Etapa 1). fetchPayments() called after mutations.
 import { useState, useEffect, useCallback } from 'react';
 import { useBcvRate } from '@/lib/useBcvRate';
-import { formatUsd, formatBs } from '@/lib/finances';
+import { formatBs } from '@/lib/finances';
 import { reportError } from '@/lib/report-error';
 import { showToast } from '@/components/ui/Toaster';
 import {
@@ -20,6 +20,7 @@ import {
   removePaymentItem,
 } from '@/app/doctor/finances/payments-actions';
 import { formatPaymentMethod } from '@/lib/payment-methods';
+import { entriesOf } from '@/lib/payment-details';
 import { buildReceiptHtml } from '@/lib/receipt-pdf';
 import { waLink } from '@/lib/phone-utils';
 import { getDoctorProfile } from '@/app/doctor/actions';
@@ -93,7 +94,14 @@ export default function CobrosPage() {
   const [payments, setPayments] = useState<Payment[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const { rate: bcvRate, mode: bcvMode, loading: bcvLoading } = useBcvRate();
+  const {
+    rate: bcvRate,
+    mode: bcvMode,
+    loading: bcvLoading,
+    format,
+    currencyCode,
+    symbol,
+  } = useBcvRate();
 
   // Date range for export
   const [dateFrom, setDateFrom] = useState(() => {
@@ -123,9 +131,8 @@ export default function CobrosPage() {
 
   // 7.10: métodos de pago del doctor para el mensaje de WhatsApp
   const [doctorPaymentMethods, setDoctorPaymentMethods] = useState<string[]>([]);
-  const [doctorPaymentDetails, setDoctorPaymentDetails] = useState<
-    Record<string, Record<string, string>>
-  >({});
+  // Un método puede traer un juego de datos o varios — ver lib/payment-details.
+  const [doctorPaymentDetails, setDoctorPaymentDetails] = useState<Record<string, unknown>>({});
   const [sendingWa, setSendingWa] = useState(false);
 
   // TAREA 2: estado de edición de detalles del pago
@@ -747,11 +754,10 @@ export default function CobrosPage() {
     const service = payment.plan_name || 'consulta';
     const code = payment.appointment_code ? ` (Ref. ${payment.appointment_code})` : '';
 
-    const usdStr = new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      minimumFractionDigits: 2,
-    }).format(amountUsd);
+    // Se formatea con la divisa que eligió el especialista, no con USD fijo:
+    // el mensaje decía "$40.00 EUR" —símbolo de dólar con código euro— y es el
+    // texto que le llega al paciente para que transfiera.
+    const usdStr = format(amountUsd);
 
     const bsStr = amountBs
       ? new Intl.NumberFormat('es-VE', {
@@ -761,8 +767,8 @@ export default function CobrosPage() {
       : null;
 
     const amountLine = bsStr
-      ? `*Monto:* ${usdStr} USD (${bsStr}${bcvRate ? ` | Tasa BCV: ${bcvRate.toFixed(2)} Bs/$` : ''})`
-      : `*Monto:* ${usdStr} USD`;
+      ? `*Monto:* ${usdStr} ${currencyCode} (${bsStr}${bcvRate ? ` | Tasa BCV: ${bcvRate.toFixed(2)} Bs/${symbol}` : ''})`
+      : `*Monto:* ${usdStr} ${currencyCode}`;
 
     const PAYMENT_LABELS: Record<string, string> = {
       pago_movil: 'Pago Móvil',
@@ -777,37 +783,44 @@ export default function CobrosPage() {
     const paymentLines: string[] = [];
     for (const methodId of doctorPaymentMethods) {
       const label = PAYMENT_LABELS[methodId] ?? methodId;
-      const details = doctorPaymentDetails[methodId];
+      // Un método puede tener VARIOS juegos de datos (dos bancos, dos pagos
+      // móviles). Se manda una línea por cada uno: el paciente elige el que le
+      // sirve. Con uno solo el mensaje queda igual que siempre.
+      const opciones = entriesOf(doctorPaymentDetails, methodId);
 
-      if (!details || Object.keys(details).length === 0) {
+      if (opciones.length === 0) {
         paymentLines.push(`• *${label}*`);
         continue;
       }
 
-      const parts: string[] = [];
-      if (methodId === 'pago_movil') {
-        if (details.phone) parts.push(`Tlf: ${details.phone}`);
-        if (details.bank) parts.push(`Banco: ${details.bank}`);
-        if (details.id_number) parts.push(`C.I./RIF: ${details.id_number}`);
-        if (details.holder) parts.push(`Titular: ${details.holder}`);
-      } else if (methodId === 'transferencia') {
-        if (details.bank) parts.push(`Banco: ${details.bank}`);
-        if (details.account) parts.push(`Cuenta: ${details.account}`);
-        if (details.account_type) parts.push(`Tipo: ${details.account_type}`);
-        if (details.id_number) parts.push(`C.I./RIF: ${details.id_number}`);
-        if (details.holder) parts.push(`Titular: ${details.holder}`);
-      } else if (methodId === 'zelle') {
-        if (details.email) parts.push(`Email: ${details.email}`);
-        if (details.holder) parts.push(`Nombre: ${details.holder}`);
-        if (details.bank) parts.push(`Banco: ${details.bank}`);
-      } else if (methodId === 'binance') {
-        if (details.binance_id) parts.push(`ID: ${details.binance_id}`);
-        if (details.email) parts.push(`Email: ${details.email}`);
-      } else if (methodId === 'pos') {
-        if (details.bank) parts.push(`Banco del POS: ${details.bank}`);
-      }
+      opciones.forEach((details, i) => {
+        const parts: string[] = [];
+        if (methodId === 'pago_movil') {
+          if (details.phone) parts.push(`Tlf: ${details.phone}`);
+          if (details.bank) parts.push(`Banco: ${details.bank}`);
+          if (details.id_number) parts.push(`C.I./RIF: ${details.id_number}`);
+          if (details.holder) parts.push(`Titular: ${details.holder}`);
+        } else if (methodId === 'transferencia') {
+          if (details.bank) parts.push(`Banco: ${details.bank}`);
+          if (details.account) parts.push(`Cuenta: ${details.account}`);
+          if (details.account_type) parts.push(`Tipo: ${details.account_type}`);
+          if (details.id_number) parts.push(`C.I./RIF: ${details.id_number}`);
+          if (details.holder) parts.push(`Titular: ${details.holder}`);
+        } else if (methodId === 'zelle') {
+          if (details.email) parts.push(`Email: ${details.email}`);
+          if (details.holder) parts.push(`Nombre: ${details.holder}`);
+          if (details.bank) parts.push(`Banco: ${details.bank}`);
+        } else if (methodId === 'binance') {
+          if (details.binance_id) parts.push(`ID: ${details.binance_id}`);
+          if (details.email) parts.push(`Email: ${details.email}`);
+        } else if (methodId === 'pos') {
+          if (details.bank) parts.push(`Banco del POS: ${details.bank}`);
+        }
 
-      paymentLines.push(`• *${label}:* ${parts.join(' | ')}`);
+        // Se numera solo cuando hay más de uno, para no ensuciar el caso normal.
+        const etiqueta = opciones.length > 1 ? `${label} ${i + 1}` : label;
+        paymentLines.push(`• *${etiqueta}:* ${parts.join(' | ')}`);
+      });
     }
 
     const noMethodsNote =
@@ -900,9 +913,11 @@ export default function CobrosPage() {
         <div className="bg-white border border-slate-200 rounded-xl p-5">
           <div className="flex items-center gap-2 mb-2">
             <DollarSign className="w-5 h-5 text-teal-500" />
-            <span className="text-xs font-semibold text-slate-500 uppercase">Total USD</span>
+            <span className="text-xs font-semibold text-slate-500 uppercase">
+              Total {currencyCode}
+            </span>
           </div>
-          <p className="text-2xl font-bold text-slate-900">{formatUsd(totalUSD)}</p>
+          <p className="text-2xl font-bold text-slate-900">{format(totalUSD)}</p>
           <p className="text-xs text-slate-400 mt-1">
             {filtered.length} registro{filtered.length !== 1 ? 's' : ''}{' '}
             {tab === 'pending' ? 'pendientes' : tab === 'approved' ? 'aprobados' : 'en total'}
@@ -922,7 +937,9 @@ export default function CobrosPage() {
           ) : totalBs !== null ? (
             <>
               <p className="text-2xl font-bold text-slate-900">{formatBs(totalBs)}</p>
-              <p className="text-xs text-slate-400 mt-1">Tasa BCV: {bcvRate?.toFixed(2)} Bs/$</p>
+              <p className="text-xs text-slate-400 mt-1">
+                Tasa BCV: {bcvRate?.toFixed(2)} Bs/{symbol}
+              </p>
             </>
           ) : (
             <p className="text-sm text-slate-400">Tasa no disponible</p>
@@ -1062,7 +1079,7 @@ export default function CobrosPage() {
                 </div>
                 <div className="col-span-1 text-right">
                   <span className="text-sm font-semibold text-slate-900">
-                    {formatUsd(p.plan_price)}
+                    {format(p.plan_price)}
                   </span>
                 </div>
                 <div className="col-span-1 text-right">
@@ -1129,7 +1146,7 @@ export default function CobrosPage() {
                 </p>
                 <div className="flex items-baseline gap-2 pt-1">
                   <span className="text-2xl font-bold text-teal-600">
-                    {formatUsd(selectedPayment.plan_price)}
+                    {format(selectedPayment.plan_price)}
                   </span>
                   <span className="text-xs text-slate-400">USD</span>
                   {bcvRate && (
@@ -1405,7 +1422,7 @@ export default function CobrosPage() {
                           </span>
                           <div className="flex items-center gap-2 shrink-0">
                             <span className="text-sm font-bold text-teal-700">
-                              {formatUsd(item.amount)}
+                              {format(item.amount)}
                             </span>
                             <button
                               onClick={() => removeExtraItem(item.id, item.amount)}
@@ -1422,7 +1439,7 @@ export default function CobrosPage() {
                           Total actualizado
                         </span>
                         <span className="text-base font-bold text-teal-600">
-                          {formatUsd(selectedPayment.plan_price)}
+                          {format(selectedPayment.plan_price)}
                         </span>
                       </div>
                     </>
@@ -1514,7 +1531,7 @@ export default function CobrosPage() {
                       </p>
                     </div>
                     <span className="text-sm font-bold text-teal-600">
-                      {formatUsd(item.price_usd)}
+                      {format(item.price_usd)}
                     </span>
                   </button>
                 ))

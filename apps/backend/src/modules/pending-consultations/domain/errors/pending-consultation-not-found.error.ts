@@ -9,6 +9,6 @@ export class PendingConsultationNotFoundError extends DomainError {
   override readonly httpStatus = 404;
 
   constructor(id?: string) {
-    super(id ? `Pending consultation ${id} not found` : 'Pending consultation not found');
+    super(id ? `Consulta por agendar ${id} no encontrada` : 'Consulta por agendar no encontrada');
   }
 }

@@ -6,6 +6,6 @@ export class TemplateNotFoundError extends DomainError {
 
   // Intentionally generic — never include the ID to prevent resource enumeration.
   constructor() {
-    super('Template not found');
+    super('Plantilla no encontrada');
   }
 }

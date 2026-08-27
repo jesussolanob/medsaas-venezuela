@@ -250,7 +250,14 @@ consultations}` (+ Consultorios/Plantillas sin moduleKey); deshabilitados agenda
   db-g1-small, **aislado — NUNCA apunta a prod**; se puede DETENER cuando no se usa → paga solo storage). Secreto
   `DATABASE_URL_STAGING` (mismo URL de prod cambiando solo la instancia). **Reusa las MISMAS llaves de cifrado de
   prod** (obligatorio: la BD clonada está cifrada con esa llave). Salvaguardas por tener datos reales clonados:
-  **`EMAIL_DRIVER=noop`** (NO manda correos a pacientes) + **Sentry off**. Workflow `.github/workflows/staging.yml`
+  ~~`EMAIL_DRIVER=noop`~~ + **Sentry off**. Workflow `.github/workflows/staging.yml`
+  🚨 **CORREGIDO 2026-08-19: staging YA NO tiene la salvaguarda del correo.** Desde el 2026-08-09
+  el workflow fija **`EMAIL_DRIVER=resend`** (verificado en el servicio desplegado y en
+  `staging.yml:153`), así que **staging envía correo REAL al destinatario REAL sobre una base
+  clonada con pacientes de verdad**. Este ADR afirmó lo contrario durante diez días. Consecuencia
+  para el QA: cualquier acción que dispare un correo —reservar, compartir documentos,
+  recordatorios— le llega a la persona real. **Probar envíos SOLO con pacientes de prueba y
+  direcciones inventadas.**
   dispara en push a la rama **`staging`** (imágenes `staging-<sha>`, `NEXT_PUBLIC_URL=https://staging.deltasalud.app`).
   Dominio: domain mapping → `delta-frontend-staging` + CNAME Cloudflare `staging → ghs.googlehosted.com` **DNS-only**
   (cert managed de Cloud Run, VIVO). Backend por IAM/`.run.app` (sin dominio, como prod; `api.deltasalud.app` + LB/Armor
@@ -305,6 +312,222 @@ consultations}` (+ Consultorios/Plantillas sin moduleKey); deshabilitados agenda
   **Google aprobó la verificación el 2026-07-27 → `REVIEWER_ACCESS_ENABLED=false` en prod** (redeploy por
   `workflow_dispatch` sobre `main`, sin promover código). `staging.yml` tenía la bandera **hardcodeada en
   `true`**; ahora lee la variable del repo, igual que prod. ⚠️ Prod y staging **comparten** esa variable.
+- **ADR-028 (2026-08-12):** **La duración de la consulta vive en el BLOQUE del horario, no en el
+  consultorio.** `doctor_offices.schedule` (JSONB, `DayScheduleParams[]`) gana dos campos
+  OPCIONALES por bloque: `slotDuration` y `bufferMinutes`. Sin valor, el bloque hereda los del
+  consultorio (`office.slotDuration` / `bufferMinutes`) — que es el comportamiento previo, así que
+  **no hay migración** y todo horario ya guardado sigue siendo válido. Motivo: un mismo consultorio
+  puede tener bloques con ritmos distintos (primeras consultas de 45' en la mañana, controles de 20'
+  en la tarde). Consecuencia en el negocio: un servicio se puede asociar a un consultorio cuando
+  **ALGÚN bloque** sostiene su duración (antes se comparaba contra la única duración del
+  consultorio). Validación en `DaySchedule.validate`: el override ausente es normal, pero presente e
+  inválido invalida el bloque entero (no se guarda una duración imposible). `get-available-slots`
+  calcula duración y paso POR BLOQUE. Frontend: `getTimeSlotsForDate` hace el mismo fallback y el
+  editor de consultorios ofrece un selector por bloque + "aplicar a todos".
+- **ADR-029 (2026-08-12):** **Ingreso = pago aprobado Y cita confirmada.** Una consulta impaga, o
+  pagada pero con la cita todavía "por confirmar", NO cuenta como ingreso: suma en "Por ingresar" /
+  Cobros. La regla se aplica en las **TRES** consultas que alimentan la pantalla de finanzas —
+  la lista de ingresos (`/api/finances/income`), el resumen (`getFinancialSummary`) y los totales de
+  pagos (`listForDoctor` + `totalsForDoctor`)— porque cada una salía de un lugar distinto y aplicarla
+  en una sola dejó la tarjeta "Total ingresos" contradiciendo a la tabla de abajo. El filtro va con
+  **EXISTS y nunca con JOIN**: un mismo pago puede cubrir varias citas de un combo y un JOIN
+  duplicaría la fila del ingreso. Regla de oro al tocar esto: la plata que sale de Ingresos tiene que
+  aparecer en Por cobrar — que ningún importe quede fuera de los dos lados.
+- **ADR-030 (2026-08-12):** **Ciclo de la baja de cuenta: se respetan los días pagados y volver a
+  entrar reactiva.** (1) Si al darse de baja al especialista le quedan días de un plan PAGO, la cuenta
+  NO se apaga: conserva su plan hasta `subscription_expires_at` y queda anotada la intención
+  (`deactivated_by='self'` + `subscription_status='cancelled'`, con `is_active` todavía en true).
+  (2) Un **barrido diario** colgado del cron que ya existe (`/api/cron/appointment-reminders`,
+  `ApplyScheduledDeactivationsUseCase`) apaga ese día las cuentas vencidas y las deja en `delta_free`.
+  Va como barrido y no solo al iniciar sesión porque con la cuenta encendida su página pública sigue
+  tomando citas. (3) Al **volver a entrar**, una cuenta apagada POR SU PROPIO DUEÑO se reactiva sola
+  en plan gratuito (`ProcessLoginTouchUseCase`, que corre en el `resolve-identity` no guardado) y puede
+  mejorar su plan sin pedirle nada a un admin. Un bloqueo hecho por un admin (`deactivated_by='admin'`)
+  sigue necesitando al admin: esa distinción es la salvaguarda y no debe borrarse.
+- **ADR-031 (2026-08-16):** **La inasistencia es un estado RESUELTO, y se resuelve con multa y/o
+  reagenda en un solo paso.** Tres decisiones que van juntas:
+  (1) **`no_show` cuenta como cita resuelta en finanzas** (se suma a `confirmed`/`completed` en el
+  criterio COBRADA). Antes una consulta PAGADA cuya cita quedó en no_show caía en "Por ingresar":
+  plata ya cobrada mostrada como pendiente de cobro. Un no_show no espera confirmación de nada —
+  ya ocurrió. Si estaba pagado es ingreso (**por el portal no hay devolución**); si no, el monto
+  queda en 0 y no suma de ningún lado. ⚠️ El criterio vivía **inline en SEIS lugares**, no en los
+  tres que decía el ADR-029 — al tocarlo hay que peinarlos todos o la pantalla se contradice sola.
+  Además una consulta pendiente con monto efectivo 0 **no se lista en cobros**
+  (`COALESCE(c.amount, a.plan_price, 0) > 0`): si no hay nada que cobrar, no es un cobro.
+  (2) **Matriz de la plata al marcar inasistencia** (decisión del dueño): impaga y no reagenda →
+  el costo pasa a la multa (0 por defecto) y sale de Por cobrar; impaga y reagenda → sigue el flujo
+  completo y la multa se suma; pagada → el monto cobrado se mantiene; pagada + multa → el costo sube
+  y **el pago vuelve a `pending` por el TOTAL**, porque no existen pagos parciales (el enum es
+  `pending|approved` y nada más), y al cobrar la diferencia se aprueba de nuevo. La multa es
+  **siempre opcional y arranca en $0**. Si el especialista devuelve plata, corrige el monto a mano.
+  (3) **Reagendar desde `no_show` está permitido** y devuelve la cita a un estado vigente con la
+  misma regla de 3 días de la creación; `cancelled` y `completed` siguen bloqueados. El log de
+  auditoría guarda la transición REAL (`no_show → confirmed/scheduled`): como el estado deja de ser
+  no_show, ese log es el **único rastro** de que el paciente faltó.
+- **ADR-032 (2026-08-16):** **Una cita con fecha pasada creada por el especialista nace `completed`,
+  y no hay tope hacia atrás.** El especialista atiende y a veces carga la consulta después (se fue la
+  luz, se le hizo tarde): tiene que poder dejarla con la fecha REAL y que quede atendida de una vez,
+  sin un segundo paso que se olvida. Se resuelve en `computeInitialStatus` y no en la UI porque la
+  consulta **no tiene columna `status` propia** — su estado se deriva del de la cita, así que basta
+  con que la cita nazca `completed`. Solo aplica a actor `doctor`/`admin`: un booking público con
+  fecha pasada sigue siendo `scheduled` (y de todos modos no puede mandarla). El backend **nunca
+  validó fechas pasadas**, así que quitar el tope de 30 días fue puramente de frontend.
+
+  ⚠️ **Corregido el 2026-08-18: la regla estaba escrita pero NO se aplicaba.** `computeInitialStatus`
+  vive en `CreateAppointmentUseCase`, y el alta desde el panel del especialista **no pasa por ahí**:
+  pasa por `CreateBookingUseCase` —el use case del booking PÚBLICO, donde siempre corresponde
+  `scheduled`—, que fijaba el estado a mano. Resultado: el asistente prometía "se va a registrar como
+  atendida" y la cita quedaba agendada, metida en la agenda como si estuviera por venir. Se agregó la
+  opción `doctorInitiated`, que **solo** pasa `DoctorBookingController`. Una reserva pública nunca la
+  lleva (un paciente no puede declarar atendida una consulta) y la consulta inmediata tampoco.
+  **Lección:** una regla de dominio escrita en UN camino de alta no cubre los otros; este proyecto
+  tiene dos y la promesa estaba en la UI del que no la aplicaba.
+
+- **ADR-033 (2026-08-16):** **La duración de una cita se resuelve por BLOQUE al crearla, y el
+  especialista puede agendar a una hora libre.** (1) El ADR-028 dio duración propia a cada bloque,
+  pero solo los slots OFRECIDOS la respetaban: al crear la cita se persistía `office.slotDuration`,
+  así que una cita de un bloque de 45' quedaba guardada como de 30' y el solapamiento se calculaba
+  con la duración equivocada. Ahora los dos caminos de creación (`CreateBookingUseCase`, que es por
+  donde pasa el flujo del especialista, y `CreateAppointmentUseCase`) preguntan
+  `office.slotDurationAt(scheduledAt)`. (2) La conversión UTC → hora de Caracas vive en UN solo
+  lugar (`src/domain/caracas-time`): el bug nació de tener dos formas de calcular la misma hora, así
+  que unificarla es parte del arreglo. (3) `duration_minutes` (5–480) opcional en el DTO del booking
+  —obligatorio agregarlo porque el schema es `.strict()`— **solo se honra en el camino del
+  especialista**; el booking público lo ignora aunque venga en el cuerpo, porque un paciente no
+  elige cuánto dura su consulta. El backend NUNCA exigió que la hora caiga en un slot: la reja era
+  puramente del frontend. Se sigue rechazando el solapamiento (el pedido es ocupar un hueco, no
+  encimar) y se permite fuera del horario del consultorio.
+
+- **ADR-034 (2026-08-16):** **La divisa del portal es del ESPECIALISTA y solo cambia lo que se
+  MUESTRA.** Si elige la tasa en euros, sus precios se muestran con `€` en vez de `$`: es el MISMO
+  número, no hay conversión. Lo único que cambia de fondo es la tasa con la que se calcula el
+  equivalente en bolívares. Se propaga desde `useBcvRate()`, que ya conocía el modo
+  (`profiles.currency_mode`) y ya estaba enganchado en las pantallas con plata.
+  (1) **NO cambia lo que se GUARDA**: los importes se siguen persistiendo igual (`currency: 'USD'`
+  en ingresos manuales) porque no hay conversión de por medio. Nadie debe leer esos datos después
+  como si fueran euros. (2) **El plan que el especialista le paga a Delta es SIEMPRE USD** — lo
+  fijan los administradores y no sigue la divisa con la que él le cobra a sus pacientes. Quedan
+  afuera el panel de suscripción, el modal de pago del plan, `/doctor/upgrade` y todo `/admin`.
+  ⚠️ Ahí había un bug: el panel de suscripción convertía el precio del plan Delta a bolívares con
+  la tasa DEL ESPECIALISTA, y ese es el monto que transfiere al pagar con un método en bolívares —
+  uno en modo euro veía y podía pagar una cifra equivocada. Ahora fuerza la tasa oficial del dólar.
+  (3) **El paciente ve la misma divisa que el especialista.** Como `/book/:doctorId` no tiene
+  sesión, `GET /api/booking/:doctorId/info` expone `currencyMode` y `customRate` (camelCase) y la
+  preferencia baja por props hasta el hook; antes el endpoint autenticado daba 401 y la página caía
+  a dólar oficial. `customRate` solo se expone cuando el modo es `custom`. (4) Los métodos de pago
+  tipo "Efectivo USD" NO se tocan: describen qué billete recibe, no la divisa de sus precios.
+
+- **ADR-035 (2026-08-16):** **Un turno ocupa el TIEMPO QUE DURA, no un punto en el reloj.** Los
+  horarios ocupados se marcaban con la hora de INICIO de cada cita, así que una cita de 45' a las
+  08:00 en una grilla de 30' dejaba el 08:30 **ofrecido** en el booking público: el paciente lo
+  elegía, llenaba el formulario y recién ahí el backend lo rechazaba por solapamiento. Y una cita a
+  una hora libre (14:37) no bloqueaba nada porque esa hora no existe en la grilla. Ahora un slot
+  está ocupado cuando su intervalo se CRUZA con el de una cita: `slot [s, s+durSlot)` vs
+  `cita [a, a+durCita)`. Los extremos no cuentan (una cita que termina 08:45 deja libre el slot de
+  las 08:45). `durSlot` es la del BLOQUE (ADR-028) y si dos bloques dan el mismo horario con
+  duraciones distintas se conserva la MAYOR; `durCita` null en filas viejas → 30, igual que el
+  COALESCE de `hasOverlap`. Aplica a los TRES lugares: booking público, flujo del especialista y
+  modal de reagendar. ⚠️ El modal de reagendar además **nunca** había marcado un horario como
+  ocupado: leía `json.bookedAt` cuando el endpoint responde `{ success, data: { … } }`.
+  ⚠️ **Corregido el 2026-08-18: la vista Día del especialista no aplicaba esta regla.** Asignaba
+  cada cita al slot donde ARRANCA y nada más, así que una cita que se pasa de largo dejaba el slot
+  siguiente en "Disponible" **con el botón de agendar encima** — mientras el booking público, que sí
+  mira el solapamiento, lo rechazaba. El especialista veía libre un hueco que su propia página de
+  reservas no vendía. Ahora ese slot muestra "Ocupado — <paciente> hasta <hora>"; la tarjeta se sigue
+  dibujando una sola vez, en el slot donde la cita empieza. Una cita cancelada no ocupa, y una que
+  termina justo cuando el slot empieza tampoco. **Mismo patrón que el ADR-032:** la regla estaba bien
+  del lado que vende (booking) y no del lado que agenda (agenda del especialista).
+
+- **ADR-036 (2026-08-16):** **Consulta inmediata: nunca se solapa y nunca se rechaza.** Para el
+  paciente que llega sin cita, la duración es `mínimo(duración del servicio, minutos hasta la
+próxima cita)` — si el bloque siguiente está libre ocupa lo que dura, y si no, se acorta
+  (decisión del dueño). Consecuencias de diseño: (1) la hora la pone el **SERVIDOR**; si el cliente
+  pudiera mandarla, "inmediata" sería un atajo para crear citas a cualquier hora salteándose
+  validaciones. (2) La duración se **recalcula al guardar** aunque el modal ya haya visto la
+  ventana: entre abrir y confirmar puede entrar otra cita. (3) El único caso sin salida —próxima
+  cita en menos de 5 minutos— se avisa y decide el especialista (`force`), y esa es la **única**
+  puerta que admite solapar; aun así el chequeo de solapamiento **del paciente** (cruza doctores)
+  nunca se saltea. (4) Consumir una sesión ya pagada pasa por el MISMO camino
+  (`pending_consultation_id`): el endpoint que existía hace su propio chequeo y rechazaría justo en
+  el caso normal. La fila pendiente se marca como agendada **solo después** de que la cita existe —
+  si falla antes, el paciente no pierde una sesión que pagó.
+  ⚠️ `CreateBookingUseCase` descartaba el id de la consulta que crea, y `appointment.consultationId`
+  viene null porque el FK se actualiza en la BD después de construir la entidad: hay que leerlo del
+  RESULTADO. Sin eso el botón no podía abrir la consulta y la sesión del combo quedaba sin enlazar.
+
+- **ADR-038 (2026-08-18):** **"Todas" tiene que traer todas: el tope del backend se pagina, no se
+  disimula.** El backend recorta cualquier `limit` a **100 por request** (`Math.min(100, …)` en los
+  controllers de pacientes y finanzas). Varias pantallas pedían más —`limit=200`, `limit=500`— y
+  recibían 100 **sin error y sin aviso**. Peor: con "Todas" el `Paginator` fija `totalPages = 1` y
+  rotula "1–{total} de {total}", así que un especialista con 140 fichas veía 100, leía "1–140 de 140"
+  y **no tenía página siguiente que tocar**. El tope seguía ahí, disimulado. También salía incompleto
+  el **CSV de egresos**. La regla: cuando la UI ofrece "todas", la capa de acceso **recorre las
+  páginas** hasta juntar `total` (`traerTodasLasPaginas` en finanzas, `getPatients` en pacientes),
+  con tope de 50 páginas y un log si se alcanza; si una página falla devuelve lo ya juntado, porque
+  una página rota no debe vaciar la lista. **No se sube el tope del backend**: 100 por request
+  protege la BD, y quien necesita todo pagina.
+  ⚠️ El arreglo ya existía en `getPatients` desde antes y **no se había aplicado a
+  `getPatientsPaged`**, que es la que usa la pantalla. Al arreglar un tope así hay que barrer TODAS
+  las funciones que pegan al mismo endpoint, no solo la que se estaba mirando.
+
+- **ADR-039 (2026-08-18):** **El PDF se queda en texto plano; el formato vive en la pantalla.**
+  El documento descargable convierte el HTML del editor a texto plano (`htmlToPlainText`), y se
+  decidió **dejarlo así**. El paciente **sí ve negrita, cursiva y viñetas en el portal web**, porque
+  esa vista renderiza el HTML pasado por `sanitizeHtml` (denylist: saca `<script>`, `<iframe>`,
+  handlers `on*` y URLs `javascript:`, y deja pasar el formato). En el PDF se conservan **párrafos y
+  viñetas** —la viñeta pegada a su renglón, no sola— y se pierden negrita/cursiva/subrayado.
+  Llevar formato al PDF sería una función nueva (parsear el HTML en fragmentos con estilo), no un
+  arreglo, y el dueño decidió no hacerla.
+
+- **ADR-040 (2026-08-18):** **Delta Chile es un DESPLIEGUE más, no un fork: el país es
+  configuración.** Un repositorio, una imagen, cuatro despliegues (Venezuela y Chile × producción y
+  pre-producción), con `COUNTRY=ve|cl` inyectado al desplegar. Forkear el repo daba aislamiento
+  gratis y mantenimiento doble para siempre —los 7 defectos arreglados el 17/08 habrían sido 14
+  arreglos—; multi-tenant en un solo despliegue chocaba con el requisito de auditoría y mezclaba
+  datos clínicos de dos jurisdicciones en una base. **El aislamiento va en la infraestructura y la
+  reutilización en el código.**
+  (1) **Se separan Cloud Run, buckets y bases; se comparten proyecto GCP, región (`us-east1`),
+  secretos, clave de cifrado y cuentas de servicio** (decisión del dueño). El aislamiento queda
+  entonces a nivel de DATOS y no de identidad: lo que separa los datos es a qué apunta cada
+  servicio, no un permiso que lo impida. Es **reversible barato** — partir claves y cuentas después
+  es cambiar configuración del despliegue, no código.
+  (2) **Auth0: mismo inquilino, aplicación nueva.** Es seguro porque el rol **no sale del token,
+  sale de `profiles.role` de la base de cada país**, y `FORBIDDEN_ROLES` impide auto-asignarse
+  `super_admin`/`admin`/`seller`: un super admin venezolano que entre a la app chilena no encuentra
+  perfil en la base chilena y nace como especialista común. **El privilegio no viaja.**
+  (3) **La medición que habilita todo esto:** el acoplamiento con Venezuela está concentrado, no
+  desparramado. La tasa son **18 consumidores de un hook** más dos columnas de snapshot (no lógica);
+  la cédula es **un componente y dos regex**; los métodos de pago **ya son datos** y no código; el
+  locale es **solo formato**. Las costuras ya existen: hay que darlas vuelta, no construirlas.
+  (4) **En Chile la segunda moneda no se calcula distinto: DESAPARECE.** El concepto pasa de "tasa
+  BCV" a "¿este país tiene conversión local?". `bcv_rate` y `amount_bs` se dejan nulas — migrar el
+  esquema por país es más caro que dos columnas vacías.
+  ⚠️ **Regla de la fase de refactor:** cada cambio debe dejar el comportamiento venezolano
+  EXACTAMENTE igual, con las 3.898 pruebas como red. Si algo cambia en Venezuela, está mal hecho.
+  ⚠️ **Las migraciones siembran Venezuela:** 8 de las 103 insertan especialidades, métodos de pago,
+  historial de tasa y **documentos legales**. La base chilena corre las 103 y nace con datos
+  venezolanos. **No se tocan las migraciones** (una rota bloquea todos los despliegues): se agrega
+  un paso de siembra por país al final. Plan completo en `memory-bank/11-plan-chile.md`.
+- **ADR-037 (2026-08-16):** **Rol vendedor: la atribución se escribe UNA vez y el código no toca el
+  plan.** Un rol `seller` recortado (solo crear especialistas y ver los que registró), gestionado por
+  cualquier administrador. La venta se atribuye por dos caminos: alta manual del vendedor, o el
+  especialista se registra escribiendo el **código** del vendedor —campo OPCIONAL en el onboarding—.
+  (1) **El código NO cambia el plan**: quien se registra con código arranca en el plan de prueba
+  igual que todos, y el vendedor **tampoco elige plan** al dar de alta (el backend fija `free_trial`
+  e ignora el cuerpo). El riesgo de que un vendedor regale un plan pago se resolvió **quitando la
+  decisión**, no poniéndole un permiso. (2) **`profiles.sold_by` se escribe UNA SOLA VEZ, garantizado
+  en la BD** (`UPDATE … WHERE sold_by IS NULL`) y no solo en el use case: ni reentrar al onboarding
+  ni escribir otro código después lo pisan. Sin eso dos vendedores se roban la atribución y no hay
+  nada que auditar el día que haya comisiones. (3) El código se genera sin caracteres ambiguos
+  (`ABCDEFGHJKMNPQRSTUVWXYZ23456789`, sin I/L/O/0/1) porque se dicta por teléfono; y se valida en
+  vivo contra `GET /api/public/seller-code/:code`, que devuelve **solo** `{ valid, sellerName }`.
+  (4) El rol `seller` está en FORBIDDEN_ROLES: no puede auto-registrarse por onboarding ni Auth0 —
+  lo crea un administrador o no existe.
+  ⚠️ **Pendiente de decisión:** el backend acepta que cualquier administrador gestione vendedores,
+  pero `/admin` sigue admitiendo SOLO a `super_admin` (guarda en `proxy.ts`), así que un usuario con
+  rol `admin` es expulsado en la puerta. Abrir ese panel amplía quién ve doctores, suscripciones,
+  pagos y configuración: es una decisión de seguridad del dueño.
+
 - **Terminología (2026-07-23):** "médico" (SUSTANTIVO que nombra al usuario) → **"especialista"** en UI/correos/guías;
   se conservan adjetivos ("informe/reposo/insumos/datos médicos") y honoríficos Dr./Dra. Plantillas de email sembradas se
   actualizan en BD vía mig `20260723000001` (REPLACE de frases sustantivas; `REPLACE` no toca adjetivos).
@@ -413,3 +636,89 @@ status='active'` con `QueryTypes.UPDATE` (devuelve `[undefined, affectedCount]`;
   (`lib/dev-auth.ts`, headers x-dev-\*) por defecto en local; **Auth0 ✅ integrado** (env-gated por
   `AUTH_MODE`). Middleware = `proxy.ts` (convención Next 16, reemplaza middleware.ts). El frontend
   NUNCA importa apps/backend (solo HTTP). **Storage ✅ MinIO (local) / GCS (prod)** por `STORAGE_DRIVER`.
+
+- **ADR-041 (2026-08-18):** **El WhatsApp comercial usa el asistente que YA existe; Chatwoot solo
+  pone el canal y la bandeja.** Un médico escribe, responde la IA, y si pide una persona el
+  ejecutivo entra **en el mismo hilo**.
+  (1) **El cerebro no se construye: ya está.** `help-assistant` tiene 1.491 líneas de guías
+  curadas, protección contra inyección de prompt y consciencia de rol y plan, vivo en producción.
+  WhatsApp es **un canal nuevo para un asistente que ya existe**, no un proyecto de IA. Falta una
+  cuarta guía comercial y un camino sin autenticar: hoy el endpoint exige login y elige guía por
+  rol, y **un médico que todavía no es cliente no tiene cuenta**.
+  (2) **Chatwoot autohospedado**, verificado en su repositorio y no en su web: `whatsapp.rb` y
+  `agent_bot.rb` están en la parte comunitaria; lo que vive en `enterprise/` es `captain`, **la IA
+  de ellos, que justamente no usamos**. En su nube el plan gratis son 2 agentes y **solo chat web**.
+  Se descartan Twilio Flex (US$ 10.000 de implementación), Respond.io (US$ 199/mes y su IA no
+  conoce la app), Wati (**su IA no deriva a humano**) y FeelSocial (sin precios públicos). n8n
+  quedaría entre dos sistemas que ya hablan HTTP: solo se justifica si el equipo comercial quiere
+  editar flujos sin un desarrollador.
+  (3) **La decisión NO es de plata:** con dos ejecutivos son ~US$ 34 autohospedado contra US$ 38 en
+  su nube. Se elige propio porque **el costo por agente castiga justo lo que se quiere hacer
+  crecer** (con 5 son US$ 34 contra US$ 95), porque el historial comercial queda en la nube propia
+  —argumento real con el ADR-040— y porque evita una migración a los seis meses.
+  (4) **Cada vendedor tiene su usuario propio en Chatwoot** (pedido del dueño). Una cuenta
+  compartida deja las conversaciones sin dueño y borra la trazabilidad comercial. **La fuente de
+  verdad es `profiles` de Delta; Chatwoot es un reflejo** — el alta y la baja se sincronizan por su
+  API de agentes. Cierra el círculo con la atribución del ADR-037: el vendedor manda su enlace
+  `/r/<CODIGO>` en el mismo chat.
+  ⚠️ **Chatwoot NO va en Cloud Run:** Sidekiq tiene que correr siempre y con `min-instances=0` los
+  mensajes quedan encolados sin procesar; además usa websockets. Va en una VM con Docker Compose.
+  ⚠️ **Bloqueante antes de abrir el canal: mover Gemini a Vertex AI.** Hoy corre en el nivel
+  gratuito, **que entrena con lo que recibe**. En el widget web el daño está acotado; en WhatsApp un
+  médico va a pegar datos de un paciente tarde o temprano.
+  ⚠️ **Desde el 1/10/2026 Meta cobra los mensajes de servicio** (~US$ 0,0068). Las respuestas
+  humanas escritas desde la app de WhatsApp Business siguen gratis. Plan completo en
+  `memory-bank/12-plan-whatsapp-ventas.md`.
+
+- **ADR-042 (2026-08-18):** **El plan del especialista vive en `profiles`, y toda pantalla que
+  lo muestre tiene que leer de ahí.** El acceso a los módulos lo decide
+  `GetDoctorFeaturesV2UseCase` con `profiles.plan` + `profiles.subscription_status`;
+  `subscriptions` es legacy y solo aporta datos accesorios (precio, fin de prueba). Hasta hoy el
+  panel `/admin/subscriptions` leía `subscriptions`: cuando las dos tablas divergían, el admin veía
+  "Free Trial · 3 días" mientras el especialista tenía `delta_free` y los módulos bloqueados —
+  imposible de diagnosticar desde la pantalla. Ahora `listSubscriptions` sale de `profiles`.
+  **Regla general:** ninguna escritura puede tocar una de las dos tablas sola; si toca el plan,
+  toca las dos en la misma transacción y deja asiento en `subscription_changes_log`.
+  Corolario: `profiles.plan` es **TEXT libre** y `subscriptions.plan` es el ENUM
+  `subscription_plan` — copiar de una a otra SIEMPRE con guarda contra `enum_range`, o el día que
+  aparezca un valor nuevo la transacción explota y deja al especialista sin poder entrar.
+
+- **ADR-044 (2026-08-19):** **Los datos de cobro del especialista admiten VARIAS entradas
+  por método, sin migrar nada.** Un especialista con cuentas en dos bancos tenía que
+  elegir cuál publicaba, y el paciente que no tiene ese banco paga comisión o no paga.
+  `profiles.payment_details` pasa a aceptar, por método, **un objeto (forma histórica) o
+  una lista**; `apps/frontend/lib/payment-details.ts` normaliza al leer (`entriesOf`) y
+  decide la forma al escribir (`withEntries`: objeto con una entrada, lista con varias).
+  (1) **No hay migración de datos y es deliberado**: la columna es JSONB con datos reales
+  de producción y en este proyecto **una migración rota bloquea TODOS los despliegues**
+  (ver el gotcha del ADR-022). Un perfil viejo sigue funcionando sin que nadie lo toque y
+  la forma nueva se escribe sola la primera vez que el especialista guarda.
+  (2) **Solo `pago_movil` y `transferencia` ofrecen "+ Agregar otro"** en la UI, aunque el
+  modelo de datos sea genérico: son los que un especialista tiene repetidos en distintos
+  bancos. Zelle o Binance con dos cuentas confunden al paciente más de lo que ayudan.
+  (3) ⚠️ **Nadie lee `payment_details[metodo]` directo.** Los tres consumidores —el
+  acordeón de Configuración, el booking público y el mensaje de cobro por WhatsApp— pasan
+  por el helper. El de WhatsApp era el más frágil: tenía los campos escritos a mano por
+  método, y ahora emite una línea por entrada, numerada solo cuando hay más de una.
+  (4) La validación de 20 dígitos de la cuenta bancaria ahora corre sobre **cada** cuenta
+  cargada; antes miraba solo la primera y con varias dejaba pasar una mal escrita.
+
+- **ADR-045 (2026-08-19):** **La consulta inmediata nace CONFIRMADA, con una opción propia
+  y no reusando `doctorInitiated`.** El paciente está físicamente en el consultorio: que
+  la cita naciera "por confirmar" no describía nada real. Se agregó `forceConfirmed` a las
+  options de `CreateBookingUseCase`, evaluada **antes** del ternario de `doctorInitiated`.
+  ⚠️ **Por qué no alcanza `doctorInitiated`:** ese ternario elige entre `completed` y
+  `scheduled` mirando si `scheduledAt` ya pasó, y como la hora de una consulta inmediata
+  es "ahora", para cuando la línea se evalúa **siempre** es pasado — la cita nacería
+  `completed` (atendida) antes de que el especialista examine al paciente, que es peor que
+  el bug original. La opción va separada justamente para que nadie la "simplifique"
+  después fusionándola con `doctorInitiated`.
+
+- **ADR-043 (2026-08-18):** **Una pantalla de admin tiene que darse cuenta de que la sesión
+  cambió debajo.** La sesión de Auth0 es una cookie del **perfil del navegador, no de la
+  pestaña**: si alguien entra con otra cuenta en otra pestaña de la misma ventana, el panel abierto
+  sigue mostrando lo que cargó y cada acción nueva viaja con la otra identidad. El backend la
+  rechaza correctamente, pero en pantalla se lee como un permiso mal configurado — pasó el
+  2026-08-18 y costó una sesión entera de diagnóstico. `AdminSessionWatchdog` consulta
+  `GET /api/session` al montar, al recuperar el foco y cada 60s, y bloquea con un mensaje que
+  nombra la causa. Los 403 de rutas de admin dicen lo mismo en vez de "no tenés permisos" a secas.

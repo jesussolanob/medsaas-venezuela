@@ -104,6 +104,7 @@ const mockConsultationRepo: jest.Mocked<IConsultationRepository> = {
   findByAppointmentId: jest.fn(),
   deleteById: jest.fn().mockResolvedValue(undefined),
   listWithAppointment: jest.fn(),
+  applyNoShowFee: jest.fn(),
 };
 
 const mockPrescriptionRepo: jest.Mocked<IPrescriptionRepository> = {
@@ -137,6 +138,13 @@ const mockDoctorProfileRepo: jest.Mocked<IDoctorProfileRepository> = {
   findByDoctorId: jest.fn(),
   update: jest.fn(),
   updateExchangeRate: jest.fn(),
+  markOnboardingCompleted: jest.fn().mockResolvedValue(undefined),
+  updateBlocksLayout: jest.fn().mockResolvedValue(undefined),
+  countUpcomingAppointments: jest.fn().mockResolvedValue(0),
+  deactivateOwnAccount: jest.fn().mockResolvedValue(undefined),
+  findPlanSnapshot: jest.fn().mockResolvedValue(null),
+  scheduleOwnAccountDeactivation: jest.fn().mockResolvedValue(undefined),
+  applyExpiredScheduledDeactivations: jest.fn().mockResolvedValue(0),
 };
 
 const mockDoctorTemplateRepo: jest.Mocked<IDoctorTemplateRepository> = {
@@ -177,6 +185,7 @@ const makeBlocksOutput = (blocks: ConsultationBlock[]): GetConsultationBlocksOut
   resolved: blocks,
   specialty_defaults: [],
   doctor_specialty: null,
+  layout: 'tabs',
 });
 
 const makeActiveLink = (): SharedDocumentLink =>

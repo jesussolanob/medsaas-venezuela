@@ -35,23 +35,33 @@ const ROLE_NAMESPACE = process.env.AUTH0_ROLE_NAMESPACE ?? 'https://deltamedical
 // Shared RBAC check — same logic for both modes
 // ---------------------------------------------------------------------------
 
+/** A dónde mandar a cada rol cuando entra donde no le corresponde. */
+function homeFor(role: string): string {
+  if (role === 'patient') return '/patient/dashboard';
+  if (role === 'doctor') return '/doctor';
+  if (role === 'seller') return '/seller';
+  return '/login';
+}
+
 function applyRbac(request: NextRequest, role: string): NextResponse | null {
   const path = request.nextUrl.pathname;
 
   if (path.startsWith('/admin') && role !== 'super_admin') {
-    const target =
-      role === 'patient' ? '/patient/dashboard' : role === 'doctor' ? '/doctor' : '/login';
-    return NextResponse.redirect(new URL(target, request.url));
+    return NextResponse.redirect(new URL(homeFor(role), request.url));
   }
 
   if (path.startsWith('/doctor') && role !== 'doctor' && role !== 'super_admin') {
-    const target = role === 'patient' ? '/patient/dashboard' : '/login';
-    return NextResponse.redirect(new URL(target, request.url));
+    return NextResponse.redirect(new URL(homeFor(role), request.url));
   }
 
   if (path.startsWith('/patient') && role !== 'patient' && role !== 'super_admin') {
-    const target = role === 'doctor' ? '/doctor' : '/login';
-    return NextResponse.redirect(new URL(target, request.url));
+    return NextResponse.redirect(new URL(homeFor(role), request.url));
+  }
+
+  // El portal del vendedor: solo el rol `seller`. El super_admin entra también
+  // para poder dar soporte sin tener que suplantar la cuenta.
+  if (path.startsWith('/seller') && role !== 'seller' && role !== 'super_admin') {
+    return NextResponse.redirect(new URL(homeFor(role), request.url));
   }
 
   return null;
@@ -258,5 +268,15 @@ export const config = {
   // this, on the first request after Auth0 callback the session may not yet be
   // readable, causing resolveIdentity() to throw and redirect to /login instead
   // of the correct role-based portal.
-  matcher: ['/admin/:path*', '/doctor/:path*', '/patient/:path*', '/auth/:path*', '/post-login'],
+  // OJO: una ruta que no esté acá NO pasa por applyRbac, por más que applyRbac
+  // la contemple. `/seller` se agregó junto con su guarda: sin esta línea la
+  // guarda existe pero nunca corre.
+  matcher: [
+    '/admin/:path*',
+    '/doctor/:path*',
+    '/patient/:path*',
+    '/seller/:path*',
+    '/auth/:path*',
+    '/post-login',
+  ],
 };

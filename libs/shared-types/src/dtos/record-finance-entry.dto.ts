@@ -20,7 +20,7 @@ export type ExpenseConceptValue = (typeof EXPENSE_CONCEPTS)[number];
  */
 export const RecordFinanceEntryDtoSchema = z
   .object({
-    amount: z.number().positive({ message: 'Amount must be greater than zero' }),
+    amount: z.number().positive({ message: 'El monto debe ser mayor a cero' }),
     currency: z.enum(['USD', 'BS']).default('USD'),
     description: z.string().min(1).max(500),
     related_consultation_id: z.string().uuid().nullable().optional(),
@@ -48,7 +48,7 @@ export type RecordFinanceEntryDto = z.infer<typeof RecordFinanceEntryDtoSchema>;
 /** DTO for POST /admin/settings/usdt-rate */
 export const UpdateUsdtRateDtoSchema = z
   .object({
-    rate: z.number().positive({ message: 'Rate must be greater than zero' }),
+    rate: z.number().positive({ message: 'La tasa debe ser mayor a cero' }),
   })
   .strict();
 

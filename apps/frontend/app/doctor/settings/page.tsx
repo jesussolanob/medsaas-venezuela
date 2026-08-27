@@ -4,6 +4,12 @@ import { useState, useEffect, useRef, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { getProfessionalTitle } from '@/lib/professional-title';
 import {
+  entriesOf,
+  withEntries,
+  MULTI_ENTRY_METHODS,
+  type PaymentEntry,
+} from '@/lib/payment-details';
+import {
   User,
   Users2,
   Shield,
@@ -313,7 +319,16 @@ function SettingsPageInner() {
 
   // Payment
   const [paymentMethods, setPaymentMethods] = useState<string[]>([]);
-  const [paymentDetails, setPaymentDetails] = useState<Record<string, Record<string, string>>>({});
+  /**
+   * Datos de cobro por método, SIEMPRE como lista.
+   *
+   * Un especialista puede tener cuentas en dos bancos, o dos pagos móviles
+   * (pedido del dueño, 2026-08-19). El estado guarda una lista por método; la
+   * conversión desde/hacia la forma que vive en la BD —que puede ser un objeto
+   * suelto en los perfiles viejos— la hace `lib/payment-details`, para no
+   * necesitar una migración de datos sobre perfiles reales.
+   */
+  const [paymentDetails, setPaymentDetails] = useState<Record<string, PaymentEntry[]>>({});
   const [paymentSaved, setPaymentSaved] = useState(false);
   // Acordeón de métodos de pago: solo los métodos activos se expanden por defecto.
   // Un método colapsado muestra solo el toggle + nombre; uno expandido muestra sus campos.
@@ -430,7 +445,17 @@ function SettingsPageInner() {
         setSignatureUrl(profileData.signature_url ?? null);
         setLicenseNumber(profileData.license_number ?? '');
         setPaymentMethods(profileData.payment_methods);
-        setPaymentDetails(profileData.payment_details);
+        // La BD puede traer un objeto suelto (forma vieja) o una lista: las dos
+        // se normalizan a lista acá. Un método sin datos arranca con un juego
+        // vacío para que sus campos se puedan escribir.
+        setPaymentDetails(
+          Object.fromEntries(
+            PAYMENT_METHODS.map((m) => {
+              const guardadas = entriesOf(profileData.payment_details, m.id);
+              return [m.id, guardadas.length > 0 ? guardadas : [{}]];
+            }),
+          ),
+        );
         // Pre-expandir los métodos que ya estaban activos al cargar.
         setExpandedMethods(new Set(profileData.payment_methods));
         setCedula(profileData.cedula ?? null);
@@ -603,11 +628,31 @@ function SettingsPageInner() {
     setPaymentMethods((prev) => (prev.includes(id) ? prev.filter((m) => m !== id) : [...prev, id]));
   }
 
-  function updatePaymentField(methodId: string, field: string, value: string) {
-    setPaymentDetails((prev) => ({
-      ...prev,
-      [methodId]: { ...(prev[methodId] ?? {}), [field]: value },
-    }));
+  function updatePaymentField(methodId: string, index: number, field: string, value: string) {
+    setPaymentDetails((prev) => {
+      const lista = prev[methodId] ?? [{}];
+      return {
+        ...prev,
+        [methodId]: lista.map((e, i) => (i === index ? { ...e, [field]: value } : e)),
+      };
+    });
+  }
+
+  /** Agrega otro juego de datos al método (otro pago móvil, otra cuenta). */
+  function addPaymentEntry(methodId: string) {
+    setPaymentDetails((prev) => ({ ...prev, [methodId]: [...(prev[methodId] ?? [{}]), {}] }));
+  }
+
+  /**
+   * Quita un juego de datos. Nunca deja el método sin ninguno: si se borra el
+   * último queda uno vacío, para que los campos sigan existiendo y el
+   * especialista pueda volver a escribir sin tener que reactivar el método.
+   */
+  function removePaymentEntry(methodId: string, index: number) {
+    setPaymentDetails((prev) => {
+      const restantes = (prev[methodId] ?? []).filter((_, i) => i !== index);
+      return { ...prev, [methodId]: restantes.length > 0 ? restantes : [{}] };
+    });
   }
 
   function toggleMethodExpand(id: string) {
@@ -623,21 +668,37 @@ function SettingsPageInner() {
   }
 
   async function savePaymentMethods() {
-    // Validación: si Transferencia está activa y tiene N° de cuenta, debe ser 20 dígitos.
+    // Validación: si Transferencia está activa, CADA cuenta cargada debe tener
+    // 20 dígitos. Antes se miraba solo la primera; con varias cuentas eso dejaba
+    // pasar una mal escrita y el paciente transfería a un número inexistente.
     if (paymentMethods.includes('transferencia')) {
-      const acc = (paymentDetails['transferencia']?.account ?? '').replace(/\D/g, '');
-      if (acc.length > 0 && acc.length !== 20) {
-        showToast({
-          type: 'error',
-          message: `El N° de cuenta de transferencia debe tener 20 dígitos (van ${acc.length}).`,
-        });
-        return;
+      const cuentas = paymentDetails['transferencia'] ?? [];
+      for (let i = 0; i < cuentas.length; i++) {
+        const acc = (cuentas[i]?.account ?? '').replace(/\D/g, '');
+        if (acc.length > 0 && acc.length !== 20) {
+          showToast({
+            type: 'error',
+            message:
+              cuentas.length > 1
+                ? `La cuenta ${i + 1} de transferencia debe tener 20 dígitos (van ${acc.length}).`
+                : `El N° de cuenta de transferencia debe tener 20 dígitos (van ${acc.length}).`,
+          });
+          return;
+        }
       }
     }
-    // Replaces: supabase.from('profiles').update({ payment_methods, payment_details })
+
+    // Se serializa a la forma que entiende la BD: objeto suelto cuando hay un
+    // solo juego de datos (compatible con todo lo ya escrito), lista cuando hay
+    // varios. Ver lib/payment-details.
+    const detallesParaGuardar = Object.entries(paymentDetails).reduce<Record<string, unknown>>(
+      (acc, [metodo, entradas]) => withEntries(acc, metodo, entradas),
+      {},
+    );
+
     const result = await savePaymentSettings({
       payment_methods: paymentMethods,
-      payment_details: paymentDetails,
+      payment_details: detallesParaGuardar,
     });
 
     if (!result.ok) {
@@ -1259,6 +1320,14 @@ function SettingsPageInner() {
                 </div>
               )}
             </div>
+
+            {/*
+              La zona de baja se mudó a /doctor/upgrade (pedido del dueño,
+              2026-08-19): al pie de "Mi perfil" competía con el trabajo diario
+              del especialista, y el momento en que alguien piensa en irse es
+              mirando lo que paga, no editando su nombre. Allá va al final y en
+              gris, para que exista sin invitar.
+            */}
           </div>
         )}
 
@@ -1646,52 +1715,107 @@ function SettingsPageInner() {
                       {expanded && (
                         <div
                           id={`payment-fields-${method.id}`}
-                          className="px-4 pb-4 pt-1 grid grid-cols-1 sm:grid-cols-2 gap-3 border-t border-teal-100"
+                          className="px-4 pb-4 pt-1 space-y-4 border-t border-teal-100"
                         >
-                          {method.fields.map((f) => {
-                            const isBankAccount =
-                              method.id === 'transferencia' && f.key === 'account';
-                            const rawVal = paymentDetails[method.id]?.[f.key] ?? '';
-                            const accountDigits = isBankAccount ? rawVal.replace(/\D/g, '') : '';
-                            const accountError =
-                              isBankAccount &&
-                              accountDigits.length > 0 &&
-                              accountDigits.length !== 20
-                                ? `La cuenta debe tener 20 dígitos (van ${accountDigits.length})`
-                                : null;
+                          {(paymentDetails[method.id] ?? [{}]).map((entrada, idx) => {
+                            const entradas = paymentDetails[method.id] ?? [{}];
+                            const varias = entradas.length > 1;
                             return (
-                              <div key={f.key}>
-                                <label className="block text-xs font-medium text-slate-600 mb-1">
-                                  {f.label}
-                                </label>
-                                <input
-                                  type={f.type ?? 'text'}
-                                  inputMode={isBankAccount ? 'numeric' : undefined}
-                                  value={rawVal}
-                                  onChange={(e) =>
-                                    updatePaymentField(
-                                      method.id,
-                                      f.key,
-                                      isBankAccount
-                                        ? formatBankAccount(e.target.value)
-                                        : e.target.value,
-                                    )
-                                  }
-                                  placeholder={
-                                    isBankAccount ? '0000-0000-0000-0000-0000' : f.placeholder
-                                  }
-                                  className={
-                                    accountError
-                                      ? fi.replace('border-slate-200', 'border-red-300')
-                                      : fi
-                                  }
-                                />
-                                {accountError && (
-                                  <p className="text-[11px] text-red-600 mt-1">{accountError}</p>
+                              <div
+                                key={idx}
+                                className={
+                                  varias ? 'rounded-lg border border-slate-200 p-3 space-y-2' : ''
+                                }
+                              >
+                                {varias && (
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                                      {method.id === 'transferencia'
+                                        ? `Cuenta ${idx + 1}`
+                                        : `Opción ${idx + 1}`}
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => removePaymentEntry(method.id, idx)}
+                                      className="text-[11px] font-semibold text-slate-400 hover:text-red-600"
+                                    >
+                                      Quitar
+                                    </button>
+                                  </div>
                                 )}
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                  {method.fields.map((f) => {
+                                    const isBankAccount =
+                                      method.id === 'transferencia' && f.key === 'account';
+                                    const rawVal = entrada[f.key] ?? '';
+                                    const accountDigits = isBankAccount
+                                      ? rawVal.replace(/\D/g, '')
+                                      : '';
+                                    const accountError =
+                                      isBankAccount &&
+                                      accountDigits.length > 0 &&
+                                      accountDigits.length !== 20
+                                        ? `La cuenta debe tener 20 dígitos (van ${accountDigits.length})`
+                                        : null;
+                                    return (
+                                      <div key={f.key}>
+                                        <label className="block text-xs font-medium text-slate-600 mb-1">
+                                          {f.label}
+                                        </label>
+                                        <input
+                                          type={f.type ?? 'text'}
+                                          inputMode={isBankAccount ? 'numeric' : undefined}
+                                          value={rawVal}
+                                          onChange={(e) =>
+                                            updatePaymentField(
+                                              method.id,
+                                              idx,
+                                              f.key,
+                                              isBankAccount
+                                                ? formatBankAccount(e.target.value)
+                                                : e.target.value,
+                                            )
+                                          }
+                                          placeholder={
+                                            isBankAccount
+                                              ? '0000-0000-0000-0000-0000'
+                                              : f.placeholder
+                                          }
+                                          className={
+                                            accountError
+                                              ? fi.replace('border-slate-200', 'border-red-300')
+                                              : fi
+                                          }
+                                        />
+                                        {accountError && (
+                                          <p className="text-[11px] text-red-600 mt-1">
+                                            {accountError}
+                                          </p>
+                                        )}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
                               </div>
                             );
                           })}
+
+                          {/*
+                            Solo pago móvil y transferencia admiten varios: son
+                            los que un especialista tiene repetidos en distintos
+                            bancos. Zelle o Binance con dos cuentas confundirían
+                            al paciente más de lo que ayudan.
+                          */}
+                          {MULTI_ENTRY_METHODS.has(method.id) && (
+                            <button
+                              type="button"
+                              onClick={() => addPaymentEntry(method.id)}
+                              className="text-xs font-semibold text-teal-600 hover:text-teal-700"
+                            >
+                              + Agregar{' '}
+                              {method.id === 'transferencia' ? 'otra cuenta' : 'otro pago móvil'}
+                            </button>
+                          )}
                         </div>
                       )}
                     </div>

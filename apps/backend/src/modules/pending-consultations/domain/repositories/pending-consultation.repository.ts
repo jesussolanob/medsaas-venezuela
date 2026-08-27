@@ -2,6 +2,36 @@ import type { Transaction } from 'sequelize';
 import type { PendingConsultation } from '../entities/pending-consultation.entity';
 import type { PendingConsultationStatus } from '@delta/shared-types';
 
+/**
+ * Per-plan session usage for a patient.
+ *
+ * Sesión consumida = ATENDIDA. Una inasistencia (no_show) NO consume sesión;
+ * va en su propio balde para que el especialista vea la verdad y decida.
+ * Las citas canceladas no cuentan en ningún balde.
+ *
+ * Agrupado por plan_name (no por payment_id) porque payment_id puede ser null
+ * cuando el especialista carga el paquete a mano. Consecuencia aceptada: si el
+ * paciente compró el mismo combo dos veces, los contadores se suman en una fila.
+ */
+export interface PackageUsageRow {
+  /** UUID del paciente. Incluido siempre para que el frontend pueda indexar en modo masivo. */
+  patientId: string;
+  planName: string;
+  /**
+   * pricing_plans.sessions_count para ese plan_name + doctor.
+   * null cuando el servicio fue eliminado del catálogo.
+   */
+  totalSessions: number | null;
+  /** Citas con status = 'completed'. */
+  attended: number;
+  /** Citas con status IN ('scheduled', 'confirmed'). */
+  scheduled: number;
+  /** Citas con status = 'no_show'. No consumen sesión. */
+  noShow: number;
+  /** Filas en pending_consultations con status = 'pending_scheduling'. */
+  pendingScheduling: number;
+}
+
 export const PENDING_CONSULTATION_REPOSITORY = Symbol('IPendingConsultationRepository');
 
 export interface PendingConsultationListFilters {
@@ -85,4 +115,25 @@ export interface IPendingConsultationRepository {
    * (prevents clobbering a row that was concurrently scheduled/cancelled).
    */
   updateReminderStage(id: string, stage: number, lastReminderAt: Date): Promise<void>;
+
+  /**
+   * Compute session usage for a patient grouped by plan_name.
+   *
+   * Combines appointments (attended / scheduled / no_show) and
+   * pending_consultations (pending_scheduling) in one round-trip.
+   *
+   * Only plans with sessions_count > 1 OR at least one pending_scheduling
+   * row are returned — single-session "consultas sueltas" are excluded so
+   * the UI only shows real package progress.
+   *
+   * When `patientId` is provided, filters to that single patient.
+   * When omitted, returns all patients of the doctor in one query — callers
+   * MUST NOT call this in a loop per patient (N+1).
+   *
+   * Anti-IDOR: the caller (use case) must verify patient ownership before
+   * invoking — this method does NOT re-check ownership.
+   *
+   * NEVER log patientId or planName (PII).
+   */
+  getPackageUsage(doctorId: string, patientId?: string): Promise<PackageUsageRow[]>;
 }

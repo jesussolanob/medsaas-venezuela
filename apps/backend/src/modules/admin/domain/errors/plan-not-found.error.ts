@@ -5,6 +5,6 @@ export class PlanNotFoundError extends DomainError {
   override readonly httpStatus = 404;
 
   constructor(planKey?: string) {
-    super(planKey ? `Plan '${planKey}' not found` : 'Plan not found');
+    super(planKey ? `Plan '${planKey}' no encontrado` : 'Plan no encontrado');
   }
 }

@@ -10,6 +10,6 @@ export class BillingDocumentNotOwnedError extends DomainError {
   override readonly httpStatus = 403;
 
   constructor(id: string) {
-    super(`Billing document ${id} does not belong to the requesting doctor`);
+    super(`El documento de facturación ${id} no pertenece a este especialista`);
   }
 }

@@ -55,6 +55,23 @@ interface UnifiedIncomeRow {
 }
 
 /** Raw row returned by the unified income COUNT query. */
+/**
+ * Una consulta cuenta como COBRADA cuando su cita está en un estado RESUELTO
+ * (confirmada, atendida o no-asistió) o cuando no tiene cita asociada (ingreso
+ * suelto, consulta cargada a mano).
+ *
+ * 'no_show' se incluye porque es un estado terminal: la cita ya ocurrió (aunque
+ * el paciente no fue), no hay nada pendiente de confirmación.  Si el pago estaba
+ * aprobado, es un ingreso cobrado (el portal no emite devoluciones).  Si el monto
+ * quedó en 0 tras la inasistencia, la consulta no suma nada en ningún lado y el
+ * filtro `COALESCE(c.amount, a.plan_price, 0) > 0` la excluye del listado de
+ * cobros antes de que COBRADA entre en juego.
+ *
+ * Se usa como fragmento SQL sobre el alias `a` (appointments) — no lleva valores
+ * del usuario, así que no hay riesgo de inyección.
+ */
+const COBRADA = "(a.id IS NULL OR a.status IN ('confirmed', 'completed', 'no_show'))";
+
 interface CountRow {
   total: string;
 }
@@ -150,11 +167,15 @@ export class SequelizeFinanceRepository implements IFinanceRepository {
     // where the amount is propagated from the appointment at create-time).
     // COALESCE(c.amount, a.plan_price, 0) is used for pending_total only; approved_total
     // still uses c.amount because approved consultations should have an explicit amount.
+    // COBRADO = pago aprobado Y cita confirmada (o consulta sin cita). Una consulta
+    // pagada cuya cita sigue "por confirmar" NO es ingreso todavía: se cuenta en
+    // "Por ingresar" junto con las impagas, para que la plata no desaparezca de
+    // ningún lado mientras espera confirmación.
     const rows = await this.sequelize.query<ConsultationAggRow>(
       `SELECT
-         COALESCE(SUM(CASE WHEN c.payment_status = 'approved' THEN c.amount ELSE 0 END), 0)                            AS approved_total,
-         COUNT(CASE WHEN c.payment_status = 'approved' THEN 1 ELSE NULL END)::text                                     AS approved_count,
-         COALESCE(SUM(CASE WHEN c.payment_status = 'pending'  THEN COALESCE(c.amount, a.plan_price, 0) ELSE 0 END), 0) AS pending_total
+         COALESCE(SUM(CASE WHEN c.payment_status = 'approved' AND ${COBRADA} THEN c.amount ELSE 0 END), 0)             AS approved_total,
+         COUNT(CASE WHEN c.payment_status = 'approved' AND ${COBRADA} THEN 1 ELSE NULL END)::text                      AS approved_count,
+         COALESCE(SUM(CASE WHEN c.payment_status = 'pending' OR NOT ${COBRADA} THEN COALESCE(c.amount, a.plan_price, 0) ELSE 0 END), 0) AS pending_total
        FROM consultations c
        LEFT JOIN appointments a ON a.id = c.appointment_id
        WHERE c.doctor_id = :doctorId
@@ -375,8 +396,14 @@ export class SequelizeFinanceRepository implements IFinanceRepository {
 
     /**
      * UNION ALL of two income sources:
-     *  1) payments — consultation income (approved + pending)
+     *  1) payments — consultation income, SOLO las aprobadas
      *  2) financial_transactions (type='income') — manual income entries
+     *
+     * INGRESOS = PLATA COBRADA. Antes esta lista traía también los pagos
+     * `pending`, así que una consulta impaga engrosaba el total de "Ingresos"
+     * como si ya se hubiera cobrado. Lo pendiente se ve en Cobros y en el
+     * "Por ingresar" del resumen (getFinancialSummary.pendingTotal), que es
+     * justamente el lugar donde corresponde.
      *
      * Both branches project to the same 9 columns so the outer query can
      * ORDER BY date DESC and apply LIMIT/OFFSET uniformly.
@@ -407,6 +434,27 @@ export class SequelizeFinanceRepository implements IFinanceRepository {
         AND pt.doctor_id  = :doctorId
         AND pt.deleted_at IS NULL
       WHERE p.doctor_id = :doctorId
+        AND p.status = 'approved'
+        -- Un pago de $0 no es un ingreso: aparece cuando una inasistencia sin
+        -- multa deja el cobro en cero (ADR-031). Sin este filtro la lista de
+        -- Ingresos mostraba una fila de $0 por cada no-show perdonado — plata
+        -- que nadie pagó, listada como si se hubiera cobrado. El total no
+        -- cambiaba (suma cero), pero la lista mentía.
+        AND p.amount_usd > 0
+        -- La cita tiene que estar en estado resuelto: un pago aprobado cuya
+        -- cita sigue "por confirmar" todavía no es ingreso. 'no_show' se
+        -- incluye porque es un estado terminal; si el pago está aprobado ya
+        -- es un ingreso (el portal no emite devoluciones).
+        -- EXISTS y no JOIN: un mismo pago puede cubrir varias citas (combo)
+        -- y un JOIN duplicaría la fila del ingreso tantas veces como citas.
+        AND (
+          NOT EXISTS (SELECT 1 FROM appointments ap WHERE ap.payment_id = p.id)
+          OR EXISTS (
+            SELECT 1 FROM appointments ap
+             WHERE ap.payment_id = p.id
+               AND ap.status IN ('confirmed', 'completed', 'no_show')
+          )
+        )
         ${monthWhereConsult}
 
       UNION ALL
@@ -499,8 +547,11 @@ export class SequelizeFinanceRepository implements IFinanceRepository {
         approved_total: string | null;
         pending_total: string | null;
       }>(
+        // approved_total usa COBRADA igual que getConsultationSummary para que
+        // ambas fuentes muestren el mismo número de "ingresos de consultas" en
+        // la UI (evita que dos tarjetas de la misma pantalla se contradigan).
         `SELECT
-           COALESCE(SUM(CASE WHEN c.payment_status = 'approved' THEN c.amount ELSE 0 END), 0) AS approved_total,
+           COALESCE(SUM(CASE WHEN c.payment_status = 'approved' AND ${COBRADA} THEN c.amount ELSE 0 END), 0) AS approved_total,
            COALESCE(SUM(CASE WHEN c.payment_status = 'pending'  THEN COALESCE(c.amount, a.plan_price, 0) ELSE 0 END), 0) AS pending_total
          FROM consultations c
          LEFT JOIN appointments a ON a.id = c.appointment_id

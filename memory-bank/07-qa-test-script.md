@@ -1134,9 +1134,11 @@ o "Continuar con Google"). Verificar efectos en la pantalla siguiente / en Resen
 ## D-2026-07-23) "Consultas por agendar" (preconsultas) + terminología especialista
 
 > Feature nueva (ADR-025) + cambio médico→especialista. Validar primero en `staging.deltasalud.app`
-> (flujo `feature→develop→staging→main`). ⚠️ Staging tiene `EMAIL_DRIVER=noop`: los recordatorios y el
-> correo con el enlace `/agendar/[token]` NO se envían de verdad → validar ese tramo revisando
-> `email_send_log` / logs, o el token page con un token generado, y el envío real recién en prod.
+> (flujo `feature→develop→staging→main`). 🚨 **DESACTUALIZADO — corregido 2026-08-19:** esta nota decía
+> que staging tiene `EMAIL_DRIVER=noop` y **ya no es cierto** desde el 2026-08-09: staging usa
+> **`resend` y manda correo REAL al destinatario REAL**, sobre una base clonada con pacientes de
+> verdad. El enlace `/agendar/[token]` y los recordatorios **sí se envían**. Probar SOLO con
+> pacientes de prueba y direcciones inventadas.
 >
 > ✅ **VALIDADO en staging (Playwright, 2026-07-24):** TERM + PREC-01..07 PASARON end-to-end (crear servicio 3
 > consultas con validez 60d → booking "agendar después" → 2 preconsultas en el módulo → Agendar una / Cancelar

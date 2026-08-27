@@ -19,6 +19,7 @@
 
 import { useState, useCallback } from 'react';
 import { FileText, X, AlertCircle, Loader2, Download, ChevronDown } from 'lucide-react';
+import { htmlToPlainText } from '@delta/shared-utils';
 import type {
   TemplateConfigPdf,
   ContentBlock,
@@ -305,10 +306,17 @@ export default function GenerateDocumentModal({
 
       // Construir bloques de reposo estructurados (idéntico al botón "Descargar PDF Reposo")
       // cuando restData está disponible — garantiza el mismo formato en ambos caminos.
+      // WP-D: restData.diagnosis and restData.comments may carry HTML when the doctor's
+      // diagnosis field uses the rich-text editor and the reposo form prefills from it.
+      // Strip HTML before passing to react-pdf, which expects plain text only.
       const builtRestBlocks: ContentBlock[] | undefined =
         restData && restData.days > 0
           ? [
-              { key: 'reposo-diag', label: 'Diagnóstico', value: restData.diagnosis },
+              {
+                key: 'reposo-diag',
+                label: 'Diagnóstico',
+                value: htmlToPlainText(restData.diagnosis),
+              },
               {
                 key: 'reposo-period',
                 label: 'Período de reposo',
@@ -320,7 +328,13 @@ export default function GenerateDocumentModal({
                     : ''),
               },
               ...(restData.comments
-                ? [{ key: 'reposo-comments', label: 'Comentarios', value: restData.comments }]
+                ? [
+                    {
+                      key: 'reposo-comments',
+                      label: 'Comentarios',
+                      value: htmlToPlainText(restData.comments),
+                    },
+                  ]
                 : []),
             ]
           : undefined;

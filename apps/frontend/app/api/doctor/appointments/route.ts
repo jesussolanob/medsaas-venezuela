@@ -3,7 +3,7 @@
  *
  * GET  — returns booked time slots for a given date.
  *        Query: ?date=YYYY-MM-DD
- *        Response: { success: true, data: { bookedAt: string[] } }
+ *        Response: { success: true, data: { booked: { at, durationMinutes }[] } }
  *        Used by the NewAppointmentFlow wizard to grey out already-taken slots.
  *
  * DELETE — proxies to the backend `DELETE /api/appointments/:id`, which deletes
@@ -22,6 +22,8 @@ interface BackendAppointment {
   id: string;
   scheduledAt: string;
   status: string;
+  /** Minutos que OCUPA la cita. Null en filas viejas → se asume 30. */
+  durationMinutes?: number | null;
 }
 
 export const dynamic = 'force-dynamic';
@@ -57,9 +59,15 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   }
 
   const appointments = Array.isArray(result.value) ? result.value : [];
-  const bookedAt = appointments.filter((a) => a.status !== 'cancelled').map((a) => a.scheduledAt);
 
-  return NextResponse.json({ success: true, data: { bookedAt } });
+  // Se devuelve el INTERVALO, no solo la hora de inicio. Con solo el inicio,
+  // una cita de 45' a las 08:00 dejaba el slot de las 08:30 como libre: se
+  // ofrecía un horario que el backend después rechazaba por solapamiento.
+  const booked = appointments
+    .filter((a) => a.status !== 'cancelled')
+    .map((a) => ({ at: a.scheduledAt, durationMinutes: a.durationMinutes ?? null }));
+
+  return NextResponse.json({ success: true, data: { booked } });
 }
 
 // ---------------------------------------------------------------------------
@@ -124,6 +132,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     packageId?: string;
     officeId?: string;
     receiptUrl?: string | null;
+    /** Solo cuando el especialista agenda a una hora libre (fuera de la grilla). */
+    durationMinutes?: number;
   };
 
   const {
@@ -143,6 +153,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     packageId,
     officeId,
     receiptUrl,
+    durationMinutes,
   } = body;
 
   if (!doctorId || !scheduledAt) {
@@ -185,6 +196,9 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     package_id: packageId || null,
     office_id: officeId || null,
     ...(receiptUrl ? { receipt_url: receiptUrl } : {}),
+    // Se omite salvo hora libre: ausente, el backend usa la duración del bloque
+    // del consultorio. El DTO del backend es snake_case.
+    ...(typeof durationMinutes === 'number' ? { duration_minutes: durationMinutes } : {}),
   };
 
   const result = await backendPost<{
@@ -192,6 +206,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     appointmentCode: string;
     scheduledAt: string;
     meetLink: string | null;
+    consultationId?: string | null;
   }>('/api/doctor/appointments', backendPayload);
 
   if (!result.ok) {
@@ -214,11 +229,12 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   }
 
   // Normalize to the same shape as POST /api/book so useAppointmentFlow
-  // requires no changes to its response parsing.
+  // can access appointmentId and consultationId for the success step.
   return NextResponse.json({
     success: true,
     appointmentId: result.value.appointmentId ?? null,
     appointmentCode: result.value.appointmentCode ?? null,
+    consultationId: result.value.consultationId ?? null,
     packageUsed: !!packageId,
     packageRemaining: null,
     meetLink: result.value.meetLink ?? null,

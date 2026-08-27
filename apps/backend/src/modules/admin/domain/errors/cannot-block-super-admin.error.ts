@@ -9,6 +9,6 @@ export class CannotBlockSuperAdminError extends DomainError {
   override readonly httpStatus = 422;
 
   constructor() {
-    super('Cannot block a super_admin account');
+    super('No se puede bloquear una cuenta de administrador');
   }
 }

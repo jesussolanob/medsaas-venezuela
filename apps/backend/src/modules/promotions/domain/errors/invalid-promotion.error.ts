@@ -5,6 +5,6 @@ export class InvalidPromotionError extends DomainError {
   override readonly httpStatus = 400;
 
   constructor(reason: string) {
-    super(`Invalid promotion: ${reason}`);
+    super(`Promoción inválida: ${reason}`);
   }
 }

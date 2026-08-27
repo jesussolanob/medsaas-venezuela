@@ -44,7 +44,7 @@ function makeIdentityResolver(
   resolved: {
     profileId: string;
     email: string;
-    role: 'doctor' | 'super_admin' | 'patient' | 'assistant';
+    role: 'doctor' | 'super_admin' | 'patient' | 'assistant' | 'seller';
   } = {
     profileId: PROFILE_ID,
     email: TEST_EMAIL,
@@ -257,7 +257,9 @@ describe('Auth0Guard', () => {
     const error = await guard.canActivate(ctx).catch((e: unknown) => e);
 
     expect(error).toBeInstanceOf(Auth0TokenInvalidError);
-    expect((error as Auth0TokenInvalidError).message).toBe('Invalid Auth0 token');
+    expect((error as Auth0TokenInvalidError).message).toBe(
+      'Tu sesión expiró. Volvé a iniciar sesión.',
+    );
     expect((error as Auth0TokenInvalidError).message).not.toContain(internalReason);
   });
 

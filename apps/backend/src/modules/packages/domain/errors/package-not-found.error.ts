@@ -5,6 +5,6 @@ export class PackageNotFoundError extends DomainError {
   readonly code = 'PACKAGE_NOT_FOUND';
 
   constructor(packageId?: string) {
-    super(packageId ? `Package ${packageId} not found` : 'Package not found');
+    super(packageId ? `Combo ${packageId} no encontrado` : 'Combo no encontrado');
   }
 }

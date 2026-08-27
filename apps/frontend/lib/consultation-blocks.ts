@@ -49,13 +49,46 @@ export type ResolveArgs = {
   specialty?: string | null;
 };
 
+/**
+ * Shape of a resolved block AS THE BACKEND SERIALISES IT — camelCase.
+ *
+ * The domain type used across the frontend (`ConsultationBlock`) is snake_case,
+ * so the two MUST be mapped explicitly. Declaring `resolved: ConsultationBlock[]`
+ * directly made TypeScript trust an annotation that did not match the wire, so
+ * `content_type` was silently `undefined` at runtime: every text block fell to the
+ * default branch and rendered as a plain textarea instead of the rich-text editor,
+ * and the frozen `blocks_snapshot` was persisted with undefined content types.
+ */
+interface ResolvedBlockWire {
+  key: string;
+  label: string;
+  contentType: BlockContentType;
+  enabled: boolean;
+  sortOrder: number;
+  printable: boolean;
+  sendToPatient: boolean;
+}
+
 /** Backend response envelope for GET /api/doctor/consultation-blocks. */
 interface BlocksApiResponse {
   catalog: unknown[];
   doctor_config: unknown[];
-  resolved: ConsultationBlock[];
+  resolved: ResolvedBlockWire[];
   specialty_defaults: unknown[];
   doctor_specialty: string | null;
+}
+
+/** Maps the backend's camelCase wire shape to the snake_case domain type. */
+function toConsultationBlock(b: ResolvedBlockWire): ConsultationBlock {
+  return {
+    key: b.key,
+    label: b.label,
+    content_type: b.contentType,
+    enabled: b.enabled,
+    sort_order: b.sortOrder,
+    printable: b.printable,
+    send_to_patient: b.sendToPatient,
+  };
 }
 
 /**
@@ -81,7 +114,7 @@ export async function resolveBlocksForDoctor(
   }
 
   const resolved = result.value.resolved;
-  return Array.isArray(resolved) ? resolved : [];
+  return Array.isArray(resolved) ? resolved.map(toConsultationBlock) : [];
 }
 
 /**
@@ -94,13 +127,15 @@ export async function snapshotBlocksForConsultation(
   specialty?: string | null,
 ): Promise<Omit<ConsultationBlock, 'value'>[]> {
   const resolved = await resolveBlocksForDoctor({ doctorId, specialty });
-  return resolved.map((b): Omit<ConsultationBlock, 'value'> => ({
-    key: b.key,
-    label: b.label,
-    content_type: b.content_type,
-    enabled: b.enabled,
-    sort_order: b.sort_order,
-    printable: b.printable,
-    send_to_patient: b.send_to_patient,
-  }));
+  return resolved.map(
+    (b): Omit<ConsultationBlock, 'value'> => ({
+      key: b.key,
+      label: b.label,
+      content_type: b.content_type,
+      enabled: b.enabled,
+      sort_order: b.sort_order,
+      printable: b.printable,
+      send_to_patient: b.send_to_patient,
+    }),
+  );
 }

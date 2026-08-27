@@ -76,6 +76,24 @@ export class SequelizePaymentRepository implements IPaymentRepository {
       conditions.push('p.status = :status');
       replacements['status'] = filters.status;
     }
+
+    // Al pedir los COBRADOS, la cita también tiene que estar en estado resuelto
+    // (confirmed, completed o no_show): un pago aprobado de una cita que sigue
+    // "por confirmar" todavía no es ingreso. Sin esto la tarjeta "Total ingresos"
+    // contradecía a la pestaña Ingresos, que ya aplica la misma regla.
+    // 'no_show' se incluye: si el pago estaba aprobado ya es un ingreso cobrado
+    // (el portal no emite devoluciones).
+    // EXISTS y no JOIN: un pago puede cubrir varias citas de un combo.
+    if (filters.status === 'approved') {
+      conditions.push(`(
+        NOT EXISTS (SELECT 1 FROM appointments ap WHERE ap.payment_id = p.id)
+        OR EXISTS (
+          SELECT 1 FROM appointments ap
+           WHERE ap.payment_id = p.id
+             AND ap.status IN ('confirmed', 'completed', 'no_show')
+        )
+      )`);
+    }
     if (filters.fromDate) {
       conditions.push('p.created_at >= :fromDate::timestamptz');
       replacements['fromDate'] = filters.fromDate;
@@ -136,6 +154,11 @@ export class SequelizePaymentRepository implements IPaymentRepository {
          LEFT JOIN appointments a ON a.id = c.appointment_id
          WHERE c.doctor_id = :doctorId
            AND c.payment_status = 'pending'
+           -- No mostrar filas de $0: una inasistencia con monto 0 no tiene nada
+           -- que cobrar, así que no debe aparecer en "Por cobrar". Si c.amount
+           -- es NULL (consulta sin monto explícito), cae al plan_price de la cita,
+           -- que sí puede ser > 0 y debe seguir apareciendo en el listado.
+           AND COALESCE(c.amount, a.plan_price, 0) > 0
            AND NOT EXISTS (
              SELECT 1
              FROM appointments ap
@@ -194,12 +217,27 @@ export class SequelizePaymentRepository implements IPaymentRepository {
 
     const where = conditions.join(' AND ');
 
+    // Misma regla que la lista y que el resumen: cobrado = aprobado Y con la cita
+    // en estado resuelto (confirmed, completed o no_show). Lo aprobado que espera
+    // confirmación suma en pendiente, para que los tres lugares digan lo mismo y la
+    // plata no se pierda de vista.
+    // 'no_show' se incluye porque es un estado terminal: si el pago está aprobado
+    // ya es un ingreso (el portal no emite devoluciones).
+    const citaConfirmada = `(
+      NOT EXISTS (SELECT 1 FROM appointments ap WHERE ap.payment_id = payments.id)
+      OR EXISTS (
+        SELECT 1 FROM appointments ap
+         WHERE ap.payment_id = payments.id
+           AND ap.status IN ('confirmed', 'completed', 'no_show')
+      )
+    )`;
+
     const rows = await this.sequelize.query<TotalsRow>(
       `SELECT
-         COALESCE(SUM(CASE WHEN status = 'approved' THEN amount_usd ELSE 0 END), 0) AS approved_usd,
-         COALESCE(SUM(CASE WHEN status = 'pending'  THEN amount_usd ELSE 0 END), 0) AS pending_usd,
-         COUNT(CASE WHEN status = 'approved' THEN 1 ELSE NULL END)::text             AS approved_count,
-         COUNT(CASE WHEN status = 'pending'  THEN 1 ELSE NULL END)::text             AS pending_count
+         COALESCE(SUM(CASE WHEN status = 'approved' AND ${citaConfirmada} THEN amount_usd ELSE 0 END), 0) AS approved_usd,
+         COALESCE(SUM(CASE WHEN status = 'pending' OR (status = 'approved' AND NOT ${citaConfirmada}) THEN amount_usd ELSE 0 END), 0) AS pending_usd,
+         COUNT(CASE WHEN status = 'approved' AND ${citaConfirmada} THEN 1 ELSE NULL END)::text AS approved_count,
+         COUNT(CASE WHEN status = 'pending' OR (status = 'approved' AND NOT ${citaConfirmada}) THEN 1 ELSE NULL END)::text AS pending_count
        FROM payments
        WHERE ${where}`,
       { replacements, type: QueryTypes.SELECT },

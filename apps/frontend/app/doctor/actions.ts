@@ -81,6 +81,18 @@ interface BackendProfile {
    * Optional for backward compatibility while the backend rolls out the field.
    */
   onboardingCompleted?: boolean;
+  /**
+   * WP-F: true when the doctor has ≥1 active office.
+   * Used by the onboarding wizard to determine the starting step.
+   * Optional — absent in older backend versions (wizard defaults to step 2).
+   */
+  hasActiveOffice?: boolean;
+  /**
+   * WP-F: true when the doctor has ≥1 active service.
+   * Used by the onboarding wizard to determine the starting step.
+   * Optional — absent in older backend versions.
+   */
+  hasActiveService?: boolean;
 }
 
 export type DoctorProfile = BackendProfile;

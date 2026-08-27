@@ -64,6 +64,8 @@ interface RawAppointmentRow {
   // Present only in the enriched paginated list query (LEFT JOIN consultations)
   consultation_payment_status?: string | null;
   consultation_code?: string | null;
+  // Present only in the enriched detail query (LEFT JOIN doctor_offices)
+  office_name?: string | null;
 }
 
 interface PackageRow {
@@ -382,6 +384,49 @@ export class SequelizeAppointmentRepository implements IAppointmentRepository {
     return this.toDomain(row);
   }
 
+  /**
+   * Finds a single appointment by ID scoped to doctorId, enriched with:
+   *   - consultation_code and payment_status via LEFT JOIN consultations
+   *   - office_name via LEFT JOIN doctor_offices
+   *
+   * SECURITY: WHERE clause includes doctor_id = :doctorId to enforce ownership
+   * at the repository (SQL) level — not just at the use-case level. This is the
+   * correct anti-IDOR pattern (defence in depth). Returns null for appointments
+   * that do not exist or belong to another doctor — indistinguishable (anti-enumeration).
+   *
+   * NOTE: Full PII is returned (no masking). This endpoint is owner-scoped and
+   * does NOT require an audit entry — see ADR-005 for the precedent.
+   */
+  async findByIdScopedEnriched(id: string, doctorId: string): Promise<Appointment | null> {
+    const rows = await this.sequelize.query<RawAppointmentRow>(
+      `SELECT
+         a.id, a.doctor_id, a.patient_id, a.auth_user_id, a.consultation_id,
+         a.patient_name, a.patient_phone, a.patient_email, a.patient_cedula,
+         a.scheduled_at, a.status, a.appointment_mode, a.source,
+         a.plan_name, a.plan_price, a.payment_method, a.payment_reference, a.payment_receipt_url,
+         a.insurance_name, a.bcv_rate, a.amount_bs, a.package_id, a.session_number,
+         a.chief_complaint, a.appointment_code, a.payment_id, a.meet_link, a.office_id,
+         a.google_calendar_event_id, a.duration_minutes, a.created_at, a.updated_at,
+         c.payment_status   AS consultation_payment_status,
+         c.consultation_code AS consultation_code,
+         o.name             AS office_name
+       FROM appointments a
+       LEFT JOIN consultations c ON c.id = a.consultation_id
+       LEFT JOIN doctor_offices o ON o.id = a.office_id
+       WHERE a.id = :id
+         AND a.doctor_id = :doctorId
+       LIMIT 1`,
+      {
+        replacements: { id, doctorId },
+        type: QueryTypes.SELECT,
+      },
+    );
+
+    const row = rows[0];
+    if (!row) return null;
+    return this.rawRowToDomain(row);
+  }
+
   async findFirstCompletedByPaymentId(paymentId: string): Promise<Appointment | null> {
     const row = await this.appointmentModel.findOne({
       where: {
@@ -461,6 +506,7 @@ export class SequelizeAppointmentRepository implements IAppointmentRepository {
       updatedAt: new Date(r.updated_at),
       paymentStatus: r.consultation_payment_status ?? null,
       consultationCode: r.consultation_code ?? null,
+      officeName: r.office_name ?? null,
     });
   }
 

@@ -7,6 +7,9 @@ import {
 /** Statuses that indicate an active/billable subscription that may expire. */
 const EXPIRABLE_STATUSES = new Set(['active', 'trial', 'trialing']);
 
+/** Plan gratuito permanente al que vuelve una cuenta reactivada. */
+const FREE_PLAN_KEY = 'delta_free';
+
 export interface ProcessLoginTouchInput {
   profileId: string;
   /** When provided, the use case checks for subscription expiry (doctor flow). */
@@ -16,6 +19,8 @@ export interface ProcessLoginTouchInput {
 export interface ProcessLoginTouchOutput {
   /** True when a subscription was found expired and downgraded to past_due. */
   downgraded: boolean;
+  /** True cuando la cuenta estaba dada de baja por su dueño y se volvió a encender. */
+  reactivated?: boolean;
 }
 
 /**
@@ -43,6 +48,19 @@ export class ProcessLoginTouchUseCase {
 
   async execute(input: ProcessLoginTouchInput): Promise<ProcessLoginTouchOutput> {
     const isDoctor = input.role === 'doctor';
+
+    // Volver a entrar reactiva la cuenta que el propio especialista dio de baja:
+    // conserva sus datos y el plan que todavía no venció (si venció, queda en el
+    // gratuito), y puede mejorar su plan sin pedirle nada a un administrador. Un
+    // bloqueo hecho por un admin NO se toca acá — ese sigue necesitando al admin.
+    if (isDoctor) {
+      const estado = await this.loginTouchRepo.findAccountState(input.profileId);
+      if (estado && !estado.isActive && estado.deactivatedBy === 'self') {
+        await this.loginTouchRepo.reactivateAndTouch(input.profileId, FREE_PLAN_KEY);
+        this.logger.log('Login touch: cuenta dada de baja por su dueño reactivada');
+        return { downgraded: false, reactivated: true };
+      }
+    }
 
     if (!isDoctor) {
       // Non-doctors: just record the sign-in time. No subscription logic.

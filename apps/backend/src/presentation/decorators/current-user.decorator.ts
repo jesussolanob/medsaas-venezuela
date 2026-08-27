@@ -3,7 +3,7 @@ import type { Request } from 'express';
 
 export interface CurrentUserPayload {
   sub: string;
-  role: 'super_admin' | 'doctor' | 'patient' | 'assistant';
+  role: 'super_admin' | 'doctor' | 'patient' | 'assistant' | 'seller';
   email: string;
 }
 

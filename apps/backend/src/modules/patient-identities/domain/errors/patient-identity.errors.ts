@@ -10,7 +10,7 @@ export class PatientIdentityConflictError extends DomainError {
   override readonly httpStatus = 409;
 
   constructor() {
-    super('Patient identity already exists for this cedula hash');
+    super('Ya existe un paciente registrado con esa cédula');
   }
 }
 
@@ -23,6 +23,6 @@ export class PatientIdentityInvariantError extends DomainError {
   override readonly httpStatus = 422;
 
   constructor(field: string) {
-    super(`PatientIdentity invariant violated: ${field} is required`);
+    super(`Falta un dato obligatorio del paciente: ${field}`);
   }
 }

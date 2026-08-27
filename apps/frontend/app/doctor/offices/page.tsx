@@ -29,6 +29,17 @@ import {
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import { showToast } from '@/components/ui/Toaster';
 import PhoneInput from '@/components/shared/PhoneInput';
+import {
+  addBlock as addBlockIn,
+  removeBlock as removeBlockIn,
+  toggleDay as toggleDayIn,
+  updateBlock as updateBlockIn,
+  setBlockDuration as setBlockDurationIn,
+  setDurationForAllBlocks as setDurationForAllBlocksIn,
+  copyDayToOthers as copyDayToOthersIn,
+} from '@/lib/schedule-utils';
+import { getDoctorServices, updateDoctorService } from '@/app/doctor/services/actions';
+import type { DoctorService } from '@/app/doctor/services-shared';
 
 type Office = {
   id: string;
@@ -61,9 +72,21 @@ type DaySchedule = {
   enabled: boolean;
   start: string; // HH:MM
   end: string; // HH:MM
+  /**
+   * Duración propia de la consulta en este bloque (minutos). Sin valor hereda
+   * la del consultorio, que es el default de todo bloque nuevo.
+   */
+  slotDuration?: number | null;
+  bufferMinutes?: number | null;
 };
 
 const DAYS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
+
+/**
+ * Duraciones ofrecidas por bloque. La opción vacía del selector significa
+ * "la del consultorio", que sigue siendo el default de todo bloque nuevo.
+ */
+const DURACIONES_BLOQUE = [15, 20, 30, 40, 45, 60, 90] as const;
 const DAYS_SHORT = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
 
 /** Un bloque de horario por día de la semana (lun-vie activo por defecto). */
@@ -86,23 +109,8 @@ function timeToMinutes(hhmm: string): number {
   return (h ?? 0) * 60 + (m ?? 0);
 }
 
-/**
- * Dada la hora de fin del último bloque de un día, sugiere el inicio del
- * siguiente (2 horas después, máx. 18:00).
- */
-function suggestNextStart(lastEnd: string): string {
-  const mins = Math.min(timeToMinutes(lastEnd) + 120, 18 * 60);
-  const h = String(Math.floor(mins / 60)).padStart(2, '0');
-  const m = String(mins % 60).padStart(2, '0');
-  return `${h}:${m}`;
-}
-
-function suggestNextEnd(nextStart: string): string {
-  const mins = Math.min(timeToMinutes(nextStart) + 240, 22 * 60);
-  const h = String(Math.floor(mins / 60)).padStart(2, '0');
-  const m = String(mins % 60).padStart(2, '0');
-  return `${h}:${m}`;
-}
+// `suggestNextStart` / `suggestNextEnd` vivían acá; se movieron a
+// `lib/schedule-utils` junto con las operaciones de bloques que las usaban.
 
 // ---------------------------------------------------------------------------
 // Validación de solapamiento intra-día
@@ -181,6 +189,17 @@ export default function OfficesPage() {
   const [phone, setPhone] = useState('');
   const [mapUrl, setMapUrl] = useState('');
   const [schedule, setSchedule] = useState<DaySchedule[]>(DEFAULT_SCHEDULE);
+  // "Copiar horario a…": qué día se está copiando y a cuáles se va a pegar.
+  // `null` = ningún panel abierto.
+  const [copySourceDay, setCopySourceDay] = useState<number | null>(null);
+  const [copyTargets, setCopyTargets] = useState<number[]>([]);
+  // Paso posterior al alta: ofrecer asociarle los servicios que ya existen.
+  const [asociar, setAsociar] = useState<{
+    officeId: string;
+    servicios: DoctorService[];
+    elegidos: string[];
+  } | null>(null);
+  const [asociando, setAsociando] = useState(false);
   const [slotDuration, setSlotDuration] = useState(30);
   const [bufferMinutes, setBufferMinutes] = useState(10);
   const [modality, setModality] = useState<OfficeModality>('in_person');
@@ -277,50 +296,68 @@ export default function OfficesPage() {
   // Operaciones sobre bloques (inmutables)
   // ---------------------------------------------------------------------------
 
+  // La lógica vive en `lib/schedule-utils` como funciones puras: el onboarding
+  // usa exactamente las mismas. Estaban duplicadas acá, y la copia del
+  // onboarding se quedó atrás — sólo admitía un bloque por día. Estos wrappers
+  // son el puente al estado local; el comportamiento es idéntico al anterior.
+
   /** Activa/desactiva un día completo. Activa = agrega un bloque inicial si no hay ninguno. */
   function toggleDay(dayNum: number) {
-    const blocksForDay = schedule.filter((b) => b.day === dayNum);
-    const isEnabled = blocksForDay.some((b) => b.enabled);
-
-    if (isEnabled) {
-      // Desactivar: marcar todos los bloques de ese día como disabled
-      setSchedule((prev) => prev.map((b) => (b.day === dayNum ? { ...b, enabled: false } : b)));
-    } else {
-      // Activar: si hay bloques disabled, reactivarlos; si no hay ninguno, agregar uno
-      if (blocksForDay.length > 0) {
-        setSchedule((prev) => prev.map((b) => (b.day === dayNum ? { ...b, enabled: true } : b)));
-      } else {
-        setSchedule((prev) => [
-          ...prev,
-          { day: dayNum, enabled: true, start: '08:00', end: '17:00' },
-        ]);
-      }
-    }
+    setSchedule((prev) => toggleDayIn(prev, dayNum));
   }
 
   /** Actualiza un campo de un bloque puntual por su índice en el array plano. */
   function updateBlock(blockIndex: number, field: 'start' | 'end', value: string) {
-    setSchedule((prev) => prev.map((b, i) => (i === blockIndex ? { ...b, [field]: value } : b)));
+    setSchedule((prev) => updateBlockIn(prev, blockIndex, field, value));
+  }
+
+  /**
+   * Fija la duración PROPIA de un bloque. `null` = vuelve a heredar la del
+   * consultorio, que es el estado por defecto de todos los bloques.
+   */
+  function setBlockDuration(blockIndex: number, minutos: number | null) {
+    setSchedule((prev) => setBlockDurationIn(prev, blockIndex, minutos));
+  }
+
+  /** Aplica la duración de un bloque a todos los demás, para no cargarla una por una. */
+  function applyDurationToAll(minutos: number | null) {
+    setSchedule((prev) => setDurationForAllBlocksIn(prev, minutos));
   }
 
   /** Elimina un bloque por su índice. Si era el único del día, deja el día sin bloques. */
   function removeBlock(blockIndex: number) {
-    setSchedule((prev) => prev.filter((_, i) => i !== blockIndex));
+    setSchedule((prev) => removeBlockIn(prev, blockIndex));
   }
 
   /** Agrega un bloque nuevo al final de los bloques existentes de un día. */
   function addBlock(dayNum: number) {
-    const blocksForDay = schedule.filter((b) => b.day === dayNum && b.enabled);
-    let start = '08:00';
-    let end = '12:00';
+    setSchedule((prev) => addBlockIn(prev, dayNum));
+  }
 
-    if (blocksForDay.length > 0) {
-      const lastEnd = blocksForDay[blocksForDay.length - 1]?.end ?? '12:00';
-      start = suggestNextStart(lastEnd);
-      end = suggestNextEnd(start);
-    }
+  /** Abre (o cierra) el panel de "copiar este día a…". */
+  function toggleCopyPanel(dayNum: number) {
+    setCopySourceDay((prev) => (prev === dayNum ? null : dayNum));
+    setCopyTargets([]);
+  }
 
-    setSchedule((prev) => [...prev, { day: dayNum, enabled: true, start, end }]);
+  /** Marca/desmarca un día destino en el panel de copia. */
+  function toggleCopyTarget(dayNum: number) {
+    setCopyTargets((prev) =>
+      prev.includes(dayNum) ? prev.filter((d) => d !== dayNum) : [...prev, dayNum],
+    );
+  }
+
+  /** Copia los bloques del día origen a los días marcados y cierra el panel. */
+  function applyCopyToDays() {
+    if (copySourceDay === null || copyTargets.length === 0) return;
+    const cuantos = copyTargets.length;
+    setSchedule((prev) => copyDayToOthersIn(prev, copySourceDay, copyTargets));
+    setCopySourceDay(null);
+    setCopyTargets([]);
+    showToast({
+      type: 'success',
+      message: `Horario copiado a ${cuantos} día${cuantos === 1 ? '' : 's'}`,
+    });
   }
 
   // ---------------------------------------------------------------------------
@@ -376,11 +413,16 @@ export default function OfficesPage() {
         modality,
       };
 
-      let result;
+      // El id solo existe en el alta; se guarda aparte para no depender de
+      // estrechar una unión entre el resultado de crear y el de actualizar.
+      let nuevoOfficeId: string | null = null;
+      let result: { ok: boolean; error?: string };
       if (editing) {
         result = await updateOffice(editing.id, payload);
       } else {
-        result = await createOffice(payload);
+        const creado = await createOffice(payload);
+        nuevoOfficeId = creado.ok ? (creado.id ?? null) : null;
+        result = creado;
       }
 
       if (!result.ok) {
@@ -396,11 +438,93 @@ export default function OfficesPage() {
       });
       closeForm();
       fetchOffices();
+
+      // Recién creado: si ya tiene servicios cargados, se le ofrece asociarlos
+      // en vez de dejarlo descubrir por su cuenta que el consultorio nuevo no
+      // ofrece nada. Un consultorio sin servicios no puede recibir reservas, y
+      // eso no se ve desde esta pantalla.
+      if (nuevoOfficeId) {
+        void ofrecerAsociarServicios(nuevoOfficeId);
+      }
     } catch (err: unknown) {
       setErrorAndScroll(err instanceof Error ? err.message : 'Ocurrió un error inesperado.');
     } finally {
       setSaving(false);
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Asociar servicios existentes a un consultorio recién creado
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Busca los servicios del especialista y abre el paso de asociación.
+   *
+   * Se listan TODOS los servicios activos, incluidos los GENERALES
+   * (`office_id === null`). Antes se filtraban, con el argumento de que ya
+   * aparecen en todos los consultorios y ofrecerlos no cambiaría nada — pero
+   * como la mayoría de los servicios nacen generales, el resultado real era que
+   * el paso NO SE ABRÍA NUNCA, o se abría mostrando uno solo de cuatro. El
+   * especialista leía eso como que sus servicios se habían perdido.
+   *
+   * Los generales se muestran tildados y bloqueados: la información que falta
+   * no es "cuáles puedo asociar" sino "qué se ofrece en este consultorio".
+   * Accionables son solo los atados a OTRO consultorio, y ésos avisan que
+   * asociarlos acá los saca de donde están (`office_id` es una FK única).
+   */
+  async function ofrecerAsociarServicios(nuevoOfficeId: string) {
+    try {
+      const servicios = await getDoctorServices();
+      const activos = servicios.filter((s) => s.is_active && s.office_id !== nuevoOfficeId);
+      if (activos.length === 0) return;
+      setAsociar({ officeId: nuevoOfficeId, servicios: activos, elegidos: [] });
+    } catch {
+      // Es un ofrecimiento, no un paso obligatorio: si falla, el consultorio ya
+      // quedó creado y el especialista puede asociar servicios desde Servicios.
+    }
+  }
+
+  /** Un servicio general ya se ofrece en el consultorio nuevo: no hay nada que asociar. */
+  function yaCubierto(s: DoctorService): boolean {
+    return s.office_id === null;
+  }
+
+  /**
+   * Nombre del consultorio al que hoy está atado un servicio.
+   *
+   * Se resuelve contra `offices`, que en este punto ya incluye el recién creado
+   * (`fetchOffices()` corre antes de abrir el paso). Si el id no aparece —un
+   * consultorio desactivado, por ejemplo— se dice "otro consultorio" en vez de
+   * dejar el renglón a medias.
+   */
+  function nombreDeConsultorio(officeId: string | null): string {
+    if (!officeId) return 'General';
+    return offices.find((o) => o.id === officeId)?.name ?? 'otro consultorio';
+  }
+
+  async function confirmarAsociacion() {
+    if (!asociar || asociar.elegidos.length === 0) return;
+    setAsociando(true);
+    const resultados = await Promise.all(
+      asociar.elegidos.map((id) => updateDoctorService(id, { office_id: asociar.officeId })),
+    );
+    setAsociando(false);
+
+    const fallidos = resultados.filter((r) => !r.success).length;
+    if (fallidos > 0) {
+      // No hay endpoint en lote: cada servicio va por su PUT y alguno puede
+      // fallar solo. Se dice cuántos, en vez de un "listo" que sería mentira.
+      showToast({
+        type: 'error',
+        message: `${resultados.length - fallidos} de ${resultados.length} servicios asociados. Revisá el resto en Servicios.`,
+      });
+    } else {
+      showToast({
+        type: 'success',
+        message: `${resultados.length} servicio${resultados.length === 1 ? '' : 's'} asociado${resultados.length === 1 ? '' : 's'}`,
+      });
+    }
+    setAsociar(null);
   }
 
   // ---------------------------------------------------------------------------
@@ -458,6 +582,129 @@ export default function OfficesPage() {
         onConfirm={() => confirmDelete && performDelete(confirmDelete)}
         onCancel={() => setConfirmDelete(null)}
       />
+
+      {/*
+        Asociar servicios al consultorio recién creado.
+
+        Se ofrece, no se impone: cerrar sin elegir nada es una respuesta válida
+        y el consultorio ya quedó creado. Los servicios "General" SÍ aparecen,
+        tildados y bloqueados, porque el especialista necesita ver qué se ofrece
+        acá — no solo qué puede cambiar.
+      */}
+      {asociar && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[70] p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+            <div>
+              <h3 className="text-base font-bold text-slate-900">
+                ¿Qué servicios ofrecés en este consultorio?
+              </h3>
+              <p className="text-xs text-slate-500 mt-1">
+                Ya tenés {asociar.servicios.length} servicio
+                {asociar.servicios.length === 1 ? '' : 's'} cargado
+                {asociar.servicios.length === 1 ? '' : 's'}. Los marcados ya se ofrecen acá; podés
+                sumar los demás ahora o después desde Servicios.
+              </p>
+            </div>
+
+            <div className="space-y-1.5">
+              {asociar.servicios.map((s) => {
+                const cubierto = yaCubierto(s);
+                // Un general ya se ofrece acá: se muestra tildado y bloqueado.
+                // Tildarlo lo ataría a este consultorio y lo sacaría del resto.
+                const marcado = cubierto || asociar.elegidos.includes(s.id);
+                return (
+                  <label
+                    key={s.id}
+                    className={`flex items-center gap-3 px-3 py-2.5 rounded-lg border transition-colors ${
+                      cubierto
+                        ? 'border-slate-200 bg-slate-50 cursor-default'
+                        : marcado
+                          ? 'border-teal-400 bg-teal-50/60 cursor-pointer'
+                          : 'border-slate-200 hover:border-slate-300 cursor-pointer'
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={marcado}
+                      disabled={cubierto}
+                      onChange={() =>
+                        setAsociar((prev) =>
+                          prev
+                            ? {
+                                ...prev,
+                                elegidos: marcado
+                                  ? prev.elegidos.filter((id) => id !== s.id)
+                                  : [...prev.elegidos, s.id],
+                              }
+                            : prev,
+                        )
+                      }
+                      className="accent-teal-500 disabled:accent-slate-300"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <p
+                        className={`text-sm font-semibold truncate ${
+                          cubierto ? 'text-slate-500' : 'text-slate-800'
+                        }`}
+                      >
+                        {s.name}
+                      </p>
+                      <p className="text-xs text-slate-400">
+                        {s.duration_minutes} min · ${s.price_usd}
+                      </p>
+                      {cubierto ? (
+                        <p className="text-[11px] text-slate-400 mt-0.5">
+                          Ya disponible acá (General)
+                        </p>
+                      ) : (
+                        <p className="text-[11px] text-amber-600 mt-0.5">
+                          Hoy solo en: {nombreDeConsultorio(s.office_id)} — asociarlo acá lo saca de
+                          ahí
+                        </p>
+                      )}
+                    </div>
+                  </label>
+                );
+              })}
+            </div>
+
+            <p className="text-[11px] text-slate-400">
+              Un servicio &quot;General&quot; ya se ofrece en todos tus consultorios. Los demás se
+              atienden en uno a la vez: al marcarlos acá dejan de estar asociados al anterior.
+            </p>
+
+            {/*
+              Sin servicios accionables (todos generales) el paso es informativo:
+              un "Asociar" permanentemente gris se lee como un botón roto.
+            */}
+            {asociar.servicios.every(yaCubierto) ? (
+              <button
+                onClick={() => setAsociar(null)}
+                className="w-full py-2.5 bg-teal-500 text-white rounded-lg text-sm font-semibold hover:bg-teal-600"
+              >
+                Entendido
+              </button>
+            ) : (
+              <div className="flex gap-2 pt-1">
+                <button
+                  onClick={() => setAsociar(null)}
+                  disabled={asociando}
+                  className="flex-1 py-2.5 border border-slate-200 rounded-lg text-sm font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+                >
+                  Ahora no
+                </button>
+                <button
+                  onClick={() => void confirmarAsociacion()}
+                  disabled={asociando || asociar.elegidos.length === 0}
+                  className="flex-1 py-2.5 bg-teal-500 text-white rounded-lg text-sm font-semibold hover:bg-teal-600 disabled:opacity-40"
+                >
+                  {asociando ? 'Asociando…' : 'Asociar'}
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Header */}
       <div className="flex items-center justify-between">
@@ -838,7 +1085,75 @@ export default function OfficesPage() {
                           {!isDayActive && (
                             <span className="text-xs text-slate-400 italic">No disponible</span>
                           )}
+
+                          {/*
+                            "Copiar a…" — programar un día y repetirlo en los que
+                            elija, en vez de cargar el mismo horario siete veces.
+                            Solo tiene sentido en un día que ya tiene bloques.
+                          */}
+                          {isDayActive && dayBlocks.length > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => toggleCopyPanel(dayNum)}
+                              aria-expanded={copySourceDay === dayNum}
+                              className={`ml-auto text-[11px] font-semibold px-2 py-1 rounded-md transition-colors ${
+                                copySourceDay === dayNum
+                                  ? 'bg-teal-50 text-teal-700'
+                                  : 'text-slate-500 hover:text-teal-600 hover:bg-slate-50'
+                              }`}
+                            >
+                              Copiar a…
+                            </button>
+                          )}
                         </div>
+
+                        {copySourceDay === dayNum && (
+                          <div className="mx-3 mb-3 rounded-lg border border-teal-200 bg-teal-50/50 p-3 space-y-2">
+                            <p className="text-[11px] font-semibold text-slate-600">
+                              Aplicar el horario de {dayName} a:
+                            </p>
+                            <div className="flex flex-wrap gap-1.5">
+                              {DAYS.map((otroNombre, otroNum) =>
+                                otroNum === dayNum ? null : (
+                                  <button
+                                    key={otroNum}
+                                    type="button"
+                                    onClick={() => toggleCopyTarget(otroNum)}
+                                    aria-pressed={copyTargets.includes(otroNum)}
+                                    className={`text-[11px] font-semibold px-2.5 py-1 rounded-md border transition-colors ${
+                                      copyTargets.includes(otroNum)
+                                        ? 'bg-teal-500 text-white border-teal-500'
+                                        : 'bg-white text-slate-600 border-slate-200 hover:border-teal-300'
+                                    }`}
+                                  >
+                                    {DAYS_SHORT[otroNum]}
+                                  </button>
+                                ),
+                              )}
+                            </div>
+                            <p className="text-[11px] text-slate-500">
+                              Los días que elijas quedan con este mismo horario y{' '}
+                              <strong>se reemplaza</strong> lo que tuvieran.
+                            </p>
+                            <div className="flex gap-2 pt-0.5">
+                              <button
+                                type="button"
+                                onClick={() => toggleCopyPanel(dayNum)}
+                                className="text-[11px] font-semibold text-slate-500 hover:text-slate-700 px-2 py-1"
+                              >
+                                Cancelar
+                              </button>
+                              <button
+                                type="button"
+                                onClick={applyCopyToDays}
+                                disabled={copyTargets.length === 0}
+                                className="text-[11px] font-bold text-white bg-teal-500 hover:bg-teal-600 disabled:opacity-40 px-3 py-1 rounded-md"
+                              >
+                                Aplicar
+                              </button>
+                            </div>
+                          </div>
+                        )}
 
                         {/* Bloques del día (solo si activo) */}
                         {isDayActive && (
@@ -894,6 +1209,39 @@ export default function OfficesPage() {
                                           : 'border-slate-200 bg-white text-slate-800 hover:border-teal-400 focus:border-teal-500 focus:ring-teal-200'
                                       }`}
                                     />
+                                    {/* Duración propia del bloque. "Del consultorio"
+                                        (valor vacío) = hereda, que es el default. */}
+                                    <select
+                                      value={block.slotDuration ?? ''}
+                                      onChange={(e) =>
+                                        setBlockDuration(
+                                          globalIdx,
+                                          e.target.value === '' ? null : Number(e.target.value),
+                                        )
+                                      }
+                                      aria-label={`Duración de la consulta — ${dayName} bloque ${globalIdx + 1}`}
+                                      title="Cuánto dura cada consulta en este bloque"
+                                      className="shrink-0 text-xs px-2 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-700 hover:border-teal-400 focus:outline-none focus:ring-2 focus:ring-teal-200"
+                                    >
+                                      <option value="">{slotDuration} min (del consultorio)</option>
+                                      {DURACIONES_BLOQUE.map((min) => (
+                                        <option key={min} value={min}>
+                                          {min} min
+                                        </option>
+                                      ))}
+                                    </select>
+                                    {block.slotDuration != null && (
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          applyDurationToAll(block.slotDuration ?? null)
+                                        }
+                                        className="shrink-0 text-[10px] font-semibold text-teal-600 hover:text-teal-700 whitespace-nowrap"
+                                        title="Usar esta misma duración en todos los bloques"
+                                      >
+                                        aplicar a todos
+                                      </button>
+                                    )}
                                     {/* Quitar bloque */}
                                     <button
                                       type="button"

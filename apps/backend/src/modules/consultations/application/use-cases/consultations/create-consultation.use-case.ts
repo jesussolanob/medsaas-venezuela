@@ -18,6 +18,17 @@ export interface CreateConsultationInput {
   notes?: string | null;
   /** Pre-populate the consultation amount from the appointment's plan price. */
   amount?: number | null;
+  /**
+   * Método de pago elegido al dar de alta la cita ('efectivo', 'pago_movil'…).
+   *
+   * La consulta nace igual en `pending` —el cobro se aprueba después, en
+   * Cobros—, pero el dato NO se puede perder: se guardaba solo en
+   * `appointments.payment_method` y la consulta quedaba en null, así que el
+   * especialista tenía que volver a elegir el método que ya había elegido.
+   */
+  paymentMethod?: string | null;
+  /** Referencia o hash del pago, cuando el método la pide. */
+  paymentReference?: string | null;
 }
 
 /**
@@ -75,8 +86,11 @@ export class CreateConsultationUseCase {
         diagnosis: null,
         treatment: null,
         notes: input.notes ?? null,
+        // Sigue naciendo pendiente a propósito: el cobro se aprueba en Cobros.
+        // Lo que cambia es que el método elegido en el alta ya no se pierde.
         paymentStatus: 'pending',
-        paymentMethod: null,
+        paymentMethod: input.paymentMethod ?? null,
+        paymentReference: input.paymentReference ?? null,
         amount: input.amount ?? null,
         paymentDate: null,
         blocksSnapshot: null,

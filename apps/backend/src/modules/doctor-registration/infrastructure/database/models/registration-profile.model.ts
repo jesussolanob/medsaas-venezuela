@@ -41,6 +41,15 @@ export class RegistrationProfileModel extends Model {
   @Column({ type: DataType.TEXT, allowNull: true })
   declare cedula: string | null;
 
+  /**
+   * Teléfono de contacto del especialista. La columna ya existía en `profiles`
+   * (TEXT nullable, migración inicial) pero este modelo no la declaraba, así que
+   * el onboarding no podía escribirla. Obligatorio en el alta desde 2026-08-17:
+   * es el canal por el que Delta lo contacta.
+   */
+  @Column({ type: DataType.TEXT, allowNull: true })
+  declare phone: string | null;
+
   @Column({ type: DataType.TEXT, allowNull: true, field: 'mpps_number' })
   declare mppsNumber: string | null;
 
@@ -71,9 +80,18 @@ export class RegistrationProfileModel extends Model {
   @Column({ type: DataType.BOOLEAN, allowNull: true, field: 'is_active' })
   declare isActive: boolean | null;
 
+  /** Deactivation provenance — 'self' | 'admin'. Migration 20260809000001. */
+  @Column({ type: DataType.TEXT, allowNull: true, field: 'deactivated_by' })
+  declare deactivatedBy: string | null;
+
   /**
    * Explicit onboarding completion flag. Added in migration 20260617000004.
-   * Set to true by updateRegistration when the doctor submits the onboarding form.
+   *
+   * Lo marca `markOnboardingCompleted` (módulo doctor-settings), que exige ≥1
+   * consultorio y ≥1 servicio activos. NO lo marca `updateRegistration`: ese
+   * método persiste solo el paso 1 del wizard, y como el guard del portal lee
+   * este booleano, marcarlo ahí dejaba entrar al portal a quien había cargado
+   * únicamente sus datos personales.
    */
   @Default(false)
   @Column({ type: DataType.BOOLEAN, allowNull: false, field: 'onboarding_completed' })

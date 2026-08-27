@@ -353,6 +353,10 @@ export default function PendingConsultationsClient() {
   const [schedulingItem, setSchedulingItem] = useState<PendingConsultationItem | null>(null);
   const [cancelTarget, setCancelTarget] = useState<PendingConsultationItem | null>(null);
   const [cancelling, setCancelling] = useState(false);
+  // Un fallo de carga NO puede verse igual que "no hay nada": antes ambos casos
+  // pintaban el mismo estado vacío y el especialista no tenía forma de saber que
+  // la petición había fallado (ni nosotros de diagnosticarlo).
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const fetchItems = useCallback(async (status: PendingConsultationStatus | 'all') => {
     setLoading(true);
@@ -360,13 +364,17 @@ export default function PendingConsultationsClient() {
       const qs = status !== 'all' ? `?status=${encodeURIComponent(status)}` : '';
       const res = await fetch(`/api/doctor/pending-consultations${qs}`, { cache: 'no-store' });
       if (!res.ok) {
+        const json = (await res.json().catch(() => null)) as { error?: string } | null;
         setItems([]);
+        setLoadError(json?.error ?? `No se pudo cargar la lista (error ${res.status}).`);
         return;
       }
       const json = (await res.json()) as { data?: PendingConsultationItem[] };
       setItems(Array.isArray(json.data) ? json.data : []);
+      setLoadError(null);
     } catch {
       setItems([]);
+      setLoadError('Error de conexión. Revisa tu internet e intenta de nuevo.');
     } finally {
       setLoading(false);
     }
@@ -488,6 +496,20 @@ export default function PendingConsultationsClient() {
       {loading ? (
         <div className="flex items-center justify-center h-48">
           <Loader2 className="w-6 h-6 animate-spin text-slate-400" />
+        </div>
+      ) : loadError ? (
+        <div className="bg-white border border-red-200 rounded-xl p-12 text-center">
+          <AlertTriangle className="w-10 h-10 text-red-300 mx-auto mb-3" />
+          <p className="text-sm font-medium text-red-600">{loadError}</p>
+          <p className="text-xs text-slate-400 mt-1">
+            Esto no significa que no tengas consultas por agendar: la lista no pudo cargarse.
+          </p>
+          <button
+            onClick={() => void fetchItems(statusFilter)}
+            className="mt-4 text-sm font-semibold text-teal-600 hover:text-teal-700"
+          >
+            Reintentar
+          </button>
         </div>
       ) : items.length === 0 ? (
         <div className="bg-white border border-slate-200 rounded-xl p-12 text-center">

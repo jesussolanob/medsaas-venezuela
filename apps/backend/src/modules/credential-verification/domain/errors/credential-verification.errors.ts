@@ -9,7 +9,7 @@ export class DoctorProfileNotFoundError extends DomainError {
   override readonly httpStatus = 404;
 
   constructor(_doctorId?: string) {
-    super('Doctor profile not found');
+    super('Perfil del especialista no encontrado');
   }
 }
 
@@ -21,7 +21,7 @@ export class NoActiveVerifierError extends DomainError {
   override readonly httpStatus = 422;
 
   constructor(credentialType: string) {
-    super(`No active verifier registered for credential type: ${credentialType}`);
+    super(`No hay verificador activo para el tipo de credencial: ${credentialType}`);
   }
 }
 
@@ -34,7 +34,7 @@ export class VerificationPortalError extends DomainError {
   override readonly httpStatus = 502;
 
   constructor(portalName: string) {
-    super(`Verification portal error for: ${portalName}`);
+    super(`El portal de verificación ${portalName} no respondió correctamente`);
   }
 }
 
@@ -46,6 +46,6 @@ export class CredentialVerificationNotFoundError extends DomainError {
   override readonly httpStatus = 404;
 
   constructor(_doctorId?: string) {
-    super('Credential verification record not found');
+    super('No se encontró el registro de verificación de credenciales');
   }
 }

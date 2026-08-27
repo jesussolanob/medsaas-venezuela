@@ -203,6 +203,13 @@ describe('AiTextUseCase', () => {
       findByDoctorId: jest.fn(),
       update: jest.fn(),
       updateExchangeRate: jest.fn(),
+      markOnboardingCompleted: jest.fn().mockResolvedValue(undefined),
+      updateBlocksLayout: jest.fn().mockResolvedValue(undefined),
+      countUpcomingAppointments: jest.fn().mockResolvedValue(0),
+      deactivateOwnAccount: jest.fn().mockResolvedValue(undefined),
+      findPlanSnapshot: jest.fn().mockResolvedValue(null),
+      scheduleOwnAccountDeactivation: jest.fn().mockResolvedValue(undefined),
+      applyExpiredScheduledDeactivations: jest.fn().mockResolvedValue(0),
     };
     mockPlanConfigRepo = { findByKey: jest.fn(), findPermanentPlanForRole: jest.fn() };
     mockPatientRepo = {
@@ -229,6 +236,7 @@ describe('AiTextUseCase', () => {
       findExtraItems: jest.fn(),
       list: jest.fn(),
       listWithAppointment: jest.fn(),
+      applyNoShowFee: jest.fn(),
       findByPatient: jest.fn(),
       findByAppointmentId: jest.fn(),
       deleteById: jest.fn().mockResolvedValue(undefined),

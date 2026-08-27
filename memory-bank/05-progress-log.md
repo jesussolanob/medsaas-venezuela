@@ -1,8 +1,831 @@
 # 05 — Progress Log
 
 > Registro cronológico. Una entrada por fase/hito completado.
+> ⚠️ Orden: **la entrada más nueva va ARRIBA**. La del 2026-08-11 quedó al final
+> del archivo por error; no se movió para no ensuciar el diff.
 
-## 2026-08-04 — Fix: "Tiempo entre consultas" del consultorio no se guardaba en 0
+## 2026-08-27 — 🚀 PROMOCIÓN A PRODUCCIÓN: 290 commits y ocho lotes de QA
+
+> **El atraso se cerró.** Desde el 2026-07-31 (`eac4a1c`) no se promovía nada: `main` quedó
+> **290 commits** atrás con **ocho lotes sin validar**. El dueño dio la aprobación de QA y
+> todo eso entró a producción de una vez.
+
+**Qué viajó:** los lotes de agosto (mejoras + onboarding + servicios), la baja de cuenta,
+el lote de la fundadora (inasistencia, consulta retroactiva, hora libre, divisa del portal),
+el rol **vendedor** completo, la paginación de listados, las regresiones del 18/08, el lote de
+25 observaciones del 19/08 y las correcciones del 23–27/08.
+
+**7 migraciones nuevas**, todas ya probadas en staging contra un clon de la base real:
+
+| Migración        | Qué hace                                          |
+| ---------------- | ------------------------------------------------- |
+| `20260805000001` | soporte del lote de agosto                        |
+| `20260805000002` | checkout de pagos de suscripción del especialista |
+| `20260805000003` | avisos de inactividad                             |
+| `20260809000001` | baja de cuenta (`deactivated_by`)                 |
+| `20260810000001` | instrucciones de pago en viñetas                  |
+| `20260816000001` | rol vendedor (`seller_code`, `sold_by`)           |
+| `20260817000001` | **el valor `seller` en el ENUM `user_role`**      |
+
+⚠️ La última es la que evita que el módulo de vendedores devuelva 500 en producción con los
+tests en verde — es el mismo patrón que ya rompió prod dos veces (`trialing` y `seller`). Ver
+[[enums-de-postgres-sin-el-valor]].
+
+⚠️ **Al promover hay que DESPAUSAR el cron** `doctor-inactivity-notices`
+(`gcloud scheduler jobs resume doctor-inactivity-notices --location=us-east1`). Estaba en
+`PAUSED` desde que se creó, esperando justamente este momento. Sin eso queda muerto y **nadie
+se entera**: no falla, simplemente no corre.
+
+---
+
+## 2026-08-27 — Portal del vendedor con menú lateral + arreglos del QA
+
+**Portal del vendedor reestructurado.** Era una **página suelta sin barra lateral** — la única
+pantalla de la app con esa forma. Ahora replica la estructura de `/admin` y `/doctor` (mismos
+tokens `--dh-*`, 260px, mismo ítem activo) pero **sin fijado ni grupos colapsables**: con dos
+secciones esa maquinaria solo agrega estado que mantener.
+
+- **Inicio** — el código y el enlace arriba de todo (es lo que usa todo el día) + cuatro
+  métricas: **embudo de activación** (ordenado por urgencia comercial, no por volumen: arriba
+  va a quién llamar hoy), **tasa de activación**, **altas por mes** y **reparto por plan**.
+- **Especialistas** — la cartera, ahora **con buscador** (no tenía), más el alta y la ficha.
+
+Las métricas se derivan de la MISMA lista que muestra Especialistas; no hay endpoint de
+métricas y no hace falta. ⚠️ **La lista NO está paginada del lado del servidor**, y por eso
+métricas y filtro son exactos en el cliente. El día que se pagine, ambos tienen que mudarse al
+servidor o van a mentir sobre el total.
+
+**Términos y Privacidad en el menú del vendedor.** Era el único perfil sin los documentos
+legales a mano — quedaban solo en el pie del registro público. Reusa el MISMO
+`SidebarUtilityBar` y el MISMO `TermsModal` del especialista, no una copia.
+
+**El isotipo del booking público iba en gris.** Se lavaba **dos veces**: `brightness-200` lo
+llevaba casi a blanco y el contenedor le sumaba `opacity-70`. Ahora va a color sobre una
+pastilla blanca — el isotipo es coral + turquesa y el turquesa se perdía sobre el degradado
+turquesa del encabezado, así que a color "pelado" media marca quedaba invisible.
+
+**Borrado de `marcoviajes11@gmail.com` en staging** (pedido del dueño, para repetir el
+onboarding con datos limpios). Colgaban 17 pacientes, 34 citas, 34 consultas, 36 pagos, 14
+récipes, 3 consultorios y 5 servicios.
+⚠️ **`access_audit_log.actor_id` es `NOT NULL` con FK `NO ACTION`**: no cascadea ni admite
+nulo, así que **bloquea el borrado de un perfil** hasta que se borren sus filas de auditoría
+(153 en este caso). Todo lo demás cascadea. Se hizo en transacción con verificación adentro y
+barrido posterior de todas las tablas que referencian `profiles`: cero residuos.
+**No hace falta tocar Auth0**: el resolver busca por correo, no encuentra perfil y crea uno
+nuevo — que es exactamente el camino de onboarding limpio que se quería probar.
+
+## 2026-08-24 — Correcciones del QA del 23/08 ✅ DESPLEGADO Y VERIFICADO EN STAGING
+
+> **La lección de esta sesión:** de seis observaciones, **cuatro tenían el código ya escrito
+> y bien cableado** — y ninguna funcionaba. Ninguna se podía diagnosticar leyendo: las cuatro
+> cayeron abriendo un navegador contra staging. Es la tercera sesión seguida con el mismo
+> patrón (ver [[codigo-completo-que-nadie-llama]] y la entrada del 19/08).
+
+**Estado:** desplegado en `d0635b25`, deploy verde, y **los arreglos verificados EN VIVO con
+Playwright** — no solo "los tests pasan".
+
+### Lo que reportó el QA y qué resultó ser
+
+| #   | Observación                                     | Causa real                                                          |
+| --- | ----------------------------------------------- | ------------------------------------------------------------------- |
+| 1   | La consulta con fecha pasada no abre su detalle | El controller **descartaba `consultationId`** al armar la respuesta |
+| 2   | Crear consultorio no pregunta por los servicios | El filtro **excluía los servicios generales**, que son casi todos   |
+| 3   | "Me deja asociar 1 de 4"                        | **La misma causa que la #2**                                        |
+| 4   | El monto sube de a céntimos                     | `step="0.01"`                                                       |
+| 5   | El link público carga en `$` y salta a `€`      | La página pública **leía la sesión del visitante**                  |
+| 6   | No existe el botón de alta del vendedor         | El botón existe: **es blanco sobre fondo blanco**                   |
+
+### Los tres hallazgos que valen más que el lote
+
+**1 · El id de la consulta se caía en el mapeo de la respuesta.**
+`CreateBookingUseCase` crea la consulta y devuelve su id; el handler `@Post()` de
+`doctor-booking.controller.ts` no lo incluía en `data`. Todo lo de arriba —BFF, hook, efecto,
+botón "Ir a la consulta"— estaba correctamente cableado para un valor que nunca llegaba.
+El handler `/immediate`, **en el mismo archivo**, sí lo devuelve: se corrigió ése el 19/08 y
+éste quedó afuera. **El controller no tenía NINGÚN spec** mientras el público sí — un campo
+que se cae en el mapeo no rompe ningún test de use case. Se agregó
+`doctor-booking.controller.spec.ts` apuntando al **contrato de la respuesta**.
+
+**2 · `.g-bg` nunca estuvo en la hoja global.** Se usa **105 veces en 24 archivos** y el
+CLAUDE.md la documenta como el gradiente de marca, pero cada **página** la redefinía en su
+propio `<style>` inline. Los modales y componentes extraídos después se llevaron la clase y
+no el `<style>`: **8 archivos quedaron sin cobertura** y, como llevan `text-white`, quedaron
+invisibles pero clickeables. `/seller` es la única pantalla propia de un componente sin
+página que la declare, y por eso salió ahí. Verificado en el navegador: el botón medía
+201×36 px con `background-image: none`. Ahora se define una vez en `globals.css`; el
+`<style>` de cada página se inyecta después y sigue ganando por orden.
+
+**3 · La divisa del link público dependía de la sesión del visitante.** El hook preguntaba
+`if (override?.mode)` —la verdad del MODO, no la presencia del override—, así que con
+`currencyMode: null` caía a la rama autenticada y consultaba `/api/doctor/exchange-rate`.
+El parpadeo `$`→`€` que reportó el QA era el síntoma **en el navegador del especialista**;
+en el de un paciente ese endpoint da 401 y la página **se queda en `$` para siempre**.
+Segundo defecto en el mismo bloque: sin tasa BCV del euro, el `else if` hacía
+`setMode('usd_bcv')` y le cambiaba los precios a dólares al especialista sin avisar.
+
+### Decisión de producto
+
+**Asociar servicios a un consultorio nuevo (decisión del dueño):** el modal lista TODOS los
+servicios activos; los generales van **tildados y bloqueados** con "Ya disponible acá
+(General)" y solo los atados a otro consultorio son accionables, avisando que asociarlos
+**los saca de donde están**. `pricing_plans.office_id` es una FK única — un servicio vive en
+un consultorio o es general. Se descartó la tabla de unión (servicio en N consultorios) por
+ser un lote aparte con migración.
+
+### Hallazgo abierto 🔴
+
+**`/api/ehr/patient/:id` no existe en el BFF.** El backend sí lo expone
+(`ehr.controller.ts:49`) y la server action de `/doctor/ehr` lo alcanza bien, pero
+`ConsultationsClient.tsx:1830` y `GenerateDocumentModal.tsx:292` hacen `fetch` **desde el
+cliente** contra una ruta que no está en `app/api/ehr/**`. Impacto probable: **"Historia
+clínica" nunca se ofrece en Generar Documento**, porque ese modal la habilita según si el
+paciente tiene EHR (ADR-020). Detectado por un 404 en la consola al abrir una consulta.
+
+### Notas operativas
+
+- **El lint completo del backend crashea por falta de memoria** en la máquina del dueño (Node
+  OOM, no una regla). Con `NODE_OPTIONS=--max-old-space-size=8192` sobre los archivos tocados
+  pasa limpio.
+- Verificación del lote: 406 suites / 3927 tests · `tsc` frontend 0 · `nx build backend` 0.
+- Datos de prueba en staging (el dueño dijo que no importan): citas del 20 y 21/08 de
+  `Paciente Prueba Lote19`, consultas `DLT-202608-0030` y `0031`.
+
+## 2026-08-19 — Lote de 25 observaciones + QA con navegador + admin ⏳ EN STAGING, ESPERANDO AL DUEÑO
+
+> **Resumen de la sesión, para retomar rápido.** Empezó como "arreglar 25 observaciones" y
+> terminó destapando **nueve defectos que NO estaban en la lista**, seis de ellos hallados
+> únicamente por probar en un navegador real. Tres tocaban plata o tiempo del especialista:
+> extender le **borraba los días** que tenía, `setMonth` **regalaba dos días** en fin de
+> mes, y reactivar **regalaba un mes** a quien seguía vigente. Ninguno lo veía un test.
+>
+> **La lección de la sesión:** el lote se cerró con todo verde —405 suites, tsc, build,
+> boot del dist— y aun así "Crear y continuar" **nunca había funcionado**. Verde en tests
+> no es verde en pantalla.
+
+El dueño entregó una lista de 27 puntos (`Pruebas 18-08.txt`). **Dos ya estaban
+resueltos** —son las regresiones que se arreglaron esa misma noche—, **uno no se pudo
+reproducir** y los **25 restantes** entraron en un solo lote.
+
+**Entrega:** rama `feature/qa-19-agosto-lote` → `develop` → `staging`. La sesión creció
+más allá del lote: terminó con **6 despliegues a staging**, el último `1cf61213`, **vivo y
+sin un solo WARNING** (verificado en los logs de Cloud Run y con la imagen de la revisión:
+backend y frontend corren `staging-1cf61213`).
+
+`nx test backend` al cierre: **405 suites · 3.923 tests · 0 fallas** (línea base
+404/3.898). `tsc` limpio en ambas apps. Build de las dos OK. **Dist booteado contra la BD
+real de staging: 249 rutas mapeadas, 0 errores de inyección**, y curl real. Lint del
+frontend: **123 errores / 177 avisos, los mismos con y sin el lote** (medido con
+`git stash`) — cero regresiones.
+
+⚠️ **Gotcha operativo:** empujar documentación encima de un despliegue en curso lo
+**cancela** (concurrencia de GitHub Actions). Pasó con el arreglo del ancla: quedó
+cancelado y lo salvó el push siguiente, que iba sobre un commit que ya lo incluía. Al
+desplegar algo que corrige datos, **esperar a que termine antes de empujar los docs** — y
+verificar siempre la **imagen de la revisión**, no solo que el workflow diga verde: hubo un
+run sobre un commit anterior corriendo en paralelo que podría haber quedado último.
+
+### Lo que NO era trabajo nuevo
+
+- **#1 (plan que bloqueaba módulos)** y **#2 (nombre partido por Chrome)** son las
+  regresiones del 18/08. Verificado contra la BD: `marcovillegas1197@gmail.com` quedó en
+  `free_trial · active · vence 21/08` y el plan `free_trial` tiene **18 de 18 features**.
+- **#23 (teléfono en el onboarding)**: ya se persiste al terminar el paso 1, antes de
+  avanzar. Si el especialista abandona en el paso 2, el teléfono ya está guardado.
+- **#14 (servicio de 30' en consultorio de 30+10)**: **NO REPRODUCIBLE**. La regla es
+  `duración del bloque más largo >= duración del servicio` y el buffer **no entra en la
+  cuenta**: 30 contra 30 da verdadero. Se revisaron además los 14 consultorios reales de
+  staging y ninguno contradice eso. **Falta que el dueño diga el nombre exacto del
+  consultorio y del servicio.**
+
+### La causa raíz más instructiva del lote
+
+**"Crear y continuar" no avanzaba** porque el route handler devuelve `error` como
+**OBJETO** `{code,message,status}` y el modal lo tipaba como `string`. Al hacer
+`setError(objeto)` sobre un `useState<string>`, React tira "Objects are not valid as a
+React child" y **rompe el render en pleno click**: desde la pantalla se ve exactamente
+como un botón que no hace nada. Es la variante de UI de `tipos-que-mienten-sobre-la-api`.
+Se agregó **`lib/api-error.ts`** (`apiErrorMessage` / `apiErrorCode`) porque el patrón
+está repartido por el código y va a volver a pasar.
+
+### Decisiones de diseño que conviene recordar
+
+- **`forceConfirmed` es una opción NUEVA, no `doctorInitiated`.** La consulta inmediata
+  debe nacer `confirmed`. No alcanza con `doctorInitiated`: como la hora es "ahora", para
+  cuando se evalúa el ternario ya es pasado y la cita nacería **`completed`** (atendida),
+  que es peor — el especialista recién va a examinar al paciente.
+- **El autorrelleno de Chrome se corta desmontando el campo, no con atributos.** Chrome
+  **ignora deliberadamente** `autocomplete="off"` en campos que clasifica como nombre o
+  dirección, y `data-lpignore`/`data-1p-ignore` **solo hablan con LastPass y 1Password**.
+  Mientras el buscador y "Nombre y apellido" convivan en pantalla sin un `<form>` que los
+  separe, Chrome los trata como un formulario sin dueño y reparte el autocompletado. El
+  arreglo del 18/08 había puesto los atributos; faltaba lo único que funciona.
+- **Varios pagos móviles y cuentas: COMPATIBLE HACIA ATRÁS, sin migración.** Un método
+  puede guardar un objeto (forma vieja) o una lista (forma nueva) y `lib/payment-details`
+  normaliza al leer. Se eligió así porque en este proyecto **una migración rota bloquea
+  TODOS los despliegues**, y acá no hacía falta ninguna. Se escribe lista solo cuando hay
+  más de una entrada. Consumidores: settings, booking público y el mensaje de cobro por
+  WhatsApp — **ninguno lee `payment_details[metodo]` directo**.
+- **Las instrucciones de pago de la plataforma no se podían cargar.** El editor de
+  `/admin/settings` usaba un `<input type="text">` para todo y ahí **Enter guarda en vez
+  de saltar de renglón**: cargar banco, RIF y beneficiario —una línea cada uno— era
+  imposible desde la pantalla. Ahora las keys multilínea usan `<textarea>`. El modal de
+  pago del plan **ya las mostraba** desde antes; lo que faltaba era poder escribirlas.
+- **`copyDayToOthers` va en `lib/schedule-utils` y se cableó en las DOS pantallas**
+  (Consultorios y onboarding). Agregarlo solo en una repite la deriva histórica que ya
+  dejó al onboarding admitiendo un bloque por día.
+
+### Lo que hay que probar en staging
+
+1. **Consulta inmediata**: crear paciente nuevo desde el modal y que avance · que la
+   consulta quede **confirmada**, no "por confirmar" · sin espacio → "Registrar igual"
+   funciona · el nombre no se parte con el autorrelleno de Chrome · abre rápido.
+2. **Paquete multi-sesión desde el link público**: las consultas 2..N solo ofrecen
+   **días y horarios que el especialista atiende**, marcan los ocupados, y al confirmar
+   sale **código de consulta** (`DLT-…`), no de cita.
+3. **Multa por inasistencia**: las flechas suben de a $1 y el monto aparece en Por cobrar.
+4. **Consultorios**: "Copiar a…" con varios días · al crear uno nuevo ofrece asociar los
+   servicios existentes.
+5. **Divisa euro**: el link público **no parpadea** de $ a €.
+6. **Métodos de pago**: cargar DOS pagos móviles y DOS cuentas, y verificar que las dos
+   aparezcan en el booking y en el mensaje de cobro por WhatsApp.
+7. **Plan Delta**: el checkout tiene 3 pasos y muestra los datos de la cuenta.
+   ⚠️ En staging quedaron cargados **datos SIMULADOS** de TLS (Banesco, J-40123456-7):
+   el dueño tiene que poner los reales desde `/admin/settings`.
+8. **Baja de cuenta**: ahora vive al final de `/doctor/upgrade`, en gris.
+9. **Vendedor**: la columna **Seguimiento** distingue "Nunca entró" / "Registro
+   incompleto" / "Sin actividad"; el alta pide cédula y el onboarding **precarga el
+   teléfono**.
+
+### Lo que encontró el QA CON NAVEGADOR (mismo día, después del lote)
+
+El lote se cerró con verificación estática. Probarlo después en un navegador real
+—público en staging, y los tres roles contra la BD real levantando la app en local con
+`AUTH_MODE=dev`— destapó **seis defectos más**, tres de ellos en funcionalidad que el
+lote daba por arreglada. Vale como lección: **verde en tests no es verde en pantalla.**
+
+1. 🔴 **"Crear y continuar" NUNCA funcionó** — y el arreglo del lote solo tapó la mitad.
+   Dos causas encadenadas: (a) el DTO del backend exige `doctor_id` y el route handler
+   `POST /api/patients` reenviaba el cuerpo tal cual, así que **devolvía 400 siempre**;
+   el camino de `/doctor/patients` no lo sufría porque su server action sí lo agrega.
+   Ahora el handler lo resuelve de la sesión con `resolveIdentity()` y lo impone sobre el
+   cuerpo (regla anti-IDOR: si viniera del cliente, cualquiera crearía pacientes en la
+   ficha de otro). (b) El mensaje de error **no tenía dónde renderizarse**: el único
+   bloque que lo pinta vive en la rama del ternario que se dibuja _cuando ya hay paciente
+   elegido_. Arreglar el tipo del error evitó que React reventara, pero el botón seguía
+   pareciendo muerto.
+2. **Los rótulos de los datos de pago salían en inglés** al paciente ("Bank", "Phone",
+   "Holder", "Id_number"). Con un solo bloque pasaba desapercibido; salta con dos.
+   `fieldLabel()` en `lib/payment-details`.
+3. **`NoImmediateSlotError` estaba en inglés.** Se escapó del barrido del 18/08 porque el
+   detector buscaba mensajes sin acentos ni palabras en español, y ése no tiene ninguna
+   de las dos cosas sin ser español.
+4. **`AppointmentConflictError` imprimía `toISOString()` crudo**: "El horario de las
+   2026-08-19T17:27:44.419Z ya está ocupado" — UTC con milisegundos, y encima no es la
+   hora que el especialista ve en su agenda.
+5. **El editor de `/admin/settings` era un input de UNA línea**, donde Enter guarda. Con
+   eso **era imposible cargar** las instrucciones de pago de la plataforma, que son varias
+   líneas. Ése era el contenido real de la observación #21: el modal de pago ya las
+   mostraba; lo que faltaba era poder escribirlas.
+6. **El rol `seller` no existía en el modo de auth local** (`DevUserRole`), así que era
+   imposible entrar al portal del vendedor en local. Solo afecta a `AUTH_MODE=dev`.
+
+⚠️ **Y un defecto de DOCUMENTACIÓN con impacto de seguridad:** el ADR-024 y el guion 07
+afirmaban que staging tiene `EMAIL_DRIVER=noop`. **Es falso desde el 2026-08-09**: el
+workflow fija `resend`, así que **staging manda correo REAL a pacientes REALES** sobre una
+base clonada. Diez días de documentación engañosa sobre algo que puede alcanzar a una
+persona. Corregido en los dos documentos.
+
+### Pedidos del dueño sobre `/admin/subscriptions` (mismo día)
+
+- **Extender abría un `alert` de Chrome.** Eran DOS `prompt()` encadenados. Ahora es un
+  modal propio (`ExtendModal`), con la nota en la misma pantalla — encadenar dos diálogos
+  del navegador para una sola acción es donde uno cancela por reflejo.
+- **Solo se podía en MESES.** Regalar diez días de prueba, el caso comercial más común, no
+  se podía expresar. Ahora hay selector de unidad, de punta a punta: el DTO acepta
+  `months` **O** `days` (XOR), el use case suma con `setDate` o por meses, y el `metadata`
+  de `subscription_changes_log` refleja la unidad usada.
+- ⚠️ **Arreglado de paso: `setMonth` DESBORDA.** Extender por un mes una suscripción que
+  vence el **31 de enero** daba **3 de marzo**, no fin de febrero: dos días regalados en
+  cada extensión de fin de mes, en silencio. `addMonthsClamped()` fija el día al último
+  del mes destino cuando el original no existe ahí.
+- **El portal del vendedor no tenía cómo cerrar sesión.** Es la única pantalla de la app
+  **sin barra lateral**, que es donde viven los botones de salir de los otros cuatro
+  portales. El vendedor tenía que borrar cookies; en una máquina compartida —donde trabaja
+  un equipo comercial— la sesión quedaba abierta para el siguiente.
+
+### 🔴 El bug que destapó probar la extensión por días
+
+**Extender le BORRABA al especialista los días que ya tenía.** Medido contra la BD de
+staging: `gerardomanuel.neo@gmail.com` vencía el **21/08** (el panel decía "2 días");
+extendido por **10 días** quedaba en **29/08** —hoy + 10— en vez de **31/08**.
+
+**La causa, visible en el propio código:** las dos lecturas del vencimiento no coincidían.
+
+| Quién                                                 | Cómo leía el vencimiento                                                                                                                       |
+| ----------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `listSubscriptions` (el panel)                        | `COALESCE(p.subscription_expires_at, s.current_period_end)` — con un comentario propio explicando que en perfiles viejos el primero viene NULL |
+| `getSubscriptionSnapshot` (extend/suspend/reactivate) | solo `profile.subscriptionExpiresAt`                                                                                                           |
+
+Sin el fallback, el ancla caía en `now` y el tiempo restante se descartaba **en silencio**.
+Es **exactamente** la familia del ADR-029/031: una regla de negocio aplicada en un lugar de
+varios, y la pantalla contradiciéndose sola. El docstring del método ahora dice explícito
+que su regla es la MISMA que la de `listSubscriptions` y que si cambia una cambia la otra.
+
+**Era preexistente pero casi invisible:** perder dos días en una extensión de doce meses no
+se nota; en una de diez días, sí. **8 de los 14 especialistas activos** de staging estaban
+en condiciones de perder días, y a uno que vence en **2126** extenderlo lo habría
+**acortado cien años**.
+
+✅ **Efecto colateral bueno:** `reactivate` usa el mismo snapshot. Un especialista legacy
+vigente pero con el perfil en NULL entraba a la rama "vencido → regalar un mes"; ahora lee
+bien que sigue vigente. `suspend` no usa `expiresAt`, así que no cambia.
+
+Verificado contra la BD real después del arreglo: **21/08 + 10 días = 31/08**.
+
+### Cómo se probaron los módulos autenticados (sin credenciales del dueño)
+
+No se puede hacer login por Google/Auth0 sin la contraseña del dueño, y el acceso de
+reviewer está apagado desde el 27/07. La salida: **levantar la app en local con
+`AUTH_MODE=dev` apuntando a la BD REAL de staging** por `cloud-sql-proxy`, y actuar como
+cada rol seteando las cookies `dev_user_id` / `dev_user_role` con el UUID real del perfil.
+⚠️ Requiere las **llaves de cifrado de staging** o el PII de pacientes no se descifra.
+⚠️ Prueba el MISMO código y los MISMOS datos, pero en un build local — no el artefacto de
+Cloud Run.
+
+### Cabos sueltos
+
+- **#14 sigue abierta** — necesita el nombre del consultorio y del servicio.
+- **La observación #4 (demora al abrir la consulta) NO se midió.** El arreglo está.
+- **Datos de prueba dejados en staging:** especialista `lucas.rivas.55+qa19@gmail.com`,
+  paciente "Paciente Prueba Lote19", consultas `DLT-202608-0024` y `0025`. ⚠️ La segunda
+  cita **quedó encimada** con otra porque se creó con `force`.
+- El portal del vendedor usa cortes de actividad de **7 y 30 días** y `/admin` usa **7 y
+  14** (`UsersPanel.tsx`). Ya divergían antes de este lote; unificarlos es decisión de
+  producto.
+- El lint del frontend sigue en 123 errores preexistentes. No frena nada y no sirve de
+  señal — mismo agujero de siempre.
+
+---
+
+## 2026-08-18 — Regresiones del QA: la prueba que se perdía y los errores en inglés ⏳ EN STAGING, ESPERANDO AL DUEÑO
+
+Cuatro reportes del dueño sobre staging. Dos eran bugs reales, uno **no era un bug de
+permisos** aunque lo parecía, y el cuarto era el navegador. El diagnóstico se hizo
+**contra la BD y los logs de Cloud Run**, no mirando la pantalla.
+
+**Estado de entrega:** 6 commits por la cadena `feature/qa-18-agosto-regresiones` →
+`develop` → `staging`. **Tres despliegues, los tres verdes** (revisiones
+`delta-backend-staging-00197` y `delta-frontend-staging-00197`), sin un solo 5xx ni WARNING
+en los logs desde el primero. `nx test backend`: **404 suites · 3.898 tests · 0 fallas**;
+`tsc --noEmit` limpio en backend y frontend. **Nada en `main`.**
+
+### 1. Un especialista con 3 días de prueba veía los módulos bloqueados 🔴 BUG REAL
+
+`marcovillegas1197@gmail.com` tenía en la BD:
+
+| tabla           | plan         | estado   |
+| --------------- | ------------ | -------- |
+| `profiles`      | `delta_free` | `active` |
+| `subscriptions` | `free_trial` | `active` |
+
+El gating (`GetDoctorFeaturesV2UseCase`) lee **`profiles`** → `delta_free` = 4 de 18
+features → candado en casi todo. El panel de admin leía **`subscriptions`** → mostraba
+"Free Trial · 3 días". **Una pantalla, dos fuentes de verdad.**
+
+Quién lo escribió: `ProcessLoginTouchUseCase`. Un especialista que se da de baja él mismo
+y vuelve a entrar era reactivado **siempre** en `delta_free` (`reactivateAsFreeAndTouch`),
+aunque le quedaran días de prueba o de plan pago — y esa escritura **no tocaba
+`subscriptions`**, que es como las dos tablas divergieron.
+
+Arreglado en tres frentes:
+
+- `reactivateAndTouch` **conserva el plan mientras no venció**; solo cae al gratuito si
+  ya venció. Escribe `profiles` **y** `subscriptions` en la misma transacción y deja
+  asiento en `subscription_changes_log` (`self_reactivation`).
+- El `CAST` a `subscription_plan` va con guarda contra `enum_range`: `profiles.plan` es
+  TEXT libre y el enum podría no tener el valor — sin la guarda, la transacción explota
+  y el especialista no puede entrar (ver el historial de `trialing` y `seller`).
+- `listSubscriptions` del admin ahora sale de **`profiles`** (LEFT JOIN a `subscriptions`
+  solo por precio/fin de prueba). El admin ve el plan que realmente gobierna el acceso.
+
+SQL validado contra el esquema real de staging dentro de una transacción con `ROLLBACK`
+(plan vigente → conserva · vencido → `delta_free` · baja hecha por admin → no reactiva).
+Fila de Marco reparada a mano en staging con asiento `plan_restored`.
+
+### 2 y 3. "Insufficient permissions" y "Forbidden" al extender días o cambiar plan ⚠️ NO ERA UN BUG DE PERMISOS
+
+Los logs de Cloud Run lo cierran sin ambigüedad:
+
+```
+22:49:50–22:50:08  200  /api/admin/dashboard · /api/admin/subscriptions?limit=200
+22:50:51 en adelante  403  TODO, incluido /api/admin/doctors/recent (el poll de 60s)
+22:53:51  el especialista marcovillegas1197 registra last_sign_in_at
+```
+
+La sesión de Auth0 es una cookie **del perfil del navegador, no de la pestaña**. Alguien
+entró como especialista en otra pestaña de la misma ventana; la pestaña de `/admin` siguió
+mostrando la tabla cargada 40 segundos antes, y cada acción nueva viajó con la identidad
+del especialista. `marco.villegas@deltasalud.app` **es** `super_admin` y **sí** puede
+extender días y cambiar planes.
+
+Lo que sí había que arreglar es que eso fuera indistinguible de un permiso roto:
+
+- **`AdminSessionWatchdog`** (`/admin`, chequea al montar, al volver el foco y cada 60s
+  contra el nuevo `GET /api/session`): si la sesión dejó de ser de administrador, bloquea
+  la pantalla y lo dice — "Esta ventana cambió de cuenta" — con botón para volver a entrar.
+- Los 403 de admin nombran la causa en vez de decir "no tenés permisos" a secas.
+
+### 4. El nombre del paciente se partía en dos (nota de voz)
+
+En "Consulta inmediata", Chrome veía el buscador y "Nombre y apellido" como un formulario
+de dirección y repartía el autorrelleno: el nombre arriba, el apellido abajo. El buscador
+pasó a `type="search"` con autocompletado apagado en los cuatro campos, y al tocar "Es un
+paciente nuevo" lo ya tecleado se arrastra al campo correcto (si son solo dígitos, a Cédula).
+
+### Barrido de idioma — de raíz, no en el toast
+
+Los errores en inglés volvían porque se arreglaban donde se veían. La fuente son los
+mensajes que el `GlobalExceptionFilter` reenvía **tal cual** al navegador: `DomainError.message`
+y `HttpException.message`. Se tradujeron **~110** (errores de dominio de todos los módulos,
+validaciones de controladores, guards y los mensajes Zod de `libs/shared-types`), más los 6
+tests que afirmaban los textos viejos. Detector para no volver atrás: buscar en
+`apps/backend/src` mensajes sin acentos ni palabras en español dentro de `super(...)` /
+`new XxxException(...)`.
+
+### Cómo verificarlo en staging
+
+⚠️ **Cada cuenta en una ventana de incógnito SEPARADA.** Dos pestañas de la misma ventana
+comparten la sesión de Auth0 y se fabrican falsos errores de permisos — que es justo lo que
+pasó el 18/08.
+
+1. **Prueba vigente (el bug principal).** Entrar como `marcovillegas1197@gmail.com`: le quedan
+   3 días y tiene que ver **todos** los módulos (Agenda, Consultorio, Finanzas, Marketing,
+   Pacientes, Consultas). Su fila en la BD ya quedó reparada.
+2. **Baja y vuelta.** Con un especialista en prueba: Configuración → dar de baja la cuenta →
+   volver a entrar. Antes quedaba en `delta_free` y perdía los días; ahora tiene que
+   **conservar el plan y los días**. Con la prueba ya vencida, sí debe quedar en Delta Free.
+3. **Panel de admin.** `/admin/suscripciones` tiene que mostrar el **mismo** plan que ve el
+   especialista. Deben seguir apareciendo las 15 filas de siempre, con fecha y estado.
+4. **Extender días y cambiar plan** con la cuenta de administrador: funcionan (nunca
+   estuvieron rotos). Si aparece un error, ahora está **en español** y dice si la causa es la
+   sesión.
+5. **Aviso de sesión.** Con `/admin` abierto, entrar en OTRA pestaña de la MISMA ventana como
+   especialista: en ≤60s (o al volver el foco) el panel debe bloquearse con "Esta ventana
+   cambió de cuenta".
+6. **Consulta inmediata.** Inicio → Consulta inmediata → "Es un paciente nuevo": el nombre
+   tecleado tiene que caer en "Nombre y apellido", y Chrome ya no debe ofrecer autorrelleno
+   que parta el nombre entre el buscador y el formulario.
+
+### Lo que dejó el QA como lección
+
+El QA se hizo con la cuenta del dueño: `super_admin`, plan permanente. Esa cuenta **no puede
+detectar** ni fallas de gating ni de roles. Un lote no se cierra sin pasar el guion con un
+especialista en prueba por vencer, uno con plan pago, un admin y un vendedor.
+
+## 2026-08-16 — Lista de la fundadora CERRADA 12/12 ⏳ TODO EN STAGING, SIN VALIDAR
+
+Se cerró la lista completa de 12 observaciones en una jornada. **Nada en `main`**, que arrastra
+~60 commits: son **siete lotes acumulados sin validar** (09/08 → 16/08). Guion de QA priorizado
+por riesgo en `memory-bank/09-qa-lote-agosto-2026.md`.
+
+### Lo construido, por orden
+
+| Commit                | Qué                                                                        |
+| --------------------- | -------------------------------------------------------------------------- |
+| `debc6d2`             | Botones de editar/borrar ingresos visibles (existían, pero solo con hover) |
+| `9ab143c`             | Consulta del pasado sin tope y ya atendida (ADR-032)                       |
+| `a3a6da5`             | Inasistencia con multa y reagenda (ADR-031)                                |
+| `1ce5bca`             | Consumo del paquete sobre el modelo vivo                                   |
+| `2540ceb`             | Eliminado el modal muerto de la agenda (143 líneas que nadie abría)        |
+| `3a7a03d`             | Hora libre + la cita guarda la duración del BLOQUE (ADR-033)               |
+| `c5ffa9a`             | Divisa del portal por especialista (ADR-034)                               |
+| `9456486`             | Un turno ocupa el tiempo que dura (ADR-035)                                |
+| `dea9448`             | Consulta inmediata (ADR-036)                                               |
+| `5faad6c` + `10c9bc7` | Módulo de ventas: rol, código y portal (ADR-037)                           |
+
+### 🔴 Lo que más valor tuvo NO estaba en la lista
+
+Ocho bugs que **ya estaban en producción** y aparecieron construyendo lo pedido:
+
+1. Una cita en `no_show` **no se podía reagendar** — el flujo que pidió la fundadora era
+   literalmente imposible.
+2. Una consulta **PAGADA** con inasistencia figuraba en "Por ingresar": plata ya cobrada mostrada
+   como pendiente de cobro.
+3. El criterio de "cita resuelta" vivía **en SEIS lugares**, no en los tres del ADR-029, y dos de
+   ellos alimentaban la misma pantalla con números distintos.
+4. La tarjeta de paquetes y la insignia de la lista **leían una tabla vacía**: nunca se veían.
+5. El plan Delta se convertía a bolívares **con la tasa del especialista** — y ese es el monto que
+   él transfiere al pagar su propio plan.
+6. El booking público **ofrecía horarios que no se podían tomar** (una cita bloqueaba solo su hora
+   de inicio, no su duración).
+7. El modal de reagendar **nunca** marcó un horario como ocupado: leía `json.bookedAt` cuando la
+   respuesta es `{ success, data: { … } }`.
+8. Un test fallaba **1 de cada 16 corridas** por estar mal escrito (adulteraba el token
+   reemplazando el último carácter por `'0'`; si ya terminaba en `'0'`, no adulteraba nada).
+
+### Decisión abierta del dueño
+
+El backend acepta que **cualquier administrador** gestione vendedores, pero `/admin` (guarda en
+`proxy.ts`) sigue admitiendo **solo `super_admin`**: un usuario con rol `admin` es expulsado en la
+puerta, así que ese permiso hoy no le sirve a nadie. Abrir el panel amplía quién ve doctores,
+suscripciones, pagos y configuración — es decisión de seguridad, no de implementación.
+
+### Deuda anotada, no tocada
+
+- `RescheduleModal` genera sus horarios con una duración GLOBAL: tercera implementación de la
+  grilla, no conoce la duración por bloque.
+- El módulo `packages` sigue vivo sin que nadie escriba `patient_packages`, y **la agenda todavía
+  la lee** para enriquecer citas.
+- **El workflow de deploy no corre tests** — es lo que permitió que la suite estuviera rota una
+  semana en agosto sin que nadie se enterara.
+
+### Sobre el trabajo con agentes
+
+El `backend-agent` **reportó verde midiendo solo sus propias suites** cuando había 7 rojas (había
+agregado un método a un puerto sin peinar los mocks), quedó libre **tres veces sin ejecutar** el
+mensaje que tenía en el buzón, y **cuatro veces** describió como propio algo que terminó o corrigió
+el lead. Lo único que atajó eso fue correr `pnpm nx test backend` COMPLETO antes de cada commit.
+También hubo **un commit directo sobre `develop`** en vez de una rama feature; se corrigió antes de
+pushear moviéndolo a `feature/consulta-inmediata`.
+
+## 2026-08-16 — Lote de la fundadora (13/08): inasistencia, consulta retroactiva y botones
+
+Rama `feature/qa-agosto-13` desde `develop`. Sin desplegar todavía. Nace de una lista de
+12 observaciones que pasó una de las fundadoras; el dueño confirmó cuáles atacar ahora y
+dejó **en pausa** la moneda del portal (USD/Euro), la consulta inmediata, el agendado
+cruzando bloques y todo el módulo de ventas.
+
+### Lo que se hizo
+
+- **Botones de editar/borrar ingresos** (`debc6d2`). **Ya existían**: el problema era
+  `opacity-0 group-hover:opacity-100` — sin hover no existen, así que en tablet y teléfono
+  no había forma de llegar a ellos. La fundadora los pidió como si no estuvieran, y para
+  ella no estaban. Ahora siempre visibles en las DOS tablas (ingresos y gastos).
+- **Consulta del pasado sin tope y ya atendida** (`9ab143c`). El selector de día se
+  calculaba contra un arreglo fijo de 30 días hacia atrás; ahora la ventana se deriva del
+  offset y retrocede sin límite, con un selector de fecha para saltar lejos. Y una cita con
+  fecha pasada creada por el especialista **nace `completed`** (la consulta no tiene columna
+  `status` propia: se deriva de la cita). La regla de auto-confirmación de 3 días se extrajo
+  a `domain/policies/appointment-status.policy` porque ahora la usan dos casos de uso.
+- **Inasistencia con multa y reagenda** (`a3a6da5`). Ver ADR-031.
+
+### Tres cosas rotas que aparecieron al construir la inasistencia
+
+1. **Una cita en `no_show` no se podía reagendar.** `RESCHEDULABLE_STATUSES` solo tenía
+   `scheduled|confirmed` y devolvía "esta cita ya fue cancelada o atendida". O sea que el
+   flujo que pidió la fundadora era **literalmente imposible** hasta ahora.
+2. **Una consulta PAGADA cuya cita quedó en `no_show` figuraba en "Por ingresar"** —
+   plata ya cobrada contada como pendiente de cobro, porque `no_show` no estaba en la lista
+   de estados resueltos.
+3. **El criterio de "cita resuelta" estaba escrito en SEIS lugares, no en los tres** que
+   documenta el ADR-029: los tres conocidos más `listForDoctor`, `totalsForDoctor` y
+   `listIncomePaginated`, cada uno con la lista inline. Y `getIncomeBreakdown` no lo
+   aplicaba mientras `getConsultationSummary` sí → **la misma pantalla mostraba dos números
+   distintos para el mismo concepto**, que es exactamente el bug del 12/08 en otra esquina.
+   Los seis quedaron alineados.
+
+⚠️ **Al validar en staging:** los totales de meses ya cerrados se MUEVEN. Una consulta
+pagada con inasistencia que antes figuraba en "Por ingresar" ahora suma en Ingresos. Es la
+corrección de una clasificación equivocada, no plata nueva — pero no va a coincidir con una
+captura vieja.
+
+### Código muerto encontrado (no tocado)
+
+- El modal de la agenda para marcar atendida/cancelada/no-asistió: **nada lo abre**
+  (`setStatusAction` solo se llama con `null`). La agenda dice explícitamente "el estado de
+  la consulta y del pago se gestionan en Ir a consulta". Son ~100 líneas. Mismo caso del
+  aceptar/rechazar borrado el 11/08. **Pendiente de decisión del dueño.**
+- El modal de reagendar arrancaba en **mañana**, así que no dejaba reagendar para hoy — el
+  caso más común de una inasistencia ("no vino a las 9, viene a las 4"). Corregido.
+- `RescheduleModal` genera sus slots con un `slot_duration` GLOBAL de `/api/doctor/schedule`:
+  es una TERCERA implementación de la grilla de horarios que no conoce la duración por bloque
+  (ADR-028) ni el consultorio. No se tocó. **Deuda anotada.**
+
+### Verificación
+
+Build backend ✅ · build frontend ✅ · **393 suites / 3785 tests en verde**, corridos por el
+lead sin caché (`--skip-nx-cache`). `nx lint backend` se cae por OOM en esta máquina
+(pre-existente): los archivos tocados se pasaron por ESLint uno por uno. Los 7 errores de
+ESLint del frontend son **pre-existentes en `develop`** (verificado comparando con y sin los
+cambios). **Falta el QA visual.**
+
+## 2026-08-10 — Mejoras de onboarding y servicios ✅ DESPLEGADO EN STAGING
+
+Cadena `feature/mejoras-onboarding` → `develop` (`a8179eb`) → `staging` (`9aaa5ce`).
+Run `31436055810` **success** (migraciones + backend + frontend), `staging.deltasalud.app`
+responde 200. **Falta el QA visual del dueño.** `main` no tiene nada de esto.
+
+### 🔴 La suite del backend estaba ROJA y nadie se enteró
+
+El lote de la baja de cuenta (2026-08-09) agregó `countUpcomingAppointments` y
+`deactivateOwnAccount` a `IDoctorProfileRepository` y **no actualizó los mocks de los demás
+specs**: 16 suites quedaron rojas y el lote se mergeó igual a `develop` y `staging`.
+
+**El workflow de deploy corre migraciones y build, NO tests.** Nada avisa. La única barrera
+es el hook de pre-commit de `develop`/`main`, y se venía usando `--no-verify`.
+Arreglado: 13 mocks del puerto + el use case nuevo en el módulo de prueba del controller +
+3 campos en los literales `DoctorDetail` de admin. **392 suites / 3763 tests en verde.**
+
+### Bugs de onboarding (los dos silenciosos)
+
+1. **`updateRegistration` marcaba `onboardingCompleted = true` en el PASO 1.** El guard del
+   portal lee ese booleano → quien completaba solo sus datos personales y navegaba a
+   `/doctor` **entraba sin consultorio ni servicio**: el onboarding obligatorio dejaba de
+   serlo. Ahora lo marca solo `markOnboardingCompleted`, que exige ≥1 consultorio y ≥1
+   servicio activos.
+2. **Reentrar al wizard des-verificaba al especialista.** `verificationStatus` volvía a
+   `'pending'` y `verified_at` se borraba SIEMPRE. Ahora solo si cambió cédula, MPPS o
+   colegiado (`resetVerification`, decidido en el use case que tiene el estado previo).
+   La comparación normaliza `null`/`undefined`/`''` al mismo valor: el cliente manda `''`
+   para un opcional sin llenar y comparado crudo se leía como cambio. **+4 tests.**
+
+### Lote de mejoras pedido
+
+- **Lámina de bienvenida** (`OnboardingWelcome.tsx`) antes del paso 1. Solo para quien
+  arranca de cero — si el wizard lo dejó en el paso 2 o 3, no se muestra.
+- **Varios bloques por día** en el paso del consultorio. La lógica estaba **duplicada** entre
+  `/doctor/offices` y el onboarding, y la copia del onboarding se quedó atrás (un bloque por
+  día). Se extrajo a `lib/schedule-utils` como funciones puras: **ahora las dos pantallas
+  usan lo mismo y no pueden volver a divergir.**
+- **QA (nota de voz):** el paso 3 creaba la consulta con `type: 'service'` = "Servicio extra"
+  (limpieza, examen). Lo correcto es `type: 'plan'` = "Plan de consulta". Se corrigieron
+  también los textos, que decían "servicio" en todo el paso — la confusión de vocabulario
+  era la misma que producía el bug.
+- **Duración por servicio de vuelta en `/doctor/services`** (se había quitado el 12-07).
+  **NO cambia cómo se generan los turnos** — el booking sigue usando `slot_duration` del
+  consultorio. Condiciona la ASOCIACIÓN: un servicio de 45 min no entra en un consultorio de 30. Los que no lo soportan salen deshabilitados con el motivo a la vista. Un servicio
+  "General" solo se permite si entra en TODOS (decisión del dueño).
+- **Instrucciones de pago en viñetas** (`PaymentInstructions.tsx` + migración
+  `20260810000001`). El texto lo edita el super admin desde `/admin/settings`, así que la
+  migración **solo reescribe si sigue siendo el sembrado** y el parser **degrada a párrafo**
+  con el texto viejo. El beneficiario NO se tocó: es el titular de una cuenta real.
+- Fuera "Medical CRM" del encabezado del onboarding.
+
+### La guarda de scheduler nunca había verificado nada — RESUELTO
+
+La guarda "Verify no scheduler targets staging" (agregada el 09/08) **fallaba ABIERTA**: si
+`gcloud` fallaba, el `grep` no encontraba nada y el deploy seguía igual. Se corrigió a
+fail-closed y ahí se descubrió que **`delta-deployer-sa` no tenía `cloudscheduler.jobs.list`**
+→ o sea que el deploy del 09/08 pasó por casualidad, no porque la verificación diera bien.
+
+Resuelto otorgando **`roles/cloudscheduler.viewer`** al deployer SA (read-only). ⚠️ La
+propagación de IAM tardó **varios minutos**: los dos primeros reintentos siguieron dando
+`PERMISSION_DENIED`. Si vuelve a pasar, esperar y reintentar antes de sospechar del rol.
+⚠️ Y OJO: `--impersonate-service-account` NO sirve para probarlo desde la cuenta de Lucas
+(falta `iam.serviceAccounts.getAccessToken`) — el error engaña, parece del rol y es de la
+impersonación. La prueba real es relanzar el deploy.
+
+⚠️ Recordatorio: staging manda **correo REAL al destinatario REAL** sobre una BD clon de
+prod. Para probar correo, usar pacientes de prueba creados a mano.
+
+### 🔜 PENDIENTE al retomar (sesión pausada 2026-08-10)
+
+1. **QA visual del dueño en `staging.deltasalud.app`** — es lo único que falta de este lote.
+   Guion sugerido: (a) onboarding completo de cero → ver la lámina de bienvenida, partir un
+   día en dos bloques, y confirmar que la consulta creada aparece como **"Plan"** y NO como
+   "Servicio" en `/doctor/services`; (b) crear un servicio de 45 min y verificar que un
+   consultorio de 30 sale deshabilitado y que "General" se bloquea; (c) abrir el modal de
+   pago de plan y ver las instrucciones en viñetas.
+   Para reponer el onboarding en una cuenta ya usada, ver la memoria `qa-reponer-onboarding`:
+   bajar `onboarding_completed` NO alcanza, hay que desactivar consultorio y servicio.
+2. **Promover a `main`** una vez validado. `main` está muy atrás — arrastra también el lote
+   de agosto y la baja de cuenta, que siguen sin validar. Al promover: **despausar el cron**
+   `gcloud scheduler jobs resume doctor-inactivity-notices --location=us-east1`.
+3. **Agujero de proceso abierto:** el workflow de deploy **no corre tests**. La suite estuvo
+   roja 16 suites desde el 09/08 sin que nada avisara. Evaluar agregar un paso de test al CI
+   (o al menos a la rama `staging`), porque hoy la única barrera es el hook de pre-commit y
+   se viene saltando con `--no-verify`.
+4. **Investigado pero SIN implementar:** odontograma, esquema oftálmico y el congelamiento de
+   la especialidad. Informe completo en el artifact y en las memorias
+   `gating-por-especialidad` / `odontograma-y-oftalmologia`. Lo primero de esa línea NO es el
+   odontograma: es el endpoint de admin para corregir la especialidad, porque 5 de 16
+   especialistas quedarían encerrados el día que se congele.
+5. **Menor:** el beneficiario de las instrucciones de pago sigue siendo "Delta Medical CRM,
+   C.A." con un RIF de ejemplo (`J-000000000-0`). Si la cuenta bancaria real tiene otro
+   titular, hay que actualizarlo desde `/admin/settings` — NO por migración, para no pisar
+   una personalización del admin.
+
+## 2026-08-09 — Baja de cuenta por el especialista + staging con correo real ⏳ EN STAGING
+
+Cadena `feature/baja-de-cuenta` → `develop` (`989816d`) → `staging` (`ac4fe4c`).
+Pendiente el QA del dueño en `staging.deltasalud.app`.
+
+⚠️ **La sesión anterior se cortó por un reinicio de la máquina** (segunda vez, ver la
+entrada del 2026-07-20) y dejó todo esto sin commitear en el working tree de `develop`.
+No se perdió nada. Al retomar se verificó en disco antes de tocar: `tsc` backend EXIT 0,
+`tsc` frontend limpio, `jest` de `app-auth.guard` + `deactivate-own-account` **35/35**.
+
+### 1. El especialista da de baja su propia cuenta
+
+Configuración → Mi perfil. Es **desactivación, nunca borrado**: toda fila queda bajo el
+mismo `profile id`, auditable, y un super_admin la reactiva. El texto nunca dice
+"borrar" — prometer un borrado que no ocurre es peor que no ofrecerlo.
+
+Reusa el flag que ya existía (`profiles.is_active`, que `AppAuthGuard` y el booking
+público ya respetan) en vez de agregar un segundo interruptor paralelo. Lo que faltaba
+era **el porqué**: con solo `is_active=false`, un baneo del admin y una salida
+voluntaria se ven idénticos. Migración `20260809000001` agrega `deactivated_at`,
+`deactivated_by` (`'self'|'admin'` con CHECK) y `deactivation_reason`, más backfill
+`'admin'` a las cuentas ya apagadas (todas anteriores a este camino).
+
+De ahí sale **`ACCOUNT_DEACTIVATED`** (403) al lado de `ACCOUNT_BLOCKED`: mismo flag,
+mensaje opuesto. Viaja guard → `useAccountBlockedGuard` → pantalla del portal →
+`/login?deactivated=1`. El panel admin muestra "Se dio de baja" (ámbar) contra "Acceso
+bloqueado" (rojo) y el botón pasa a "Reactivar cuenta".
+
+Reglas del use-case: `doctorId` sale siempre de `user.sub`, nunca del body (anti-IDOR) ·
+solo rol `doctor`, porque un super_admin se encerraría fuera del panel que reactiva ·
+**422 si tiene citas a futuro**, porque apagar la cuenta también baja el link público y
+deja sin acceso al único que podía cancelar o reagendar. La confirmación pide tipear
+"DAR DE BAJA": un sí/no se toca por accidente.
+
+### 2. Staging pasa a mandar correo REAL, al destinatario real
+
+`EMAIL_DRIVER` de `noop` → `resend` en `.github/workflows/staging.yml`.
+
+Se implementó primero con redirección (`SANDBOX_EMAIL` → `SandboxEmailPort` reescribe el
+destinatario de cada correo), y **el dueño decidió sacarla**: la prueba tiene que cubrir
+también a quién le llega. Condiciones bajo las que se asume:
+
+1. A staging solo entran administradores y el correo sale únicamente de pruebas manuales.
+2. **NINGÚN cron corre contra staging.**
+
+La 2 es la que importa: un cron sobre las citas clonadas mandaría correo **en lote** a
+pacientes reales sin que nadie lo pida. Verificado el 2026-08-09 — los dos jobs de Cloud
+Scheduler (`appointment-reminders`, `doctor-inactivity-notices`) apuntan a
+`delta-backend` (**prod**), no a `delta-backend-staging`, y el backend **no tiene ningún
+`@Cron` interno** que se dispare al bootear.
+
+Esa verificación dejó de ser una foto y es **una guarda del deploy**: el workflow corre
+`gcloud scheduler jobs list` y **falla antes del build** si algún job apunta al backend
+de staging. Se descubre ahí, no cuando ya salieron los correos.
+
+⚠️ **Recordatorio permanente:** la BD de staging es un clon de prod con direcciones de
+pacientes REALES. Probar envíos sobre una fila clonada le manda un correo a esa persona.
+Para probar correo, usar pacientes de prueba creados a mano.
+
+## 2026-08-04 — Investigación ABIERTA: "Consultas por agendar" vacío para la Dra. Ana María Solano
+
+**Reporte del dueño:** la Dra. Ana María Solano (psicóloga, cuenta de especialista en PROD) entra al
+módulo "Consultas por agendar" y **no le carga nada**. Uno de sus pacientes compró un servicio de
+**5 sesiones**. NO es que no vea el ítem del menú — el módulo abre y sale vacío.
+
+**QUÉ SE DESCARTÓ (con evidencia, no por lectura de código):**
+
+1. **El flujo de booking funciona.** Reproducido end-to-end en staging con Playwright, cuenta
+   `lucas.rivas.55@gmail.com`, servicio nuevo "QA Paquete 5 consultas" (5 sesiones, $20×5=$100,
+   validez 90d):
+   - Camino **"Agendar después"** → `POST /api/book` manda `planId` + `additionalSessions: []` →
+     se crean las **4 preconsultas** (sesiones 2-5, `pending_scheduling`) y **se ven en el módulo**.
+   - Camino **"Agendar ahora"** con las 4 fechas → `additionalSessions` con 4 items → **0
+     preconsultas** + **5 citas** en la Agenda (7/10/11/12/13 ago). Esto **es el diseño**, no un bug:
+     el módulo lista SOLO las sesiones diferidas.
+2. **No es un fallo de carga.** Sentry (`delta-salud-crm`) **cero issues** de pending-consultations
+   en 14d. El BFF loguea a Sentry cuando el backend falla → el endpoint está devolviendo **200 con
+   lista vacía**, o sea las filas NO EXISTEN en la BD.
+3. **No es gating de plan/capabilities.** El ítem del sidebar no tiene `moduleKey` y
+   `planUnlocks(features, undefined)` devuelve `true`; `/doctor/pending-consultations` tampoco
+   matchea ninguna entrada de `PLAN_GATED_ROUTES`.
+4. **No revienta con nulos.** `expires_at` null está contemplado (`ExpiryBadge`), y ni el entity ni
+   el `toDomain` del repo lanzan.
+
+**HIPÓTESIS VIVA (a confirmar mañana):** el servicio de ella tiene **`pricing_plans.sessions_count = 1`**
+(el nombre dice "5 sesiones" y el precio es el total, pero el campo "Sesiones incluidas" quedó en 1).
+El bloque que crea las preconsultas está detrás de
+`if (dto.plan_id && this.pricingPlanRepo && this.createPendingUC)` +
+`if (plan && plan.doctorId === dto.doctor_id && plan.sessionsCount > 1)` en `CreateBookingUseCase` —
+si `sessionsCount` es 1 **se salta EN SILENCIO**: sin error, sin log, sin Sentry. El paciente paga 5
+y el sistema registra 1.
+**Cómo confirmarlo sin credenciales:** abrir su link público `deltasalud.app/book/<su-doctorId>` y
+mirar si el servicio muestra el sub-badge "5 sesiones". Alternativa concluyente: consultar en la BD
+de prod `pricing_plans.sessions_count` + filas de `pending_consultations` de ese paciente.
+
+**DEFECTO REAL encontrado de paso (arreglo SIN COMMITEAR en el working tree, sobre `develop`):**
+`PendingConsultationsClient.tsx` hacía `if (!res.ok) { setItems([]); return }` y
+`catch { setItems([]) }` → **un fallo de carga y un "no hay nada" pintaban la MISMA pantalla vacía**.
+El parche agrega estado `loadError` + banner rojo con "Reintentar". `tsc` limpio. Sin esto es
+imposible que un especialista (o nosotros) distinga "no tengo preconsultas" de "la petición falló".
+
+**Otro hallazgo lateral (NO es la causa, pero es deuda real):** los grupos del sidebar del doctor
+arrancan **colapsados** (`openSections[section.key] ?? false`, `layout.tsx:574`) y solo se auto-abren
+si la ruta activa ya está dentro del grupo; `openSections` es `useState` sin persistencia. Un
+especialista parado en Inicio/Agenda NO ve "Consultas por agendar" hasta clickear "Consultorio".
+Además el contenedor abre con `maxHeight: visibleItems.length * 40px` + `overflow-hidden`, y el
+contenido real mide **225px contra un tope de 240px** — si una etiqueta se va a 2 líneas (zoom,
+fuente grande), el último ítem se corta sin aviso.
+
+**Datos de prueba que quedaron en STAGING** (BD clon, limpiar cuando estorben): servicio "QA Paquete
+5 consultas"; pacientes `QA Preconsultas Cinco` (4 preconsultas) y `QA Agenda Ahora Cinco` (5 citas
+del 7 al 13 de agosto); el consultorio "Unico" quedó en **0 min entre consultas** (se usó para
+validar el fix del buffer).
+
+## 2026-08-04 — Fix: "Tiempo entre consultas" del consultorio no se guardaba en 0 ✅ EN PRODUCCIÓN
+
+**Promovido el 2026-08-04** por la cadena completa `fix/office-buffer-minutes-cero` → `develop`
+(`f0ee7f8`) → `staging` (`e6a3a53`, deploy `30964568134` success) → **validado en staging con
+Playwright** (se guardó 0, la tarjeta mostró "0 min entre consultas" y el modal reabrió en 0) →
+`main` (`12cf513`, deploy `30965154662` **success**). `deltasalud.app` responde 200.
+⚠️ Falta el QA visual del dueño en prod. Ojo: la rama de prod es **`main`**, no `master`.
 
 **Síntoma reportado:** en el detalle del consultorio se cambia _Tiempo entre consultas_, se guarda y
 el valor "se queda como se creó la primera vez".
@@ -2984,3 +3807,714 @@ el código ya dice `"Delta Salud"` (quedó atrás en el rebranding). El hook de 
 `develop` corre `nx affected --target=test`, así que **cualquier commit que toque el
 backend se bloquea** y hay que usar `--no-verify`. Vale la pena arreglar al menos la
 obsoleta.
+
+---
+
+## 2026-08-05 — Lote de mejoras de agosto (10 pedidos del dueño)
+
+Lote pedido el 04/08. La sesión que lo implementó se cortó por un reinicio de la
+máquina y **quedó todo sin commitear**; esta sesión lo auditó, completó lo que
+faltaba, lo revisó y lo promovió.
+
+**Estado al retomar:** 9 de los 10 puntos estaban implementados en el working tree,
+sin un solo commit. El punto 5 tenía **solo la migración**, sin use case ni endpoint.
+Y el build del backend **estaba roto**: `main.ts` importaba `json` de `express`, que
+no es dependencia declarada (llega transitivamente por `@nestjs/platform-express` y
+pnpm no la hoistea). Se reemplazó por `app.useBodyParser('json', { limit: '512kb' })`,
+la API nativa de Nest 11 — mismo efecto, sin dependencia nueva.
+
+**Los 10 puntos:**
+
+1. Modal de cita sin código de cita y con teléfono completo del paciente.
+2. El mismo modal se abre desde las consultas por confirmar del inicio.
+3. Botón para ir directo al detalle tras crear una consulta.
+4. Fecha de la consulta visible en su detalle.
+5. Cron de reactivación por inactividad (10 y 15 días) — **construido en esta sesión**.
+6. Editor con formato (TipTap) en los bloques de texto abierto. El PDF sigue plano.
+7. Disposición de bloques configurable (pestañas o vertical), alternable en la consulta.
+8. Apertura directa del detalle de consulta desde el detalle del paciente.
+9. Onboarding exige consultorio + servicio para quedar operativo de una.
+10. Pago del plan dentro de la app (monto en Bs a tasa BCV, comprobante, banco y referencia).
+
+**Revisiones (equipo de agentes):** `security-agent` → APROBADO, 0 CRITICAL / 0 HIGH.
+`code-reviewer` → aprobado con observaciones.
+
+**Hallazgos arreglados antes de promover:**
+
+- Carrera en "un pago pendiente por especialista": había `SELECT` + `INSERT` sin lock ni
+  constraint. Se agregó índice único parcial `uq_subscription_payments_one_pending_per_doctor`
+  a la migración `20260805000002`, que **primero resuelve duplicados preexistentes** (una
+  migración rota bloquea TODOS los despliegues porque corren antes del build). La violación
+  de unicidad se traduce a `PendingPaymentExistsError` **en el repositorio**, no en el use
+  case — patrón que ya usaban `sequelize-patient`, `sequelize-identity` y `sequelize-admin`.
+- El sanitizador de bloques no recursaba en arrays: los ítems de lista se guardaban crudos.
+  XSS almacenado latente (hoy React los renderiza seguros, pero salía por PDF y correo).
+  Ahora recorre estructuras anidadas con tope de profundidad.
+- Faltaban validaciones Zod en los query params del checkout.
+
+**Hallazgos DESCARTADOS por el lead (no son deuda, son ruido):**
+
+- `BankCodeSchema` "es un `z.string()` pelado" (`code-reviewer`) → **falso positivo**. Ya
+  valida con `.refine()` contra un `Set` con los 25 códigos del BCV. Los dos agentes se
+  contradecían y el de seguridad tenía razón. Verificado a mano.
+
+**DEUDA DIFERIDA (registrada a propósito, no olvidada):**
+
+- `GetDoctorProfileUseCase` suma 2 queries por llamada (`hasActiveOffice` / `hasActiveService`).
+  El `code-reviewer` lo marcó HIGH; se bajó a deuda: el endpoint se llama desde el dashboard
+  y configuración, no en cada navegación, y hoy son decenas de doctores. Si el volumen sube,
+  cachear las flags en columnas de `profiles`.
+- `hasActiveOffice`/`hasActiveService` viven en la entidad de dominio en vez de un read-model.
+  Consistente con `consultationCode` en `Appointment.entity.ts`.
+- `PlanPaymentModal.tsx` (687 líneas) y `AppointmentDetailModal.tsx` (644) piden partirse.
+
+**Migraciones nuevas (3):** `20260805000001` (soporte backend del lote, incluye
+`consultation_blocks_layout`) · `20260805000002` (checkout del especialista + índice único)
+· `20260805000003` (estado de inactividad + plantillas de correo).
+
+**⚠️ El job de Cloud Scheduler del cron de inactividad NO está creado.** El único job que
+existe (`appointment-reminders`, cada 15 min, us-east1) apunta a **producción**. El de
+inactividad hay que crearlo recién cuando el código llegue a prod: diario, contra
+`POST /api/cron/doctor-inactivity`, con `x-cron-secret` y `oidcToken` de `delta-backend-sa`.
+Sin ese job el cron existe pero nunca corre.
+
+**Verificación en disco antes de promover:** build backend y frontend exit 0 · tsc backend
+y frontend exit 0 · 389 suites / 3728 tests en verde · lint sin regresiones (el baseline de
+`develop` ya trae 3 errores en backend y 132 en frontend; el lote bajó frontend a 121).
+El boot del dist solo llegó hasta la conexión a Postgres, así que **el cableo de DI de lo
+nuevo se verifica recién al arrancar staging**.
+
+### QA en staging del lote de agosto (2026-08-05) — 4 bugs encontrados
+
+QA con Playwright contra `staging.deltasalud.app`, con login real de Auth0 hecho por el
+dueño (el acceso demo sigue APAGADO y su variable es compartida con prod, así que no se
+tocó). **Los 4 bugs se encontraron usando la app: ninguno lo agarraron los tests, el
+typecheck ni el build.** Tres de ellos son el mismo patrón de fondo — un tipo escrito a
+mano que miente sobre la forma real de los datos, y TypeScript le cree.
+
+1. **El detalle de cita no abría.** `app/api/doctor/appointments/[id]/route.ts`
+   desestructuraba `params` de forma síncrona; en Next 16 son asíncronos, así que el `id`
+   quedaba `undefined` y el guard devolvía 400 ("Falta el id de la cita"). Era la ÚNICA
+   ruta dinámica del repo desviada del patrón — las otras ocho ya usaban `Promise` + `await`.
+
+2. **El editor con formato no aparecía.** El backend serializa los bloques en camelCase
+   (`contentType`) y el frontend los leía en snake_case (`content_type`), con el tipo
+   declarado a mano. `content_type` quedaba `undefined` → el `switch` de `DynamicBlocks`
+   caía en la rama `default`, que es el textarea plano. Pasaba en DOS caminos: la config
+   viva del doctor y el `blocks_structure` ya congelado (persistido en camelCase). Se
+   normalizan ambas formas al leer (`normalizeBlockShape`) para no migrar datos históricos.
+   ⚠️ **Ya existía en `develop` desde el thin-proxy** — era invisible porque antes TODOS los
+   bloques eran textarea. `blocks_snapshot` guarda solo valores, así que no hubo datos que
+   reparar. De paso: `resolveBlocksForDoctor`/`snapshotBlocksForConsultation` en
+   `lib/consultation-blocks.ts` son **código muerto**, no los llama nadie — conviene borrarlos.
+
+3. **La viñeta de las listas quedaba huérfana en el PDF.** Los editores emiten
+   `<li><p>texto</p></li>`; ese `<p>` interno se volvía salto de línea ANTES de insertarse
+   la viñeta, dejando "• " en un renglón y el texto en el siguiente. El test que existía
+   usaba `<li>texto</li>` sin el `<p>`, por eso no lo detectaba.
+
+4. **El onboarding NUNCA quedaba completado (el más serio).** `markOnboardingCompleted`
+   escribía solo `onboarding_completed_at`, nunca `onboarding_completed` — y el booleano es
+   el que lee el guard del portal. Efecto: en cada carga de página el especialista rebotaba
+   por el onboarding, este auto-completaba (requisitos cumplidos) y lo devolvía a `/doctor`
+   **perdiendo la ruta pedida** (navegar a `/doctor/patients` terminaba en `/doctor`). Para
+   un especialista recién registrado es peor: completa el asistente y no queda registrado
+   nunca. Se agregaron los DOS specs que faltaban (ni el del repositorio ni el del use case
+   existían) y se verificó que **fallan contra el código viejo**, con un guard de regresión
+   explícito. Auditoría de los 28 modelos del backend buscando el mismo patrón
+   "booleano + timestamp donde solo se escribe uno": **no hay otro caso**.
+
+**Verificado y funcionando:** teléfono completo y sin código de cita en el modal (1), modal
+reusado desde el inicio (2), fecha en el detalle (4), editor con formato con round-trip
+exacto tras recargar (6), disposición alternable sin perder datos (7), apertura directa del
+detalle (8), checkout con monto calculado en servidor —$10 → Bs 8.433,60 a tasa BCV— y Zod
+rechazando períodos inválidos en español (10).
+
+**Seguridad probada EN VIVO** contra el endpoint real: `<script>`, `<img onerror>`,
+`<iframe>` y `href="javascript:"` eliminados; del enlace queda solo el texto; los arrays
+también se sanitizan (el arreglo del hallazgo LOW, confirmado en producción-real).
+
+**Punto 9 — el bloqueo del servidor SÍ funciona:** con los servicios desactivados,
+`POST /api/doctor/onboarding/complete` responde **422 "Debes crear al menos un consultorio
+y un servicio para continuar"**. No se puede saltear llamando al endpoint directo.
+
+**⚠️ Punto 5 — NO se pudo disparar el cron.** El backend de staging solo acepta invocaciones
+de `delta-frontend-sa`; la cuenta `lucas@deltasalud.app` no tiene `run.invoker` ni permiso de
+suplantación. Verificado en cambio por BD: columnas, índice parcial, plantillas activas, y
+**6 candidatos reales** (1 con ≥15 días, 5 entre 10 y 14). Para probarlo de verdad hay que
+otorgar `roles/run.invoker` sobre el backend de staging — NO se hizo, requiere decisión del dueño.
+
+**Cómo reponer el asistente de onboarding para QA:** el guard lee SOLO
+`profiles.onboarding_completed`. Ponerlo en `false` NO alcanza si el doctor ya tiene
+consultorio y servicio: el asistente auto-completa y nunca se ve. Hay que además desactivar
+sus `doctor_offices` y `pricing_plans` — SIEMPRE con respaldo previo del estado exacto y
+restauración inmediata.
+
+**Observaciones abiertas (menores, no bloquean):**
+
+- El encabezado de `/doctor/upgrade` sigue diciendo "contáctanos y te asignamos el plan en
+  minutos" — texto de la era WhatsApp que contradice el pago autogestionado.
+- Desde el inicio el modal de cita NO muestra "Reagendar" ni con la cita agendada, porque el
+  padre no le pasa el manejador. Es más amplio que el caso de `no_show`.
+- Se vio la tasa BCV como 842,68 en un endpoint y 843,36 en el modal con minutos de
+  diferencia — confirmar que no sean dos fuentes distintas.
+- Prettier, al reformatear durante los hooks, dejó 3 errores nuevos de
+  `react-hooks/set-state-in-effect` en `admin/aprobaciones` y `doctor/upgrade`. Misma regla
+  que ya falla en una decena de archivos del baseline; el total quedó en 124 contra 132 de
+  `develop`.
+
+**Pendiente de QA:** punto 3 (botón para ir al detalle tras crear una consulta) y ver el
+asistente de onboarding en pantalla.
+
+### Cloud Scheduler — job del cron de inactividad (2026-08-05)
+
+Creado en prod con autorización del dueño: `doctor-inactivity-notices` (us-east1).
+
+```
+schedule:   0 9 * * *  (America/Caracas — una vez al día, 9am)
+uri:        https://delta-backend-knliodnwza-ue.a.run.app/api/cron/doctor-inactivity
+método:     POST · header x-cron-secret (Secret Manager) · oidcToken de delta-backend-sa
+deadline:   300s · 1 reintento · backoff 5s–3600s
+estado:     ⏸️ PAUSED
+```
+
+**🔴 ESTÁ PAUSADO A PROPÓSITO.** El endpoint NO existe todavía en `main` (producción
+estaba 28 commits atrás al crearlo), así que habilitarlo antes de promover haría que le
+pegue a un 404 todos los días. Mismo patrón que ya se usó con `appointment-reminders`,
+cuya descripción también decía "Pausado hasta que la feature esté en prod".
+
+**AL PROMOVER `staging → main`, HAY QUE DESPAUSARLO:**
+
+```bash
+gcloud scheduler jobs resume doctor-inactivity-notices --location=us-east1
+```
+
+Sin ese paso el punto 5 queda construido, desplegado y **muerto**: nada lo dispara y
+nadie se entera, porque no falla — simplemente no corre nunca.
+
+Para probarlo a mano una vez despausado:
+
+```bash
+gcloud scheduler jobs run doctor-inactivity-notices --location=us-east1
+```
+
+⚠️ El backend solo acepta invocaciones de `delta-frontend-sa` y del `delta-backend-sa` del
+job. Una cuenta de persona (ej. `lucas@deltasalud.app`) recibe **401 de IAM de Cloud Run**
+—no de la app— al intentar pegarle al endpoint del cron. Por eso el cron NO se pudo probar
+de punta a punta en staging. Para hacerlo haría falta `roles/run.invoker` sobre el backend
+de staging, que NO se otorgó.
+
+---
+
+## 🔴 CIERRE DE SESIÓN 2026-08-05 — PUNTO DE RETOME
+
+### Estado exacto
+
+`develop` y `staging` **idénticos**, todo desplegado y verificado en `staging.deltasalud.app`.
+**`main` (prod) NO tiene NADA del lote** — está ~30 commits atrás. Nada se promovió.
+
+### Lo que falta, en orden
+
+1. **El dueño valida `staging`** ← es lo único que bloquea. Quedó haciéndolo al cerrar la sesión.
+2. Promover `staging → main` (dispara el deploy a prod y corre las 3 migraciones).
+3. **DESPAUSAR el cron** — `gcloud scheduler jobs resume doctor-inactivity-notices --location=us-east1`.
+   Si se olvida, el punto 5 queda muerto sin avisar.
+4. QA pendiente: **punto 3** (botón para ir al detalle tras crear una consulta — el dueño lo
+   difirió) y disparar el cron en vivo (bloqueado por IAM, ver abajo).
+
+### Riesgo de la promoción a prod: NINGUNO en la migración
+
+Verificado por lectura directa de la BD de prod (2026-08-05): **`subscription_payments` está
+VACÍA** (0 filas). El `CREATE UNIQUE INDEX` de `20260805000002` no tiene contra qué chocar y el
+paso de dedup afecta **0 filas**. Ninguna de las 3 migraciones corrió aún en prod.
+
+### ⚠️ Decisión de negocio ya tomada por el dueño
+
+Al despausar el cron, la primera corrida va a mandar **~11 correos de golpe** en prod: hay 16
+especialistas activos, **1 con ≥15 días** y **10 entre 10 y 14 días** de inactividad. Se le
+ofreció escalonarlo o arrancar solo con el escalón de 15 días. **Dijo que lo dejemos así.**
+No re-preguntar ni "suavizarlo" por cuenta propia.
+
+### Punto 11 (pedido nuevo del dueño, ya construido y verificado)
+
+Botones de cancelar/reagendar en el detalle de la consulta · cancelar con pago aprobado obliga
+a reagendar (**sin créditos, descartados explícitamente**) · reagendar disponible en TODOS los
+estados. Ver ADR de contrato en `04-api-documentation.md`.
+
+### Deuda que dejó este lote
+
+- **Dos implementaciones del selector de reagendar**: la inline de `agenda/page.tsx` y el
+  `RescheduleModal.tsx` nuevo. Se duplicó a propósito (el inicio y el detalle de consulta no
+  tienen cargados `config`/`availSlots`/`allAppointments` como sí los tiene la agenda), pero
+  van a divergir. Unificarlas es un refactor aparte.
+- `RescheduleModal.tsx` envuelve una limpieza de estado en `Promise.resolve().then()` solo para
+  esquivar `react-hooks/set-state-in-effect`. Funciona, pero es código escrito para el linter.
+- `resolveBlocksForDoctor` / `snapshotBlocksForConsultation` en `lib/consultation-blocks.ts` son
+  **código muerto** — no los llama nadie. Conviene borrarlos.
+- `GetDoctorProfileUseCase` suma 2 queries por llamada (`hasActiveOffice`/`hasActiveService`).
+- Prettier dejó 3 errores nuevos de `react-hooks/set-state-in-effect` en `admin/aprobaciones` y
+  `doctor/upgrade`. Frontend total: 124 errores contra 132 del baseline de `develop`.
+
+### 🧠 La lección técnica de esta sesión
+
+**Tres de los cinco bugs fueron el mismo patrón**: un tipo TypeScript escrito a mano que
+mentía sobre la forma real de la respuesta del backend (camelCase vs snake_case), y
+TypeScript le creyó. **Ni los tests, ni el typecheck, ni el build los detectaron** — solo
+aparecieron usando la app en un navegador real. Cuando se lea un campo de una respuesta del
+backend, VERIFICAR la forma real; no confiar en el tipo declarado.
+
+⚠️ **Y el modelo de bug más peligroso**: escribir una columna y leer OTRA. El onboarding
+sellaba `onboarding_completed_at` pero el guard leía `onboarding_completed`. Un test que
+mockea el repositorio NO lo agarra; hace falta un test que afirme sobre lo que realmente
+se le pasa al `update`.
+
+## 2026-08-11 — Lote de observaciones de QA (desplegado en staging)
+
+Arrancó con el caso "Ana Sweeney": la Dra. Solano reportó una paciente que había
+creado la semana pasada y ya no veía. **Veredicto: nunca existió.** Las 47 filas de
+`patients` descifradas no la tienen (ni prod ni staging), las 29 altas con `POST 201`
+de los últimos 60 días tienen todas su fila en la BD, no hubo un solo 4xx/5xx en el
+alta, nunca se ejecutó un DELETE y no hay filas huérfanas apuntando a un paciente
+inexistente. La telemetría de clics (`telemetry_sessions.journey`) muestra que abrió
+el formulario y lo abandonó más de una vez. Detalle y método en la memoria
+`auditar-reportes-de-datos-perdidos`.
+
+De esa auditoría salieron bugs reales, todos arreglados y verificados en staging:
+
+- **Alta muda:** `handlePatientSubmit` hacía `return` sin request, sin error y sin
+  toast cuando `doctorId` aún no había resuelto. Es exactamente la forma de "le di
+  guardar y se perdió".
+- **Listado cortado en 100:** `getPatients` pedía `limit=200` y el backend recorta a
+  100 (`Math.min(100, …)`). Del paciente 101 en adelante no existían para el
+  dashboard ni para finanzas. Ahora pagina de a 100. Verificado con 105 pacientes
+  sembrados en staging.
+- **Búsqueda sin normalizar:** "maria jose" no encontraba a "María José". Ahora usa
+  la misma normalización que el hash (`normalizeForSearch`, exportada de
+  shared-crypto).
+- **Aceptar/rechazar cita de la agenda:** código muerto (ningún botón lo llamaba) que
+  además mandaba el cuerpo en camelCase contra un DTO `.strict()` → 400 seguro el día
+  que alguien lo cableara. Eliminado.
+- **Comprobante de pago del plan (bloqueante):** el modal leía `j.path` y el backend
+  responde `{ data: { path } }` → el path quedaba `undefined`, la subida se daba por
+  fallida SIN mensaje y el botón no hacía nada. Mismo patrón que
+  `tipos-que-mienten-sobre-la-api`.
+
+Y las mejoras pedidas por el dueño: rótulo "Consulta 2 de 3" en las consultas de un
+combo (⚠️ el total NO sale de `patient_packages` —está vacía y `appointments.package_id`
+viene siempre NULL— sino de `pricing_plans.sessions_count`); el especialista puede
+agendar hasta 30 días hacia atrás (el booking público NO cambia, usa otro componente);
+ingresos = confirmado Y pagado, aplicado en las TRES consultas que alimentan la
+pantalla para que no se contradigan; periodicidad editable dentro del modal de pago;
+tarjeta de ayuda clickeable entera; onboarding con el isotipo real, WhatsApp en vez de
+correo, "tu primer servicio" y scroll al tope al continuar; y la baja de cuenta ahora
+respeta los días ya pagados (barrido diario colgado del cron existente) y se reactiva
+sola en plan gratuito cuando el especialista vuelve a entrar.
+
+Los dos que quedaban pendientes también entraron el 12/08:
+
+- **Duración por bloque del consultorio.** Cada bloque del horario acepta su propia
+  `slotDuration`/`bufferMinutes`; el que no las trae hereda las del consultorio, así que
+  **no hizo falta migrar** el JSONB y los horarios ya guardados siguen valiendo. El
+  editor tiene un selector por bloque con "aplicar a todos", y la regla de servicios
+  pasó de "el consultorio soporta X" a "**algún bloque** soporta X". Verificado punta a
+  punta en staging: lunes 45' / martes 20' → la agenda ofrece 08:00-08:45-09:30 y
+  08:00-08:20-08:40 respectivamente.
+- **Monto del cobro editable.** El backend YA aceptaba `amount` en
+  `PATCH /api/consultations/:id/payment-details` (ese use case está escrito a propósito
+  para permitir editar con el pago aprobado); lo que faltaba era el campo en la UI, que
+  solo mandaba método, referencia y comprobante. NO hay anulación de ingresos — el dueño
+  la descartó explícitamente. Verificado: $100 → $87.50 en BD sin tocar el estado del pago.
+
+### El patrón que se repitió TRES veces en este lote
+
+Un tipo escrito a mano en el frontend que declara una forma que el backend nunca manda,
+y TypeScript lo da por bueno porque nadie valida el wire:
+
+1. `PlanPaymentModal` leía `j.path`; el backend responde `{ data: { path } }` → botón muerto.
+2. La lista de ingresos y la tarjeta "Total ingresos" salían de consultas distintas con
+   criterios distintos → $65 arriba y $25 abajo en la misma pantalla.
+3. `/doctor/services` leía `slot_duration` de `GET /api/doctor/offices`, que devuelve la
+   entidad **en camelCase** (`slotDuration`) → el campo era siempre `undefined` y la regla
+   de compatibilidad servicio↔consultorio comparaba contra **30 minutos fijos para todos**,
+   sin importar la configuración real. Bug preexistente, encontrado al construir la
+   duración por bloque. Confirmado llamando al endpoint real desde staging.
+
+Vale la pena evaluar generar esos tipos desde el backend en vez de escribirlos a mano.
+
+### Estado y punto de retome
+
+TODO el lote está en **staging**, con `develop` y `staging` sincronizadas. **NADA promovido
+a producción** — espera la validación del dueño. Suite del backend en verde (392 suites,
+3765 tests) con tests nuevos para acentos, slots por bloque, reactivación y baja programada.
+
+Verificado en staging con navegador + BD: alta de paciente · listado con 105 fichas ·
+búsqueda sin acentos · comprobante PDF (2/4 → 3/4) · periodicidad recalculando · rótulo del
+combo · ingresos de julio (3 filas → 1; $0 cobrado / $510 por cobrar, sin perder un dólar) ·
+fechas pasadas · duración por bloque · monto editado. Los datos de prueba se limpiaron
+(100 pacientes sembrados borrados, monto y horarios restaurados).
+
+**NO verificado por falta de acceso:** (a) el onboarding, porque la cuenta de prueba ya lo
+tiene sellado y reponerlo exige apagar tres banderas de un doctor real del clon (ver la
+memoria `qa-reponer-onboarding`); (b) la baja de cuenta, que necesita un login real —
+`marcovillegas1197@gmail.com` está dada de baja por él mismo en staging y sirve de conejillo:
+al entrar debería quedar en plan gratuito y poder mejorar su plan.
+
+⚠️ Durante este lote se commiteó tres veces sobre `staging` en vez de una rama feature. Se
+corrigió por cherry-pick a `develop` y se verificó que el diff entre ambas quedó vacío, pero
+conviene mirar la rama activa después de cada merge a staging.
+
+---
+
+## 2026-08-17 — QA de reagenda e inmediata + 4 fixes (staging)
+
+Sesión reanudada tras un **reinicio por watchdog de hardware** (13:21). Murió durante
+`git push origin staging`: el merge estaba hecho localmente pero el push nunca salió, así que
+la ruta del BFF de alta de vendedor (`1523076`) quedó sin desplegar. Se pusheó y desplegó.
+
+### Lo que se verificó en staging (navegador real)
+
+| Caso                                          | Resultado                                                               |
+| --------------------------------------------- | ----------------------------------------------------------------------- |
+| P1.1.5 · el modal de reagendar marca ocupados | **OK** — 10:00 deshabilitado el 19/08                                   |
+| P1.1 · una cita ocupa el tiempo que dura      | **OK** — la inmediata 13:11–13:41 bloquea 13:00 y 13:30                 |
+| P0.2c · impaga + no asistió + reagenda        | **OK** salvo la fecha (ver fix 2). Ofrece el MISMO día                  |
+| P0.2e · pagada + multa                        | **OK** con la consulta realmente pagada: 50 + 10 = 60, pago a `pending` |
+| P1.2.3 · inmediata sin espacio                | **OK** — avisa y cambia a "Registrar igual"                             |
+| P1.2.5 · sesiones de paquete                  | **OK** — ofrece "sesión 2…5"                                            |
+| P0.4 · divisa en Servicios                    | **OK** — €40 con tasa EUR, vuelve a $40 con tasa USD                    |
+
+### Los cuatro fixes (rama `feature/fixes-qa-cobros-reagenda`)
+
+1. **`fb6cce0` — "Confirmar cobro" no guardaba nada.** El modal pintaba "Pago: Aprobado" y
+   "Total cobrado" sin escribir a BD; el guardado exigía pulsar además "Guardar pago". El
+   endpoint (BFF + use case + invariante del método) ya existía completo y **nadie lo
+   llamaba** — mismo patrón que la ruta de alta de vendedor. Consecuencia medida: con la
+   consulta realmente en `pending`, aplicar multa la trataba como impaga y **reemplazaba** el
+   monto (50 → 10). Por decisión del dueño (17/08) ahora persiste de una vez.
+2. **`0a9fb94` — la reagenda no movía `consultations.consultation_date`.** Agenda decía 16:00
+   y Consultas 14:00. Esa columna filtra y ordena el listado, así que una reagenda que cruzara
+   de día archivaba la consulta en la fecha equivocada. Nuevo `SyncConsultationDateUseCase`
+   inyectado opcional en `RescheduleAppointmentUseCase` (mismo patrón que Google Calendar,
+   best-effort). Se extendió el `update` del puerto con `consultationDate` **en vez de** agregar
+   un método nuevo, para no romper los mocks del módulo.
+3. **`e042e0a` — la consulta inmediata nunca se acortaba.** El aviso "va a durar X min en vez
+   de Y" se renderizaba con `fits && truncated`, condición **imposible**. Con 20 min libres y
+   un servicio de 30 la UI decía "no queda espacio" y mandaba `force=true`, creándola a
+   duración completa **encima** de la cita siguiente. El backend ya sabía acortarla. Ahora hay
+   tres estados: entra / se acorta (sin force) / no hay lugar ni acortándola.
+4. **`bf157ca` — símbolo de dólar fijo.** Corregido en flujo de agendar, detalle de cita,
+   agenda, ficha del paciente, reportes y toast. NO se tocan `SubscriptionPanel`,
+   `UpgradeClient` ni `PlanPaymentModal`: el plan que se le paga a Delta es siempre USD.
+
+### Regresión propia corregida
+
+El commit `1523076` (previo al reinicio) dejó el spec de appointments importando un **subpath
+inexistente** de `@delta/shared-types` — 1 suite sin correr, ya viajada a staging porque el
+workflow de deploy no corre tests. Corregido al barrel. Suite: **403 suites / 3891 tests**.
+
+### Abierto, sin tocar
+
+- ⚠️ **`sellers.controller.ts:135` no compila**: `@Roles('super_admin', 'admin')` pero `'admin'`
+  **no existe** en la unión de roles. Invisible porque el type-checker del build muere por OOM
+  en esta máquina y el deploy no corre tipos. Efectivamente solo `super_admin` crea vendedores.
+  Es decisión de producto si el rol `admin` debe existir.
+- Falta la **pantalla** de gestión de vendedores en `/admin`; el alta feliz no se pudo probar
+  (requiere sesión `super_admin`).
+- El método de pago elegido al crear la cita **no se guarda** (llega `null`).
+- La vista Día muestra 13:30 "Disponible" aunque esté ocupado (la grilla de agendar sí bloquea).
+- Si falla el fetch de la tasa, el portal cae a `$` en silencio en vez de un estado neutro.
+- Sin probar: P0.2a/b, P0.2d aislado, P0.1, P0.3, P1.3, baja de cuenta, onboarding.
+
+### 2026-08-17 (cierre) — vendedores: solo super_admin + pantalla
+
+Decisión del dueño sobre las dos cosas que quedaron abiertas arriba:
+
+1. **Solo `super_admin` gestiona vendedores.** El `@Roles('super_admin', 'admin')` se quedó en
+   `super_admin`. `'admin'` no existía en `CurrentUserPayload['role']`, así que era un rol
+   imaginario **y** un error de tipos que nadie veía (el type-checker del build muere por OOM en
+   la máquina del lead y el deploy no corre tipos). Con esto el backend vuelve a compilar limpio.
+2. **`/admin/sellers` construida.** El módulo tenía backend completo y cero interfaz. Se agregó
+   `GET /api/admin/sellers` (lista con código y conteo de especialistas, resuelto con UNA query
+   agrupada por `sold_by` para no caer en N+1), la misma ruta en el BFF, la pantalla con tabla +
+   alta + código copiable, y la entrada en el menú de `/admin`.
+
+`ISellerRepository` sumó `listSellers()`, así que se actualizaron los **5 mocks** del módulo.
+Suite: **404 suites / 3893 tests** en verde.
+
+⚠️ **Proceso:** el commit de bitácora `1b7490c` se hizo **directo sobre `develop`**, saltándose la
+regla de rama feature (el hook avisó "⚡ Rama protegida" y se ignoró). El resto del lote sí pasó
+por `feature/*`. Recordatorio del dueño: **todo** va por rama, documentación incluida.
+
+### 2026-08-17 (cierre real) — el módulo de ventas NUNCA funcionó: dos causas raíz
+
+El QA con sesión de `super_admin` destapó que el módulo entero estaba muerto — no
+solo la pantalla que faltaba. **Ni el alta funcionaba.** Dos bugs encadenados, ambos
+diagnosticados leyendo los logs de Cloud Run y la BD de staging, no adivinando:
+
+1. **`'seller'` no existía en el ENUM `user_role`.** La migración
+   `20260816000001-seller-role` agregó `profiles.seller_code`, `profiles.sold_by` y
+   las filas de `role_capabilities`, pero nunca extendió el tipo.
+   `role_capabilities.role` es TEXT (por eso el seed pasó sin ruido); `profiles.role`
+   sí es `user_role`. Todo el módulo reventaba con
+   `invalid input value for enum user_role: "seller"` → 500 en el INSERT del alta y
+   en cualquier `WHERE role = 'seller'`. **Es el mismo bug que 20260722000001**
+   (`subscription_status` sin `'trialing'`). Migración nueva:
+   `20260817000001-user-role-add-seller.cjs`.
+
+2. **El código de vendedor nunca validaba.** `SellersPublicController` devolvía el
+   objeto crudo `{ valid, sellerName }` sin el envelope `{ success, data }`. Como
+   `backendGet` desempaqueta `envelope.data`, el BFF recibía `undefined` y
+   respondía **siempre** `valid:false`. La atribución por código estaba muerta y el
+   fallo era silencioso: 200 + "código inválido", indistinguible de un typo.
+
+Nadie los había visto porque la ruta del BFF del alta tampoco existía hasta hoy: sin
+poder crear un vendedor, ninguno de los dos errores tenía forma de salir a la luz.
+
+**Verificado en vivo tras los fixes:** alta desde el formulario → vendedor
+`QA Vendedora Prueba` con código **DA69AA**; la tabla lo lista con 0 especialistas;
+correo repetido → **409** con mensaje claro; `GET /api/public/seller-code/DA69AA` →
+`{valid:true, sellerName:'QA Vendedora Prueba'}`, y también en minúsculas; código con
+formato válido pero inexistente y formato inválido → `valid:false`. Con sesión de
+doctor: `/admin/sellers` rebota y el endpoint da **403 `Required role: super_admin`**.
+
+Queda sin ejercitar el conteo con ≥1 especialista atribuido (hoy no hay ninguno con
+`sold_by`); la consulta es la misma que ya devuelve 0 correctamente.
+
+⚠️ Para diagnosticar hizo falta `gcloud auth login` con `lucas@deltasalud.app`: el CLI
+estaba autenticado con otra cuenta. Proyecto: **`sodium-shard-499116-r3`**, servicios
+`delta-backend-staging` / `delta-frontend-staging` (us-east1), instancias `delta-db` y
+`delta-db-staging`. El secreto `DB_PASSWORD` sirve para el usuario `delta` vía
+cloud-sql-proxy.
+
+### 2026-08-17 (P0 completo) — dos bugs de plata más, arreglados
+
+Se corrió **P0 entero** con la cuenta de especialista (`lucas.rivas.55@gmail.com`).
+
+| Caso                                        | Resultado                                                                                            |
+| ------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| **P0.1** totales de Finanzas                | **OK** — julio: tarjeta $25 = tabla $25; agosto: $40 = $40. El desglose cierra                       |
+| **P0.2a** impaga + no asistió sin multa     | **OK** — pasa a 0 y desaparece de Por cobrar (total y conteo vuelven a su valor)                     |
+| **P0.2b** impaga + no asistió con multa $10 | **FALLA → arreglada** (ver abajo)                                                                    |
+| **P0.2d** pagada + reagenda                 | **OK** — el pago viaja: monto 40, `approved`, cita a `scheduled`, y la fecha de la consulta acompaña |
+| **P0.3** plan Delta en Bs                   | **OK en lo esencial** + hallazgo de negocio (ver abajo)                                              |
+| **P0.4** divisa del portal                  | **OK tras arreglar 3 rótulos**; el booking público muestra € al paciente ✅                          |
+
+#### Bug 1 — la multa sobre consulta impaga hacía cobrar de más
+
+Consulta impaga de $40, "No asistió" con multa de $10 y sin reagenda:
+`consultations.amount` → 10 ✓ pero `payments.amount_usd` → **40** ✗. Cobros lee el pago
+vinculado, así que mostraba **$40 para cobrar cuando corresponden $10**: el especialista le
+cobra $30 de más al paciente, y el total de Cobros subía +$40 en vez de +$10.
+
+Causa: `NoShowModal` no mandaba `no_show_fee` en la rama de consulta impaga, con el
+razonamiento —ya obsoleto— de que "sin pago aprobado no hay nada que sincronizar". El backend
+había quitado a propósito la guarda `AND p.status = 'approved'` justo para cubrir los pagos
+PENDIENTES. Sin ese campo el controller no enruta a `ApplyNoShowFee` y solo toca la consulta.
+
+Arreglado (`feature/fix-multa-impaga`) y **re-verificado en staging**: `DLT-0016` → consulta 10 /
+pago 10, y Cobros muestra €10,00 · Bs 8.944,90. De paso se corrigió el texto del modal, que con
+multa > 0 decía "sale de Por cobrar" cuando es justo lo que queda por cobrar.
+
+#### Bug 2 — rótulos en dólar fijo
+
+Con la tasa en Euro los números ya salían en €, pero tres rótulos seguían diciendo dólar. El
+peor: el **mensaje de WhatsApp de cobro** formateaba con `Intl.NumberFormat(currency:'USD')` y
+armaba **"$40.00 EUR"** — el texto que le llega al paciente para transferir. Además "TOTAL USD"
+sobre €580 y "Tasa BCV: 894.49 Bs/$". Arreglado (`feature/fix-rotulos-divisa-cobros`) y
+verificado: **TOTAL EUR · Tasa BCV: 894,49 Bs/€**.
+
+#### Hallazgo de negocio, NO tocado: dos tasas distintas llamadas "BCV"
+
+El plan Delta convierte a bolívares con `app_settings['usdt_rate']` = **886,20** (vía
+`BillingRateProvider`), pero la UI lo rotula **"Tasa BCV: 886,20 Bs/USD"**. El resto del portal
+usa la BCV oficial de dolarapi = **772,5441**. Son 14,7% de diferencia: $10 → **Bs 8.862** en el
+checkout del plan vs **Bs 7.725,44** con la tasa que el especialista ve en Cobros. El requisito
+de P0.3 sí se cumple (el precio no cambia con la divisa del especialista — verificado alternando
+`eur_bcv`/`usd_bcv`: el checkout devuelve idéntico). **Qué tasa cobra Delta por su propio plan es
+decisión del dueño**, por eso no se tocó: o el rótulo miente o la tasa es la equivocada.
+
+#### Caso Dra. Ana María Solano — CERRADO
+
+En **producción** sí tiene servicios, incluidos **dos paquetes de 3 sesiones**, y 2 citas
+agendadas con ellos el 5 de agosto. Tiene **0 preconsultas** — y **la BD de prod entera tiene 0**:
+la funcionalidad nunca generó una sola fila para nadie. En staging sí hay (7), o sea que la
+versión de staging las genera. Su reclamo era legítimo y la pantalla vacía era correcta.
+⚠️ Las preconsultas se crean dentro de `CreateBookingUseCase`, **al agendar**: sus dos citas ya
+existentes **no** las van a recibir retroactivamente ni después de promover. Necesita reservas
+nuevas o un backfill puntual.
+
+#### Menores anotados, sin tocar
+
+- Una consulta de $0 que nunca pasó por el flujo de inasistencia (`DLT-0006`, artefacto del bug
+  viejo de la inmediata) **sigue listada en Por cobrar** sin nada que cobrar.
+- El CSV de **Gastos** usa "Monto" sin divisa (Ingresos y el general sí usan `Monto {code}`).
+
+### 2026-08-17 — Caso Dra. Ana María Solano: RESUELTO en prod (backfill de datos)
+
+**Qué pasaba:** su módulo "Consultas por agendar" salía vacío. La hipótesis vieja
+(_"su servicio tiene sessions_count = 1"_) era **falsa**.
+
+**Diagnóstico (con datos de producción):** tiene dos paquetes de 3 sesiones, creados el
+4/08 y actualizados el 5/08 a las 14:22 — nueve minutos antes de la primera reserva. Dos
+pacientes reservaron esos paquetes por el **booking público** el 5/08 y pagaron el paquete
+completo ($150 `approved` y $120 `pending`). Pero se crearon **0 preconsultas**, y de hecho
+**toda la BD de producción tenía 0**.
+
+**Por qué no se arreglaba solo:** la lista NO se deriva. La consulta agregada que pinta la
+tarjeta calcula `atendidas`/`agendadas`/`sin asistir` desde `appointments`, pero el balde
+**"por agendar" lo toma tal cual de `pending_consultations`** (la otra rama del UNION pone
+`0` fijo). Sin filas, no hay nada que mostrar y nunca se recupera. Las filas guardan estado
+que no se puede recalcular: `expires_at`, `reminder_stage` y el token para autoagendarse.
+
+**Descartado como causa:** el bloque multi-sesión de `CreateBookingUseCase` es **idéntico**
+entre `main` y `staging`; el envío de `planId` desde el booking público es del 23/07 y ya
+estaba en producción; los planes y precios eran correctos al momento de reservar.
+⚠️ **La causa raíz sigue sin identificarse** — puede volver a pasarle a otro especialista.
+
+**Arreglo aplicado (decisión del dueño):** backfill de 4 filas en producción replicando
+exactamente lo que escribe `PendingConsultationRepository.bulkCreate` (script con guarda
+anti-duplicado y transacción):
+
+| Paciente         | Plan                   | Sesiones | Vence                            |
+| ---------------- | ---------------------- | -------- | -------------------------------- |
+| Leagny Campos    | Consulta internacional | 2 y 3    | 4/09 (30 días desde la compra)   |
+| Kenyiber Puertas | 3 sesiones nacional    | 2 y 3    | nunca (el plan no tiene validez) |
+
+Vigencia contada **desde la compra**, fiel a lo que el sistema habría escrito.
+Verificado: la tarjeta de consumo ahora da **"0 atendidas · 1 agendada · 2 por agendar"**
+en ambos paquetes. ⚠️ Las filas nacen con `reminder_stage = 0`, así que el cron va a
+mandarles recordatorios reales a esos dos pacientes.
+
+**Decisión de diseño, evaluada y descartada:** derivar el balde "por agendar" de
+`sessions_count − consultas del plan` como respaldo cuando no hay filas. Habría arreglado
+este caso solo y haría al sistema tolerante a fallos de generación. El dueño prefirió
+dejarlo como está (2026-08-17).
+
+### 2026-08-17 — Enlace del vendedor + teléfono obligatorio en el onboarding
+
+#### Teléfono obligatorio (pedido del dueño)
+
+El onboarding **no pedía teléfono en absoluto**. La columna `profiles.phone` existía desde la
+migración inicial, pero el modelo del módulo de registro no la declaraba, así que ni siquiera
+se podía escribir — **no hizo falta migración**. Ahora va **primero, obligatorio y con foco
+automático**, reutilizando el `PhoneInput` que ya existía. Cableado completo: DTO (8–20 dígitos
+con código de país) → controller → use case → puerto → repositorio → modelo, y del lado del
+frontend la server action y el BFF.
+
+⚠️ Al ser obligatorio en el DTO, **cualquier especialista que vuelva a entrar al wizard va a
+tener que cargar su teléfono** para poder guardar. A los que ya completaron el alta no les
+cambia nada mientras no reingresen.
+
+#### El enlace del vendedor (no existía)
+
+El QA preguntó dónde estaba y la respuesta era que **nunca se construyó**: lo que se
+especificó fue "que pueda compartir su código", y el enlace nunca entró en el alcance. El
+código se dictaba por teléfono y se tipeaba a mano — un error de una letra dejaba la venta sin
+acreditar.
+
+Tres piezas nuevas:
+
+1. **`/r/<CODIGO>`** — página pública. Valida el código, muestra a quién se acredita (para que
+   la persona confirme que abrió el enlace correcto), lo guarda y sigue a `/login`, que con
+   Auth0 es también el registro. Un código inválido **NO bloquea**: avisa y deja seguir sin
+   atribución, porque perder el lead sería peor.
+2. **`lib/seller-referral.ts`** — persistencia en `localStorage`. Es lo que hace que funcione:
+   entre el enlace y el onboarding está el **login de Auth0, que se lleva puesto el parámetro
+   de la URL**. Se eligió localStorage y no cookie a propósito: es un dato de marketing, no de
+   sesión, así no viaja al servidor en cada request.
+3. El **onboarding autopobla** el campo desde `?ref=` o desde localStorage, en ese orden, y
+   solo si está vacío. Al completar el alta **borra** el referido: en un equipo compartido el
+   próximo especialista no debe quedar acreditado al mismo vendedor.
+
+En el portal del vendedor el enlace aparece con **copiar** y **compartir por WhatsApp**; el
+dominio se toma del navegador porque cambia entre staging y prod.
+
+**Verificado en staging:** `/r/DA69AA` → guarda `DA69AA` y redirige al login ✅ ·
+`/r/ZZ99ZZ` (inexistente) → redirige igual y **no guarda nada** ✅.
+Falta probar el tramo final —que el onboarding lo autopoble— porque requiere un alta nueva.
+
+### 2026-08-17/18 — Ficha del especialista para el vendedor + QA completo del portal del especialista
+
+Dos tramos en la misma sesión: se cerró el módulo de ventas (lo último que faltaba y se podía
+hacer solo) y se recorrió con navegador real todo lo que el QA manual no había tocado del
+portal del especialista.
+
+#### Ficha del especialista en el portal del vendedor
+
+El dueño pidió que el vendedor pueda abrir la **ficha completa** del especialista que registró
+("es lo que me interesa, que vean los datos"), y después sacar de esa ficha **MPPS y colegiado**:
+son datos de habilitación profesional que le sirven a la verificación de admin, no al seguimiento
+comercial.
+
+Aparecieron dos defectos, los dos del mismo tipo que ya tiene nombre en este repo — **código
+completo que nadie llama** y **el dato se pierde en la última línea**:
+
+1. **El alta descartaba teléfono y cédula.** El formulario los pedía, el DTO los aceptaba, el use
+   case los pasaba… y el `create()` del repositorio escribía solo nombre, correo y especialidad.
+   La ficha decía "No cargado" mientras el alta respondía OK. El modelo `SellerProfileModel`
+   tampoco declaraba esas columnas (existían en `profiles` desde siempre), así que **no hizo falta
+   migración**: alcanzó con declararlas y escribirlas.
+2. **El error de la ficha hablaba de otra cosa.** Pedir la ficha de un especialista ajeno —o de un
+   id inexistente— devolvía 422 con _"El código de vendedor ingresado no existe"_, porque el use
+   case reutilizaba `SellerCodeNotFoundError`. El bloqueo era correcto; el mensaje no tenía nada que
+   ver con lo que el vendedor estaba haciendo. Se creó `SpecialistNotInPortfolioError`
+   ("Ese especialista no está en tu cartera.").
+
+**Anti-IDOR verificado en vivo:** un id ajeno y un id inexistente devuelven **exactamente el mismo
+422**. Es a propósito: distinguirlos dejaría a un vendedor enumerar la cartera de otro probando ids.
+
+#### QA del portal del especialista (22 items verificados)
+
+Recorrido con navegador real contra staging, verificando **en la BD** y no en la pantalla.
+
+**Confirmado que ya funcionaba:** duración por bloque (lunes a 45' y martes partido en 08–12 a 20'
+
+- 14–17 a 60' → la grilla ofrece exactamente eso) · la regla servicio↔consultorio · el combo
+  multiplicando bien ($30 × 3 = $90, tasa 772,54 pareja en todas las tarjetas) · "Otra hora" guardando
+  la duración REAL y bloqueando lo que pisa · el detalle de cita unificado, que abre por `?open=` y
+  muestra el horario real · marcar asistencia sin confirmar antes · **una cita pagada no ofrece
+  cancelar**, solo reagendar, y explica por qué · alta de paciente con edad calculada · búsqueda sin
+  acentos en las dos direcciones · editor con formato que **persiste tras recargar** · la viñeta del
+  PDF en el mismo renglón que su texto.
+
+**Siete defectos que la lista de QA no anticipaba** (todos arreglados y desplegados):
+
+| #   | Defecto                                                          | Por qué importaba                                                                                                                                            |
+| --- | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 1   | La **vista Día ofrecía huecos ya tomados**                       | Una cita de 09:07 a 09:32 dejaba el slot de 09:30 en "Disponible" **con el botón de agendar encima**, mientras el booking público lo rechazaba. Ver ADR-035. |
+| 2   | La **consulta del pasado no quedaba atendida**                   | El asistente lo promete por pantalla y no se cumplía. Ver ADR-032.                                                                                           |
+| 3   | El **método de pago del alta se perdía**                         | Llegaba a `appointments` pero la consulta nacía con `payment_method` en null: había que volver a elegir el método ya elegido.                                |
+| 4   | **"Todas" traía solo las primeras 100**                          | En pacientes, ingresos y egresos. El paginador rotulaba "1–{total} de {total}" **sin página siguiente**. También salía incompleto el CSV de egresos.         |
+| 5   | La **insignia de servicios estaba fija** en "Visible en booking" | Al ocultar un servicio la BD cambiaba y el texto seguía diciendo visible.                                                                                    |
+| 6   | Los **mensajes de compatibilidad decían el número equivocado**   | Reportaban la duración del consultorio en vez del bloque más largo, que es la que decide: el especialista cambiaba el número equivocado.                     |
+| 7   | El **alta del vendedor descartaba teléfono y cédula**            | Ver arriba.                                                                                                                                                  |
+
+**Patrón:** cinco de los siete son **rótulos o estados que no siguen al dato real**. El dato estaba
+bien guardado; lo que mentía era lo que el especialista leía en pantalla. Ninguno lo detecta un test,
+un typecheck ni un build — se ven mirando la BD al lado de la pantalla.
+
+#### Decisiones del dueño en esta sesión
+
+- **El PDF se queda en texto plano (2026-08-18).** El item 32 pedía llevar el formato del editor al
+  PDF; no se implementa. Aclaración importante para el QA: el paciente **sí ve el formato en el
+  portal web** (esa vista renderiza el HTML con `sanitizeHtml`, que solo saca etiquetas peligrosas);
+  el aplanado es **solo del PDF**, donde igual se conservan párrafos y viñetas.
+- **El vendedor ve la ficha completa, sin MPPS ni colegiado.**
+
+#### Cabos sueltos anotados (no bloquean)
+
+- **El lint del frontend está roto en `develop`: 122 errores y 177 avisos.** `nx lint frontend`
+  falla, así que no frena nada — el mismo agujero que los tests que el deploy no corre. Al tocar un
+  archivo hay que comparar el conteo antes/después con `git stash`, porque el absoluto no dice nada.
+- La vista Día calcula el fin de cita con la duración del **consultorio**, no la real: una cita de
+  25' desde las 09:07 se muestra "hasta 09:37" y el detalle dice 09:32. **Bloquea de más, no de
+  menos**, así que no es riesgoso.
+- El encabezado de la agenda dice "Citas cada 30 min" aunque el día tenga bloques de otra duración.
+
+#### Qué queda sin probar (necesita al dueño)
+
+Un solo pase cubre casi todo: abrir **`/r/<CODIGO>` en incógnito y registrarse con otra cuenta de
+Google** ejercita el enlace del vendedor, el código autopoblado, el teléfono obligatorio, el
+**onboarding completo** (nunca validado) y **la regla de que reescribir otro código no cambia la
+atribución** (ADR-037). Aparte quedan la **baja de cuenta** (`marcovillegas1197@gmail.com`) y el
+**aislamiento entre dos vendedores** (hace falta una segunda cuenta con login propio).

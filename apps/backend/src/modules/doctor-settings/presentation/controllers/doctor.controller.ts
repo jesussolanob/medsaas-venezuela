@@ -30,6 +30,8 @@ import {
   type UpdatePricingPlanDto,
   UpdateDoctorExchangeRateDtoSchema,
   type UpdateDoctorExchangeRateDto,
+  DeactivateAccountDtoSchema,
+  type DeactivateAccountDto,
 } from '@delta/shared-types';
 
 import { GetDoctorProfileUseCase } from '../../application/use-cases/doctor-settings/get-doctor-profile.use-case';
@@ -55,6 +57,14 @@ import { UpdateServiceUseCase } from '../../application/use-cases/doctor-setting
 import { DeleteServiceUseCase } from '../../application/use-cases/doctor-settings/delete-service.use-case';
 import { GetDoctorExchangeRateUseCase } from '../../application/use-cases/doctor-settings/get-doctor-exchange-rate.use-case';
 import { SetDoctorExchangeRateUseCase } from '../../application/use-cases/doctor-settings/set-doctor-exchange-rate.use-case';
+import {
+  CompleteOnboardingUseCase,
+  type CompleteOnboardingOutput,
+} from '../../application/use-cases/doctor-settings/complete-onboarding.use-case';
+import {
+  DeactivateOwnAccountUseCase,
+  type DeactivateOwnAccountOutput,
+} from '../../application/use-cases/doctor-settings/deactivate-own-account.use-case';
 import type { DoctorProfile } from '../../domain/entities/doctor-profile.entity';
 import type { DoctorScheduleParams } from '../../domain/value-objects/doctor-schedule.vo';
 import type { PricingPlan } from '../../../packages/domain/entities/pricing-plan.entity';
@@ -98,6 +108,8 @@ export class DoctorController {
     private readonly deleteService: DeleteServiceUseCase,
     private readonly getDoctorExchangeRate: GetDoctorExchangeRateUseCase,
     private readonly setDoctorExchangeRate: SetDoctorExchangeRateUseCase,
+    private readonly completeOnboarding: CompleteOnboardingUseCase,
+    private readonly deactivateOwnAccount: DeactivateOwnAccountUseCase,
   ) {}
 
   /** GET /api/doctor/profile */
@@ -259,7 +271,7 @@ export class DoctorController {
   ): Promise<SuccessResponse<DoctorExchangeRateOutput>> {
     if (dto.mode === 'custom' && (dto.custom_rate == null || dto.custom_rate <= 0)) {
       throw new BadRequestException(
-        'custom_rate is required and must be > 0 when mode is "custom"',
+        'Con tasa personalizada tenés que indicar un valor mayor a cero.',
       );
     }
     const result = await this.setDoctorExchangeRate.execute(user.sub, {
@@ -356,6 +368,53 @@ export class DoctorController {
     @CurrentUser() user: CurrentUserPayload,
   ): Promise<void> {
     await this.deleteService.execute(user.sub, id);
+  }
+
+  /**
+   * POST /api/doctor/onboarding/complete
+   *
+   * Server-side onboarding gate: verifies the doctor has ≥1 active office AND
+   * ≥1 active service before marking onboarding_completed_at. Idempotent.
+   *
+   * SECURITY: doctorId from authenticated token (anti-IDOR).
+   * ERRORS:
+   *   422 ONBOARDING_REQUIREMENTS_NOT_MET — missing office or service.
+   */
+  @Post('onboarding/complete')
+  @HttpCode(HttpStatus.OK)
+  async completeOnboardingHandler(
+    @CurrentUser() user: CurrentUserPayload,
+  ): Promise<SuccessResponse<CompleteOnboardingOutput>> {
+    const result = await this.completeOnboarding.execute(user.sub);
+    return { success: true, data: result };
+  }
+
+  /**
+   * POST /api/doctor/account/deactivate
+   *
+   * The specialist switches their OWN account off. Deactivation, not deletion:
+   * every row stays under the same profile id and a super_admin can switch the
+   * account back on from the admin panel.
+   *
+   * SECURITY: the target is always user.sub — the body carries no id, so this
+   * cannot be pointed at another account (anti-IDOR).
+   * ERRORS:
+   *   422 ACCOUNT_HAS_UPCOMING_APPOINTMENTS — patients still booked ahead.
+   *   422 CANNOT_DEACTIVATE_ROLE — caller is not a specialist.
+   */
+  @Post('account/deactivate')
+  @HttpCode(HttpStatus.OK)
+  async deactivateAccountHandler(
+    @Body(new ZodValidationPipe(DeactivateAccountDtoSchema))
+    dto: DeactivateAccountDto,
+    @CurrentUser() user: CurrentUserPayload,
+  ): Promise<SuccessResponse<DeactivateOwnAccountOutput>> {
+    const result = await this.deactivateOwnAccount.execute({
+      doctorId: user.sub,
+      role: user.role,
+      reason: dto.reason ?? null,
+    });
+    return { success: true, data: result };
   }
 
   // TODO: GET /doctor/templates — deferred until doctor_templates table is created

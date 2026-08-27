@@ -13,12 +13,15 @@
  * API pública (no cambiar): Props + AppointmentContext
  */
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   AlertCircle,
   Calendar,
   CalendarClock,
+  CheckCircle,
   CreditCard,
+  ExternalLink,
   MapPin,
   Pill,
   User,
@@ -27,13 +30,90 @@ import {
 import AccordionSection from './AccordionSection';
 import { DeltaMark } from '@/components/dh';
 import { useAppointmentFlow } from './useAppointmentFlow';
-import type { DeferredSessionsContext } from './useAppointmentFlow';
+import type { DeferredSessionsContext, AppointmentSuccessResult } from './useAppointmentFlow';
 import StepPatient from './steps/StepPatient';
 import StepOffice from './steps/StepOffice';
 import StepServiceType from './steps/StepServiceType';
 import StepSchedule from './steps/StepSchedule';
 import StepPayment from './steps/StepPayment';
 import { showToast } from '@/components/ui/Toaster';
+import { useBcvRate } from '@/lib/useBcvRate';
+
+// ---------------------------------------------------------------------------
+// SuccessStep — shown after a single-session appointment is created.
+// Replaces the immediate close + navigation so the doctor can choose where to go.
+// The toast is NOT shown before this step (it would be redundant with this UI).
+// ---------------------------------------------------------------------------
+
+function SuccessStep({
+  result,
+  patientName,
+  scheduledAt,
+  onGoToConsultation,
+  onClose,
+}: {
+  result: AppointmentSuccessResult;
+  patientName: string;
+  scheduledAt: string;
+  onGoToConsultation: () => void;
+  onClose: () => void;
+}) {
+  const fmtDate = (iso: string) =>
+    iso
+      ? new Date(iso).toLocaleString('es-VE', {
+          dateStyle: 'medium',
+          timeStyle: 'short',
+          timeZone: 'America/Caracas',
+        })
+      : '';
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden">
+        {/* Gradient header */}
+        <div
+          className="px-5 py-4 text-white"
+          style={{ background: 'linear-gradient(135deg, #06B6D4 0%, #0891b2 50%, #0E7490 100%)' }}
+        >
+          <div className="flex items-center gap-3">
+            <CheckCircle className="w-6 h-6 text-white/90" />
+            <div>
+              <h3 className="text-base font-bold">Cita agendada</h3>
+              <p className="text-xs text-white/80">Paciente registrado correctamente</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="px-5 py-5 space-y-4">
+          {/* Summary */}
+          <div className="space-y-1">
+            <p className="text-sm font-semibold text-slate-800">{patientName}</p>
+            <p className="text-xs text-slate-500">{fmtDate(scheduledAt)}</p>
+          </div>
+
+          {/* Actions */}
+          <div className="space-y-2 pt-1">
+            {result.consultationId ? (
+              <button
+                onClick={onGoToConsultation}
+                className="w-full flex items-center justify-center gap-2 py-2.5 g-bg rounded-xl text-sm font-bold text-white hover:opacity-90 transition-opacity"
+              >
+                <ExternalLink className="w-4 h-4" />
+                Ir a la consulta
+              </button>
+            ) : null}
+            <button
+              onClick={onClose}
+              className="w-full py-2.5 border border-slate-200 rounded-xl text-sm font-semibold text-slate-600 hover:bg-slate-50 transition-colors"
+            >
+              Cerrar
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // ---------------------------------------------------------------------------
 // DeferredSessionsModal
@@ -180,7 +260,8 @@ export type AppointmentContext = {
 type Props = {
   open: boolean;
   onClose: () => void;
-  onSuccess?: (appointmentId: string) => void;
+  /** Called after the user dismisses the in-modal success step (Cerrar or Ir a consulta). */
+  onSuccess?: (result: AppointmentSuccessResult) => void;
   initialContext: AppointmentContext;
 };
 
@@ -189,9 +270,76 @@ type Props = {
 // ---------------------------------------------------------------------------
 
 export default function NewAppointmentFlow({ open, onClose, onSuccess, initialContext }: Props) {
+  const router = useRouter();
   const flow = useAppointmentFlow(open, onClose, onSuccess, initialContext);
+  // Divisa del especialista para el resumen del paso — no dólar fijo.
+  const { format } = useBcvRate();
+
+  /**
+   * Una consulta con fecha PASADA abre su detalle sola.
+   *
+   * El especialista que carga una consulta de ayer viene a llenarla: ya atendió
+   * al paciente y lo único que le falta es escribir. Como la cita nace
+   * `completed` (ADR-032), la pantalla de "Cita agendada" con un botón "Ir a la
+   * consulta" es un paso de más entre él y lo único que iba a hacer. Para una
+   * cita futura el resumen SÍ tiene sentido: no hay nada que escribir todavía.
+   *
+   * El ref evita que un re-render dispare la navegación dos veces.
+   */
+  const autoOpenedRef = useRef<string | null>(null);
+  const successResult = flow.successResult;
+  const successScheduledAt = flow.scheduledAt;
+  const hasDeferred = !!flow.deferredContext;
+
+  useEffect(() => {
+    if (!successResult || hasDeferred) return;
+    const consultationId = successResult.consultationId;
+    if (!consultationId) return;
+    if (!successScheduledAt) return;
+    if (new Date(successScheduledAt).getTime() >= Date.now()) return;
+    if (autoOpenedRef.current === consultationId) return;
+
+    autoOpenedRef.current = consultationId;
+    flow.clearSuccessResult();
+    onClose();
+    onSuccess?.(successResult);
+    router.push(`/doctor/consultations?open=${consultationId}`);
+  }, [successResult, successScheduledAt, hasDeferred, flow, onClose, onSuccess, router]);
 
   if (!open) return null;
+
+  // Success step: shown after a single-session appointment is created.
+  // Deferred-sessions prompt takes priority (for multi-session plans).
+  if (flow.successResult && !flow.deferredContext) {
+    const result = flow.successResult;
+    const patientName = flow.selectedPatient?.full_name ?? '';
+    const scheduledAt = flow.scheduledAt ?? '';
+
+    function handleGoToConsultation() {
+      flow.clearSuccessResult();
+      onClose();
+      onSuccess?.(result);
+      if (result.consultationId) {
+        router.push(`/doctor/consultations?open=${result.consultationId}`);
+      }
+    }
+
+    function handleClose() {
+      flow.clearSuccessResult();
+      onClose();
+      onSuccess?.(result);
+    }
+
+    return (
+      <SuccessStep
+        result={result}
+        patientName={patientName}
+        scheduledAt={scheduledAt}
+        onGoToConsultation={handleGoToConsultation}
+        onClose={handleClose}
+      />
+    );
+  }
 
   // Deferred-sessions prompt: shown when a multi-session plan appointment was
   // just created. It sits on top of the (now closed) wizard.
@@ -322,7 +470,7 @@ export default function NewAppointmentFlow({ open, onClose, onSuccess, initialCo
               flow.usePackage
                 ? 'Cubierto por paquete'
                 : flow.selectedPlan
-                  ? `${flow.selectedPlan.name} — $${flow.selectedPlan.price_usd}`
+                  ? `${flow.selectedPlan.name} — ${format(flow.selectedPlan.price_usd)}`
                   : undefined
             }
             onOpen={() => flow.step2Done && flow.setCurrentStep(3)}
@@ -363,6 +511,8 @@ export default function NewAppointmentFlow({ open, onClose, onSuccess, initialCo
               unavailableTimes={flow.unavailableTimes}
               loadingSlots={flow.loadingSlots}
               scheduledAt={flow.scheduledAt}
+              customDuration={flow.customDuration}
+              selectCustomSlot={flow.selectCustomSlot}
             />
           </AccordionSection>
 

@@ -45,6 +45,9 @@ import { GetDoctorExchangeRateUseCase } from './application/use-cases/doctor-set
 import { SetDoctorExchangeRateUseCase } from './application/use-cases/doctor-settings/set-doctor-exchange-rate.use-case';
 import { GetDoctorFeaturesV2UseCase } from './application/use-cases/doctor-settings/get-doctor-features-v2.use-case';
 import { GetDoctorSubscriptionPanelUseCase } from './application/use-cases/doctor-settings/get-doctor-subscription-panel.use-case';
+import { CompleteOnboardingUseCase } from './application/use-cases/doctor-settings/complete-onboarding.use-case';
+import { DeactivateOwnAccountUseCase } from './application/use-cases/doctor-settings/deactivate-own-account.use-case';
+import { ApplyScheduledDeactivationsUseCase } from './application/use-cases/doctor-settings/apply-scheduled-deactivations.use-case';
 
 // Controller
 import { DoctorController } from './presentation/controllers/doctor.controller';
@@ -133,10 +136,17 @@ import { DoctorController } from './presentation/controllers/doctor.controller';
     SetDoctorExchangeRateUseCase,
     GetDoctorFeaturesV2UseCase,
     GetDoctorSubscriptionPanelUseCase,
+    CompleteOnboardingUseCase,
+    DeactivateOwnAccountUseCase,
+    ApplyScheduledDeactivationsUseCase,
   ],
   // Export DOCTOR_PROFILE_REPOSITORY so other modules can inject the doctor profile
   // without duplicating model registrations.
   // Export GetDoctorFeaturesV2UseCase so HelpAssistantModule can inject plan-awareness context.
-  exports: [DOCTOR_PROFILE_REPOSITORY, GetDoctorFeaturesV2UseCase],
+  exports: [
+    DOCTOR_PROFILE_REPOSITORY,
+    GetDoctorFeaturesV2UseCase,
+    ApplyScheduledDeactivationsUseCase,
+  ],
 })
 export class DoctorSettingsModule {}

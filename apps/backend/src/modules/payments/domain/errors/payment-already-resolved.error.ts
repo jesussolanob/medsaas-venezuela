@@ -5,6 +5,6 @@ export class PaymentAlreadyResolvedError extends DomainError {
   readonly code = 'PAYMENT_ALREADY_RESOLVED';
 
   constructor(currentStatus: PaymentStatus) {
-    super(`Payment has already been resolved with status: ${currentStatus}`);
+    super(`Este cobro ya fue resuelto (estado: ${currentStatus})`);
   }
 }

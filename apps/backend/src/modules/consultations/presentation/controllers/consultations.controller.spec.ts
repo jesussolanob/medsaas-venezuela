@@ -1,3 +1,11 @@
+// sanitize-html → htmlparser2@12 (ESM-only). Mock before any import that
+// pulls in BlockContentSanitizer via the UpdateConsultationUseCase chain.
+jest.mock('sanitize-html', () => {
+  const fn = jest.fn((input: string) => input);
+  (fn as unknown as Record<string, unknown>)['default'] = fn;
+  return fn;
+});
+
 import { Test, type TestingModule } from '@nestjs/testing';
 import { ConsultationsController } from './consultations.controller';
 import { CreateConsultationUseCase } from '../../application/use-cases/consultations/create-consultation.use-case';
@@ -9,6 +17,7 @@ import { GetConsultationByIdUseCase } from '../../application/use-cases/consulta
 import { GetPatientConsultationHistoryUseCase } from '../../application/use-cases/consultations/get-patient-consultation-history.use-case';
 import { ListConsultationsUseCase } from '../../application/use-cases/consultations/list-consultations.use-case';
 import { ListConsultationsWithPatientUseCase } from '../../application/use-cases/consultations/list-consultations-with-patient.use-case';
+import { ApplyNoShowFeeUseCase } from '../../application/use-cases/consultations/apply-no-show-fee.use-case';
 import { Consultation } from '../../domain/entities/consultation.entity';
 import { ConsultationNotFoundError } from '../../domain/errors/consultation-not-found.error';
 import { PaymentAlreadyApprovedError } from '../../domain/errors/payment-already-approved.error';
@@ -49,6 +58,7 @@ describe('ConsultationsController', () => {
   const mockApprove = { execute: jest.fn() };
   const mockApproveWithExtras = { execute: jest.fn() };
   const mockUpdatePaymentDetails = { execute: jest.fn() };
+  const mockApplyNoShowFee = { execute: jest.fn() };
   const mockGetById = { execute: jest.fn() };
   const mockGetHistory = { execute: jest.fn() };
   const mockList = { execute: jest.fn() };
@@ -65,6 +75,7 @@ describe('ConsultationsController', () => {
         { provide: ApprovePaymentUseCase, useValue: mockApprove },
         { provide: ApprovePaymentWithExtrasUseCase, useValue: mockApproveWithExtras },
         { provide: UpdatePaymentDetailsUseCase, useValue: mockUpdatePaymentDetails },
+        { provide: ApplyNoShowFeeUseCase, useValue: mockApplyNoShowFee },
         { provide: GetConsultationByIdUseCase, useValue: mockGetById },
         { provide: GetPatientConsultationHistoryUseCase, useValue: mockGetHistory },
         { provide: ListConsultationsUseCase, useValue: mockList },
@@ -401,6 +412,59 @@ describe('ConsultationsController', () => {
   });
 
   describe('updatePaymentDetailsEndpoint', () => {
+    it('routes amount=0 through ApplyNoShowFeeUseCase (no-show without fee)', async () => {
+      // When the doctor waives the no-show fee, the frontend sends amount=0 without
+      // no_show_fee. The controller must route through applyNoShowFeeUseCase so the
+      // linked payment row is resolved as approved/$0 and leaves "Por cobrar".
+      const resolved = makeConsultation({ amount: 0, paymentStatus: 'pending' });
+      mockApplyNoShowFee.execute.mockResolvedValue(resolved);
+
+      const result = await controller.updatePaymentDetailsEndpoint(
+        CONSULTATION_ID,
+        { amount: 0 },
+        mockUser,
+      );
+
+      expect(result.success).toBe(true);
+      expect(mockApplyNoShowFee.execute).toHaveBeenCalledTimes(1);
+      expect(mockApplyNoShowFee.execute).toHaveBeenCalledWith(
+        expect.objectContaining({
+          consultationId: CONSULTATION_ID,
+          doctorId: DOCTOR_ID,
+          newAmount: 0,
+        }),
+      );
+      expect(mockUpdatePaymentDetails.execute).not.toHaveBeenCalled();
+    });
+
+    it('routes no_show_fee>0 through ApplyNoShowFeeUseCase (with fee)', async () => {
+      const updated = makeConsultation({ amount: 60, paymentStatus: 'pending' });
+      mockApplyNoShowFee.execute.mockResolvedValue(updated);
+
+      const result = await controller.updatePaymentDetailsEndpoint(
+        CONSULTATION_ID,
+        { no_show_fee: 20, amount: 60 },
+        mockUser,
+      );
+
+      expect(result.success).toBe(true);
+      expect(mockApplyNoShowFee.execute).toHaveBeenCalledTimes(1);
+      expect(mockApplyNoShowFee.execute).toHaveBeenCalledWith(
+        expect.objectContaining({ newAmount: 60 }),
+      );
+      expect(mockUpdatePaymentDetails.execute).not.toHaveBeenCalled();
+    });
+
+    it('routes non-zero amount through UpdatePaymentDetailsUseCase (normal edit)', async () => {
+      const updated = makeConsultation({ amount: 25, paymentStatus: 'pending' });
+      mockUpdatePaymentDetails.execute.mockResolvedValue(updated);
+
+      await controller.updatePaymentDetailsEndpoint(CONSULTATION_ID, { amount: 25 }, mockUser);
+
+      expect(mockUpdatePaymentDetails.execute).toHaveBeenCalledTimes(1);
+      expect(mockApplyNoShowFee.execute).not.toHaveBeenCalled();
+    });
+
     it('updates payment details and returns serialized consultation', async () => {
       const consultation = makeConsultation({
         paymentStatus: 'approved',

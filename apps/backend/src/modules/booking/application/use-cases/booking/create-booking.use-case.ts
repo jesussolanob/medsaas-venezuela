@@ -51,6 +51,12 @@ import {
   type IPricingPlanRepository,
 } from '../../../../packages/domain/repositories/pricing-plan.repository';
 import { CreatePendingConsultationsUseCase } from '../../../../pending-consultations/application/use-cases/create-pending-consultations.use-case';
+import {
+  CARACAS_OFFSET,
+  toCaracasHHMM,
+  toCaracasOfficeDay,
+} from '../../../../../domain/caracas-time';
+import { SessionOutsideOfficeHoursError } from '../../../domain/errors/session-outside-office-hours.error';
 
 export interface CreateBookingResult {
   appointment: Appointment;
@@ -58,6 +64,22 @@ export interface CreateBookingResult {
   appointmentCode: string;
   /** Meet link for online appointments (Google Meet or Jitsi). Null for in-person. */
   meetLink: string | null;
+  /**
+   * Consulta creada junto con la cita, si se pudo crear.
+   *
+   * NO se puede leer de `appointment.consultationId`: el FK se actualiza en la
+   * BD después de construir la entidad, así que la que se devuelve todavía lo
+   * tiene en null. Quien necesite abrir la consulta recién creada (el botón de
+   * consulta inmediata) tiene que leerlo de acá.
+   */
+  consultationId: string | null;
+  /**
+   * Código legible de la consulta recién creada (DLT-YYYYMM-NNNN).
+   *
+   * Null cuando la creación automática de consulta falló (best-effort). El
+   * llamador debe manejar ambos casos sin romper el flujo de booking.
+   */
+  consultationCode: string | null;
 }
 
 /**
@@ -186,7 +208,52 @@ export class CreateBookingUseCase {
 
   async execute(
     dto: CreateBookingDto,
-    options?: { skipBookingFeatureGate?: boolean; skipPatientBookingRules?: boolean },
+    options?: {
+      skipBookingFeatureGate?: boolean;
+      skipPatientBookingRules?: boolean;
+      /**
+       * When true, the doctor's own appointment overlap check (step 3) is bypassed.
+       * Used by CreateImmediateAppointmentUseCase with force=true so a walk-in can be
+       * created even if it overlaps with an existing appointment in the doctor's calendar.
+       *
+       * ⚠️ The PATIENT overlap check (step 4b) is NEVER bypassed — not even with force.
+       */
+      skipDoctorOverlapCheck?: boolean;
+      /**
+       * El especialista está registrando la cita desde su propio panel.
+       *
+       * Cambia una sola cosa: una fecha ya pasada nace `completed` en vez de
+       * `scheduled`. Si el especialista carga hoy una consulta de la semana
+       * pasada, esa consulta YA ocurrió; dejarla agendada la mete en su agenda
+       * como si estuviera por venir y nunca sale de ahí.
+       *
+       * El asistente de "Nueva consulta" ya se lo promete al especialista antes
+       * de guardar ("Esta fecha ya pasó: la consulta se va a registrar como
+       * atendida"), pero este use case —que es el del booking PÚBLICO, donde
+       * siempre corresponde `scheduled`— fijaba el estado a mano y la promesa
+       * no se cumplía. Es la misma regla que ya aplica computeInitialStatus()
+       * en CreateAppointmentUseCase, el otro camino de alta.
+       *
+       * Una reserva pública NUNCA pasa por acá: un paciente no puede declarar
+       * atendida una consulta.
+       */
+      doctorInitiated?: boolean;
+      /**
+       * Fuerza el estado inicial a `confirmed` sin pasar por el ternario de
+       * `doctorInitiated`.
+       *
+       * ⚠️ NO usar `doctorInitiated` para la consulta inmediata: cuando
+       * `scheduledAt` es "ahora", para el momento de la evaluación el instante
+       * ya es pasado y la cita nacería `completed` — el especialista recién
+       * va a atender al paciente.  Esta opción existe exactamente para ese
+       * escenario: el paciente está físicamente en el consultorio, la consulta
+       * ya fue agendada y confirmada en el mismo acto.
+       *
+       * Se evalúa ANTES que `doctorInitiated` para evitar malentendidos futuros.
+       * Solo debe usarlo `CreateImmediateAppointmentUseCase`.
+       */
+      forceConfirmed?: boolean;
+    },
   ): Promise<CreateBookingResult> {
     // --- Step 1: Turnstile validation (STUB — Etapa 1) ---
     // TODO(etapa-2): POST to https://challenges.cloudflare.com/turnstile/v0/siteverify
@@ -212,11 +279,19 @@ export class CreateBookingUseCase {
       }
     }
 
+    // scheduledAt is parsed once here and shared across all downstream steps
+    // (office block resolution, lead-time validation, overlap detection).
+    const scheduledAt = new Date(dto.scheduled_at);
+
     // --- Step 2b: Validate office modality (if office_id provided) ---
     let officeAddress: string | undefined;
     let officeName: string | undefined;
     let officeMapUrl: string | undefined;
     let officeDuration = 30;
+    // Hoisted so the multi-session loop (step A1b) can validate extra session
+    // slots against the office schedule without re-loading from the database.
+    let resolvedOffice: import('../../../../offices/domain/entities/office.entity').Office | null =
+      null;
 
     if (dto.office_id && this.officeRepo) {
       const office = await this.officeRepo.findById(dto.office_id);
@@ -224,16 +299,22 @@ export class CreateBookingUseCase {
         if (!office.supportsModality(dto.appointment_mode)) {
           throw new OfficeModalityMismatchError(dto.appointment_mode, office.modality);
         }
+        resolvedOffice = office;
         officeAddress = office.address || undefined;
         officeName = office.name;
         officeMapUrl = office.mapUrl ?? undefined;
-        officeDuration = office.slotDuration;
+        // C1: resolve the duration of the block that contains scheduledAt,
+        // not the office-wide default (which ignores per-block overrides).
+        officeDuration = office.slotDurationAt(scheduledAt);
       }
     }
 
-    // scheduledAt is computed here so that step 2c (lead-time validation) and
-    // step 3 (overlap detection) can share the same parsed Date instance.
-    const scheduledAt = new Date(dto.scheduled_at);
+    // C2: explicit duration from the doctor's "otra hora" flow.
+    // Only honoured on the authenticated doctor path (skipPatientBookingRules=true).
+    // A patient cannot choose their own appointment duration via the public form.
+    if (options?.skipPatientBookingRules && dto.duration_minutes) {
+      officeDuration = dto.duration_minutes;
+    }
 
     // --- Step 2c: Validate patient booking rules (require_reason + lead_time) ---
     // These restrictions apply to public bookings only. When the doctor schedules
@@ -250,7 +331,6 @@ export class CreateBookingUseCase {
       // Validate minimum lead time
       const minLeadDays = schedule?.bookingMinLeadDays ?? 0;
       if (minLeadDays > 0) {
-        const CARACAS_OFFSET = '-04:00';
         const nowCaracasDateStr = new Intl.DateTimeFormat('en-CA', {
           timeZone: 'America/Caracas',
           year: 'numeric',
@@ -279,13 +359,17 @@ export class CreateBookingUseCase {
     }
 
     // --- Step 3: Verify slot availability (overlap detection) ---
-    const hasConflict = await this.appointmentRepo.hasOverlap({
-      doctorId: dto.doctor_id,
-      scheduledAt,
-      durationMinutes: officeDuration,
-    });
-    if (hasConflict) {
-      throw new AppointmentConflictError(scheduledAt);
+    // Skipped when skipDoctorOverlapCheck=true (immediate-consultation force mode).
+    // The patient overlap check below is NEVER skipped.
+    if (!options?.skipDoctorOverlapCheck) {
+      const hasConflict = await this.appointmentRepo.hasOverlap({
+        doctorId: dto.doctor_id,
+        scheduledAt,
+        durationMinutes: officeDuration,
+      });
+      if (hasConflict) {
+        throw new AppointmentConflictError(scheduledAt);
+      }
     }
 
     // --- Step 4: Resolve patient ---
@@ -324,7 +408,16 @@ export class CreateBookingUseCase {
       patientEmail: dto.patient_email,
       patientCedula: dto.patient_cedula ?? null,
       scheduledAt,
-      status: 'scheduled',
+      // Ver `forceConfirmed` y `doctorInitiated` en las opciones.
+      // Orden de evaluación:
+      //   1. forceConfirmed → nace `confirmed` (walk-in: el paciente está presente).
+      //   2. doctorInitiated + fecha pasada → nace `completed` (carga retroactiva).
+      //   3. Todo lo demás → nace `scheduled`.
+      status: options?.forceConfirmed
+        ? 'confirmed'
+        : options?.doctorInitiated && scheduledAt.getTime() < Date.now()
+          ? 'completed'
+          : 'scheduled',
       appointmentMode: dto.appointment_mode,
       source: 'booking',
       planName: dto.plan_name,
@@ -394,9 +487,27 @@ export class CreateBookingUseCase {
       if (dto.plan_id && this.pricingPlanRepo && this.createPendingUC) {
         const plan = await this.pricingPlanRepo.findById(dto.plan_id);
 
-        // Ownership guard: silently skip if plan not found, belongs to a different
-        // doctor, or has only one session. This degrades gracefully — the booking
-        // still succeeds as a normal single-session appointment.
+        // Ownership guard: skip if plan not found, belongs to a different doctor,
+        // or has only one session. Degrada con gracia — la reserva igual se crea
+        // como una cita normal de una sesión.
+        //
+        // OJO: este skip era MUDO, y eso costó caro. En agosto de 2026 una
+        // especialista reportó que su módulo "Consultas por agendar" salía vacío:
+        // dos pacientes habían reservado paquetes de 3 sesiones y no se generó
+        // ninguna preconsulta. Como el skip no dejaba rastro, esa reserva era
+        // indistinguible de una normal y el problema pasó 12 días sin detectarse.
+        // Reproducido el flujo completo, hoy funciona; sin log no hay forma de
+        // saber cuál de las tres guardas falló aquella vez.
+        //
+        // El WARN no cambia el comportamiento: solo deja algo que se pueda buscar
+        // en los logs cuando vuelva a pasar. No se loguea PII.
+        if (!plan || plan.doctorId !== dto.doctor_id || plan.sessionsCount <= 1) {
+          this.logger.warn(
+            `[multi-sesion] no se generaron preconsultas para plan_id=${dto.plan_id}: ` +
+              `${!plan ? 'el plan no existe' : plan.doctorId !== dto.doctor_id ? 'el plan es de otro doctor' : `sessions_count=${plan.sessionsCount}`}`,
+          );
+        }
+
         if (plan && plan.doctorId === dto.doctor_id && plan.sessionsCount > 1) {
           const additionalRequested = dto.additional_sessions ?? [];
           // Determine how many sessions can be immediately scheduled (beyond the first).
@@ -412,6 +523,33 @@ export class CreateBookingUseCase {
           // Create immediately-scheduled additional appointments.
           for (const extra of toScheduleNow) {
             const extraAt = new Date(extra.scheduled_at);
+
+            // Defence in depth: validate that each extra session falls within an
+            // enabled office schedule block. The frontend enforces the same rule
+            // on the slot picker, but the backend must be the hard gate.
+            //
+            // Only checked when we have a resolved office. When no office is
+            // linked the check is skipped to preserve backward compatibility.
+            // Timezone: America/Caracas — via the shared helpers in
+            // `src/domain/caracas-time.ts`, same criterion as GetAvailableSlotsUseCase.
+            if (resolvedOffice) {
+              const extraDay = toCaracasOfficeDay(extraAt);
+              const extraTimeHHMM = toCaracasHHMM(extraAt);
+              const extraMinutes = parseHHMMMinutes(extraTimeHHMM);
+              const blocks = resolvedOffice.getEnabledSchedulesForDay(extraDay);
+              const withinBlock = blocks.some((b) => {
+                const startMin = parseHHMMMinutes(b.start);
+                const endMin = parseHHMMMinutes(b.end);
+                return extraMinutes >= startMin && extraMinutes < endMin;
+              });
+              if (!withinBlock) {
+                throw new SessionOutsideOfficeHoursError({
+                  officeDay: extraDay,
+                  timeHHMM: extraTimeHHMM,
+                  blocks,
+                });
+              }
+            }
 
             // Corrección 1: chequeo de solape antes de persistir cada cita adicional.
             // Si el slot está ocupado la transacción entera aborta (igual que la 1ª cita).
@@ -557,6 +695,8 @@ export class CreateBookingUseCase {
     // --- Step 8: Auto-create consultation (best-effort — must NOT break booking) ---
     // A failure here only means the consultation will be absent from the list;
     // the booking appointment itself is fully persisted and confirmed.
+    let createdConsultationId: string | null = savedAppointment.consultationId ?? null;
+    let createdConsultationCode: string | null = null;
     if (this.createConsultationUC && !savedAppointment.consultationId) {
       try {
         const consultation = await this.createConsultationUC.execute({
@@ -566,8 +706,14 @@ export class CreateBookingUseCase {
           consultationDate: savedAppointment.scheduledAt,
           chiefComplaint: dto.chief_complaint ?? null,
           amount: dto.plan_price ?? null,
+          // El método viaja a la consulta: se guardaba solo en la cita y el
+          // especialista tenía que volver a elegirlo al cobrar.
+          paymentMethod: savedAppointment.paymentMethod,
+          paymentReference: savedAppointment.paymentReference,
         });
         await this.appointmentRepo.updateConsultationId(savedAppointment.id, consultation.id);
+        createdConsultationId = consultation.id;
+        createdConsultationCode = consultation.consultationCode;
       } catch (err: unknown) {
         // Non-fatal. Log el MENSAJE del error (código/DB — NO contiene PII) para
         // poder diagnosticar por qué no se creó la consulta.
@@ -576,7 +722,14 @@ export class CreateBookingUseCase {
       }
     }
 
-    return { appointment: savedAppointment, patient, appointmentCode, meetLink };
+    return {
+      appointment: savedAppointment,
+      patient,
+      appointmentCode,
+      meetLink,
+      consultationId: createdConsultationId,
+      consultationCode: createdConsultationCode,
+    };
   }
 
   // ---------------------------------------------------------------------------
@@ -677,6 +830,22 @@ export class CreateBookingUseCase {
     const hex4 = randomUUID().replace(/-/g, '').slice(0, 4).toUpperCase();
     return `BK-${ymd}-${rand6}-${hex4}`;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Module-level helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Parses "HH:MM" into total minutes from midnight.
+ *
+ * Mirrors the same private helper in `Office` entity and `DaySchedule` VO,
+ * kept here as a module-level pure function to avoid coupling the use case to
+ * domain internals.
+ */
+function parseHHMMMinutes(time: string): number {
+  const parts = time.split(':');
+  return parseInt(parts[0] ?? '0', 10) * 60 + parseInt(parts[1] ?? '0', 10);
 }
 
 // ---------------------------------------------------------------------------

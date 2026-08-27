@@ -22,6 +22,14 @@ export const DoctorRegistrationDtoSchema = z
         'cedula must follow format V/E/P-<value> (e.g. V-12345678)',
       )
       .max(30, 'cedula must be at most 30 characters'),
+    /**
+     * Teléfono del especialista — OBLIGATORIO desde 2026-08-17.
+     *
+     * Es el punto de contacto de Delta con él, así que se pide de primero en el
+     * onboarding y sin él no se completa el alta. Formato canónico que emite
+     * PhoneInput: código de país + número, solo dígitos (ej. 584141234567).
+     */
+    phone: z.string().regex(/^\d{8,20}$/, 'phone must be 8-20 digits including country code'),
     mpps_number: z.string().min(1).max(50).nullable().optional(),
     colegiado_number: z.string().min(1).max(50).nullable().optional(),
     /**
@@ -40,6 +48,23 @@ export const DoctorRegistrationDtoSchema = z
      * Opcional — se pide con fines estadísticos y puede cambiarse en configuración.
      */
     gender: z.enum(['F', 'M', 'O', 'N']).nullable().optional(),
+    /**
+     * Código de referido del vendedor — el especialista lo escribe en el
+     * onboarding si se registró a través de un vendedor de Delta.
+     *
+     * Restricciones:
+     *   - Opcional y se escribe UNA SOLA VEZ: si el especialista ya tiene un
+     *     vendedor asignado (sold_by ≠ null), el backend ignora este campo.
+     *   - Código inexistente → SellerCodeNotFoundError (422).
+     *   - Nunca viene del vendedor en sí — los vendedores se crean desde el panel
+     *     de admin, no por auto-registro.
+     */
+    seller_code: z
+      .string()
+      .min(1)
+      .max(20)
+      .regex(/^[A-Z0-9]+$/, 'seller_code must be uppercase alphanumeric')
+      .optional(),
   })
   .strict();
 

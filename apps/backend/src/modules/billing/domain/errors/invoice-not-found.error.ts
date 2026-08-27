@@ -9,6 +9,6 @@ export class InvoiceNotFoundError extends DomainError {
   override readonly httpStatus = 404;
 
   constructor(id: string) {
-    super(`Invoice not found: ${id}`);
+    super(`Factura no encontrada: ${id}`);
   }
 }

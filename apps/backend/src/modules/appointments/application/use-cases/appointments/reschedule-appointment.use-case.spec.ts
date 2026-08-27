@@ -57,7 +57,13 @@ function makeRepo(
     findById: jest.fn().mockResolvedValue(appointment),
     list: jest.fn(),
     save: jest.fn(),
-    updateStatus: jest.fn(),
+    // Default mock returns an appointment with the requested status so that
+    // no_show-reschedule tests can verify the restored status on the result.
+    updateStatus: jest
+      .fn()
+      .mockImplementation((_id: string, status: AppointmentCreateParams['status']) =>
+        Promise.resolve(makeAppointment({ status })),
+      ),
     updateScheduledAt: jest
       .fn()
       .mockImplementation((_id, scheduledAt) => Promise.resolve(makeAppointment({ scheduledAt }))),
@@ -180,6 +186,128 @@ describe('RescheduleAppointmentUseCase', () => {
     });
   });
 
+  // -----------------------------------------------------------------------
+  // Point 11 premise: rescheduling must preserve the consultation/payment link.
+  // A cancelled-with-payment appointment can only be MOVED (never refunded/
+  // credited), so the payment must simply travel with the new date.
+  // -----------------------------------------------------------------------
+  describe('preserves the consultation/payment link (point 11 premise)', () => {
+    it('only touches scheduled_at — never re-links or clears consultationId', async () => {
+      const appt = makeAppointment({ status: 'scheduled', consultationId: 'cons-paid-1' });
+      repo = makeRepo(appt);
+      useCase = new RescheduleAppointmentUseCase(repo);
+
+      await useCase.execute({
+        appointmentId: APPT_ID,
+        actorId: DOCTOR_ID,
+        newScheduledAt: newDate,
+      });
+
+      // updateScheduledAt is called with exactly (id, newScheduledAt) — no other
+      // field, so the consultation FK (and everything downstream of it, e.g. the
+      // linked consultation's payment_status/amount) is left untouched at the DB
+      // level. Rescheduling never calls updateConsultationId either.
+      expect(repo.updateScheduledAt).toHaveBeenCalledWith(APPT_ID, newDate);
+      expect(repo.updateConsultationId).not.toHaveBeenCalled();
+    });
+
+    it('returned appointment keeps the same consultationId after reschedule', async () => {
+      const appt = makeAppointment({ status: 'scheduled', consultationId: 'cons-paid-1' });
+      repo = makeRepo(appt, {
+        updateScheduledAt: jest
+          .fn()
+          .mockImplementation((_id, scheduledAt) =>
+            Promise.resolve(makeAppointment({ scheduledAt, consultationId: 'cons-paid-1' })),
+          ),
+      });
+      useCase = new RescheduleAppointmentUseCase(repo);
+
+      const result = await useCase.execute({
+        appointmentId: APPT_ID,
+        actorId: DOCTOR_ID,
+        newScheduledAt: newDate,
+      });
+
+      expect(result.consultationId).toBe('cons-paid-1');
+      expect(result.scheduledAt).toEqual(newDate);
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // B2: rescheduling a no_show appointment restores it to an active status
+  // -----------------------------------------------------------------------
+  describe('no_show reschedule — restores active status', () => {
+    it('reschedules a no_show appointment to near future → restored to confirmed', async () => {
+      const nearFuture = new Date(Date.now() + 60 * 60 * 1000); // 1 hour from now
+      const appt = makeAppointment({ status: 'no_show' });
+      repo = makeRepo(appt);
+      useCase = new RescheduleAppointmentUseCase(repo);
+
+      const result = await useCase.execute({
+        appointmentId: APPT_ID,
+        actorId: DOCTOR_ID,
+        newScheduledAt: nearFuture,
+      });
+
+      expect(repo.updateScheduledAt).toHaveBeenCalledWith(APPT_ID, nearFuture);
+      expect(repo.updateStatus).toHaveBeenCalledWith(APPT_ID, 'confirmed');
+      expect(result.status).toBe('confirmed');
+    });
+
+    it('reschedules a no_show appointment to far future → restored to scheduled', async () => {
+      const farFuture = new Date(Date.now() + 5 * 24 * 60 * 60 * 1000); // 5 days from now
+      const appt = makeAppointment({ status: 'no_show' });
+      repo = makeRepo(appt);
+      useCase = new RescheduleAppointmentUseCase(repo);
+
+      const result = await useCase.execute({
+        appointmentId: APPT_ID,
+        actorId: DOCTOR_ID,
+        newScheduledAt: farFuture,
+      });
+
+      expect(repo.updateScheduledAt).toHaveBeenCalledWith(APPT_ID, farFuture);
+      expect(repo.updateStatus).toHaveBeenCalledWith(APPT_ID, 'scheduled');
+      expect(result.status).toBe('scheduled');
+    });
+
+    it('logs the real no_show → confirmed transition in the audit log', async () => {
+      const nearFuture = new Date(Date.now() + 60 * 60 * 1000);
+      const appt = makeAppointment({ status: 'no_show' });
+      repo = makeRepo(appt);
+      useCase = new RescheduleAppointmentUseCase(repo);
+
+      await useCase.execute({
+        appointmentId: APPT_ID,
+        actorId: DOCTOR_ID,
+        newScheduledAt: nearFuture,
+      });
+
+      expect(repo.logStatusChange).toHaveBeenCalledWith(
+        expect.objectContaining({
+          appointmentId: APPT_ID,
+          actorId: DOCTOR_ID,
+          oldStatus: 'no_show',
+          newStatus: 'confirmed',
+        }),
+      );
+    });
+
+    it('does NOT call updateStatus when rescheduling a non-no_show appointment', async () => {
+      const appt = makeAppointment({ status: 'scheduled' });
+      repo = makeRepo(appt);
+      useCase = new RescheduleAppointmentUseCase(repo);
+
+      await useCase.execute({
+        appointmentId: APPT_ID,
+        actorId: DOCTOR_ID,
+        newScheduledAt: newDate,
+      });
+
+      expect(repo.updateStatus).not.toHaveBeenCalled();
+    });
+  });
+
   describe('error cases', () => {
     it('throws AppointmentNotFoundError when appointment does not exist', async () => {
       repo = makeRepo(null);
@@ -222,16 +350,6 @@ describe('RescheduleAppointmentUseCase', () => {
 
     it('throws AppointmentNotReschedulableError for a completed appointment', async () => {
       const appt = makeAppointment({ status: 'completed' });
-      repo = makeRepo(appt);
-      useCase = new RescheduleAppointmentUseCase(repo);
-
-      await expect(
-        useCase.execute({ appointmentId: APPT_ID, actorId: DOCTOR_ID, newScheduledAt: newDate }),
-      ).rejects.toBeInstanceOf(AppointmentNotReschedulableError);
-    });
-
-    it('throws AppointmentNotReschedulableError for a no_show appointment', async () => {
-      const appt = makeAppointment({ status: 'no_show' });
       repo = makeRepo(appt);
       useCase = new RescheduleAppointmentUseCase(repo);
 

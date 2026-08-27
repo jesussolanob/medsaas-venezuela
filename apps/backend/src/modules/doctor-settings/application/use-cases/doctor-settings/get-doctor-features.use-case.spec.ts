@@ -60,6 +60,13 @@ describe('GetDoctorFeaturesUseCase', () => {
       findByDoctorId: jest.fn(),
       update: jest.fn(),
       updateExchangeRate: jest.fn(),
+      markOnboardingCompleted: jest.fn().mockResolvedValue(undefined),
+      updateBlocksLayout: jest.fn().mockResolvedValue(undefined),
+      countUpcomingAppointments: jest.fn().mockResolvedValue(0),
+      deactivateOwnAccount: jest.fn().mockResolvedValue(undefined),
+      findPlanSnapshot: jest.fn().mockResolvedValue(null),
+      scheduleOwnAccountDeactivation: jest.fn().mockResolvedValue(undefined),
+      applyExpiredScheduledDeactivations: jest.fn().mockResolvedValue(0),
     };
     mockFeaturesRepo = {
       findByPlan: jest.fn(),

@@ -5,6 +5,6 @@ export class DoctorServiceNotOwnedError extends DomainError {
   override readonly httpStatus = 403;
 
   constructor() {
-    super('You do not own this service');
+    super('Este servicio no te pertenece');
   }
 }

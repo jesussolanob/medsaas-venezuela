@@ -226,21 +226,82 @@ export type IncomePageItem = {
   reference: string | null;
 };
 
+/** Tope duro del backend por request (finances.controller). */
+const FINANCES_REQUEST_LIMIT = 100;
+
+/** Corta en 5.000 filas: evita un bucle infinito si `total` miente. */
+const FINANCES_MAX_PAGES = 50;
+
+/**
+ * Recorre TODAS las páginas de un endpoint paginado de finanzas.
+ *
+ * El backend recorta cualquier `limit` a 100. Pedir `limit=500` no trae 500:
+ * trae 100 y no avisa. Con "Todas" el Paginator además fija `totalPages = 1` y
+ * rotula "1–{total} de {total}", así que el especialista leía que estaba viendo
+ * todo mientras faltaban filas de plata. Esto pagina de verdad.
+ *
+ * Si una página falla devuelve lo ya juntado —una página rota no debe vaciar la
+ * lista— y lo deja registrado.
+ */
+async function traerTodasLasPaginas<T>(
+  construirUrl: (page: number, limit: number) => string,
+  etiqueta: string,
+): Promise<PagedResult<T>> {
+  const juntadas: T[] = [];
+  let total = 0;
+
+  for (let page = 1; page <= FINANCES_MAX_PAGES; page++) {
+    const result = await backendGetPaged<T>(construirUrl(page, FINANCES_REQUEST_LIMIT));
+
+    if (!result.ok) {
+      log.error(`[${etiqueta}] backend error`, {
+        code: result.error.code,
+        status: result.error.status,
+        page,
+      });
+      break;
+    }
+
+    juntadas.push(...result.value.items);
+    total = result.value.total;
+
+    if (result.value.items.length < FINANCES_REQUEST_LIMIT) break;
+    if (juntadas.length >= total) break;
+
+    if (page === FINANCES_MAX_PAGES) {
+      log.error(`[${etiqueta}] tope de paginación alcanzado`, {
+        juntadas: juntadas.length,
+        total,
+      });
+    }
+  }
+
+  return { items: juntadas, total: Math.max(total, juntadas.length) };
+}
+
 /**
  * Fetch a page of unified income entries (consultation payments + manual incomes).
  * Calls GET /api/finances/income?month=YYYY-MM&page=N&limit=N.
- * Cap: 100 items per page.
+ *
+ * `limit === 0` (PAGE_SIZE_ALL, el botón "Todas") recorre todas las páginas.
  */
 export async function getIncomePaged(opts: {
   page: number;
   limit: number;
   month?: string;
 }): Promise<PagedResult<IncomePageItem>> {
-  const limit = Math.min(opts.limit > 0 ? opts.limit : 20, 100);
-  const qs = new URLSearchParams({ page: String(opts.page), limit: String(limit) });
-  if (opts.month) qs.set('month', opts.month);
+  const url = (page: number, limit: number) => {
+    const qs = new URLSearchParams({ page: String(page), limit: String(limit) });
+    if (opts.month) qs.set('month', opts.month);
+    return `/api/finances/income?${qs.toString()}`;
+  };
 
-  const result = await backendGetPaged<IncomePageItem>(`/api/finances/income?${qs.toString()}`);
+  if (opts.limit === 0) {
+    return traerTodasLasPaginas<IncomePageItem>(url, 'getIncomePaged');
+  }
+
+  const limit = Math.min(opts.limit > 0 ? opts.limit : 20, FINANCES_REQUEST_LIMIT);
+  const result = await backendGetPaged<IncomePageItem>(url(opts.page, limit));
 
   if (!result.ok) {
     log.error('[getIncomePaged] backend error', {
@@ -257,27 +318,48 @@ export async function getIncomePaged(opts: {
 // Expenses paged (GET /api/finances/transactions?type=expense)
 // ---------------------------------------------------------------------------
 
+/** Mapea una fila de `financial_transactions` a la forma que espera la UI. */
+function aEgreso(t: TransactionItem): BackendExpense {
+  return {
+    id: t.id,
+    vendor_name: t.description,
+    concept: t.description,
+    amount: t.amount,
+    due_date: t.date ? t.date.slice(0, 10) : t.createdAt.slice(0, 10),
+    paid: true,
+    notes: t.currency !== 'USD' ? t.currency : undefined,
+  };
+}
+
 /**
  * Fetch a page of expense transactions.
  * Calls GET /api/finances/transactions?type=expense&month=YYYY-MM&page=N&limit=N.
- * Cap: 100 items per page.
+ *
+ * `limit === 0` (PAGE_SIZE_ALL, el botón "Todas") recorre todas las páginas.
  */
 export async function getExpensesPaged(opts: {
   page: number;
   limit: number;
   month?: string;
 }): Promise<PagedResult<BackendExpense>> {
-  const limit = Math.min(opts.limit > 0 ? opts.limit : 20, 100);
-  const qs = new URLSearchParams({
-    type: 'expense',
-    page: String(opts.page),
-    limit: String(limit),
-  });
-  if (opts.month) qs.set('month', opts.month);
+  const url = (page: number, limit: number) => {
+    const qs = new URLSearchParams({
+      type: 'expense',
+      page: String(page),
+      limit: String(limit),
+    });
+    if (opts.month) qs.set('month', opts.month);
+    return `/api/finances/transactions?${qs.toString()}`;
+  };
 
-  const result = await backendGetPaged<TransactionItem>(
-    `/api/finances/transactions?${qs.toString()}`,
-  );
+  if (opts.limit === 0) {
+    const todas = await traerTodasLasPaginas<TransactionItem>(url, 'getExpensesPaged');
+    const mapeadas = todas.items.filter((t) => t.type === 'expense').map(aEgreso);
+    return { items: mapeadas, total: mapeadas.length };
+  }
+
+  const limit = Math.min(opts.limit > 0 ? opts.limit : 20, FINANCES_REQUEST_LIMIT);
+  const result = await backendGetPaged<TransactionItem>(url(opts.page, limit));
 
   if (!result.ok) {
     log.error('[getExpensesPaged] backend error', {
@@ -287,19 +369,7 @@ export async function getExpensesPaged(opts: {
     return { items: [], total: 0 };
   }
 
-  const mapped = result.value.items
-    .filter((t) => t.type === 'expense')
-    .map(
-      (t): BackendExpense => ({
-        id: t.id,
-        vendor_name: t.description,
-        concept: t.description,
-        amount: t.amount,
-        due_date: t.date ? t.date.slice(0, 10) : t.createdAt.slice(0, 10),
-        paid: true,
-        notes: t.currency !== 'USD' ? t.currency : undefined,
-      }),
-    );
+  const mapped = result.value.items.filter((t) => t.type === 'expense').map(aEgreso);
 
   return { items: mapped, total: result.value.total };
 }
@@ -314,35 +384,14 @@ export async function getExpensesPaged(opts: {
  * Maps `financial_transactions` rows to the `Expense` shape expected by the UI.
  */
 export async function getExpenses(month?: string): Promise<BackendExpense[]> {
-  const qs = new URLSearchParams({ page: '1', limit: '500' });
-  if (month) qs.set('month', month);
-
-  const result = await backendGet<PaginatedEnvelope<TransactionItem>>(
-    `/api/finances/transactions?${qs.toString()}`,
-  );
-
-  if (!result.ok) {
-    log.error('[getExpenses] backend error', {
-      code: result.error.code,
-      status: result.error.status,
-    });
-    return [];
-  }
-
-  // The api-client unwraps envelope.data — for paginated endpoints the full
-  // envelope is returned. Handle both shapes defensively.
-  const raw = result.value as unknown;
-  let items: TransactionItem[] = [];
-
-  if (Array.isArray(raw)) {
-    items = raw;
-  } else if (
-    raw &&
-    typeof raw === 'object' &&
-    Array.isArray((raw as PaginatedEnvelope<TransactionItem>).data)
-  ) {
-    items = (raw as PaginatedEnvelope<TransactionItem>).data;
-  }
+  // Pedía `limit=500` de una sola vez y el backend recortaba a 100 sin avisar:
+  // con más de 100 egresos en el mes, el listado y el CSV salían incompletos y
+  // parecían completos. Ahora recorre las páginas.
+  const { items } = await traerTodasLasPaginas<TransactionItem>((page, limit) => {
+    const qs = new URLSearchParams({ page: String(page), limit: String(limit) });
+    if (month) qs.set('month', month);
+    return `/api/finances/transactions?${qs.toString()}`;
+  }, 'getExpenses');
 
   return items
     .filter((t) => t.type === 'expense')
