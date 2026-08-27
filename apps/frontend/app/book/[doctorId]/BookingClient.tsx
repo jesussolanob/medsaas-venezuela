@@ -1056,10 +1056,24 @@ export default function BookingClient({
           />
 
           <div className="relative max-w-lg mx-auto px-5 py-6">
-            {/* Top bar with Delta branding */}
-            <div className="flex items-center gap-2 mb-4 opacity-70">
-              <DeltaIsotipo size={22} className="brightness-200" />
-              <span className="text-[11px] font-semibold text-white/80 tracking-wide">
+            {/*
+              Marca Delta, en COLOR.
+
+              Antes el isotipo se lavaba dos veces: `brightness-200` lo llevaba
+              casi a blanco y el contenedor le sumaba `opacity-70`. El resultado
+              era una silueta gris que no se leía como la marca — que es
+              justamente lo que ve el paciente antes de reservar.
+
+              El isotipo oficial es coral + turquesa, y el turquesa se pierde
+              sobre este degradado. Por eso va sobre una pastilla blanca: es el
+              mismo tratamiento que tiene en las barras laterales (logo a color
+              sobre blanco) y garantiza que se lea sea cual sea el fondo.
+            */}
+            <div className="flex items-center gap-2 mb-4">
+              <span className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-white shadow-sm shrink-0">
+                <DeltaIsotipo size={18} />
+              </span>
+              <span className="text-[11px] font-semibold text-white/90 tracking-wide">
                 DELTA SALUD
               </span>
             </div>
