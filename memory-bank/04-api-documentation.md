@@ -1074,3 +1074,21 @@ Los tres campos van en `null` cuando el especialista no tiene vendedor. `soldByS
 🔑 Por qué existe el primero: antes de reasignar, el admin tiene que ver **de quién a quién** mueve
 al especialista. Se llegó a inferir el vendedor actual buscando comisiones pendientes, y eso dejaba
 pisar la atribución en silencio cuando ya estaban todas pagadas. No volver a inferirlo.
+
+### El precio tachado, cableado de punta a punta (2026-08-28)
+
+`plan_prices.compare_at_price` se carga desde **`/admin/plans`**, por plan y período (campo vacío =
+sin oferta), y se pinta tachado al lado del precio real en la tabla de planes.
+
+⚠️ **El mismo dato viaja con dos casings**, según por dónde se lea:
+
+| Lectura                                                | Clave              |
+| ------------------------------------------------------ | ------------------ |
+| `GET /api/admin/plans` (devuelve el objeto de dominio) | `compareAtPrice`   |
+| `GET /api/plans` — catálogo público                    | `compare_at_price` |
+
+La escritura (`PUT /api/admin/plans/:planKey/prices`) va en **snake_case**, como el resto de ese body.
+
+⚠️ El thin-proxy de precios **arma el objeto que manda** en vez de reenviar el original: antes el
+campo viajaba solo porque `filter` conserva las claves extra — invisible en el tipo, y se rompía
+solo el día que alguien mapeara el arreglo.
