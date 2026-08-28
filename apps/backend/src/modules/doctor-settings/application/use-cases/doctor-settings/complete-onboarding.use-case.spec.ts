@@ -5,6 +5,7 @@ import type { IOfficeRepository } from '../../../../offices/domain/repositories/
 import type { IPricingPlanRepository } from '../../../../packages/domain/repositories/pricing-plan.repository';
 import type { Office } from '../../../../offices/domain/entities/office.entity';
 import type { PricingPlan } from '../../../../packages/domain/entities/pricing-plan.entity';
+import type { AccrueSignupCommissionUseCase } from '../../../../seller-commissions/application/use-cases/accrue-signup-commission.use-case';
 
 const DOCTOR_ID = 'doctor-onboarding-1';
 
@@ -60,6 +61,7 @@ describe('CompleteOnboardingUseCase', () => {
       repos.profileRepo,
       repos.officeRepo,
       repos.pricingPlanRepo,
+      null, // AccrueSignupCommissionUseCase — not tested here (best-effort, @Optional)
     );
   });
 
@@ -136,5 +138,78 @@ describe('CompleteOnboardingUseCase', () => {
     expect(first).toEqual({ onboardingCompleted: true });
     expect(second).toEqual({ onboardingCompleted: true });
     expect(repos.profileRepo.markOnboardingCompleted).toHaveBeenCalledTimes(2);
+  });
+
+  // ---------------------------------------------------------------------------
+  // Signup commission hook — fire-and-forget, must never affect the response
+  // ---------------------------------------------------------------------------
+
+  describe('signup commission hook', () => {
+    // The hook is dispatched with `void ... .catch()`, so it settles on the
+    // microtask queue AFTER execute() resolves. Every assertion has to flush it.
+    const flushHook = () => new Promise((resolve) => setImmediate(resolve));
+
+    function makeAccrue(impl?: () => Promise<unknown>) {
+      return {
+        execute: jest.fn(impl ?? (() => Promise.resolve('created'))),
+      } as unknown as jest.Mocked<AccrueSignupCommissionUseCase>;
+    }
+
+    function makeUseCase(accrue: AccrueSignupCommissionUseCase | null) {
+      repos.officeRepo.findActiveByDoctor.mockResolvedValue([ACTIVE_OFFICE]);
+      repos.pricingPlanRepo.findAllByDoctorId.mockResolvedValue([ACTIVE_PLAN]);
+      return new CompleteOnboardingUseCase(
+        repos.profileRepo,
+        repos.officeRepo,
+        repos.pricingPlanRepo,
+        accrue,
+      );
+    }
+
+    it('accrues the signup commission for the completing doctor', async () => {
+      const accrue = makeAccrue();
+
+      await makeUseCase(accrue).execute(DOCTOR_ID);
+      await flushHook();
+
+      expect(accrue.execute).toHaveBeenCalledTimes(1);
+      expect(accrue.execute).toHaveBeenCalledWith(DOCTOR_ID);
+    });
+
+    it('does NOT accrue when the requirements are not met', async () => {
+      const accrue = makeAccrue();
+      repos.officeRepo.findActiveByDoctor.mockResolvedValue([]);
+      repos.pricingPlanRepo.findAllByDoctorId.mockResolvedValue([]);
+      const useCaseWithHook = new CompleteOnboardingUseCase(
+        repos.profileRepo,
+        repos.officeRepo,
+        repos.pricingPlanRepo,
+        accrue,
+      );
+
+      await expect(useCaseWithHook.execute(DOCTOR_ID)).rejects.toThrow(
+        OnboardingRequirementsNotMetError,
+      );
+      await flushHook();
+
+      expect(accrue.execute).not.toHaveBeenCalled();
+    });
+
+    it('still completes the onboarding when the commission blows up', async () => {
+      const accrue = makeAccrue(() => Promise.reject(new Error('commission db down')));
+
+      const result = await makeUseCase(accrue).execute(DOCTOR_ID);
+      await flushHook();
+
+      // The specialist gets through even though the commission failed.
+      expect(result).toEqual({ onboardingCompleted: true });
+      expect(repos.profileRepo.markOnboardingCompleted).toHaveBeenCalledWith(DOCTOR_ID);
+    });
+
+    it('completes the onboarding when no commission use case is wired at all', async () => {
+      const result = await makeUseCase(null).execute(DOCTOR_ID);
+
+      expect(result).toEqual({ onboardingCompleted: true });
+    });
   });
 });

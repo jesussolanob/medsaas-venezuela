@@ -3,6 +3,7 @@ import { SequelizeModule } from '@nestjs/sequelize';
 import { FinancesModule } from '../finances/finances.module';
 import { OfficesModule } from '../offices/offices.module';
 import { StorageModule } from '../storage/storage.module';
+import { SellerCommissionsModule } from '../seller-commissions/seller-commissions.module';
 
 // Models
 import { DoctorProfileModel } from './infrastructure/database/models/doctor-profile.model';
@@ -85,6 +86,9 @@ import { DoctorController } from './presentation/controllers/doctor.controller';
     // StorageModule exports STORAGE_PORT, used by GetDoctorProfileUseCase to re-sign
     // GCS image URLs (avatar, logo, signature) at read time.
     StorageModule,
+    // SellerCommissionsModule exports AccrueSignupCommissionUseCase, injected into
+    // CompleteOnboardingUseCase (best-effort, @Optional).
+    SellerCommissionsModule,
   ],
   controllers: [DoctorController],
   providers: [

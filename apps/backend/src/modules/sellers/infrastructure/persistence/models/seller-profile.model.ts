@@ -74,6 +74,22 @@ export class SellerProfileModel extends Model {
   declare soldBy: string | null;
 
   /**
+   * How the attribution in `sold_by` happened:
+   *   'code'  = the specialist typed a seller code during self-onboarding.
+   *   'admin' = a super_admin assigned the specialist to a seller by hand.
+   *   NULL    = not attributed to any seller.
+   *
+   * TEXT, not a Postgres ENUM: this project has had two production outages from
+   * ENUM values present in code but missing from the DB.
+   *
+   * IMPORTANT: this must be written together with `sold_by`. The signup commission
+   * only pays for the 'code' path, so leaving it NULL silently kills the payout.
+   * Added by migration 20260828000001-seller-commissions.
+   */
+  @Column({ type: DataType.TEXT, allowNull: true, field: 'sold_by_source' })
+  declare soldBySource: string | null;
+
+  /**
    * Timestamp of the seller's or specialist's last authenticated session.
    * Updated by the identity-resolver on every login. NULL = never logged in.
    */

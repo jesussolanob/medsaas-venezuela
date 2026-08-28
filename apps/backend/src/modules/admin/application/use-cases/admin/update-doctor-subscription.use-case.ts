@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import type { Redis } from 'ioredis';
 import { REDIS_CLIENT } from '../../../../../infrastructure/cache/redis.constants';
 import {
@@ -7,6 +7,7 @@ import {
 } from '../../../domain/repositories/admin.repository';
 import { DoctorNotFoundError } from '../../../domain/errors/doctor-not-found.error';
 import type { SubscriptionPlan, SubscriptionStatus } from '@delta/shared-types';
+import { AccruePlanCommissionUseCase } from '../../../../seller-commissions/application/use-cases/accrue-plan-commission.use-case';
 
 export interface UpdateDoctorSubscriptionInput {
   doctorId: string;
@@ -34,6 +35,8 @@ export class UpdateDoctorSubscriptionUseCase {
     private readonly adminRepo: IAdminRepository,
     @Inject(REDIS_CLIENT)
     private readonly redis: Redis,
+    @Optional()
+    private readonly accruePlanCommission: AccruePlanCommissionUseCase | null = null,
   ) {}
 
   async execute(input: UpdateDoctorSubscriptionInput): Promise<void> {
@@ -54,6 +57,17 @@ export class UpdateDoctorSubscriptionUseCase {
       await this.redis.del(DASHBOARD_CACHE_KEY);
     } catch (err) {
       this.logger.warn('Redis unavailable — dashboard cache will expire naturally', err);
+    }
+
+    // Best-effort: accrue plan commission for the new plan (idempotent — DB UNIQUE constraint
+    // ensures only the first paid-plan activation generates a commission).
+    if (this.accruePlanCommission) {
+      void this.accruePlanCommission.execute(input.doctorId, input.plan).catch((err: unknown) => {
+        const msg = err instanceof Error ? err.message : 'unknown error';
+        this.logger.warn(
+          `[update-subscription] accrue-plan-commission failed for doctor=${input.doctorId}: ${msg}`,
+        );
+      });
     }
   }
 }

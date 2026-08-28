@@ -50,6 +50,7 @@ import { SharedFilesModule } from './modules/shared-files/shared-files.module';
 import { LegalModule } from './modules/legal/legal.module';
 import { PendingConsultationsModule } from './modules/pending-consultations/pending-consultations.module';
 import { SellersModule } from './modules/sellers/sellers.module';
+import { SellerCommissionsModule } from './modules/seller-commissions/seller-commissions.module';
 import { InfraAuthModule } from './infrastructure/auth/infra-auth.module';
 
 @Module({
@@ -110,6 +111,7 @@ import { InfraAuthModule } from './infrastructure/auth/infra-auth.module';
     LegalModule,
     PendingConsultationsModule,
     SellersModule,
+    SellerCommissionsModule,
   ],
   controllers: [HealthController],
   providers: [

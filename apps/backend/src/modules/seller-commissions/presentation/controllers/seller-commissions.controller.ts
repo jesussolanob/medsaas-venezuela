@@ -1,0 +1,265 @@
+import { Body, Controller, Get, Param, ParseUUIDPipe, Post, UseGuards } from '@nestjs/common';
+import { z } from 'zod';
+import { AppAuthGuard } from '../../../../infrastructure/auth/app-auth.guard';
+import { RolesGuard } from '../../../../presentation/guards/roles.guard';
+import { Roles } from '../../../../presentation/decorators/roles.decorator';
+import { ZodValidationPipe } from '../../../../presentation/pipes/zod-validation.pipe';
+import {
+  CurrentUser,
+  type CurrentUserPayload,
+} from '../../../../presentation/decorators/current-user.decorator';
+import { GetSellerCommissionsUseCase } from '../../application/use-cases/get-seller-commissions.use-case';
+import { GetPendingCommissionsBySellerUseCase } from '../../application/use-cases/get-pending-commissions-by-seller.use-case';
+import { RegisterSellerPaymentUseCase } from '../../application/use-cases/register-seller-payment.use-case';
+import { GetSellerPaymentsUseCase } from '../../application/use-cases/get-seller-payments.use-case';
+import { AssignSpecialistToSellerUseCase } from '../../application/use-cases/assign-specialist-to-seller.use-case';
+import type {
+  CommissionRow,
+  PendingBySeller,
+} from '../../domain/repositories/seller-commission.repository';
+import type { SellerPayment } from '../../domain/entities/seller-payment.entity';
+
+// ---------------------------------------------------------------------------
+// Request body schemas
+// ---------------------------------------------------------------------------
+
+/**
+ * POST /api/admin/seller-commissions/payments
+ *
+ * Registers a cash-out for a set of pending commissions. The amount is
+ * calculated server-side from the validated commissions (never from the client).
+ */
+const RegisterPaymentBodySchema = z
+  .object({
+    seller_id: z.string().uuid('seller_id must be a UUID'),
+    commission_ids: z.array(z.string().uuid()).min(1, 'commission_ids must not be empty'),
+    method: z.string().min(1).max(200),
+    reference: z.string().min(1).max(500),
+    receipt_url: z.string().url().nullable().optional(),
+    notes: z.string().max(1000).nullable().optional(),
+  })
+  .strict();
+
+type RegisterPaymentBody = z.infer<typeof RegisterPaymentBodySchema>;
+
+/**
+ * POST /api/admin/seller-commissions/assign
+ *
+ * Re-assigns a specialist to a seller. Admin action; overwrites existing sold_by.
+ */
+const AssignSpecialistBodySchema = z
+  .object({
+    specialist_id: z.string().uuid('specialist_id must be a UUID'),
+    seller_id: z.string().uuid('seller_id must be a UUID'),
+  })
+  .strict();
+
+type AssignSpecialistBody = z.infer<typeof AssignSpecialistBodySchema>;
+
+// ---------------------------------------------------------------------------
+// Response helpers
+// ---------------------------------------------------------------------------
+
+interface SuccessResponse<T> {
+  success: true;
+  data: T;
+}
+
+function ok<T>(data: T): SuccessResponse<T> {
+  return { success: true, data };
+}
+
+function toCommissionDto(c: CommissionRow) {
+  return {
+    id: c.id,
+    sellerId: c.sellerId,
+    specialistId: c.specialistId,
+    specialistName: c.specialistName,
+    type: c.type,
+    amountUsd: c.amountUsd,
+    planKey: c.planKey,
+    status: c.status,
+    earnedAt: c.earnedAt,
+    paymentId: c.paymentId,
+    createdAt: c.createdAt,
+  };
+}
+
+function toPendingBySellerDto(p: PendingBySeller) {
+  return {
+    sellerId: p.sellerId,
+    sellerName: p.sellerName,
+    totalPendingUsd: p.totalPendingUsd,
+    pendingCount: p.pendingCount,
+    commissions: p.commissions.map((c) => ({
+      commissionId: c.commissionId,
+      specialistId: c.specialistId,
+      specialistName: c.specialistName,
+      type: c.type,
+      amountUsd: c.amountUsd,
+      planKey: c.planKey,
+      earnedAt: c.earnedAt,
+    })),
+  };
+}
+
+function toPaymentDto(p: SellerPayment) {
+  return {
+    id: p.id,
+    sellerId: p.sellerId,
+    amountUsd: p.amountUsd,
+    method: p.method,
+    reference: p.reference,
+    receiptUrl: p.receiptUrl,
+    notes: p.notes,
+    paidAt: p.paidAt,
+    createdBy: p.createdBy,
+    createdAt: p.createdAt,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Controllers
+// ---------------------------------------------------------------------------
+
+/**
+ * SellerCommissionsAdminController
+ *
+ * Admin-only endpoints (role = super_admin):
+ *
+ *   GET  /api/admin/seller-commissions/pending
+ *     → all pending commissions grouped by seller with totals.
+ *
+ *   POST /api/admin/seller-commissions/payments
+ *     → register a payment batch for a seller's pending commissions.
+ *
+ *   GET  /api/admin/seller-commissions/payments/:sellerId
+ *     → payment history for a specific seller.
+ *
+ *   POST /api/admin/seller-commissions/assign
+ *     → assign or re-assign a specialist to a seller.
+ *
+ * SECURITY:
+ *   - All endpoints require @Roles('super_admin').
+ *   - adminId always comes from CurrentUser().sub — never from the request body.
+ */
+@Controller('admin/seller-commissions')
+@UseGuards(AppAuthGuard, RolesGuard)
+@Roles('super_admin')
+export class SellerCommissionsAdminController {
+  constructor(
+    private readonly getPending: GetPendingCommissionsBySellerUseCase,
+    private readonly registerPayment: RegisterSellerPaymentUseCase,
+    private readonly getPayments: GetSellerPaymentsUseCase,
+    private readonly assignSpecialist: AssignSpecialistToSellerUseCase,
+  ) {}
+
+  /**
+   * GET /api/admin/seller-commissions/pending
+   * Lists all pending commissions grouped by seller for the admin payout screen.
+   */
+  @Get('pending')
+  async listPending(): Promise<SuccessResponse<ReturnType<typeof toPendingBySellerDto>[]>> {
+    const data = await this.getPending.execute();
+    return ok(data.map(toPendingBySellerDto));
+  }
+
+  /**
+   * POST /api/admin/seller-commissions/payments
+   * Registers a payment batch. Amount is calculated server-side.
+   */
+  @Post('payments')
+  async registerPaymentEndpoint(
+    @CurrentUser() user: CurrentUserPayload,
+    @Body(new ZodValidationPipe(RegisterPaymentBodySchema)) body: RegisterPaymentBody,
+  ): Promise<SuccessResponse<ReturnType<typeof toPaymentDto>>> {
+    const payment = await this.registerPayment.execute(
+      {
+        sellerId: body.seller_id,
+        commissionIds: body.commission_ids,
+        method: body.method,
+        reference: body.reference,
+        receiptUrl: body.receipt_url ?? null,
+        notes: body.notes ?? null,
+      },
+      user.sub,
+    );
+    return ok(toPaymentDto(payment));
+  }
+
+  /**
+   * GET /api/admin/seller-commissions/payments/:sellerId
+   * Payment history for a specific seller.
+   */
+  @Get('payments/:sellerId')
+  async listPayments(
+    @Param('sellerId', ParseUUIDPipe) sellerId: string,
+  ): Promise<SuccessResponse<ReturnType<typeof toPaymentDto>[]>> {
+    const payments = await this.getPayments.execute(sellerId);
+    return ok(payments.map(toPaymentDto));
+  }
+
+  /**
+   * POST /api/admin/seller-commissions/assign
+   * Assigns or re-assigns a specialist to a seller.
+   */
+  @Post('assign')
+  async assignSpecialistEndpoint(
+    @CurrentUser() user: CurrentUserPayload,
+    @Body(new ZodValidationPipe(AssignSpecialistBodySchema)) body: AssignSpecialistBody,
+  ): Promise<SuccessResponse<{ assigned: true }>> {
+    await this.assignSpecialist.execute(
+      {
+        specialistId: body.specialist_id,
+        newSellerId: body.seller_id,
+      },
+      user.sub,
+    );
+    return ok({ assigned: true });
+  }
+}
+
+/**
+ * SellerCommissionsSellerController
+ *
+ * Seller portal endpoints (role = seller):
+ *
+ *   GET /api/seller/commissions      → my commissions (paid + pending)
+ *   GET /api/seller/payments         → my payment history with receipt URLs
+ *
+ * SECURITY:
+ *   - sellerId always comes from CurrentUser().sub — never from the request body or URL.
+ */
+@Controller('seller')
+@UseGuards(AppAuthGuard, RolesGuard)
+@Roles('seller')
+export class SellerCommissionsSellerController {
+  constructor(
+    private readonly getCommissions: GetSellerCommissionsUseCase,
+    private readonly getPayments: GetSellerPaymentsUseCase,
+  ) {}
+
+  /**
+   * GET /api/seller/commissions
+   * All commissions for the authenticated seller (paid and pending).
+   */
+  @Get('commissions')
+  async listMyCommissions(
+    @CurrentUser() user: CurrentUserPayload,
+  ): Promise<SuccessResponse<ReturnType<typeof toCommissionDto>[]>> {
+    const commissions = await this.getCommissions.execute(user.sub);
+    return ok(commissions.map(toCommissionDto));
+  }
+
+  /**
+   * GET /api/seller/payments
+   * Payment history for the authenticated seller.
+   */
+  @Get('payments')
+  async listMyPayments(
+    @CurrentUser() user: CurrentUserPayload,
+  ): Promise<SuccessResponse<ReturnType<typeof toPaymentDto>[]>> {
+    const payments = await this.getPayments.execute(user.sub);
+    return ok(payments.map(toPaymentDto));
+  }
+}

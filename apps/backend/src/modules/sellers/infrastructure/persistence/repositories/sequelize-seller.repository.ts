@@ -180,6 +180,11 @@ export class SequelizeSellerRepository implements ISellerRepository {
           phone: params.phone ?? null,
           cedula: params.cedula ?? null,
           soldBy: params.soldBy,
+          // The seller loaded this specialist by hand from their own portal. It is
+          // seller-originated work, so it earns the signup commission — what does
+          // NOT earn it is an admin assigning a lead ('admin'). Tagged separately
+          // from 'code' so the payout detail can tell the two apart.
+          soldBySource: 'seller_manual',
           sellerCode: null,
         } as Parameters<typeof SellerProfileModel.create>[0],
         { transaction: t },
@@ -219,9 +224,17 @@ export class SequelizeSellerRepository implements ISellerRepository {
   async linkSoldBy(specialistId: string, sellerId: string): Promise<void> {
     // UPDATE ... WHERE sold_by IS NULL: the DB guarantees the one-write rule even
     // under concurrent requests — only one of them can win the conditional update.
-    await this.profileModel.update({ soldBy: sellerId } as Partial<SellerProfileModel>, {
-      where: { id: specialistId, soldBy: null },
-    });
+    //
+    // sold_by_source travels WITH sold_by, in the same statement. This is the code
+    // path, so it is always 'code'. Writing sold_by alone would leave the source
+    // NULL, and AccrueSignupCommissionUseCase only pays when it reads 'code' —
+    // the entry commission would silently never fire for anyone.
+    await this.profileModel.update(
+      { soldBy: sellerId, soldBySource: 'code' } as Partial<SellerProfileModel>,
+      {
+        where: { id: specialistId, soldBy: null },
+      },
+    );
   }
 }
 

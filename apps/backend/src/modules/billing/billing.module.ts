@@ -4,6 +4,7 @@ import { SequelizeModule } from '@nestjs/sequelize';
 // External modules
 import { EmailModule } from '../email/email.module';
 import { StorageModule } from '../storage/storage.module';
+import { SellerCommissionsModule } from '../seller-commissions/seller-commissions.module';
 
 // Models (own)
 import { SubscriptionPaymentModel } from './infrastructure/database/models/subscription-payment.model';
@@ -92,6 +93,9 @@ import { DoctorSubscriptionPaymentsController } from './presentation/controllers
     EmailModule,
     // Provides STORAGE_PORT for GetPaymentReceiptUrlUseCase (signed URL generation)
     StorageModule,
+    // SellerCommissionsModule exports AccruePlanCommissionUseCase, injected into
+    // ApproveSubscriptionPaymentUseCase (best-effort, @Optional).
+    SellerCommissionsModule,
   ],
   controllers: [
     SubscriptionPaymentsController,
