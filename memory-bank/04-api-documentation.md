@@ -998,3 +998,58 @@ cierra la ventana de TOCTOU para pagar dos veces lo mismo. `adminId` sale de `Cu
 
 🔒 En los dos, el `sellerId` sale **siempre** de `CurrentUser().sub` — nunca de la URL ni del
 body. Un vendedor no puede ver la cartera de otro.
+
+### Comprobante del pago (2026-08-28)
+
+`seller_payments.receipt_url` guarda **el path del objeto en GCS, NO una URL**. Los comprobantes
+son privados: la firma vence a los 15 minutos, así que enlazar el valor guardado da un 404 al rato.
+La firma se pide **a demanda**, recién cuando alguien va a abrir el archivo:
+
+| Endpoint                                                            | Rol           |
+| ------------------------------------------------------------------- | ------------- |
+| `GET /api/seller/payments/:paymentId/receipt-url`                   | `seller`      |
+| `GET /api/admin/seller-commissions/payments/:paymentId/receipt-url` | `super_admin` |
+
+Los dos devuelven `{ success, data: { url } }`. ⚠️ **Es `url`, no `signedUrl`** — anotar mal ese
+genérico en el BFF no da error de tipos y deja el botón mudo con `undefined`. Ya pasó una vez acá.
+
+🔒 En el del vendedor, un pago que no existe y uno que es **de otro vendedor** devuelven
+**exactamente el mismo 404**. Es a propósito: distinguirlos dejaría enumerar los pagos ajenos —
+el mismo criterio que ya se usó para la cartera de especialistas.
+
+El admin sube el archivo con `POST /api/storage/upload` (`kind: 'receipt'`), que responde
+`{ url, path }`, y manda **`path`** como `receipt_url` al registrar el pago.
+
+## Datos de cobro del vendedor (2026-08-28)
+
+Es **cómo Delta le paga la comisión al vendedor**. Vive en `profiles.payment_details`, la misma
+columna y la misma forma que usa el especialista para cobrarle a sus pacientes (ADR-044) —
+sin tablas ni columnas nuevas.
+
+| Endpoint                                     | Rol                                       |
+| -------------------------------------------- | ----------------------------------------- |
+| `GET /api/seller/payment-details`            | `seller` — los suyos, id del token        |
+| `PUT /api/seller/payment-details`            | `seller` — **reemplazo total**, no parche |
+| `GET /api/admin/sellers/:id/payment-details` | `super_admin`                             |
+
+Clave de la respuesta y del body: **`paymentDetails` en camelCase**. (El perfil del especialista
+es **mixto** —devuelve camelCase y acepta snake_case al escribir—; no sirve como modelo.)
+
+⚠️ La forma del JSONB acepta **dos variantes** (objeto suelto o lista por método) porque hay datos
+reales en producción con la vieja y no se migran. **Nadie lee `payment_details[metodo]` directo:
+todo pasa por `entriesOf` de `apps/frontend/lib/payment-details.ts`.** `pago_movil` y
+`transferencia` admiten varias entradas.
+
+Escribir un valor que no sea string, o una entrada vacía, da `InvalidPaymentEntryError` en español.
+Los datos bancarios **nunca van a logs**.
+
+## Precio tachado (2026-08-28)
+
+`plan_prices.compare_at_price` es el precio de referencia que se muestra tachado al lado del real,
+por plan y período. `NULL` = sin promoción. Se edita desde el admin junto con los precios y viaja
+en la lectura pública del catálogo como **`compare_at_price`** (snake_case, consistente con el
+resto de `PublicPriceEntry`).
+
+Regla de dominio: si viene, tiene que ser **estrictamente mayor** al precio real —
+`CompareAtPriceInvalidError`. Un "tachado" más barato que el precio real es un error de carga,
+no una promoción.

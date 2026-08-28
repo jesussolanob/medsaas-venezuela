@@ -841,3 +841,35 @@ punta**: la migración no se aplicó a ninguna base y no hubo boot del dist ni c
 
 ⚠️ `plan_prices.compare_at_price` (el precio tachado) existe **solo en la migración**: ningún
 código lo lee ni lo escribe todavía.
+
+## Pantallas del programa de vendedores (2026-08-28)
+
+### Portal del vendedor
+
+- **`/seller/comisiones`** — lo primero y más grande es **cuánto le deben**: es la pregunta por la
+  que el vendedor entra. Debajo, el detalle comisión por comisión (qué especialista, si es de
+  entrada o de plan, monto, fecha) y el historial de pagos. Pendiente y pagada se distinguen por
+  color e ícono, no solo por texto. ⚠️ El botón del comprobante **pide la firma a demanda**; no
+  enlaza el valor guardado, que es un path de GCS.
+- **`/seller/cobros`** — sus datos de cobro. Usa `PaymentDetailsEditor`.
+
+### Panel de admin
+
+- **`/admin/comisiones`** — la pantalla de plata. Pendientes por vendedor, selección de las
+  comisiones a pagar con el total actualizándose en vivo, resumen antes de confirmar, y registro
+  del pago con **subida real del comprobante** (`kind: 'receipt'`, se persiste el `path`).
+  El pago es **irreversible desde la UI**: no hay endpoint para deshacerlo.
+- **`/admin/sellers`** — deshabilitar/rehabilitar un vendedor (reusa
+  `PUT /api/admin/doctors/:id/access`, que **es genérico pese al nombre**) y ver sus datos de cobro.
+- Asignar un especialista a un vendedor vive en `/admin/doctors`, con modal de reconfirmación
+  cuando el especialista ya tiene vendedor.
+
+### `PaymentDetailsEditor` (`components/shared/`)
+
+Extraído de `app/doctor/settings/page.tsx` (–214 líneas duplicadas) para que el vendedor y el
+especialista editen sus datos de cobro con **un solo componente**. Respeta la regla de
+`lib/payment-details.ts`: nunca lee `payment_details[metodo]` directo, todo pasa por `entriesOf`.
+
+⚠️ Al extraerlo, la pantalla de configuración del especialista —que está en producción— quedó
+un rato sin compilar. Si se vuelve a tocar, correr `tsc` sobre **todo** el proyecto, no filtrado
+por los archivos propios: así es como un error de sintaxis pasa desapercibido.
