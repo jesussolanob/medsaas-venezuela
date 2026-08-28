@@ -24,6 +24,9 @@ const doctorDetail: DoctorDetail = {
   patientCount: 10,
   consultationCount: 3,
   monthlyRevenue: 150,
+  soldById: null,
+  soldByName: null,
+  soldBySource: null,
 };
 
 const makeRepo = (returnValue: DoctorDetail | null = doctorDetail): jest.Mocked<IAdminRepository> =>

@@ -427,6 +427,11 @@ export class AdminController {
         patientCount: doctor.patientCount,
         consultationCount: doctor.consultationCount,
         monthlyRevenue: doctor.monthlyRevenue,
+        // Seller attribution — used by the assign-seller reconfirmation modal.
+        // soldByName is PII: never log this response.
+        soldById: doctor.soldById,
+        soldByName: doctor.soldByName,
+        soldBySource: doctor.soldBySource,
       },
     };
   }

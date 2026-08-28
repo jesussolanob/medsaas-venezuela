@@ -300,6 +300,24 @@ export interface DoctorDetail {
   consultationCount: number;
   /** Sum of approved consultation amounts in the current calendar month (0 if none). */
   monthlyRevenue: number;
+  /**
+   * Seller attribution fields — used by the admin assign-seller flow to show
+   * a reconfirmation modal when reassigning a specialist with an existing seller.
+   *
+   * SECURITY: soldByName is PII — never log it.
+   */
+  /** UUID of the seller who onboarded this specialist, or null when unattributed. */
+  soldById: string | null;
+  /** Full name of the current seller. PII — do NOT log. null when unattributed. */
+  soldByName: string | null;
+  /**
+   * How the current attribution was established:
+   *   'code'          = specialist typed a seller code during self-onboarding.
+   *   'admin'         = super_admin assigned them by hand.
+   *   'seller_manual' = seller created the account from their portal.
+   *   null            = not attributed to any seller.
+   */
+  soldBySource: string | null;
 }
 
 /** One data point in the doctor-growth chart. */

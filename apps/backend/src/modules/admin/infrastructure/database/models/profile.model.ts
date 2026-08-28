@@ -74,6 +74,30 @@ export class ProfileAdminModel extends Model {
   @Column({ type: DataType.DATE, allowNull: true, field: 'last_sign_in_at' })
   declare lastSignInAt: Date | null;
 
+  /**
+   * FK to the seller who onboarded this specialist.
+   * NULL = not attributed to any seller.
+   *
+   * Used by the admin doctor-detail endpoint to show the reconfirmation modal
+   * when reassigning a specialist that already has a seller.
+   * Added by migration 20260816000001-seller-role.
+   */
+  @Column({ type: DataType.UUID, allowNull: true, field: 'sold_by' })
+  declare soldBy: string | null;
+
+  /**
+   * How the sold_by attribution was established.
+   *   'code'          = specialist typed a seller code during self-onboarding.
+   *   'admin'         = super_admin assigned them by hand.
+   *   'seller_manual' = seller created the account from their portal.
+   *   NULL            = not attributed to any seller.
+   *
+   * TEXT (not ENUM) — see [[enums-de-postgres-sin-el-valor]].
+   * Added by migration 20260828000001-seller-commissions.
+   */
+  @Column({ type: DataType.TEXT, allowNull: true, field: 'sold_by_source' })
+  declare soldBySource: string | null;
+
   @Column({ type: DataType.DATE, allowNull: true, field: 'created_at' })
   declare createdAt: Date;
 

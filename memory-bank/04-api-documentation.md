@@ -1053,3 +1053,24 @@ resto de `PublicPriceEntry`).
 Regla de dominio: si viene, tiene que ser **estrictamente mayor** al precio real —
 `CompareAtPriceInvalidError`. Un "tachado" más barato que el precio real es un error de carga,
 no una promoción.
+
+### Vendedor actual de un especialista — DOS caminos (2026-08-28)
+
+El mismo dato se lee por dos endpoints. **No es un error, pero conviene saberlo:**
+
+| Endpoint                                                                | Para qué                                                               | Forma                                           |
+| ----------------------------------------------------------------------- | ---------------------------------------------------------------------- | ----------------------------------------------- |
+| `GET /api/admin/specialist-assignment/:specialistId` (módulo `sellers`) | Consulta puntual antes de reasignar. La usa el modal de reconfirmación | `{ sellerId, sellerName, soldBySource }`        |
+| `GET /api/admin/doctors/:id` (módulo `admin`)                           | La ficha completa del especialista, sin llamada extra                  | agrega `soldById`, `soldByName`, `soldBySource` |
+
+⚠️ **Ojo con los nombres: `sellerId`/`sellerName` en el primero, `soldById`/`soldByName` en el
+segundo.** Los dos leen las mismas columnas (`profiles.sold_by` y `sold_by_source`), así que no
+pueden discrepar entre sí — pero un tipo copiado de uno al otro no compila, o peor, compila y
+devuelve `undefined`.
+
+Los tres campos van en `null` cuando el especialista no tiene vendedor. `soldBySource` es
+`'code' | 'seller_manual' | 'admin' | null`. **`sellerName`/`soldByName` son PII: nunca a logs.**
+
+🔑 Por qué existe el primero: antes de reasignar, el admin tiene que ver **de quién a quién** mueve
+al especialista. Se llegó a inferir el vendedor actual buscando comisiones pendientes, y eso dejaba
+pisar la atribución en silencio cuando ya estaban todas pagadas. No volver a inferirlo.

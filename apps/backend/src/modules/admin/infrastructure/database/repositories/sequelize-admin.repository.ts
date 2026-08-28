@@ -310,6 +310,21 @@ export class SequelizeAdminRepository implements IAdminRepository {
 
     const base = this.profileRowToDomainWithSub(row, sub ?? undefined);
 
+    // Seller attribution — two targeted point-reads, no JOIN.
+    // SECURITY: sellerName is PII — never log it.
+    let soldById: string | null = row.soldBy ?? null;
+    let soldByName: string | null = null;
+    const soldBySource: string | null = row.soldBySource ?? null;
+
+    if (soldById) {
+      const seller = await this.profileModel.findOne({
+        where: { id: soldById, role: 'seller' },
+        attributes: ['id', 'fullName'],
+      });
+      soldById = seller?.id ?? soldById;
+      soldByName = seller?.fullName ?? null;
+    }
+
     return {
       id: row.id,
       fullName: row.fullName,
@@ -332,6 +347,9 @@ export class SequelizeAdminRepository implements IAdminRepository {
       patientCount: parseInt(stats.patient_count ?? '0', 10),
       consultationCount: parseInt(stats.consultation_count ?? '0', 10),
       monthlyRevenue: parseFloat(stats.monthly_revenue ?? '0') || 0,
+      soldById,
+      soldByName,
+      soldBySource,
     };
   }
 
