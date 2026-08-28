@@ -13,6 +13,7 @@ import {
 } from '../../../../packages/domain/repositories/pricing-plan.repository';
 import { OnboardingRequirementsNotMetError } from '../../../domain/errors/onboarding-requirements-not-met.error';
 import { AccrueSignupCommissionUseCase } from '../../../../seller-commissions/application/use-cases/accrue-signup-commission.use-case';
+import { reportCommissionFailure } from '../../../../seller-commissions/application/report-commission-failure';
 
 export interface CompleteOnboardingOutput {
   onboardingCompleted: boolean;
@@ -67,8 +68,11 @@ export class CompleteOnboardingUseCase {
     // 3. Best-effort: accrue signup commission (does not affect the response on failure).
     if (this.accrueSignupCommission) {
       void this.accrueSignupCommission.execute(doctorId).catch((err: unknown) => {
-        const msg = err instanceof Error ? err.message : 'unknown error';
-        this.logger.warn(`[complete-onboarding] accrue-signup-commission failed: ${msg}`);
+        reportCommissionFailure(
+          this.logger,
+          { hook: 'complete-onboarding', specialistId: doctorId, type: 'signup' },
+          err,
+        );
       });
     }
 

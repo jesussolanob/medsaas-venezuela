@@ -8,6 +8,7 @@ import {
 import { DoctorNotFoundError } from '../../../domain/errors/doctor-not-found.error';
 import type { SubscriptionPlan, SubscriptionStatus } from '@delta/shared-types';
 import { AccruePlanCommissionUseCase } from '../../../../seller-commissions/application/use-cases/accrue-plan-commission.use-case';
+import { reportCommissionFailure } from '../../../../seller-commissions/application/report-commission-failure';
 
 export interface UpdateDoctorSubscriptionInput {
   doctorId: string;
@@ -63,9 +64,15 @@ export class UpdateDoctorSubscriptionUseCase {
     // ensures only the first paid-plan activation generates a commission).
     if (this.accruePlanCommission) {
       void this.accruePlanCommission.execute(input.doctorId, input.plan).catch((err: unknown) => {
-        const msg = err instanceof Error ? err.message : 'unknown error';
-        this.logger.warn(
-          `[update-subscription] accrue-plan-commission failed for doctor=${input.doctorId}: ${msg}`,
+        reportCommissionFailure(
+          this.logger,
+          {
+            hook: 'update-subscription',
+            specialistId: input.doctorId,
+            type: 'plan',
+            planKey: input.plan,
+          },
+          err,
         );
       });
     }

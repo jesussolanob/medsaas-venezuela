@@ -10,6 +10,7 @@ import {
 import { MailerService } from '../../../../email/application/services/mailer.service';
 import { SubscriptionPaymentNotFoundError } from '../../../domain/errors/subscription-payment-not-found.error';
 import { AccruePlanCommissionUseCase } from '../../../../seller-commissions/application/use-cases/accrue-plan-commission.use-case';
+import { reportCommissionFailure } from '../../../../seller-commissions/application/report-commission-failure';
 
 export interface ApproveSubscriptionPaymentInput {
   paymentId: string;
@@ -102,9 +103,15 @@ export class ApproveSubscriptionPaymentUseCase {
       void this.accruePlanCommission
         .execute(payment.doctorId, payment.planKey)
         .catch((err: unknown) => {
-          const msg = err instanceof Error ? err.message : 'unknown error';
-          this.logger.warn(
-            `[approve-payment] accrue-plan-commission failed for payment=${input.paymentId}: ${msg}`,
+          reportCommissionFailure(
+            this.logger,
+            {
+              hook: 'approve-payment',
+              specialistId: payment.doctorId,
+              type: 'plan',
+              planKey: payment.planKey,
+            },
+            err,
           );
         });
     }

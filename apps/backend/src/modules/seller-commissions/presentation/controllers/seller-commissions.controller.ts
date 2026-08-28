@@ -32,7 +32,12 @@ import type { SellerPayment } from '../../domain/entities/seller-payment.entity'
 const RegisterPaymentBodySchema = z
   .object({
     seller_id: z.string().uuid('seller_id must be a UUID'),
-    commission_ids: z.array(z.string().uuid()).min(1, 'commission_ids must not be empty'),
+    // El techo evita que un lote enorme arme un IN (...) gigante contra la BD.
+    // 500 está muy por encima de cualquier pago real a un vendedor.
+    commission_ids: z
+      .array(z.string().uuid())
+      .min(1, 'Seleccioná al menos una comisión para pagar.')
+      .max(500, 'No se pueden pagar más de 500 comisiones en un mismo pago.'),
     method: z.string().min(1).max(200),
     reference: z.string().min(1).max(500),
     receipt_url: z.string().url().nullable().optional(),

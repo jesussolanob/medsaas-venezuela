@@ -44,8 +44,10 @@ interface CommissionJoinRow {
 interface PendingBySellerRow {
   seller_id: string;
   seller_name: string;
+  /** NUMERIC — pg lo devuelve como string, siempre parseFloat antes de sumar. */
   total_pending_usd: string;
-  pending_count: string;
+  /** Casteado a ::int en la query, así que llega como number. */
+  pending_count: number;
 }
 
 interface SpecialistProfileRow {
@@ -217,7 +219,7 @@ export class SequelizeSellerCommissionRepository implements ISellerCommissionRep
          c.seller_id,
          p.full_name           AS seller_name,
          SUM(c.amount_usd)     AS total_pending_usd,
-         COUNT(*)::text        AS pending_count
+         COUNT(*)::int         AS pending_count
        FROM seller_commissions c
        JOIN profiles p ON p.id = c.seller_id
        WHERE c.status = 'pending'
@@ -274,7 +276,7 @@ export class SequelizeSellerCommissionRepository implements ISellerCommissionRep
       sellerId: s.seller_id,
       sellerName: s.seller_name,
       totalPendingUsd: parseFloat(s.total_pending_usd),
-      pendingCount: parseInt(s.pending_count, 10),
+      pendingCount: s.pending_count,
       commissions: detailBySeller.get(s.seller_id) ?? [],
     }));
   }
@@ -367,10 +369,18 @@ export class SequelizeSellerCommissionRepository implements ISellerCommissionRep
       );
 
       // 2. Mark commissions as paid.
+      // El WHERE repite sellerId y status aunque el SELECT con lock de arriba ya
+      // los validó: si alguien reordena estas dos operaciones en el futuro, el
+      // UPDATE sigue sin poder tocar la comisión de otro vendedor ni repisar una
+      // ya pagada. Defensa en profundidad sobre plata.
       await this.commissionModel.update(
         { status: 'paid', paymentId } as Partial<SellerCommissionModel>,
         {
-          where: { id: params.commissionIds },
+          where: {
+            id: params.commissionIds,
+            sellerId: params.sellerId,
+            status: 'pending',
+          },
           transaction: t,
         },
       );
