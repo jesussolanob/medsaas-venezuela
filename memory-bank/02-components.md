@@ -822,3 +822,22 @@ entera de diagnóstico. Ver **ADR-043**.
 ⚠️ **El rol que espera el watchdog es el MISMO que exigen los guards** (`requireSuperAdmin` en el
 BFF y `@Roles('super_admin')` en el backend). El día que `/admin` admita también al rol `admin`,
 hay que ampliarlo en los tres lugares o la pantalla va a bloquear a alguien con permiso.
+
+## Módulo `seller-commissions` (backend, 2026-08-28)
+
+Motor de comisiones del programa de ventas. DDD de 4 capas en
+`apps/backend/src/modules/seller-commissions/`: 2 entidades, 7 use cases, repositorio Sequelize,
+3 errores de dominio y 2 controllers (admin y portal del vendedor). Migración
+`20260828000001-seller-commissions.cjs` — tablas `seller_commissions`, `seller_payments`,
+`seller_attribution_logs`, más `profiles.sold_by_source` y `plan_prices.compare_at_price`.
+
+Las reglas de negocio están en **ADR-046** (una sola comisión de plan, la del primero pago),
+**ADR-047** (`sold_by_source` viaja con `sold_by`) y **ADR-048** (los cuatro enganches).
+
+⚠️ **No lo llama nadie todavía.** El backend está completo y verificado, pero no existen las
+rutas BFF ni las pantallas — ni la del admin para pagar ni la del vendedor para ver lo suyo.
+Es el patrón de "código completo que nadie llama", así que **está sin ejercitar de punta a
+punta**: la migración no se aplicó a ninguna base y no hubo boot del dist ni curl real.
+
+⚠️ `plan_prices.compare_at_price` (el precio tachado) existe **solo en la migración**: ningún
+código lo lee ni lo escribe todavía.

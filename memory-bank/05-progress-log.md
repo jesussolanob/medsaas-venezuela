@@ -4518,3 +4518,60 @@ Google** ejercita el enlace del vendedor, el código autopoblado, el teléfono o
 **onboarding completo** (nunca validado) y **la regla de que reescribir otro código no cambia la
 atribución** (ADR-037). Aparte quedan la **baja de cuenta** (`marcovillegas1197@gmail.com`) y el
 **aislamiento entre dos vendedores** (hace falta una segunda cuenta con login propio).
+
+---
+
+## 2026-08-28 — Etapa 2 del lote de comisiones: el motor, cerrado y commiteado
+
+Rama `feature/seller-commissions`, commit `a94d6f52`. **Contexto de recuperación:** la sesión
+anterior se cortó por un reinicio de la máquina justo después de lanzar los agentes; su salida
+quedó en disco **sin verificar, sin revisar y sin commitear**. Esta sesión reconstruyó el estado
+desde el working tree y desde la transcripción, y cerró la etapa.
+
+### El lote se partió en cuatro etapas
+
+| Etapa | Qué es                                                            | Estado                                                    |
+| ----- | ----------------------------------------------------------------- | --------------------------------------------------------- |
+| 0     | Precio tachado configurable + formato del PDF                     | PDF listo (sin commitear); precio tachado **sin empezar** |
+| 1     | Datos de cobro del vendedor, deshabilitarlo, asignar especialista | **Sin empezar**                                           |
+| 2     | El motor de comisiones                                            | ✅ **cerrado acá**                                        |
+| 3     | Pantallas de plata (admin paga, vendedor ve)                      | **Sin empezar**                                           |
+
+### Dos defectos que el agente no vio y que el lint y la enumeración destaparon
+
+**1. La comisión de entrada no se habría pagado NUNCA, en silencio.** `linkSoldBy` —el camino de
+atribución por código— escribía `sold_by` pero no `sold_by_source`. Como `AccrueSignupCommission`
+solo paga cuando lee una fuente elegible, la columna quedaba en NULL y **ningún especialista
+nuevo** habría generado sus 10 USD. La migración hace backfill de las filas viejas, lo que lo
+disfrazaba: en una base ya poblada se veía bien. Ver **ADR-047**.
+
+**2. Faltaba un enganche.** Se enumeraron los caminos que escriben `profiles.plan` en vez de
+confiar en la lista del agente: son cuatro y `extend-doctor-subscription` estaba afuera. Mismo
+patrón que el ADR-032. Ver **ADR-048**.
+
+Además: el use case de pago calculaba el monto y **lo tiraba** (lo delató un error de lint por
+variable sin usar). No era un agujero —el repositorio lo recalcula dentro de la transacción con
+lock, que es más fuerte— pero era código muerto que mentía sobre dónde vive la regla.
+
+### Lo que la suite verde no cubría
+
+**Los tres enganches no tenían un solo test.** Los specs solo pasaban `null` para que compilaran.
+Se escribieron 20 tests nuevos: que cada enganche dispare con el plan correcto, que **no** dispare
+cuando la operación falla, y que la operación principal siga adelante cuando la comisión explota.
+Se creó de cero `extend-doctor-subscription.use-case.spec.ts`, que no existía, y un spec enfocado
+en `linkSoldBy` como guarda de regresión del defecto 1.
+
+### Verificación
+
+417 suites / 3991 tests, `nx build backend` y lint de los archivos tocados, **los tres con exit 0
+real**. ⚠️ `nx lint backend` completo **se queda sin memoria** en esta máquina (heap de 4 GB), así
+que hay que correrlo acotado a los archivos tocados; hay además 2 errores preexistentes en
+`export-doctors` y `get-doctor-patients`.
+
+### Qué falta para dar el motor por bueno de verdad
+
+- **Aplicar la migración** — no se corrió en ninguna base.
+- **Boot del `dist` y curl real** — Docker estaba apagado y la máquina tiene poca RAM.
+- **Las pantallas** (Etapas 1 y 3). Hoy el motor **no es alcanzable desde la UI**.
+- Decisión abierta del dueño: qué querer ver exactamente en el resumen al ir a pagarle a un
+  vendedor.

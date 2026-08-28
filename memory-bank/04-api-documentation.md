@@ -969,3 +969,32 @@ español dentro de `super(...)` / `new XxxException(...)`.
 Ahora sale de **`profiles`** (LEFT JOIN a `subscriptions` solo por precio y fin de prueba). Antes
 leía la tabla legacy y mostraba un plan distinto al que gobierna el acceso del especialista.
 Ver **ADR-042**. El contrato de respuesta no cambió.
+
+## Comisiones de vendedores (2026-08-28)
+
+Módulo `seller-commissions`. Todo bajo el envelope `{ success: true, data }` de siempre.
+⚠️ Al 2026-08-28 el backend está commiteado pero **todavía no hay rutas BFF ni pantallas** que
+lo consuman (Etapas 1 y 3 pendientes).
+
+### Admin — `@Roles('super_admin')`
+
+| Endpoint                                               | Qué hace                                                                                                                      |
+| ------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
+| `GET /api/admin/seller-commissions/pending`            | Pendientes agrupados por vendedor, con total, cantidad y el detalle de cada comisión (qué especialista, si es entrada o plan) |
+| `POST /api/admin/seller-commissions/payments`          | Registra un pago. Body: `seller_id`, `commission_ids[]`, `method`, `reference`, `receipt_url?`, `notes?`                      |
+| `GET /api/admin/seller-commissions/payments/:sellerId` | Historial de pagos de un vendedor                                                                                             |
+| `POST /api/admin/seller-commissions/assign`            | Asigna o reasigna un especialista a un vendedor. Body: `specialist_id`, `seller_id`                                           |
+
+🔑 **El body de `payments` NO lleva monto y no debe llevarlo nunca.** El total se suma en el
+servidor releyendo las comisiones **dentro de la transacción y con lock de fila**, lo que además
+cierra la ventana de TOCTOU para pagar dos veces lo mismo. `adminId` sale de `CurrentUser().sub`.
+
+### Portal del vendedor — `@Roles('seller')`
+
+| Endpoint                      | Qué hace                                          |
+| ----------------------------- | ------------------------------------------------- |
+| `GET /api/seller/commissions` | Mis comisiones, pagadas y pendientes              |
+| `GET /api/seller/payments`    | Mi historial de pagos, con la URL del comprobante |
+
+🔒 En los dos, el `sellerId` sale **siempre** de `CurrentUser().sub` — nunca de la URL ni del
+body. Un vendedor no puede ver la cartera de otro.

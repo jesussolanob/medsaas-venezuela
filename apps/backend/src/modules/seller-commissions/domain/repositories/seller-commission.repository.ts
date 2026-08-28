@@ -21,7 +21,11 @@ export const SELLER_COMMISSION_REPOSITORY = Symbol('ISellerCommissionRepository'
 export interface SpecialistCommissionProfile {
   specialistId: string;
   soldBy: string | null;
-  /** 'code' | 'admin' | null */
+  /**
+   * How the attribution happened: 'code' | 'seller_manual' | 'admin' | null.
+   * Only the first two earn the signup commission — 'admin' is a lead the
+   * super_admin assigned, which pays on the plan change only.
+   */
   soldBySource: string | null;
   /** Whether the seller referenced by soldBy is currently active. */
   sellerIsActive: boolean;
