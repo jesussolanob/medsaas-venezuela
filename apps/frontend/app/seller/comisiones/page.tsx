@@ -205,8 +205,37 @@ function FilaComision({ c }: { c: SellerCommissionDto }) {
   );
 }
 
-/** Fila de un pago recibido. */
+/**
+ * Fila de un pago recibido.
+ *
+ * ⚠️ `receiptUrl` guarda el **path** del objeto en GCS, NO una URL: los comprobantes
+ * son privados y su firma vence a los 15 minutos. Enlazarlo directo daba un 404.
+ * Por eso se pide la firma a demanda, recién cuando el vendedor va a abrirlo.
+ */
 function FilaPago({ p }: { p: SellerPaymentDto }) {
+  const [abriendo, setAbriendo] = useState(false);
+  const [errorComprobante, setErrorComprobante] = useState<string | null>(null);
+
+  async function abrirComprobante() {
+    setAbriendo(true);
+    setErrorComprobante(null);
+    try {
+      const res = await fetch(`/api/seller/payments/${p.id}/receipt-url`, {
+        cache: 'no-store',
+      });
+      const json: { url?: string; error?: string } = await res.json();
+      if (!res.ok || !json.url) {
+        setErrorComprobante(json.error ?? 'No se pudo abrir el comprobante.');
+        return;
+      }
+      window.open(json.url, '_blank', 'noopener,noreferrer');
+    } catch {
+      setErrorComprobante('Error de conexión al abrir el comprobante.');
+    } finally {
+      setAbriendo(false);
+    }
+  }
+
   return (
     <div className="flex items-start justify-between gap-3 py-4 border-b border-slate-100 last:border-0">
       <div className="min-w-0">
@@ -223,17 +252,30 @@ function FilaPago({ p }: { p: SellerPaymentDto }) {
       </div>
 
       {p.receiptUrl ? (
-        <a
-          href={p.receiptUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          onClick={(e) => e.stopPropagation()}
-          className="flex items-center gap-1.5 px-3 py-1.5 border border-slate-200 rounded-lg text-xs font-semibold text-slate-600 hover:bg-slate-50 transition-colors shrink-0"
-          aria-label="Descargar comprobante"
-        >
-          <Download className="w-3.5 h-3.5" />
-          Comprobante
-        </a>
+        <div className="flex flex-col items-end gap-1 shrink-0">
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              void abrirComprobante();
+            }}
+            disabled={abriendo}
+            className="flex items-center gap-1.5 px-3 py-1.5 border border-slate-200 rounded-lg text-xs font-semibold text-slate-600 hover:bg-slate-50 transition-colors disabled:opacity-60"
+            aria-label="Abrir comprobante"
+          >
+            {abriendo ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <Download className="w-3.5 h-3.5" />
+            )}
+            Comprobante
+          </button>
+          {errorComprobante && (
+            <span className="text-[11px] text-red-600 text-right max-w-[180px]">
+              {errorComprobante}
+            </span>
+          )}
+        </div>
       ) : (
         <span className="text-xs text-slate-400 shrink-0">Sin comprobante</span>
       )}
