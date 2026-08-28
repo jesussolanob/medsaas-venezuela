@@ -479,6 +479,23 @@ próxima cita)` — si el bloque siguiente está libre ocupa lo que dura, y si n
   Llevar formato al PDF sería una función nueva (parsear el HTML en fragmentos con estilo), no un
   arreglo, y el dueño decidió no hacerla.
 
+  ⚠️ **REVERTIDO por ADR-039 rev.2 (2026-08-28).** El dueño cambió de opinión y pidió la función.
+  Se conserva el texto original porque el registro de **por qué se decidió al revés** vale: no era
+  un bug, era alcance descartado a propósito.
+
+- **ADR-039 rev.2 (2026-08-28):** **El PDF ahora conserva el formato del especialista, con el
+  texto plano intacto como respaldo.** `parseHtmlToRichBlocks` (en `@delta/shared-utils`) convierte
+  el HTML del editor en bloques con fragmentos estilados que `@react-pdf` sabe renderizar; el
+  `ContentBlock` viaja con **`value` (plano) Y `richValue` (con formato)**, y el renderer usa el
+  segundo solo si existe. Esa redundancia es a propósito: si el parseo falla o devuelve vacío, el
+  PDF sale como salía antes en vez de salir en blanco.
+  🔒 **La única puerta de entrada permitida en el frontend es `lib/html-to-rich-text.ts`**, que
+  **siempre sanitiza antes de parsear**. Nunca llamar directo a `parseHtmlToRichBlocks` con HTML
+  del editor.
+  ⚠️ `&nbsp;` se decodifica a **espacio normal**, no a U+00A0, igualando lo que ya hacía
+  `htmlToPlainText` en producción: los editores emiten `&nbsp;` para espaciado corriente y un
+  espacio duro en `@react-pdf` deja renglones que no cortan.
+
 - **ADR-040 (2026-08-18):** **Delta Chile es un DESPLIEGUE más, no un fork: el país es
   configuración.** Un repositorio, una imagen, cuatro despliegues (Venezuela y Chile × producción y
   pre-producción), con `COUNTRY=ve|cl` inyectado al desplegar. Forkear el repo daba aislamiento

@@ -11,6 +11,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import React from 'react';
 import type { TemplateConfigPdf, ContentBlock } from '@/components/pdf/MedicalDocumentPdf';
+import { parseRichHtml } from '@/lib/html-to-rich-text';
 import {
   type DocumentTypeKey,
   type SavedPrescription,
@@ -119,15 +120,26 @@ function buildInformeContent(
   const snap = blocksSnapshot ?? {};
 
   // Bloques del snapshot
+  // ADR-039 rev.2: parse rich HTML to preserve formatting in the PDF.
   const snapshotBlocks = consultationBlocks
     .filter((b) => b.printable !== false)
     .map((b) => {
       const raw = snap[b.key];
       let value: string | string[] | null = null;
-      if (typeof raw === 'string') value = raw.trim() || null;
-      else if (Array.isArray(raw)) value = (raw as string[]).filter(Boolean);
-      else if (raw != null) value = String(raw);
-      return { key: b.key, label: b.label, value };
+      let richValue: ContentBlock['richValue'] = undefined;
+      if (typeof raw === 'string') {
+        const trimmed = raw.trim();
+        value = trimmed || null;
+        if (trimmed) {
+          const rich = parseRichHtml(trimmed);
+          if (rich.length > 0) richValue = rich;
+        }
+      } else if (Array.isArray(raw)) {
+        value = (raw as string[]).filter(Boolean);
+      } else if (raw != null) {
+        value = String(raw);
+      }
+      return { key: b.key, label: b.label, value, ...(richValue ? { richValue } : {}) };
     })
     .filter(
       (b) => b.value !== null && b.value !== '' && (!Array.isArray(b.value) || b.value.length > 0),

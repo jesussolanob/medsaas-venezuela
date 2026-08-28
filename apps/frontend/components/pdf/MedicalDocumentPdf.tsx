@@ -19,6 +19,7 @@
  */
 
 import { Document, Page, View, Text, Image, StyleSheet, Font } from '@react-pdf/renderer';
+import type { RichTextBlock, RichTextRun } from '@delta/shared-utils';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -51,6 +52,14 @@ export interface ContentBlock {
   key: string;
   label: string;
   value: string | string[] | null;
+  /**
+   * Contenido enriquecido parseado del HTML del editor (negrita, cursiva, subrayado, viñetas).
+   * Cuando está presente, el PDF lo renderiza con formato. Cuando no, el PDF usa `value` (texto
+   * plano). Solo se fija para bloques que provienen de campos de texto del editor rico.
+   *
+   * ADR-039 rev.2 (2026-08-28): se decidió sí llevar formato al PDF.
+   */
+  richValue?: RichTextBlock[];
 }
 
 /** Una página del documento multi-página (una por tipo de documento). */
@@ -133,6 +142,28 @@ function formatDateVE(dateStr?: string): string {
     month: 'long',
     year: 'numeric',
   }).format(d);
+}
+
+/**
+ * Devuelve el estilo de fuente para un RichTextRun.
+ * Usa las variantes built-in de Helvetica que react-pdf incluye sin registro adicional.
+ */
+function getRunStyle(run: RichTextRun): {
+  fontFamily: string;
+  textDecoration?: 'underline';
+} {
+  const fontFamily =
+    run.bold && run.italic
+      ? 'Helvetica-BoldOblique'
+      : run.bold
+        ? 'Helvetica-Bold'
+        : run.italic
+          ? 'Helvetica-Oblique'
+          : 'Helvetica';
+  return {
+    fontFamily,
+    ...(run.underline ? { textDecoration: 'underline' as const } : {}),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -435,7 +466,48 @@ function PageContent({
         visibleBlocks.map((block) => (
           <View key={block.key} style={styles.section}>
             <Text style={styles.sectionTitle}>{block.label}</Text>
-            {Array.isArray(block.value) ? (
+
+            {block.richValue && block.richValue.length > 0 ? (
+              /*
+               * Rich-text rendering: preserva negrita, cursiva, subrayado y viñetas
+               * del editor del especialista (ADR-039 rev.2, 2026-08-28).
+               */
+              <View>
+                {block.richValue.map((rBlock: RichTextBlock, rIdx: number) =>
+                  rBlock.type === 'listItem' ? (
+                    /* Lista: viñeta circular de color + texto con formato */
+                    <View key={rIdx} style={styles.listItem}>
+                      <View style={styles.listBullet}>
+                        <Text style={styles.listBulletText}>{'•'}</Text>
+                      </View>
+                      <Text style={styles.listItemText}>
+                        {rBlock.runs.map((run: RichTextRun, runIdx: number) => (
+                          <Text key={runIdx} style={getRunStyle(run)}>
+                            {run.text}
+                          </Text>
+                        ))}
+                      </Text>
+                    </View>
+                  ) : (
+                    /* Párrafo: texto con formato; pequeño gap entre párrafos intermedios */
+                    <Text
+                      key={rIdx}
+                      style={[
+                        styles.sectionBody,
+                        rIdx < block.richValue!.length - 1 ? { marginBottom: 4 } : {},
+                      ]}
+                    >
+                      {rBlock.runs.map((run: RichTextRun, runIdx: number) => (
+                        <Text key={runIdx} style={getRunStyle(run)}>
+                          {run.text}
+                        </Text>
+                      ))}
+                    </Text>
+                  ),
+                )}
+              </View>
+            ) : Array.isArray(block.value) ? (
+              /* Lista numerada (medicamentos, exámenes) — comportamiento original */
               block.value.map((item, idx) => (
                 <View key={idx} style={styles.listItem}>
                   <View style={styles.listBullet}>
@@ -445,6 +517,7 @@ function PageContent({
                 </View>
               ))
             ) : (
+              /* Texto plano — comportamiento original */
               <Text style={styles.sectionBody}>{block.value}</Text>
             )}
           </View>
