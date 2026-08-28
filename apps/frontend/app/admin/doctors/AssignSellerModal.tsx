@@ -10,12 +10,13 @@
  *   - La asignación vía admin NO genera comisión de entrada (sold_by_source = 'admin').
  *   - Solo se genera comisión cuando el especialista pasa a un PLAN PAGO después.
  *   - Lo ya generado queda con el vendedor anterior — reasignar no mueve comisiones pasadas.
- *   - Si el especialista ya tiene vendedor (detectado via comisiones pendientes), se muestra
- *     un modal de reconfirmación con el cambio de quién → a quién antes de escribir.
+ *   - Si el especialista ya tiene vendedor, se muestra un modal de reconfirmación
+ *     con el cambio de quién → a quién antes de escribir.
  *
- * Limitación Etapa 1: el backend no expone el sold_by en el listado de especialistas.
- * Se intenta inferir el vendedor actual desde /api/admin/seller-commissions/pending.
- * Si no hay comisiones pendientes (todas pagadas o sin comisiones), el aviso es genérico.
+ * El vendedor actual sale de `GET /api/admin/specialist-assignment/:specialistId`,
+ * que lo lee de la BD. ⚠️ Antes se INFERÍA buscando comisiones pendientes, y eso
+ * tenía un agujero grave: a un especialista con todas las comisiones ya pagadas
+ * —o sin ninguna— se le pisaba la atribución sin mostrar la reconfirmación.
  */
 
 import { useEffect, useState } from 'react';
@@ -64,40 +65,34 @@ async function loadSellers(): Promise<SellerOption[]> {
 }
 
 /**
- * Intenta encontrar el vendedor actual de un especialista buscando en las
- * comisiones pendientes del admin. Es el único endpoint disponible en Etapa 1
- * que relaciona especialistas con vendedores.
+ * Devuelve el vendedor actual del especialista, leído de la BD.
  *
- * Limitación: solo detecta al vendedor si hay comisiones PENDIENTES. Si todas
- * las comisiones ya fueron pagadas o nunca hubo ninguna, devuelve null.
+ * ⚠️ Esto ANTES se adivinaba buscando comisiones pendientes, porque era lo único
+ * que relacionaba especialistas con vendedores. Tenía un agujero grave: si al
+ * especialista ya se le habían pagado todas las comisiones, o nunca generó
+ * ninguna, devolvía null — **el modal de reconfirmación no aparecía y la
+ * atribución se pisaba en silencio**, que es justo lo que el dueño pidió evitar.
+ * No volver a inferirlo: hay endpoint propio.
  */
-async function inferCurrentSeller(
+async function fetchCurrentSeller(
   specialistId: string,
 ): Promise<{ sellerId: string; sellerName: string } | null> {
   try {
-    const res = await fetch('/api/admin/seller-commissions/pending', { cache: 'no-store' });
+    const res = await fetch(
+      `/api/admin/specialist-assignment/${encodeURIComponent(specialistId)}`,
+      { cache: 'no-store' },
+    );
     if (!res.ok) return null;
 
     const json = (await res.json()) as {
       success?: boolean;
-      data?: {
-        sellerId: string;
-        sellerName: string;
-        commissions: { specialistId: string }[];
-      }[];
+      data?: { sellerId: string | null; sellerName: string | null };
     };
 
-    if (!json.success || !Array.isArray(json.data)) return null;
+    const d = json.data;
+    if (!json.success || !d?.sellerId) return null;
 
-    for (const group of json.data) {
-      for (const c of group.commissions) {
-        if (c.specialistId === specialistId) {
-          return { sellerId: group.sellerId, sellerName: group.sellerName };
-        }
-      }
-    }
-
-    return null;
+    return { sellerId: d.sellerId, sellerName: d.sellerName ?? 'vendedor sin nombre' };
   } catch {
     return null;
   }
@@ -150,7 +145,7 @@ export default function AssignSellerModal({
       try {
         const [sellerList, current] = await Promise.all([
           loadSellers(),
-          inferCurrentSeller(specialistId),
+          fetchCurrentSeller(specialistId),
         ]);
         if (!alive) return;
         setSellers(sellerList);
