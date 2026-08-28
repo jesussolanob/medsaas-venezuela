@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { SequelizeModule } from '@nestjs/sequelize';
+import { SellerCommissionsModule } from '../seller-commissions/seller-commissions.module';
 
 // Models
 import { ProfileAdminModel } from './infrastructure/database/models/profile.model';
@@ -76,6 +77,9 @@ import { PublicStatsController } from './presentation/controllers/public-stats.c
       PlanPriceModel,
       AccessAuditLogModel,
     ]),
+    // SellerCommissionsModule exports AccruePlanCommissionUseCase, injected into
+    // UpdateDoctorSubscriptionUseCase (best-effort, @Optional).
+    SellerCommissionsModule,
   ],
   controllers: [AdminController, PlansCatalogController, PublicStatsController],
   providers: [

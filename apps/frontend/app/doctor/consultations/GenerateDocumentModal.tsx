@@ -20,6 +20,7 @@
 import { useState, useCallback } from 'react';
 import { FileText, X, AlertCircle, Loader2, Download, ChevronDown } from 'lucide-react';
 import { htmlToPlainText } from '@delta/shared-utils';
+import { parseRichHtml } from '@/lib/html-to-rich-text';
 import type {
   TemplateConfigPdf,
   ContentBlock,
@@ -308,35 +309,41 @@ export default function GenerateDocumentModal({
       // cuando restData está disponible — garantiza el mismo formato en ambos caminos.
       // WP-D: restData.diagnosis and restData.comments may carry HTML when the doctor's
       // diagnosis field uses the rich-text editor and the reposo form prefills from it.
-      // Strip HTML before passing to react-pdf, which expects plain text only.
+      // ADR-039 rev.2: parse rich content to preserve formatting; keep plain text as fallback.
       const builtRestBlocks: ContentBlock[] | undefined =
         restData && restData.days > 0
-          ? [
-              {
-                key: 'reposo-diag',
-                label: 'Diagnóstico',
-                value: htmlToPlainText(restData.diagnosis),
-              },
-              {
-                key: 'reposo-period',
-                label: 'Período de reposo',
-                value:
-                  `${restData.days} día${restData.days !== 1 ? 's' : ''}` +
-                  ` — desde ${new Date(restData.from).toLocaleDateString('es-VE', { day: '2-digit', month: '2-digit', year: 'numeric' })}` +
-                  (restData.to
-                    ? ` hasta ${new Date(restData.to).toLocaleDateString('es-VE', { day: '2-digit', month: '2-digit', year: 'numeric' })}`
-                    : ''),
-              },
-              ...(restData.comments
-                ? [
-                    {
-                      key: 'reposo-comments',
-                      label: 'Comentarios',
-                      value: htmlToPlainText(restData.comments),
-                    },
-                  ]
-                : []),
-            ]
+          ? (() => {
+              const diagRich = parseRichHtml(restData.diagnosis);
+              const commentsRich = restData.comments ? parseRichHtml(restData.comments) : [];
+              return [
+                {
+                  key: 'reposo-diag',
+                  label: 'Diagnóstico',
+                  value: htmlToPlainText(restData.diagnosis),
+                  ...(diagRich.length > 0 ? { richValue: diagRich } : {}),
+                },
+                {
+                  key: 'reposo-period',
+                  label: 'Período de reposo',
+                  value:
+                    `${restData.days} día${restData.days !== 1 ? 's' : ''}` +
+                    ` — desde ${new Date(restData.from).toLocaleDateString('es-VE', { day: '2-digit', month: '2-digit', year: 'numeric' })}` +
+                    (restData.to
+                      ? ` hasta ${new Date(restData.to).toLocaleDateString('es-VE', { day: '2-digit', month: '2-digit', year: 'numeric' })}`
+                      : ''),
+                },
+                ...(restData.comments
+                  ? [
+                      {
+                        key: 'reposo-comments',
+                        label: 'Comentarios',
+                        value: htmlToPlainText(restData.comments),
+                        ...(commentsRich.length > 0 ? { richValue: commentsRich } : {}),
+                      },
+                    ]
+                  : []),
+              ];
+            })()
           : undefined;
 
       // Armar una página por tipo de documento seleccionado

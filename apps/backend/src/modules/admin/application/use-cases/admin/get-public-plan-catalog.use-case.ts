@@ -20,6 +20,11 @@ const NON_PUBLIC_PLAN_KEYS = new Set(['free_trial']);
 export interface PublicPriceEntry {
   period: string;
   price_usd: number;
+  /**
+   * Reference price shown crossed-out beside the real price (precio tachado).
+   * null = no promotional pricing for this period — the frontend hides the strikethrough.
+   */
+  compare_at_price: number | null;
 }
 
 /** Public-safe feature shape. */
@@ -40,7 +45,13 @@ export interface PublicPlanCatalogItem {
 }
 
 function toPublicPrices(prices: PlanPriceRow[]): PublicPriceEntry[] {
-  return prices.filter((p) => p.isActive).map((p) => ({ period: p.period, price_usd: p.priceUsd }));
+  return prices
+    .filter((p) => p.isActive)
+    .map((p) => ({
+      period: p.period,
+      price_usd: p.priceUsd,
+      compare_at_price: p.compareAtPrice,
+    }));
 }
 
 function toPublicFeatures(features: PlanFeatureRow[]): PublicFeatureEntry[] {

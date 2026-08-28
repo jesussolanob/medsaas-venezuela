@@ -26,6 +26,21 @@ export interface SellerProfile {
 }
 
 /**
+ * A seller's payment-method configuration.
+ *
+ * Stored as JSONB on `profiles.payment_details` — same column and shape used
+ * by specialists (see ADR-044). The JSONB value may be an object or a list per
+ * method key; callers normalise it via the shared frontend helpers.
+ *
+ * SECURITY: this is financial data — never log it.
+ */
+export interface SellerPaymentDetails {
+  sellerId: string;
+  /** Raw JSONB — shape mirrors profiles.payment_details used by specialists. */
+  paymentDetails: Record<string, unknown>;
+}
+
+/**
  * Vendedor como lo ve el super administrador en `/admin/sellers`.
  *
  * A diferencia de `SellerProfile` acá SÍ va el correo: el super admin gestiona
@@ -41,9 +56,36 @@ export interface SellerAdminRow {
   sellerCode: string;
   /** Cuántos especialistas dio de alta este vendedor. */
   specialistsCount: number;
+  /** false = vendedor deshabilitado (is_active = false en profiles). */
+  isActive: boolean;
   createdAt: Date;
   /** Null si el vendedor nunca entró. */
   lastSignInAt: Date | null;
+}
+
+/**
+ * Seller attribution info for a specialist.
+ *
+ * Returned to super_admin so the assign-seller flow can show a
+ * reconfirmation modal ("you're moving this specialist from X to Y")
+ * before overwriting an existing sold_by.
+ *
+ * SECURITY: sellerName is PII — never log it.
+ */
+export interface SpecialistSellerAssignment {
+  specialistId: string;
+  /** null when the specialist has no current seller attribution. */
+  sellerId: string | null;
+  /** PII — seller full name. Do NOT log. null when unattributed. */
+  sellerName: string | null;
+  /**
+   * How the current attribution was established:
+   *   'code'         = typed a seller code during self-onboarding.
+   *   'admin'        = admin assigned them by hand.
+   *   'seller_manual'= seller created the account from their portal.
+   *   null           = not attributed to any seller.
+   */
+  soldBySource: string | null;
 }
 
 /**
@@ -174,4 +216,37 @@ export interface ISellerRepository {
    * re-visit to the onboarding wizard) from overwriting the original attribution.
    */
   linkSoldBy(specialistId: string, sellerId: string): Promise<void>;
+
+  /**
+   * Returns the payment_details JSONB for the given seller profile.
+   * Returns null when no profile with role='seller' and the given id exists.
+   *
+   * SECURITY: returned data is financial — never log it.
+   */
+  getSellerPaymentDetails(sellerId: string): Promise<SellerPaymentDetails | null>;
+
+  /**
+   * Overwrites payment_details for the given seller profile.
+   * Throws SellerNotFoundError (404) when the profile does not exist.
+   *
+   * SECURITY: details are financial data — never log them.
+   */
+  updateSellerPaymentDetails(
+    sellerId: string,
+    details: Record<string, unknown>,
+  ): Promise<SellerPaymentDetails>;
+
+  /**
+   * Returns the current seller attribution for the given specialist profile.
+   * Returns null when no profile with the given id exists.
+   *
+   * When the specialist exists but has no seller (sold_by IS NULL), returns
+   * the struct with sellerId, sellerName, and soldBySource all set to null.
+   *
+   * Used by the admin assign-seller flow to show a reconfirmation modal
+   * before overwriting an existing attribution.
+   *
+   * SECURITY: sellerName is PII — never log it.
+   */
+  getSpecialistSellerAssignment(specialistId: string): Promise<SpecialistSellerAssignment | null>;
 }

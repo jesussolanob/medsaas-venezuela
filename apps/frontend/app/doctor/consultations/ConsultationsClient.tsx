@@ -102,6 +102,8 @@ import DynamicBlocks, {
 import ConsultationRecorder from '@/components/consultation/ConsultationRecorder';
 // WP-E (2026-08): strip HTML from block values before passing to PDF renderers
 import { htmlToPlainText } from '@delta/shared-utils';
+// ADR-039 rev.2 (2026-08-28): preserve rich formatting in the PDF
+import { parseRichHtml } from '@/lib/html-to-rich-text';
 // RONDA 46: renderer de markdown ligero para outputs de Gemini
 import MarkdownText from '@/components/shared/MarkdownText';
 import NewAppointmentFlow from '@/components/appointment-flow/NewAppointmentFlow';
@@ -542,12 +544,23 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
         }
 
         // 1. Valor desde blocks_data (fuente de verdad para bloques de texto)
-        // WP-E: strip HTML from string values so PDF output is always plain text
+        // WP-E: strip HTML from string values so PDF falls back to plain text
+        // ADR-039 rev.2: also compute richValue to preserve formatting in the PDF
         const raw = bd[b.key];
         let value: string | string[] | null = null;
-        if (typeof raw === 'string') value = htmlToPlainText(raw.trim()) || null;
-        else if (Array.isArray(raw)) value = (raw as string[]).filter(Boolean);
-        else if (raw != null) value = String(raw);
+        let richValue: import('@delta/shared-utils').RichTextBlock[] | undefined;
+        if (typeof raw === 'string') {
+          const trimmed = raw.trim();
+          value = htmlToPlainText(trimmed) || null;
+          if (trimmed) {
+            const rich = parseRichHtml(trimmed);
+            if (rich.length > 0) richValue = rich;
+          }
+        } else if (Array.isArray(raw)) {
+          value = (raw as string[]).filter(Boolean);
+        } else if (raw != null) {
+          value = String(raw);
+        }
 
         // 2. Fallback a campos legacy vivos (chief_complaint, diagnosis, etc.)
         // WP-E: also strip HTML from legacy live fields
@@ -556,7 +569,11 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
           Object.prototype.hasOwnProperty.call(legacyLive, b.key)
         ) {
           const live = legacyLive[b.key];
-          if (live && live.trim()) value = htmlToPlainText(live.trim());
+          if (live && live.trim()) {
+            value = htmlToPlainText(live.trim());
+            const rich = parseRichHtml(live.trim());
+            if (rich.length > 0) richValue = rich;
+          }
         }
 
         // 3. Fallback a valores sintéticos de bloques estructurados (prescription, paraclinical)
@@ -565,9 +582,11 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
           Object.prototype.hasOwnProperty.call(structuredValues, b.key)
         ) {
           value = structuredValues[b.key];
+          // Structured values are plain arrays/strings — no richValue
+          richValue = undefined;
         }
 
-        return { key: b.key, label: b.label, value };
+        return { key: b.key, label: b.label, value, ...(richValue ? { richValue } : {}) };
       })
       .filter(
         (b) =>

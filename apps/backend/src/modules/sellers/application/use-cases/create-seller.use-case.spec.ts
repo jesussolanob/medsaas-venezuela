@@ -26,6 +26,9 @@ function makeRepoMock(): jest.Mocked<ISellerRepository> {
     findSoldSpecialist: jest.fn(),
     createSoldSpecialist: jest.fn(),
     linkSoldBy: jest.fn(),
+    getSellerPaymentDetails: jest.fn(),
+    updateSellerPaymentDetails: jest.fn(),
+    getSpecialistSellerAssignment: jest.fn(),
   };
 }
 

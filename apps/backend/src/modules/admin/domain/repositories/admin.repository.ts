@@ -205,6 +205,12 @@ export interface PlanPriceRow {
   period: BillingPeriod;
   priceUsd: number;
   isActive: boolean;
+  /**
+   * Optional reference price shown crossed-out next to the real price.
+   * NULL = no promotional pricing for this period — the UI hides the strikethrough.
+   * When set, must be strictly greater than priceUsd (enforced by SetPlanPricesUseCase).
+   */
+  compareAtPrice: number | null;
 }
 
 /** Input for setting a single period price entry. */
@@ -213,6 +219,11 @@ export interface SetPlanPriceParams {
   period: BillingPeriod;
   priceUsd: number;
   isActive: boolean;
+  /**
+   * Reference price to show crossed-out (tachado) beside the real price.
+   * Omit or pass null to clear the promotional display for this period.
+   */
+  compareAtPrice?: number | null;
 }
 
 /** Enriched plan returned by admin list — includes prices and features. */
@@ -289,6 +300,24 @@ export interface DoctorDetail {
   consultationCount: number;
   /** Sum of approved consultation amounts in the current calendar month (0 if none). */
   monthlyRevenue: number;
+  /**
+   * Seller attribution fields — used by the admin assign-seller flow to show
+   * a reconfirmation modal when reassigning a specialist with an existing seller.
+   *
+   * SECURITY: soldByName is PII — never log it.
+   */
+  /** UUID of the seller who onboarded this specialist, or null when unattributed. */
+  soldById: string | null;
+  /** Full name of the current seller. PII — do NOT log. null when unattributed. */
+  soldByName: string | null;
+  /**
+   * How the current attribution was established:
+   *   'code'          = specialist typed a seller code during self-onboarding.
+   *   'admin'         = super_admin assigned them by hand.
+   *   'seller_manual' = seller created the account from their portal.
+   *   null            = not attributed to any seller.
+   */
+  soldBySource: string | null;
 }
 
 /** One data point in the doctor-growth chart. */

@@ -2,6 +2,7 @@ import { UpdateDoctorSubscriptionUseCase } from './update-doctor-subscription.us
 import { DoctorWithActivity } from '../../../domain/entities/doctor-with-activity.entity';
 import { DoctorNotFoundError } from '../../../domain/errors/doctor-not-found.error';
 import type { IAdminRepository } from '../../../domain/repositories/admin.repository';
+import type { AccruePlanCommissionUseCase } from '../../../../seller-commissions/application/use-cases/accrue-plan-commission.use-case';
 
 const existingDoctor = new DoctorWithActivity(
   'doc-1',
@@ -75,7 +76,8 @@ describe('UpdateDoctorSubscriptionUseCase', () => {
   it('updates subscription when doctor exists', async () => {
     const repo = makeRepo();
     const redis = makeRedis();
-    const useCase = new UpdateDoctorSubscriptionUseCase(repo, redis as never);
+    // null = AccruePlanCommissionUseCase not provided (@Optional, best-effort)
+    const useCase = new UpdateDoctorSubscriptionUseCase(repo, redis as never, null);
 
     await useCase.execute(validInput);
 
@@ -91,7 +93,7 @@ describe('UpdateDoctorSubscriptionUseCase', () => {
   it('invalidates dashboard cache after update', async () => {
     const repo = makeRepo();
     const redis = makeRedis();
-    const useCase = new UpdateDoctorSubscriptionUseCase(repo, redis as never);
+    const useCase = new UpdateDoctorSubscriptionUseCase(repo, redis as never, null);
 
     await useCase.execute(validInput);
 
@@ -101,7 +103,7 @@ describe('UpdateDoctorSubscriptionUseCase', () => {
   it('throws DoctorNotFoundError when doctor does not exist', async () => {
     const repo = makeRepo(null);
     const redis = makeRedis();
-    const useCase = new UpdateDoctorSubscriptionUseCase(repo, redis as never);
+    const useCase = new UpdateDoctorSubscriptionUseCase(repo, redis as never, null);
 
     await expect(useCase.execute(validInput)).rejects.toThrow(DoctorNotFoundError);
     expect(repo.updateDoctorSubscription).not.toHaveBeenCalled();
@@ -110,7 +112,7 @@ describe('UpdateDoctorSubscriptionUseCase', () => {
   it('sets notes to null when not provided', async () => {
     const repo = makeRepo();
     const redis = makeRedis();
-    const useCase = new UpdateDoctorSubscriptionUseCase(repo, redis as never);
+    const useCase = new UpdateDoctorSubscriptionUseCase(repo, redis as never, null);
 
     await useCase.execute({ ...validInput, notes: undefined });
 
@@ -126,10 +128,59 @@ describe('UpdateDoctorSubscriptionUseCase', () => {
       get: jest.fn(),
       set: jest.fn(),
     };
-    const useCase = new UpdateDoctorSubscriptionUseCase(repo, redis as never);
+    const useCase = new UpdateDoctorSubscriptionUseCase(repo, redis as never, null);
 
     // Should not throw — Redis failure is best-effort
     await expect(useCase.execute(validInput)).resolves.toBeUndefined();
     expect(repo.updateDoctorSubscription).toHaveBeenCalledTimes(1);
+  });
+
+  // ---------------------------------------------------------------------------
+  // Plan commission hook — fire-and-forget, must never affect the update
+  // ---------------------------------------------------------------------------
+
+  describe('plan commission hook', () => {
+    const flushHook = () => new Promise((resolve) => setImmediate(resolve));
+
+    const makeAccrue = (impl?: () => Promise<unknown>) =>
+      ({
+        execute: jest.fn(impl ?? (() => Promise.resolve('created'))),
+      }) as unknown as jest.Mocked<AccruePlanCommissionUseCase>;
+
+    it('accrues the plan commission with the plan being set', async () => {
+      const accrue = makeAccrue();
+      const useCase = new UpdateDoctorSubscriptionUseCase(makeRepo(), makeRedis() as never, accrue);
+
+      await useCase.execute({ ...validInput, plan: 'delta_plus' as const });
+      await flushHook();
+
+      expect(accrue.execute).toHaveBeenCalledTimes(1);
+      expect(accrue.execute).toHaveBeenCalledWith('doc-1', 'delta_plus');
+    });
+
+    it('does NOT accrue when the doctor does not exist', async () => {
+      const accrue = makeAccrue();
+      const useCase = new UpdateDoctorSubscriptionUseCase(
+        makeRepo(null),
+        makeRedis() as never,
+        accrue,
+      );
+
+      await expect(useCase.execute(validInput)).rejects.toThrow(DoctorNotFoundError);
+      await flushHook();
+
+      expect(accrue.execute).not.toHaveBeenCalled();
+    });
+
+    it('still updates the subscription when the commission blows up', async () => {
+      const accrue = makeAccrue(() => Promise.reject(new Error('commission db down')));
+      const repo = makeRepo();
+      const useCase = new UpdateDoctorSubscriptionUseCase(repo, makeRedis() as never, accrue);
+
+      await expect(useCase.execute(validInput)).resolves.toBeUndefined();
+      await flushHook();
+
+      expect(repo.updateDoctorSubscription).toHaveBeenCalledTimes(1);
+    });
   });
 });

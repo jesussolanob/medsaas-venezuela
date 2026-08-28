@@ -20,7 +20,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState } from 'react';
-import { Home, Users, Menu, X } from 'lucide-react';
+import { Home, Users, DollarSign, CreditCard, Menu, X } from 'lucide-react';
 import { clsx } from 'clsx';
 import { Toaster } from '@/components/ui/Toaster';
 import { DeltaMark } from '@/components/dh';
@@ -36,6 +36,8 @@ type NavLeaf = {
 const NAV: NavLeaf[] = [
   { name: 'Inicio', href: '/seller', icon: Home },
   { name: 'Especialistas', href: '/seller/especialistas', icon: Users },
+  { name: 'Comisiones', href: '/seller/comisiones', icon: DollarSign },
+  { name: 'Datos de cobro', href: '/seller/cobros', icon: CreditCard },
 ];
 
 /**

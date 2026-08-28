@@ -310,6 +310,21 @@ export class SequelizeAdminRepository implements IAdminRepository {
 
     const base = this.profileRowToDomainWithSub(row, sub ?? undefined);
 
+    // Seller attribution — two targeted point-reads, no JOIN.
+    // SECURITY: sellerName is PII — never log it.
+    let soldById: string | null = row.soldBy ?? null;
+    let soldByName: string | null = null;
+    const soldBySource: string | null = row.soldBySource ?? null;
+
+    if (soldById) {
+      const seller = await this.profileModel.findOne({
+        where: { id: soldById, role: 'seller' },
+        attributes: ['id', 'fullName'],
+      });
+      soldById = seller?.id ?? soldById;
+      soldByName = seller?.fullName ?? null;
+    }
+
     return {
       id: row.id,
       fullName: row.fullName,
@@ -332,6 +347,9 @@ export class SequelizeAdminRepository implements IAdminRepository {
       patientCount: parseInt(stats.patient_count ?? '0', 10),
       consultationCount: parseInt(stats.consultation_count ?? '0', 10),
       monthlyRevenue: parseFloat(stats.monthly_revenue ?? '0') || 0,
+      soldById,
+      soldByName,
+      soldBySource,
     };
   }
 
@@ -882,15 +900,19 @@ export class SequelizeAdminRepository implements IAdminRepository {
       period: string;
       price_usd: string;
       is_active: boolean;
+      compare_at_price: string | null;
     }>(
-      `INSERT INTO plan_prices (id, plan_key, period, price_usd, is_active, created_at, updated_at)
-       VALUES (gen_random_uuid(), :planKey, :period, :priceUsd, :isActive, NOW(), NOW())
+      `INSERT INTO plan_prices
+         (id, plan_key, period, price_usd, is_active, compare_at_price, created_at, updated_at)
+       VALUES
+         (gen_random_uuid(), :planKey, :period, :priceUsd, :isActive, :compareAtPrice, NOW(), NOW())
        ON CONFLICT (plan_key, period)
        DO UPDATE SET
-         price_usd  = EXCLUDED.price_usd,
-         is_active  = EXCLUDED.is_active,
-         updated_at = NOW()
-       RETURNING id, plan_key, period, price_usd, is_active`,
+         price_usd        = EXCLUDED.price_usd,
+         is_active        = EXCLUDED.is_active,
+         compare_at_price = EXCLUDED.compare_at_price,
+         updated_at       = NOW()
+       RETURNING id, plan_key, period, price_usd, is_active, compare_at_price`,
       {
         type: QueryTypes.SELECT,
         replacements: {
@@ -898,6 +920,7 @@ export class SequelizeAdminRepository implements IAdminRepository {
           period: params.period,
           priceUsd: params.priceUsd,
           isActive: params.isActive,
+          compareAtPrice: params.compareAtPrice ?? null,
         },
         transaction,
       },
@@ -914,6 +937,7 @@ export class SequelizeAdminRepository implements IAdminRepository {
       period: row.period as import('../../../domain/value-objects/plan-price.vo').BillingPeriod,
       priceUsd: Number(row.price_usd),
       isActive: row.is_active,
+      compareAtPrice: row.compare_at_price != null ? Number(row.compare_at_price) : null,
     };
   }
 
@@ -1390,6 +1414,7 @@ export class SequelizeAdminRepository implements IAdminRepository {
       period: row.period,
       priceUsd: Number(row.priceUsd),
       isActive: row.isActive,
+      compareAtPrice: row.compareAtPrice != null ? Number(row.compareAtPrice) : null,
     };
   }
 

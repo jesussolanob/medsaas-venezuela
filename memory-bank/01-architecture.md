@@ -479,6 +479,23 @@ próxima cita)` — si el bloque siguiente está libre ocupa lo que dura, y si n
   Llevar formato al PDF sería una función nueva (parsear el HTML en fragmentos con estilo), no un
   arreglo, y el dueño decidió no hacerla.
 
+  ⚠️ **REVERTIDO por ADR-039 rev.2 (2026-08-28).** El dueño cambió de opinión y pidió la función.
+  Se conserva el texto original porque el registro de **por qué se decidió al revés** vale: no era
+  un bug, era alcance descartado a propósito.
+
+- **ADR-039 rev.2 (2026-08-28):** **El PDF ahora conserva el formato del especialista, con el
+  texto plano intacto como respaldo.** `parseHtmlToRichBlocks` (en `@delta/shared-utils`) convierte
+  el HTML del editor en bloques con fragmentos estilados que `@react-pdf` sabe renderizar; el
+  `ContentBlock` viaja con **`value` (plano) Y `richValue` (con formato)**, y el renderer usa el
+  segundo solo si existe. Esa redundancia es a propósito: si el parseo falla o devuelve vacío, el
+  PDF sale como salía antes en vez de salir en blanco.
+  🔒 **La única puerta de entrada permitida en el frontend es `lib/html-to-rich-text.ts`**, que
+  **siempre sanitiza antes de parsear**. Nunca llamar directo a `parseHtmlToRichBlocks` con HTML
+  del editor.
+  ⚠️ `&nbsp;` se decodifica a **espacio normal**, no a U+00A0, igualando lo que ya hacía
+  `htmlToPlainText` en producción: los editores emiten `&nbsp;` para espaciado corriente y un
+  espacio duro en `@react-pdf` deja renglones que no cortan.
+
 - **ADR-040 (2026-08-18):** **Delta Chile es un DESPLIEGUE más, no un fork: el país es
   configuración.** Un repositorio, una imagen, cuatro despliegues (Venezuela y Chile × producción y
   pre-producción), con `COUNTRY=ve|cl` inyectado al desplegar. Forkear el repo daba aislamiento
@@ -722,3 +739,38 @@ status='active'` con `QueryTypes.UPDATE` (devuelve `[undefined, affectedCount]`;
   2026-08-18 y costó una sesión entera de diagnóstico. `AdminSessionWatchdog` consulta
   `GET /api/session` al montar, al recuperar el foco y cada 60s, y bloquea con un mensaje que
   nombra la causa. Los 403 de rutas de admin dicen lo mismo en vez de "no tenés permisos" a secas.
+
+- **ADR-046 (2026-08-28):** **La comisión de un vendedor se decide por el momento de la
+  conversión, no por el plan actual, y el "una sola vez" lo garantiza la base.** Cada
+  especialista genera como máximo dos comisiones: **entrada** (10 USD al completar el
+  onboarding) y **plan** (la del PRIMER plan pago — Base 10, Plus 20). Un cambio de plan
+  posterior **no suma nada**: `free_trial → Base → Plus` paga 20 en total y
+  `free_trial → Plus` paga 30. Dos especialistas que hoy están en Plus pueden valer distinto
+  según por dónde entraron, y **es deliberado** — es de esas reglas que alguien "corrige" a
+  los seis meses creyendo que es un bug. La unicidad va con
+  `UNIQUE (specialist_id, type)` **en la tabla**, no en el use case, por el mismo motivo que
+  `sold_by`: el día que dos procesos corran juntos, la base no miente. Lo ya pagado queda
+  pagado, sin descuentos retroactivos, y la comisión se acredita a quien sea el vendedor **en
+  el momento del evento** — reasignar después no mueve lo ya generado.
+
+- **ADR-047 (2026-08-28):** **`sold_by_source` viaja SIEMPRE en la misma sentencia que
+  `sold_by`.** La comisión de entrada solo paga cuando la fuente es elegible, así que escribir
+  la atribución sin su origen deja la columna en NULL y **mata el pago en silencio para todos**.
+  Se detectó exactamente eso en `linkSoldBy` antes de que llegara a producción: escribía
+  `sold_by` solo, y ningún especialista nuevo habría generado sus 10 USD. Valores:
+  `'code'` (tecleó el código), `'seller_manual'` (el vendedor lo cargó a mano desde su portal)
+  y `'admin'` (lead de Ads o directo que asignó un super_admin). Los dos primeros pagan
+  entrada porque el vendedor efectivamente lo trajo; **`'admin'` no** — ese solo cobra cuando
+  el especialista pasa a un plan pago. Es **TEXT y no ENUM** a propósito: este proyecto ya se
+  cayó dos veces en producción por un ENUM al que le faltaba el valor.
+
+- **ADR-048 (2026-08-28):** **Un cambio de plan sin acreditación es plata perdida en silencio,
+  así que los enganches se enumeran, no se suponen.** Son **cuatro** los caminos que escriben
+  `profiles.plan` y los cuatro tienen que acreditar: `approve-subscription-payment`,
+  `update-doctor-subscription`, `extend-doctor-subscription` y `complete-onboarding` (este
+  último para la de entrada). El tercero **se había quedado afuera** — el mismo patrón del
+  ADR-032, donde una regla se escribió en un camino de alta y la app usaba el otro. Todos van
+  como `@Optional()` + `void … .catch()`: una comisión que falla **nunca** bloquea el cobro ni
+  el onboarding. ⚠️ `extend-doctor-subscription` migra `'trial' → 'basic'`, claves **legacy**
+  que el motor no reconoce (solo conoce `delta_base`/`delta_plus`), así que esa transición
+  puntual no acredita nada. Ponerle monto a las claves legacy es decisión del dueño.

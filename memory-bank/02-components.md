@@ -822,3 +822,54 @@ entera de diagnóstico. Ver **ADR-043**.
 ⚠️ **El rol que espera el watchdog es el MISMO que exigen los guards** (`requireSuperAdmin` en el
 BFF y `@Roles('super_admin')` en el backend). El día que `/admin` admita también al rol `admin`,
 hay que ampliarlo en los tres lugares o la pantalla va a bloquear a alguien con permiso.
+
+## Módulo `seller-commissions` (backend, 2026-08-28)
+
+Motor de comisiones del programa de ventas. DDD de 4 capas en
+`apps/backend/src/modules/seller-commissions/`: 2 entidades, 7 use cases, repositorio Sequelize,
+3 errores de dominio y 2 controllers (admin y portal del vendedor). Migración
+`20260828000001-seller-commissions.cjs` — tablas `seller_commissions`, `seller_payments`,
+`seller_attribution_logs`, más `profiles.sold_by_source` y `plan_prices.compare_at_price`.
+
+Las reglas de negocio están en **ADR-046** (una sola comisión de plan, la del primero pago),
+**ADR-047** (`sold_by_source` viaja con `sold_by`) y **ADR-048** (los cuatro enganches).
+
+⚠️ **No lo llama nadie todavía.** El backend está completo y verificado, pero no existen las
+rutas BFF ni las pantallas — ni la del admin para pagar ni la del vendedor para ver lo suyo.
+Es el patrón de "código completo que nadie llama", así que **está sin ejercitar de punta a
+punta**: la migración no se aplicó a ninguna base y no hubo boot del dist ni curl real.
+
+⚠️ `plan_prices.compare_at_price` (el precio tachado) existe **solo en la migración**: ningún
+código lo lee ni lo escribe todavía.
+
+## Pantallas del programa de vendedores (2026-08-28)
+
+### Portal del vendedor
+
+- **`/seller/comisiones`** — lo primero y más grande es **cuánto le deben**: es la pregunta por la
+  que el vendedor entra. Debajo, el detalle comisión por comisión (qué especialista, si es de
+  entrada o de plan, monto, fecha) y el historial de pagos. Pendiente y pagada se distinguen por
+  color e ícono, no solo por texto. ⚠️ El botón del comprobante **pide la firma a demanda**; no
+  enlaza el valor guardado, que es un path de GCS.
+- **`/seller/cobros`** — sus datos de cobro. Usa `PaymentDetailsEditor`.
+
+### Panel de admin
+
+- **`/admin/comisiones`** — la pantalla de plata. Pendientes por vendedor, selección de las
+  comisiones a pagar con el total actualizándose en vivo, resumen antes de confirmar, y registro
+  del pago con **subida real del comprobante** (`kind: 'receipt'`, se persiste el `path`).
+  El pago es **irreversible desde la UI**: no hay endpoint para deshacerlo.
+- **`/admin/sellers`** — deshabilitar/rehabilitar un vendedor (reusa
+  `PUT /api/admin/doctors/:id/access`, que **es genérico pese al nombre**) y ver sus datos de cobro.
+- Asignar un especialista a un vendedor vive en `/admin/doctors`, con modal de reconfirmación
+  cuando el especialista ya tiene vendedor.
+
+### `PaymentDetailsEditor` (`components/shared/`)
+
+Extraído de `app/doctor/settings/page.tsx` (–214 líneas duplicadas) para que el vendedor y el
+especialista editen sus datos de cobro con **un solo componente**. Respeta la regla de
+`lib/payment-details.ts`: nunca lee `payment_details[metodo]` directo, todo pasa por `entriesOf`.
+
+⚠️ Al extraerlo, la pantalla de configuración del especialista —que está en producción— quedó
+un rato sin compilar. Si se vuelve a tocar, correr `tsc` sobre **todo** el proyecto, no filtrado
+por los archivos propios: así es como un error de sintaxis pasa desapercibido.

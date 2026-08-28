@@ -3,12 +3,7 @@
 import { useState, useEffect, useRef, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { getProfessionalTitle } from '@/lib/professional-title';
-import {
-  entriesOf,
-  withEntries,
-  MULTI_ENTRY_METHODS,
-  type PaymentEntry,
-} from '@/lib/payment-details';
+import PaymentDetailsEditor from '@/components/shared/PaymentDetailsEditor';
 import {
   User,
   Users2,
@@ -38,8 +33,6 @@ import {
   Smartphone,
   CreditCard,
   Lock,
-  ChevronDown,
-  ChevronUp,
 } from 'lucide-react';
 import {
   loadSettingsProfile,
@@ -88,12 +81,6 @@ type Service = {
   price_usd: number;
   description: string;
   is_active: boolean;
-};
-type PaymentMethodData = {
-  id: string;
-  label: string;
-  emoji: string;
-  fields: { key: string; label: string; placeholder?: string; type?: string }[];
 };
 
 // Valor centinela del <select> de especialidad: abre el campo de texto libre.
@@ -179,68 +166,6 @@ const ALL_MODULES: Module[] = [
   },
 ];
 
-/**
- * Formatea un número de cuenta bancaria venezolano: 20 dígitos agrupados como
- * xxxx-xxxx-xxxx-xxxx-xxxx. Descarta no-dígitos y recorta a 20.
- */
-function formatBankAccount(value: string): string {
-  const digits = value.replace(/\D/g, '').slice(0, 20);
-  return digits.replace(/(.{4})(?=.)/g, '$1-');
-}
-
-const PAYMENT_METHODS: PaymentMethodData[] = [
-  {
-    id: 'pago_movil',
-    label: 'Pago Móvil',
-    emoji: '📱',
-    fields: [
-      { key: 'bank', label: 'Banco', placeholder: 'Ej: Banesco' },
-      { key: 'phone', label: 'Teléfono', placeholder: '0412-1234567' },
-      { key: 'id_number', label: 'Cédula/RIF', placeholder: 'V-12345678' },
-      { key: 'holder', label: 'Titular', placeholder: 'Dr. Carlos Ramírez' },
-    ],
-  },
-  {
-    id: 'transferencia',
-    label: 'Transferencia',
-    emoji: '🏦',
-    fields: [
-      { key: 'bank', label: 'Banco', placeholder: 'Ej: Banco de Venezuela' },
-      { key: 'account', label: 'N° de cuenta', placeholder: '0102-xxxx-xx-xxxxxxxxxx' },
-      { key: 'account_type', label: 'Tipo', placeholder: 'Corriente / Ahorro' },
-      { key: 'id_number', label: 'Cédula/RIF', placeholder: 'V-12345678' },
-      { key: 'holder', label: 'Titular', placeholder: 'Nombre del titular' },
-    ],
-  },
-  {
-    id: 'zelle',
-    label: 'Zelle',
-    emoji: '💳',
-    fields: [
-      { key: 'email', label: 'Email Zelle', placeholder: 'doctor@email.com', type: 'email' },
-      { key: 'holder', label: 'Nombre del titular', placeholder: 'Carlos Ramirez' },
-      { key: 'bank', label: 'Banco (opcional)', placeholder: 'Chase, Bank of America…' },
-    ],
-  },
-  {
-    id: 'binance',
-    label: 'Binance Pay',
-    emoji: '₿',
-    fields: [
-      { key: 'binance_id', label: 'Binance ID', placeholder: '123456789' },
-      { key: 'email', label: 'Email', placeholder: 'doctor@email.com' },
-    ],
-  },
-  { id: 'cash_usd', label: 'Efectivo USD', emoji: '💵', fields: [] },
-  { id: 'cash_bs', label: 'Efectivo Bs', emoji: '💵', fields: [] },
-  {
-    id: 'pos',
-    label: 'Punto de venta',
-    emoji: '🛒',
-    fields: [{ key: 'bank', label: 'Banco del POS', placeholder: 'Ej: Mercantil' }],
-  },
-];
-
 const fi =
   'w-full px-3 py-2.5 text-sm border border-slate-200 rounded-xl outline-none focus:border-teal-400 focus:ring-2 focus:ring-teal-500/10 bg-white transition-colors';
 
@@ -317,24 +242,13 @@ function SettingsPageInner() {
   const [planError, setPlanError] = useState('');
   const [plansSaving, setPlansSaving] = useState(false);
 
-  // Payment
-  const [paymentMethods, setPaymentMethods] = useState<string[]>([]);
-  /**
-   * Datos de cobro por método, SIEMPRE como lista.
-   *
-   * Un especialista puede tener cuentas en dos bancos, o dos pagos móviles
-   * (pedido del dueño, 2026-08-19). El estado guarda una lista por método; la
-   * conversión desde/hacia la forma que vive en la BD —que puede ser un objeto
-   * suelto en los perfiles viejos— la hace `lib/payment-details`, para no
-   * necesitar una migración de datos sobre perfiles reales.
-   */
-  const [paymentDetails, setPaymentDetails] = useState<Record<string, PaymentEntry[]>>({});
-  const [paymentSaved, setPaymentSaved] = useState(false);
-  // Acordeón de métodos de pago: solo los métodos activos se expanden por defecto.
-  // Un método colapsado muestra solo el toggle + nombre; uno expandido muestra sus campos.
-  // Decisión: expandido por defecto solo si el método está activo al montar — da feedback
-  // inmediato de "ya tienes esto configurado", sin abrumar con todos los campos abiertos.
-  const [expandedMethods, setExpandedMethods] = useState<Set<string>>(new Set());
+  // Payment — datos iniciales para PaymentDetailsEditor (componente extraído).
+  // null = todavía no cargaron; se rellena en el useEffect de carga del perfil.
+  // paymentDataKey cambia para forzar la reinicialización del componente si
+  // el perfil se recargar (raro, pero posible tras un guardado).
+  const [initialPaymentMethods, setInitialPaymentMethods] = useState<string[] | null>(null);
+  const [initialPaymentDetails, setInitialPaymentDetails] = useState<Record<string, unknown>>({});
+  const [paymentDataKey, setPaymentDataKey] = useState(0);
 
   // Insurance
   const [insurances, setInsurances] = useState<Insurance[]>([]);
@@ -444,20 +358,11 @@ function SettingsPageInner() {
         setLogoUrl(profileData.logo_url ?? null);
         setSignatureUrl(profileData.signature_url ?? null);
         setLicenseNumber(profileData.license_number ?? '');
-        setPaymentMethods(profileData.payment_methods);
-        // La BD puede traer un objeto suelto (forma vieja) o una lista: las dos
-        // se normalizan a lista acá. Un método sin datos arranca con un juego
-        // vacío para que sus campos se puedan escribir.
-        setPaymentDetails(
-          Object.fromEntries(
-            PAYMENT_METHODS.map((m) => {
-              const guardadas = entriesOf(profileData.payment_details, m.id);
-              return [m.id, guardadas.length > 0 ? guardadas : [{}]];
-            }),
-          ),
-        );
-        // Pre-expandir los métodos que ya estaban activos al cargar.
-        setExpandedMethods(new Set(profileData.payment_methods));
+        // Datos iniciales para PaymentDetailsEditor. El componente normaliza
+        // internamente la forma vieja/nueva del JSONB con entriesOf.
+        setInitialPaymentMethods(profileData.payment_methods ?? []);
+        setInitialPaymentDetails(profileData.payment_details ?? {});
+        setPaymentDataKey((k) => k + 1);
         setCedula(profileData.cedula ?? null);
       }
 
@@ -620,98 +525,6 @@ function SettingsPageInner() {
   async function deletePlan(id: string) {
     // PENDING: moved to /doctor/services — use DELETE /api/doctor/services/:id
     void id;
-  }
-
-  /* ---------------- PAYMENT METHODS ---------------- */
-
-  function togglePaymentMethod(id: string) {
-    setPaymentMethods((prev) => (prev.includes(id) ? prev.filter((m) => m !== id) : [...prev, id]));
-  }
-
-  function updatePaymentField(methodId: string, index: number, field: string, value: string) {
-    setPaymentDetails((prev) => {
-      const lista = prev[methodId] ?? [{}];
-      return {
-        ...prev,
-        [methodId]: lista.map((e, i) => (i === index ? { ...e, [field]: value } : e)),
-      };
-    });
-  }
-
-  /** Agrega otro juego de datos al método (otro pago móvil, otra cuenta). */
-  function addPaymentEntry(methodId: string) {
-    setPaymentDetails((prev) => ({ ...prev, [methodId]: [...(prev[methodId] ?? [{}]), {}] }));
-  }
-
-  /**
-   * Quita un juego de datos. Nunca deja el método sin ninguno: si se borra el
-   * último queda uno vacío, para que los campos sigan existiendo y el
-   * especialista pueda volver a escribir sin tener que reactivar el método.
-   */
-  function removePaymentEntry(methodId: string, index: number) {
-    setPaymentDetails((prev) => {
-      const restantes = (prev[methodId] ?? []).filter((_, i) => i !== index);
-      return { ...prev, [methodId]: restantes.length > 0 ? restantes : [{}] };
-    });
-  }
-
-  function toggleMethodExpand(id: string) {
-    setExpandedMethods((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
-      return next;
-    });
-  }
-
-  async function savePaymentMethods() {
-    // Validación: si Transferencia está activa, CADA cuenta cargada debe tener
-    // 20 dígitos. Antes se miraba solo la primera; con varias cuentas eso dejaba
-    // pasar una mal escrita y el paciente transfería a un número inexistente.
-    if (paymentMethods.includes('transferencia')) {
-      const cuentas = paymentDetails['transferencia'] ?? [];
-      for (let i = 0; i < cuentas.length; i++) {
-        const acc = (cuentas[i]?.account ?? '').replace(/\D/g, '');
-        if (acc.length > 0 && acc.length !== 20) {
-          showToast({
-            type: 'error',
-            message:
-              cuentas.length > 1
-                ? `La cuenta ${i + 1} de transferencia debe tener 20 dígitos (van ${acc.length}).`
-                : `El N° de cuenta de transferencia debe tener 20 dígitos (van ${acc.length}).`,
-          });
-          return;
-        }
-      }
-    }
-
-    // Se serializa a la forma que entiende la BD: objeto suelto cuando hay un
-    // solo juego de datos (compatible con todo lo ya escrito), lista cuando hay
-    // varios. Ver lib/payment-details.
-    const detallesParaGuardar = Object.entries(paymentDetails).reduce<Record<string, unknown>>(
-      (acc, [metodo, entradas]) => withEntries(acc, metodo, entradas),
-      {},
-    );
-
-    const result = await savePaymentSettings({
-      payment_methods: paymentMethods,
-      payment_details: detallesParaGuardar,
-    });
-
-    if (!result.ok) {
-      showToast({
-        type: 'error',
-        message: 'No se pudo guardar los métodos de pago. ' + (result.error ?? ''),
-      });
-      return;
-    }
-
-    setPaymentSaved(true);
-    setTimeout(() => setPaymentSaved(false), 2500);
-    showToast({ type: 'success', message: 'Métodos de pago guardados' });
   }
 
   /* ---------------- INSURANCE ---------------- */
@@ -1616,230 +1429,31 @@ function SettingsPageInner() {
               <ExchangeRateSection />
             </div>
 
-            {/* Métodos de pago — acordeón colapsable */}
-            <div className="bg-white border border-slate-200 rounded-xl p-6">
-              <p className="text-sm font-bold text-slate-700 uppercase tracking-widest mb-1">
-                Métodos de pago aceptados
-              </p>
-              <p className="text-xs text-slate-500 mb-4">
-                Activa los métodos que aceptas y expande cada uno para configurar sus datos. Los
-                pacientes verán esta información al agendar o pagar.
-              </p>
-
-              <div className="space-y-2">
-                {PAYMENT_METHODS.map((method) => {
-                  const active = paymentMethods.includes(method.id);
-                  const hasFields = method.fields.length > 0;
-                  // El panel de campos se muestra si el método está activo Y expandido
-                  const expanded = active && hasFields && expandedMethods.has(method.id);
-
-                  return (
-                    <div
-                      key={method.id}
-                      className={`border rounded-xl overflow-hidden transition-colors ${active ? 'border-teal-300 bg-teal-50/20' : 'border-slate-200 bg-white'}`}
-                    >
-                      {/* Fila de encabezado: toggle de activación + nombre + chevron */}
-                      <div className="flex items-center gap-3 px-4 py-3">
-                        {/* Toggle de activación — clic en el checkbox/texto activa/desactiva */}
-                        <button
-                          type="button"
-                          aria-pressed={active}
-                          onClick={() => {
-                            togglePaymentMethod(method.id);
-                            // Al activar, expandir automáticamente si tiene campos.
-                            // Al desactivar, colapsar.
-                            if (!active && hasFields) {
-                              setExpandedMethods((prev) => new Set([...prev, method.id]));
-                            } else if (active) {
-                              setExpandedMethods((prev) => {
-                                const next = new Set(prev);
-                                next.delete(method.id);
-                                return next;
-                              });
-                            }
-                          }}
-                          className="flex items-center gap-3 flex-1 text-left min-w-0"
-                        >
-                          <input
-                            type="checkbox"
-                            readOnly
-                            checked={active}
-                            aria-hidden="true"
-                            className="w-5 h-5 rounded border-slate-300 text-teal-500 pointer-events-none shrink-0"
-                          />
-                          <span className="text-xl shrink-0" aria-hidden="true">
-                            {method.emoji}
-                          </span>
-                          <span className="text-sm font-medium text-slate-700 truncate">
-                            {method.label}
-                          </span>
-                          {active && hasFields && !expanded && (
-                            <span className="text-[10px] font-bold text-teal-600 bg-teal-100 px-2 py-0.5 rounded-full shrink-0">
-                              Activo
-                            </span>
-                          )}
-                        </button>
-
-                        {/* Chevron para expandir/colapsar campos (solo si tiene campos y está activo) */}
-                        {hasFields && (
-                          <button
-                            type="button"
-                            aria-expanded={expanded}
-                            aria-controls={`payment-fields-${method.id}`}
-                            aria-label={`${expanded ? 'Colapsar' : 'Expandir'} campos de ${method.label}`}
-                            onClick={() => {
-                              if (!active) {
-                                // Activar el método al intentar expandir desde inactivo
-                                togglePaymentMethod(method.id);
-                                setExpandedMethods((prev) => new Set([...prev, method.id]));
-                              } else {
-                                toggleMethodExpand(method.id);
-                              }
-                            }}
-                            className={`p-1.5 rounded-lg transition-colors shrink-0 ${
-                              active
-                                ? 'text-teal-600 hover:bg-teal-100'
-                                : 'text-slate-400 hover:bg-slate-100'
-                            }`}
-                          >
-                            {expanded ? (
-                              <ChevronUp className="w-4 h-4" />
-                            ) : (
-                              <ChevronDown className="w-4 h-4" />
-                            )}
-                          </button>
-                        )}
-                      </div>
-
-                      {/* Panel de campos de configuración */}
-                      {expanded && (
-                        <div
-                          id={`payment-fields-${method.id}`}
-                          className="px-4 pb-4 pt-1 space-y-4 border-t border-teal-100"
-                        >
-                          {(paymentDetails[method.id] ?? [{}]).map((entrada, idx) => {
-                            const entradas = paymentDetails[method.id] ?? [{}];
-                            const varias = entradas.length > 1;
-                            return (
-                              <div
-                                key={idx}
-                                className={
-                                  varias ? 'rounded-lg border border-slate-200 p-3 space-y-2' : ''
-                                }
-                              >
-                                {varias && (
-                                  <div className="flex items-center justify-between">
-                                    <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                                      {method.id === 'transferencia'
-                                        ? `Cuenta ${idx + 1}`
-                                        : `Opción ${idx + 1}`}
-                                    </span>
-                                    <button
-                                      type="button"
-                                      onClick={() => removePaymentEntry(method.id, idx)}
-                                      className="text-[11px] font-semibold text-slate-400 hover:text-red-600"
-                                    >
-                                      Quitar
-                                    </button>
-                                  </div>
-                                )}
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                  {method.fields.map((f) => {
-                                    const isBankAccount =
-                                      method.id === 'transferencia' && f.key === 'account';
-                                    const rawVal = entrada[f.key] ?? '';
-                                    const accountDigits = isBankAccount
-                                      ? rawVal.replace(/\D/g, '')
-                                      : '';
-                                    const accountError =
-                                      isBankAccount &&
-                                      accountDigits.length > 0 &&
-                                      accountDigits.length !== 20
-                                        ? `La cuenta debe tener 20 dígitos (van ${accountDigits.length})`
-                                        : null;
-                                    return (
-                                      <div key={f.key}>
-                                        <label className="block text-xs font-medium text-slate-600 mb-1">
-                                          {f.label}
-                                        </label>
-                                        <input
-                                          type={f.type ?? 'text'}
-                                          inputMode={isBankAccount ? 'numeric' : undefined}
-                                          value={rawVal}
-                                          onChange={(e) =>
-                                            updatePaymentField(
-                                              method.id,
-                                              idx,
-                                              f.key,
-                                              isBankAccount
-                                                ? formatBankAccount(e.target.value)
-                                                : e.target.value,
-                                            )
-                                          }
-                                          placeholder={
-                                            isBankAccount
-                                              ? '0000-0000-0000-0000-0000'
-                                              : f.placeholder
-                                          }
-                                          className={
-                                            accountError
-                                              ? fi.replace('border-slate-200', 'border-red-300')
-                                              : fi
-                                          }
-                                        />
-                                        {accountError && (
-                                          <p className="text-[11px] text-red-600 mt-1">
-                                            {accountError}
-                                          </p>
-                                        )}
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              </div>
-                            );
-                          })}
-
-                          {/*
-                            Solo pago móvil y transferencia admiten varios: son
-                            los que un especialista tiene repetidos en distintos
-                            bancos. Zelle o Binance con dos cuentas confundirían
-                            al paciente más de lo que ayudan.
-                          */}
-                          {MULTI_ENTRY_METHODS.has(method.id) && (
-                            <button
-                              type="button"
-                              onClick={() => addPaymentEntry(method.id)}
-                              className="text-xs font-semibold text-teal-600 hover:text-teal-700"
-                            >
-                              + Agregar{' '}
-                              {method.id === 'transferencia' ? 'otra cuenta' : 'otro pago móvil'}
-                            </button>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-
-              <button
-                onClick={savePaymentMethods}
-                className="mt-6 flex items-center gap-2 g-bg px-5 py-2.5 rounded-xl text-sm font-bold text-white hover:opacity-90"
-              >
-                {paymentSaved ? (
-                  <>
-                    <CheckCircle className="w-4 h-4" />
-                    Guardado
-                  </>
-                ) : (
-                  <>
-                    <SaveIcon className="w-4 h-4" />
-                    Guardar métodos y datos
-                  </>
-                )}
-              </button>
-            </div>
+            {/* Métodos de pago — acordeón colapsable (componente extraído) */}
+            {initialPaymentMethods !== null && (
+              <PaymentDetailsEditor
+                key={paymentDataKey}
+                initialMethods={initialPaymentMethods}
+                initialDetails={initialPaymentDetails}
+                title="Métodos de pago aceptados"
+                description="Activa los métodos que aceptas y expande cada uno para configurar sus datos. Los pacientes verán esta información al agendar o pagar."
+                onSave={async (methods, details) => {
+                  const result = await savePaymentSettings({
+                    payment_methods: methods,
+                    payment_details: details,
+                  });
+                  if (result.ok) {
+                    showToast({ type: 'success', message: 'Métodos de pago guardados' });
+                  } else {
+                    showToast({
+                      type: 'error',
+                      message: 'No se pudo guardar los métodos de pago. ' + (result.error ?? ''),
+                    });
+                  }
+                  return result;
+                }}
+              />
+            )}
           </div>
         )}
 
