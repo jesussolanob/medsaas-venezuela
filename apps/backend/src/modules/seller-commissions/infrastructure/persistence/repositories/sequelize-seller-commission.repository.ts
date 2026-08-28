@@ -419,6 +419,15 @@ export class SequelizeSellerCommissionRepository implements ISellerCommissionRep
   }
 
   // ---------------------------------------------------------------------------
+  // findPaymentById
+  // ---------------------------------------------------------------------------
+
+  async findPaymentById(paymentId: string): Promise<SellerPayment | null> {
+    const row = await this.paymentModel.findOne({ where: { id: paymentId } });
+    return row ? modelToPayment(row) : null;
+  }
+
+  // ---------------------------------------------------------------------------
   // findSellerById / findSpecialistById
   // ---------------------------------------------------------------------------
 

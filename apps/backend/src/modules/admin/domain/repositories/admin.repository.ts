@@ -205,6 +205,12 @@ export interface PlanPriceRow {
   period: BillingPeriod;
   priceUsd: number;
   isActive: boolean;
+  /**
+   * Optional reference price shown crossed-out next to the real price.
+   * NULL = no promotional pricing for this period — the UI hides the strikethrough.
+   * When set, must be strictly greater than priceUsd (enforced by SetPlanPricesUseCase).
+   */
+  compareAtPrice: number | null;
 }
 
 /** Input for setting a single period price entry. */
@@ -213,6 +219,11 @@ export interface SetPlanPriceParams {
   period: BillingPeriod;
   priceUsd: number;
   isActive: boolean;
+  /**
+   * Reference price to show crossed-out (tachado) beside the real price.
+   * Omit or pass null to clear the promotional display for this period.
+   */
+  compareAtPrice?: number | null;
 }
 
 /** Enriched plan returned by admin list — includes prices and features. */

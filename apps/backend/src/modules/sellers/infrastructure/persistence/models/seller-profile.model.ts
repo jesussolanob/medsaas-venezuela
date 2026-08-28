@@ -105,6 +105,16 @@ export class SellerProfileModel extends Model {
   @Column({ type: DataType.BOOLEAN, allowNull: true, field: 'onboarding_completed' })
   declare onboardingCompleted: boolean | null;
 
+  /**
+   * Payment configuration for this seller: how Delta pays them their commissions.
+   * Stored as JSONB — same column and shape used by specialist profiles (ADR-044).
+   * NULL on rows that have never set payment details.
+   *
+   * SECURITY: financial data — never log.
+   */
+  @Column({ type: DataType.JSONB, allowNull: true, field: 'payment_details' })
+  declare paymentDetails: Record<string, unknown> | null;
+
   @Column({ type: DataType.DATE, allowNull: true, field: 'created_at' })
   declare createdAt: Date;
 

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Put, UseGuards } from '@nestjs/common';
 import { z } from 'zod';
 import { AppAuthGuard } from '../../../../infrastructure/auth/app-auth.guard';
 import { RolesGuard } from '../../../../presentation/guards/roles.guard';
@@ -15,10 +15,15 @@ import { ListSellerSpecialistsUseCase } from '../../application/use-cases/list-s
 import { GetSellerSpecialistUseCase } from '../../application/use-cases/get-seller-specialist.use-case';
 import { GetSellerProfileUseCase } from '../../application/use-cases/get-seller-profile.use-case';
 import { ListSellersUseCase } from '../../application/use-cases/list-sellers.use-case';
+import { GetSellerPaymentDetailsUseCase } from '../../application/use-cases/get-seller-payment-details.use-case';
+import { UpdateSellerPaymentDetailsUseCase } from '../../application/use-cases/update-seller-payment-details.use-case';
+import { GetAdminSellerPaymentDetailsUseCase } from '../../application/use-cases/get-admin-seller-payment-details.use-case';
+import { GetSpecialistSellerAssignmentUseCase } from '../../application/use-cases/get-specialist-seller-assignment.use-case';
 import type {
   SellerProfile,
   SellerAdminRow,
   SellerSpecialistRow,
+  SellerPaymentDetails,
 } from '../../domain/repositories/seller.repository';
 
 // ---------------------------------------------------------------------------
@@ -54,6 +59,24 @@ const CreateSellerSpecialistBodySchema = z
 
 type CreateSellerSpecialistBody = z.infer<typeof CreateSellerSpecialistBodySchema>;
 
+/**
+ * PUT /api/seller/payment-details
+ *
+ * The JSONB value is intentionally unstructured: the frontend helpers
+ * (`entriesOf` / `withEntries`) manage the shape, and the backend stores it
+ * as-is (ADR-044). Zod verifies it is a plain object; the use case validates
+ * that entry values are strings and no entry is completely empty.
+ *
+ * SECURITY: this is financial data — do NOT log the body.
+ */
+const UpdatePaymentDetailsBodySchema = z
+  .object({
+    paymentDetails: z.record(z.unknown()),
+  })
+  .strict();
+
+type UpdatePaymentDetailsBody = z.infer<typeof UpdatePaymentDetailsBodySchema>;
+
 // ---------------------------------------------------------------------------
 // Response helpers
 // ---------------------------------------------------------------------------
@@ -88,8 +111,15 @@ function toSellerAdminDto(row: SellerAdminRow) {
     email: row.email,
     sellerCode: row.sellerCode,
     specialistsCount: row.specialistsCount,
+    isActive: row.isActive,
     createdAt: row.createdAt,
     lastSignInAt: row.lastSignInAt,
+  };
+}
+
+function toPaymentDetailsDto(details: SellerPaymentDetails) {
+  return {
+    paymentDetails: details.paymentDetails,
   };
 }
 
@@ -123,27 +153,28 @@ function toSpecialistDto(row: SellerSpecialistRow) {
  * SellersController — three surfaces:
  *
  *   Admin (super_admin only):
- *     GET  /api/admin/sellers         — list sellers + how many specialists each sold
- *     POST /api/admin/sellers         — create a seller account
+ *     GET  /api/admin/sellers                             — list sellers + specialist counts
+ *     POST /api/admin/sellers                             — create a seller account
+ *     GET  /api/admin/sellers/:id/payment-details         — view a seller's payment config
+ *     GET  /api/admin/specialist-assignment/:specialistId — current seller for a specialist
  *
  *   Seller portal (role=seller only):
- *     GET  /api/seller/me               — my own seller code + display name
- *     GET  /api/seller/specialists      — list specialists I onboarded
- *     GET  /api/seller/specialists/:id  — detail of one specialist
- *     POST /api/seller/specialists      — create a specialist (sold_by from session)
+ *     GET  /api/seller/me                          — my own seller code + display name
+ *     GET  /api/seller/payment-details             — my payment configuration
+ *     PUT  /api/seller/payment-details             — update my payment configuration
+ *     GET  /api/seller/specialists                 — list specialists I onboarded
+ *     GET  /api/seller/specialists/:id             — detail of one specialist
+ *     POST /api/seller/specialists                 — create a specialist (sold_by from session)
  *
  *   Public (no auth):
  *     GET  /api/public/seller-code/:code — validate a seller code
  *
  * SECURITY:
- *   - Admin endpoint: @Roles('super_admin') — decisión del dueño (2026-08-17).
- *     Antes decía @Roles('super_admin', 'admin'), pero 'admin' NO existe en
- *     CurrentUserPayload['role']: ninguna sesión puede tener ese rol, así que
- *     era un rol imaginario que además rompía el typecheck (invisible porque el
- *     type-checker del build se queda sin memoria y el deploy no corre tipos).
+ *   - Admin endpoints: @Roles('super_admin').
  *   - Seller endpoints: @Roles('seller').
  *   - sellerId always comes from CurrentUser().sub — never from the request body.
  *   - sold_by is set from the session, never from body.
+ *   - Payment details are financial data — NEVER log them.
  *   - NEVER log fullName, email, cedula, phone (PII).
  */
 @Controller()
@@ -157,6 +188,10 @@ export class SellersController {
     private readonly getSpecialist: GetSellerSpecialistUseCase,
     private readonly getProfile: GetSellerProfileUseCase,
     private readonly listSellers: ListSellersUseCase,
+    private readonly getPaymentDetails: GetSellerPaymentDetailsUseCase,
+    private readonly updatePaymentDetails: UpdateSellerPaymentDetailsUseCase,
+    private readonly getAdminPaymentDetails: GetAdminSellerPaymentDetailsUseCase,
+    private readonly getSellerAssignment: GetSpecialistSellerAssignmentUseCase,
   ) {}
 
   // ---------------------------------------------------------------------------
@@ -175,6 +210,65 @@ export class SellersController {
   async listSellersEndpoint(): Promise<SuccessResponse<ReturnType<typeof toSellerAdminDto>[]>> {
     const sellers = await this.listSellers.execute();
     return ok(sellers.map(toSellerAdminDto));
+  }
+
+  // ---------------------------------------------------------------------------
+  // GET /api/admin/sellers/:id/payment-details
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Returns the payment configuration for a specific seller.
+   * Used by the admin panel to know how to pay the seller their commissions.
+   *
+   * SECURITY: financial data — do NOT log the response body.
+   */
+  @Get('admin/sellers/:id/payment-details')
+  @UseGuards(RolesGuard)
+  @Roles('super_admin')
+  async getSellerPaymentDetailsAdmin(
+    @Param('id', ParseUUIDPipe) sellerId: string,
+  ): Promise<SuccessResponse<ReturnType<typeof toPaymentDetailsDto>>> {
+    const details = await this.getAdminPaymentDetails.execute(sellerId);
+    return ok(toPaymentDetailsDto(details));
+  }
+
+  // ---------------------------------------------------------------------------
+  // GET /api/admin/specialist-assignment/:specialistId
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Returns the current seller attribution for a specialist.
+   *
+   * Used by the assign-seller flow to show a reconfirmation modal when the
+   * specialist already has a seller ("moving from X to Y — confirm?").
+   *
+   * Response always uses the `{ sellerId, sellerName, soldBySource }` shape:
+   *   - When the specialist has a seller: all three fields are populated.
+   *   - When unattributed or specialist not found: all three fields are null.
+   *
+   * SECURITY: sellerName is PII — do NOT log the response.
+   */
+  @Get('admin/specialist-assignment/:specialistId')
+  @UseGuards(RolesGuard)
+  @Roles('super_admin')
+  async getSpecialistAssignment(
+    @Param('specialistId', ParseUUIDPipe) specialistId: string,
+  ): Promise<
+    SuccessResponse<{
+      sellerId: string | null;
+      sellerName: string | null;
+      soldBySource: string | null;
+    }>
+  > {
+    const assignment = await this.getSellerAssignment.execute(specialistId);
+    if (!assignment) {
+      return ok({ sellerId: null, sellerName: null, soldBySource: null });
+    }
+    return ok({
+      sellerId: assignment.sellerId,
+      sellerName: assignment.sellerName,
+      soldBySource: assignment.soldBySource,
+    });
   }
 
   // ---------------------------------------------------------------------------
@@ -207,6 +301,49 @@ export class SellersController {
   ): Promise<SuccessResponse<{ sellerCode: string; fullName: string }>> {
     const seller = await this.getProfile.execute(user.sub);
     return ok({ sellerCode: seller.sellerCode, fullName: seller.fullName });
+  }
+
+  // ---------------------------------------------------------------------------
+  // GET /api/seller/me/payment-details
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Returns the authenticated seller's payment configuration
+   * (how Delta pays their commissions).
+   *
+   * sellerId comes from the session — never from the request.
+   * SECURITY: financial data — do NOT log the response body.
+   */
+  @Get('seller/payment-details')
+  @UseGuards(RolesGuard)
+  @Roles('seller')
+  async getOwnPaymentDetails(
+    @CurrentUser() user: CurrentUserPayload,
+  ): Promise<SuccessResponse<ReturnType<typeof toPaymentDetailsDto>>> {
+    const details = await this.getPaymentDetails.execute(user.sub);
+    return ok(toPaymentDetailsDto(details));
+  }
+
+  // ---------------------------------------------------------------------------
+  // PUT /api/seller/me/payment-details
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Updates the authenticated seller's payment configuration.
+   *
+   * sellerId comes from the session — never from the request body or URL.
+   * The payload is the full paymentDetails JSONB value (replace semantics).
+   * SECURITY: financial data — do NOT log the request or response body.
+   */
+  @Put('seller/payment-details')
+  @UseGuards(RolesGuard)
+  @Roles('seller')
+  async updateOwnPaymentDetails(
+    @CurrentUser() user: CurrentUserPayload,
+    @Body(new ZodValidationPipe(UpdatePaymentDetailsBodySchema)) body: UpdatePaymentDetailsBody,
+  ): Promise<SuccessResponse<ReturnType<typeof toPaymentDetailsDto>>> {
+    const details = await this.updatePaymentDetails.execute(user.sub, body.paymentDetails);
+    return ok(toPaymentDetailsDto(details));
   }
 
   // ---------------------------------------------------------------------------

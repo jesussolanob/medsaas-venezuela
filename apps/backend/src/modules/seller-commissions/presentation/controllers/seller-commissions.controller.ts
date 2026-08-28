@@ -13,6 +13,8 @@ import { GetPendingCommissionsBySellerUseCase } from '../../application/use-case
 import { RegisterSellerPaymentUseCase } from '../../application/use-cases/register-seller-payment.use-case';
 import { GetSellerPaymentsUseCase } from '../../application/use-cases/get-seller-payments.use-case';
 import { AssignSpecialistToSellerUseCase } from '../../application/use-cases/assign-specialist-to-seller.use-case';
+import { GetAdminSellerPaymentReceiptUrlUseCase } from '../../application/use-cases/get-admin-seller-payment-receipt-url.use-case';
+import { GetSellerPaymentReceiptUrlUseCase } from '../../application/use-cases/get-seller-payment-receipt-url.use-case';
 import type {
   CommissionRow,
   PendingBySeller,
@@ -157,6 +159,7 @@ export class SellerCommissionsAdminController {
     private readonly registerPayment: RegisterSellerPaymentUseCase,
     private readonly getPayments: GetSellerPaymentsUseCase,
     private readonly assignSpecialist: AssignSpecialistToSellerUseCase,
+    private readonly getAdminReceiptUrl: GetAdminSellerPaymentReceiptUrlUseCase,
   ) {}
 
   /**
@@ -205,6 +208,22 @@ export class SellerCommissionsAdminController {
   }
 
   /**
+   * GET /api/admin/seller-commissions/payments/:paymentId/receipt-url
+   *
+   * Returns a short-lived signed URL (15 min) for a seller payment comprobante.
+   * Never exposes the raw GCS path — only the signed URL is returned.
+   *
+   * Returns 404 when the payment does not exist or has no comprobante.
+   */
+  @Get('payments/:paymentId/receipt-url')
+  async adminPaymentReceiptUrl(
+    @Param('paymentId', ParseUUIDPipe) paymentId: string,
+  ): Promise<SuccessResponse<{ url: string }>> {
+    const data = await this.getAdminReceiptUrl.execute(paymentId);
+    return ok(data);
+  }
+
+  /**
    * POST /api/admin/seller-commissions/assign
    * Assigns or re-assigns a specialist to a seller.
    */
@@ -242,6 +261,7 @@ export class SellerCommissionsSellerController {
   constructor(
     private readonly getCommissions: GetSellerCommissionsUseCase,
     private readonly getPayments: GetSellerPaymentsUseCase,
+    private readonly getSellerReceiptUrl: GetSellerPaymentReceiptUrlUseCase,
   ) {}
 
   /**
@@ -266,5 +286,25 @@ export class SellerCommissionsSellerController {
   ): Promise<SuccessResponse<ReturnType<typeof toPaymentDto>[]>> {
     const payments = await this.getPayments.execute(user.sub);
     return ok(payments.map(toPaymentDto));
+  }
+
+  /**
+   * GET /api/seller/payments/:paymentId/receipt-url
+   *
+   * Returns a short-lived signed URL (15 min) for a specific payment comprobante.
+   *
+   * SECURITY:
+   *   - sellerId comes from CurrentUser().sub — never from the URL.
+   *   - If the payment does not exist OR belongs to a different seller, the same
+   *     404 is returned (anti-IDOR: sellers cannot enumerate other sellers' payments).
+   *   - Returns 404 when the payment has no comprobante attached.
+   */
+  @Get('payments/:paymentId/receipt-url')
+  async myPaymentReceiptUrl(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('paymentId', ParseUUIDPipe) paymentId: string,
+  ): Promise<SuccessResponse<{ url: string }>> {
+    const data = await this.getSellerReceiptUrl.execute(paymentId, user.sub);
+    return ok(data);
   }
 }

@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { SequelizeModule } from '@nestjs/sequelize';
+import { StorageModule } from '../storage/storage.module';
 
 // Models
 import { SellerCommissionModel } from './infrastructure/persistence/models/seller-commission.model';
@@ -18,6 +19,8 @@ import { GetPendingCommissionsBySellerUseCase } from './application/use-cases/ge
 import { RegisterSellerPaymentUseCase } from './application/use-cases/register-seller-payment.use-case';
 import { GetSellerPaymentsUseCase } from './application/use-cases/get-seller-payments.use-case';
 import { AssignSpecialistToSellerUseCase } from './application/use-cases/assign-specialist-to-seller.use-case';
+import { GetSellerPaymentReceiptUrlUseCase } from './application/use-cases/get-seller-payment-receipt-url.use-case';
+import { GetAdminSellerPaymentReceiptUrlUseCase } from './application/use-cases/get-admin-seller-payment-receipt-url.use-case';
 
 // Guards
 import { RolesGuard } from '../../presentation/guards/roles.guard';
@@ -57,6 +60,7 @@ import {
 @Module({
   imports: [
     SequelizeModule.forFeature([SellerCommissionModel, SellerPaymentModel, CommissionProfileModel]),
+    StorageModule,
   ],
   controllers: [SellerCommissionsAdminController, SellerCommissionsSellerController],
   providers: [
@@ -72,6 +76,8 @@ import {
     RegisterSellerPaymentUseCase,
     GetSellerPaymentsUseCase,
     AssignSpecialistToSellerUseCase,
+    GetSellerPaymentReceiptUrlUseCase,
+    GetAdminSellerPaymentReceiptUrlUseCase,
   ],
   exports: [AccrueSignupCommissionUseCase, AccruePlanCommissionUseCase],
 })

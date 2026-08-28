@@ -882,15 +882,19 @@ export class SequelizeAdminRepository implements IAdminRepository {
       period: string;
       price_usd: string;
       is_active: boolean;
+      compare_at_price: string | null;
     }>(
-      `INSERT INTO plan_prices (id, plan_key, period, price_usd, is_active, created_at, updated_at)
-       VALUES (gen_random_uuid(), :planKey, :period, :priceUsd, :isActive, NOW(), NOW())
+      `INSERT INTO plan_prices
+         (id, plan_key, period, price_usd, is_active, compare_at_price, created_at, updated_at)
+       VALUES
+         (gen_random_uuid(), :planKey, :period, :priceUsd, :isActive, :compareAtPrice, NOW(), NOW())
        ON CONFLICT (plan_key, period)
        DO UPDATE SET
-         price_usd  = EXCLUDED.price_usd,
-         is_active  = EXCLUDED.is_active,
-         updated_at = NOW()
-       RETURNING id, plan_key, period, price_usd, is_active`,
+         price_usd        = EXCLUDED.price_usd,
+         is_active        = EXCLUDED.is_active,
+         compare_at_price = EXCLUDED.compare_at_price,
+         updated_at       = NOW()
+       RETURNING id, plan_key, period, price_usd, is_active, compare_at_price`,
       {
         type: QueryTypes.SELECT,
         replacements: {
@@ -898,6 +902,7 @@ export class SequelizeAdminRepository implements IAdminRepository {
           period: params.period,
           priceUsd: params.priceUsd,
           isActive: params.isActive,
+          compareAtPrice: params.compareAtPrice ?? null,
         },
         transaction,
       },
@@ -914,6 +919,7 @@ export class SequelizeAdminRepository implements IAdminRepository {
       period: row.period as import('../../../domain/value-objects/plan-price.vo').BillingPeriod,
       priceUsd: Number(row.price_usd),
       isActive: row.is_active,
+      compareAtPrice: row.compare_at_price != null ? Number(row.compare_at_price) : null,
     };
   }
 
@@ -1390,6 +1396,7 @@ export class SequelizeAdminRepository implements IAdminRepository {
       period: row.period,
       priceUsd: Number(row.priceUsd),
       isActive: row.isActive,
+      compareAtPrice: row.compareAtPrice != null ? Number(row.compareAtPrice) : null,
     };
   }
 

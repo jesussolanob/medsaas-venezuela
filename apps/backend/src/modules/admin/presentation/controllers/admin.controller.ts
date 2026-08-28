@@ -727,6 +727,7 @@ export class AdminController {
         period: p.period,
         priceUsd: p.price_usd,
         isActive: p.is_active,
+        compareAtPrice: p.compare_at_price ?? null,
       })),
     });
     return { success: true, data: prices };

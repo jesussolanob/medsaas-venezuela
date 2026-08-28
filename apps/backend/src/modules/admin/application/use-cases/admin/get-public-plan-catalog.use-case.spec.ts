@@ -107,9 +107,30 @@ describe('GetPublicPlanCatalogUseCase', () => {
     mockRepo.listPlansWithDetails.mockResolvedValue([
       makePlan({
         prices: [
-          { id: '1', planKey: 'delta_free', period: 'monthly', priceUsd: 29, isActive: true },
-          { id: '2', planKey: 'delta_free', period: 'annual', priceUsd: 290, isActive: true },
-          { id: '3', planKey: 'delta_free', period: 'quarterly', priceUsd: 80, isActive: false },
+          {
+            id: '1',
+            planKey: 'delta_free',
+            period: 'monthly',
+            priceUsd: 29,
+            isActive: true,
+            compareAtPrice: null,
+          },
+          {
+            id: '2',
+            planKey: 'delta_free',
+            period: 'annual',
+            priceUsd: 290,
+            isActive: true,
+            compareAtPrice: null,
+          },
+          {
+            id: '3',
+            planKey: 'delta_free',
+            period: 'quarterly',
+            priceUsd: 80,
+            isActive: false,
+            compareAtPrice: null,
+          },
         ],
       }),
     ]);
@@ -120,8 +141,41 @@ describe('GetPublicPlanCatalogUseCase', () => {
     expect(plan).toBeDefined();
     expect(plan!.prices).toHaveLength(2);
     expect(plan!.prices).toEqual([
-      { period: 'monthly', price_usd: 29 },
-      { period: 'annual', price_usd: 290 },
+      { period: 'monthly', price_usd: 29, compare_at_price: null },
+      { period: 'annual', price_usd: 290, compare_at_price: null },
+    ]);
+  });
+
+  it('exposes compare_at_price when a promotional reference price is set', async () => {
+    mockRepo.listPlansWithDetails.mockResolvedValue([
+      makePlan({
+        prices: [
+          {
+            id: '1',
+            planKey: 'delta_free',
+            period: 'monthly',
+            priceUsd: 10,
+            isActive: true,
+            compareAtPrice: 20,
+          },
+          {
+            id: '2',
+            planKey: 'delta_free',
+            period: 'annual',
+            priceUsd: 96,
+            isActive: true,
+            compareAtPrice: null,
+          },
+        ],
+      }),
+    ]);
+
+    const result = await useCase.execute({});
+    expect(result).toHaveLength(1);
+    const [plan] = result;
+    expect(plan!.prices).toEqual([
+      { period: 'monthly', price_usd: 10, compare_at_price: 20 },
+      { period: 'annual', price_usd: 96, compare_at_price: null },
     ]);
   });
 

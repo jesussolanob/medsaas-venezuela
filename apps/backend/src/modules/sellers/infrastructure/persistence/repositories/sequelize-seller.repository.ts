@@ -7,11 +7,14 @@ import type {
   SellerProfile,
   SellerAdminRow,
   SellerSpecialistRow,
+  SellerPaymentDetails,
+  SpecialistSellerAssignment,
   CreateSellerParams,
   CreateSoldSpecialistParams,
 } from '../../../domain/repositories/seller.repository';
 import { SellerProfileModel } from '../models/seller-profile.model';
 import { SpecialistEmailConflictError } from '../../../domain/errors/specialist-email-conflict.error';
+import { SellerNotFoundError } from '../../../domain/errors/seller-not-found.error';
 
 /** Trial duration in days — matches the value used throughout the platform. */
 const TRIAL_DURATION_DAYS = 30;
@@ -131,6 +134,8 @@ export class SequelizeSellerRepository implements ISellerRepository {
       email: s.email,
       sellerCode: s.sellerCode ?? '',
       specialistsCount: bySeller.get(s.id) ?? 0,
+      // Legacy rows that predate the column may return null; treat as active.
+      isActive: s.isActive ?? true,
       createdAt: s.createdAt,
       lastSignInAt: s.lastSignInAt,
     }));
@@ -235,6 +240,76 @@ export class SequelizeSellerRepository implements ISellerRepository {
         where: { id: specialistId, soldBy: null },
       },
     );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Payment details (how Delta pays the seller their commissions)
+  // ---------------------------------------------------------------------------
+
+  async getSellerPaymentDetails(sellerId: string): Promise<SellerPaymentDetails | null> {
+    const row = await this.profileModel.findOne({
+      where: { id: sellerId, role: 'seller' },
+      attributes: ['id', 'paymentDetails'],
+    });
+    if (!row) return null;
+    return {
+      sellerId: row.id,
+      paymentDetails: (row.paymentDetails ?? {}) as Record<string, unknown>,
+    };
+  }
+
+  async updateSellerPaymentDetails(
+    sellerId: string,
+    details: Record<string, unknown>,
+  ): Promise<SellerPaymentDetails> {
+    const row = await this.profileModel.findOne({
+      where: { id: sellerId, role: 'seller' },
+    });
+    if (!row) throw new SellerNotFoundError();
+
+    await row.update({ paymentDetails: details } as Partial<SellerProfileModel>);
+
+    return {
+      sellerId: row.id,
+      paymentDetails: details,
+    };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Specialist seller assignment (admin assign-seller flow)
+  // ---------------------------------------------------------------------------
+
+  async getSpecialistSellerAssignment(
+    specialistId: string,
+  ): Promise<SpecialistSellerAssignment | null> {
+    const specialist = await this.profileModel.findOne({
+      where: { id: specialistId },
+      attributes: ['id', 'soldBy', 'soldBySource'],
+    });
+    if (!specialist) return null;
+
+    if (!specialist.soldBy) {
+      return {
+        specialistId,
+        sellerId: null,
+        sellerName: null,
+        soldBySource: null,
+      };
+    }
+
+    // Fetch the seller's display name — two targeted point-reads, no JOIN needed
+    // at this volume. SECURITY: sellerName is PII — never log.
+    const seller = await this.profileModel.findOne({
+      where: { id: specialist.soldBy, role: 'seller' },
+      attributes: ['id', 'fullName'],
+    });
+
+    return {
+      specialistId,
+      sellerId: specialist.soldBy,
+      sellerName: seller?.fullName ?? null,
+      soldBySource: specialist.soldBySource,
+    };
   }
 }
 

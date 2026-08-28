@@ -54,6 +54,7 @@ function makeRepo(): jest.Mocked<ISellerCommissionRepository> {
       createdAt: new Date(),
     } as SellerPayment),
     listPaymentsBySeller: jest.fn(),
+    findPaymentById: jest.fn(),
     findSellerById: jest.fn().mockResolvedValue({ id: SELLER_ID, isActive: true }),
     findSpecialistById: jest.fn(),
     assignSpecialistToSeller: jest.fn(),

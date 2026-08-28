@@ -17,7 +17,7 @@ const sampleCatalog: PublicPlanCatalogItem[] = [
     name: 'Delta Base',
     is_permanent: false,
     sort_order: 2,
-    prices: [{ period: 'monthly', price_usd: 29 }],
+    prices: [{ period: 'monthly', price_usd: 29, compare_at_price: null }],
     features: [],
   },
 ];

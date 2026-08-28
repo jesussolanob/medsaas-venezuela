@@ -180,6 +180,17 @@ export interface ISellerCommissionRepository {
   listPaymentsBySeller(sellerId: string): Promise<SellerPayment[]>;
 
   /**
+   * Returns a single seller_payment by its primary key, or null if not found.
+   *
+   * No ownership check is applied here — the caller is responsible for
+   * verifying that the returned payment belongs to the requesting seller
+   * (anti-IDOR).  Admin callers may skip that check.
+   *
+   * SECURITY: receiptUrl (the GCS path) must never appear in logs.
+   */
+  findPaymentById(paymentId: string): Promise<SellerPayment | null>;
+
+  /**
    * Checks whether a seller profile exists and is active.
    */
   findSellerById(sellerId: string): Promise<{ id: string; isActive: boolean } | null>;

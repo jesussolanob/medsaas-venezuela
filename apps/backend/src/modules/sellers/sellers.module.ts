@@ -16,6 +16,10 @@ import { ListSellerSpecialistsUseCase } from './application/use-cases/list-selle
 import { GetSellerSpecialistUseCase } from './application/use-cases/get-seller-specialist.use-case';
 import { GetSellerProfileUseCase } from './application/use-cases/get-seller-profile.use-case';
 import { ListSellersUseCase } from './application/use-cases/list-sellers.use-case';
+import { GetSellerPaymentDetailsUseCase } from './application/use-cases/get-seller-payment-details.use-case';
+import { UpdateSellerPaymentDetailsUseCase } from './application/use-cases/update-seller-payment-details.use-case';
+import { GetAdminSellerPaymentDetailsUseCase } from './application/use-cases/get-admin-seller-payment-details.use-case';
+import { GetSpecialistSellerAssignmentUseCase } from './application/use-cases/get-specialist-seller-assignment.use-case';
 
 // Guards
 import { RolesGuard } from '../../presentation/guards/roles.guard';
@@ -64,6 +68,10 @@ import {
     GetSellerSpecialistUseCase,
     GetSellerProfileUseCase,
     ListSellersUseCase,
+    GetSellerPaymentDetailsUseCase,
+    UpdateSellerPaymentDetailsUseCase,
+    GetAdminSellerPaymentDetailsUseCase,
+    GetSpecialistSellerAssignmentUseCase,
   ],
   exports: [SELLER_REPOSITORY, ValidateSellerCodeUseCase],
 })
