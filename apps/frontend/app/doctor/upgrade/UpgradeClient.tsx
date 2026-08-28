@@ -38,6 +38,12 @@ interface PlanFeature {
 interface PlanPrice {
   period: string;
   price_usd: number;
+  /**
+   * Precio de referencia que se muestra TACHADO al lado del real. null = sin
+   * promoción, y entonces no se pinta nada. El backend ya garantiza que, si
+   * viene, es mayor al precio real: un tachado más barato sería un error de carga.
+   */
+  compare_at_price: number | null;
   is_active: boolean;
 }
 
@@ -184,6 +190,12 @@ export default function UpgradeClient({ plans, currentPlanKey }: UpgradeClientPr
   function getPriceForPeriod(plan: Plan, period: Period): number | null {
     const price = plan.prices.find((p) => p.period === period && p.is_active);
     return price ? price.price_usd : null;
+  }
+
+  /** Precio tachado del período, si el admin cargó una promoción para ese plan. */
+  function getCompareAtForPeriod(plan: Plan, period: Period): number | null {
+    const price = plan.prices.find((p) => p.period === period && p.is_active);
+    return price?.compare_at_price ?? null;
   }
 
   // Discount implied by a multi-month period vs paying monthly × N months.
@@ -384,8 +396,17 @@ export default function UpgradeClient({ plans, currentPlanKey }: UpgradeClientPr
                     (() => {
                       const discount = getDiscountPct(plan, effectivePeriod);
                       const months = PERIOD_MONTHS[effectivePeriod];
+                      const compareAt = getCompareAtForPeriod(plan, effectivePeriod);
                       return (
                         <div>
+                          {compareAt !== null && (
+                            <span
+                              className="text-base font-semibold text-slate-400 line-through mr-2"
+                              aria-label={`Precio anterior ${compareAt} dólares`}
+                            >
+                              ${compareAt}
+                            </span>
+                          )}
                           <span className="text-2xl font-bold text-slate-800">${price}</span>
                           <span className="text-sm text-slate-500 ml-1">
                             USD / {PERIOD_LABELS[effectivePeriod]?.toLowerCase()}

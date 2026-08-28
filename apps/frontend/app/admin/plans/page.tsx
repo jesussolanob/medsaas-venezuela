@@ -19,6 +19,8 @@ interface BackendPlanPrice {
   period: string;
   priceUsd: number;
   isActive: boolean;
+  /** Precio tachado. ⚠️ Acá viene en camelCase; el catálogo público lo manda como snake_case. */
+  compareAtPrice: number | null;
 }
 
 interface BackendPlan {
@@ -64,6 +66,7 @@ export default async function PlansPage() {
       prices: (p.prices ?? []).map((pr) => ({
         period: pr.period as 'monthly' | 'quarterly' | 'semiannual' | 'annual',
         price_usd: pr.priceUsd,
+        compare_at_price: pr.compareAtPrice ?? null,
         is_active: pr.isActive,
       })),
     }));
