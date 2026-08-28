@@ -1,21 +1,13 @@
 'use client';
 import { useEffect, useState } from 'react';
-import {
-  X,
-  Phone,
-  Mail,
-  FileText,
-  Calendar,
-  Users,
-  TrendingUp,
-  MapPin,
-  Building2,
-} from 'lucide-react';
+import { X, Phone, Mail, FileText, Calendar, Users, TrendingUp, MapPin } from 'lucide-react';
 import { reportError } from '@/lib/report-error';
 import { showToast } from '@/components/ui/Toaster';
 import DoctorPatientsList from './DoctorPatientsList';
+import AssignSellerModal from './AssignSellerModal';
 
 interface DoctorDetailDrawerProps {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   doctor: any;
   isOpen: boolean;
   onClose: () => void;
@@ -28,10 +20,13 @@ export default function DoctorDetailDrawer({
   onClose,
   onDoctorUpdated,
 }: DoctorDetailDrawerProps) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [details, setDetails] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [suspending, setSuspending] = useState(false);
+  /** Controla si el modal de asignación de vendedor está abierto. */
+  const [showAssignSeller, setShowAssignSeller] = useState(false);
 
   useEffect(() => {
     if (!isOpen || !doctor) {
@@ -261,6 +256,13 @@ export default function DoctorDetailDrawer({
         {/* Actions */}
         {!loading && (
           <div className="border-t border-slate-200 p-6 space-y-2">
+            {/* Asignar a vendedor — para leads de Ads/directo sin atribución */}
+            <button
+              onClick={() => setShowAssignSeller(true)}
+              className="w-full bg-teal-500 hover:bg-teal-600 text-white py-2 rounded-lg text-sm font-medium transition-colors"
+            >
+              Asignar a vendedor
+            </button>
             <button
               onClick={handleToggleStatus}
               disabled={suspending}
@@ -281,6 +283,19 @@ export default function DoctorDetailDrawer({
           </div>
         )}
       </div>
+
+      {/* Modal de asignación de vendedor */}
+      {showAssignSeller && profile?.id && (
+        <AssignSellerModal
+          specialistId={profile.id}
+          specialistName={profile.full_name ?? 'Especialista'}
+          onClose={() => setShowAssignSeller(false)}
+          onSuccess={() => {
+            setShowAssignSeller(false);
+            onDoctorUpdated?.();
+          }}
+        />
+      )}
     </>
   );
 }

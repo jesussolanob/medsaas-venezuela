@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import {
   DOCTOR_PROFILE_REPOSITORY,
   type IDoctorProfileRepository,
@@ -12,6 +12,8 @@ import {
   type IPricingPlanRepository,
 } from '../../../../packages/domain/repositories/pricing-plan.repository';
 import { OnboardingRequirementsNotMetError } from '../../../domain/errors/onboarding-requirements-not-met.error';
+import { AccrueSignupCommissionUseCase } from '../../../../seller-commissions/application/use-cases/accrue-signup-commission.use-case';
+import { reportCommissionFailure } from '../../../../seller-commissions/application/report-commission-failure';
 
 export interface CompleteOnboardingOutput {
   onboardingCompleted: boolean;
@@ -25,10 +27,16 @@ export interface CompleteOnboardingOutput {
  * just update the timestamp (harmless). The UI should stop showing the gate
  * once onboardingCompleted = true.
  *
+ * After marking onboarding complete, fires AccrueSignupCommissionUseCase in a
+ * best-effort / fire-and-forget manner — a commission failure never blocks the
+ * specialist from completing their onboarding.
+ *
  * SECURITY: doctorId always comes from the authenticated token (anti-IDOR).
  */
 @Injectable()
 export class CompleteOnboardingUseCase {
+  private readonly logger = new Logger(CompleteOnboardingUseCase.name);
+
   constructor(
     @Inject(DOCTOR_PROFILE_REPOSITORY)
     private readonly profileRepo: IDoctorProfileRepository,
@@ -36,6 +44,8 @@ export class CompleteOnboardingUseCase {
     private readonly officeRepo: IOfficeRepository,
     @Inject(PRICING_PLAN_REPOSITORY)
     private readonly pricingPlanRepo: IPricingPlanRepository,
+    @Optional()
+    private readonly accrueSignupCommission: AccrueSignupCommissionUseCase | null = null,
   ) {}
 
   async execute(doctorId: string): Promise<CompleteOnboardingOutput> {
@@ -54,6 +64,17 @@ export class CompleteOnboardingUseCase {
 
     // 2. Mark onboarding as complete (idempotent).
     await this.profileRepo.markOnboardingCompleted(doctorId);
+
+    // 3. Best-effort: accrue signup commission (does not affect the response on failure).
+    if (this.accrueSignupCommission) {
+      void this.accrueSignupCommission.execute(doctorId).catch((err: unknown) => {
+        reportCommissionFailure(
+          this.logger,
+          { hook: 'complete-onboarding', specialistId: doctorId, type: 'signup' },
+          err,
+        );
+      });
+    }
 
     return { onboardingCompleted: true };
   }

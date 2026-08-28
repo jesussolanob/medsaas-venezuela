@@ -37,6 +37,12 @@ interface PlanFeature {
 interface PlanPrice {
   period: Period;
   price_usd: number;
+  /**
+   * Precio de referencia que se muestra TACHADO al lado del real en la tabla de
+   * planes. null = sin promoción. El backend rechaza un valor menor o igual al
+   * precio real: un tachado más barato es un error de carga, no una oferta.
+   */
+  compare_at_price: number | null;
   is_active: boolean;
 }
 
@@ -366,7 +372,7 @@ function PricesEditor({
   const [local, setLocal] = useState<PlanPrice[]>(() => {
     return ALL_PERIODS.map((period) => {
       const existing = prices.find((p) => p.period === period);
-      return existing ?? { period, price_usd: 0, is_active: false };
+      return existing ?? { period, price_usd: 0, compare_at_price: null, is_active: false };
     });
   });
   const [saving, setSaving] = useState(false);
@@ -377,12 +383,24 @@ function PricesEditor({
     JSON.stringify(
       ALL_PERIODS.map((period) => {
         const existing = prices.find((p) => p.period === period);
-        return existing ?? { period, price_usd: 0, is_active: false };
+        return existing ?? { period, price_usd: 0, compare_at_price: null, is_active: false };
       }),
     );
 
   function updatePrice(period: Period, field: 'price_usd' | 'is_active', value: number | boolean) {
     setLocal((prev) => prev.map((p) => (p.period === period ? { ...p, [field]: value } : p)));
+  }
+
+  /** El campo vacío se guarda como null = sin promoción, y deja de tacharse. */
+  function updateCompareAt(period: Period, raw: string) {
+    const value = raw.trim() === '' ? null : parseFloat(raw);
+    setLocal((prev) =>
+      prev.map((p) =>
+        p.period === period
+          ? { ...p, compare_at_price: value !== null && Number.isFinite(value) ? value : null }
+          : p,
+      ),
+    );
   }
 
   async function save() {
@@ -447,6 +465,28 @@ function PricesEditor({
               />
             </div>
             <span className="text-xs text-slate-400">USD</span>
+
+            <div className="relative flex-1 max-w-[150px]">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm line-through">
+                $
+              </span>
+              <input
+                type="number"
+                value={price.compare_at_price ?? ''}
+                onChange={(e) => updateCompareAt(price.period as Period, e.target.value)}
+                min={0}
+                step={0.01}
+                disabled={!price.is_active}
+                placeholder="Sin oferta"
+                title="Precio tachado: se muestra al lado del real. Vacío = sin promoción. Tiene que ser mayor al precio real."
+                className="w-full pl-7 pr-3 py-1.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-500/10 disabled:bg-slate-100 disabled:text-slate-400"
+              />
+            </div>
+            {price.compare_at_price !== null && price.compare_at_price <= price.price_usd && (
+              <span className="text-[11px] text-red-600 max-w-[150px]">
+                El tachado tiene que ser mayor al precio real.
+              </span>
+            )}
           </div>
         ))}
       </div>

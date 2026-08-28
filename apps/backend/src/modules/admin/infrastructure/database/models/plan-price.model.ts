@@ -32,6 +32,15 @@ export class PlanPriceModel extends Model {
   @Column({ type: DataType.BOOLEAN, allowNull: false, field: 'is_active' })
   declare isActive: boolean;
 
+  /**
+   * Reference price shown crossed-out beside the real price.
+   * NULL = no promotional pricing for this period.
+   * When set: must be > price_usd (enforced by the use case, not the DB).
+   * Added by migration 20260828000001-seller-commissions.
+   */
+  @Column({ type: DataType.DECIMAL(10, 2), allowNull: true, field: 'compare_at_price' })
+  declare compareAtPrice: number | null;
+
   @Column({ type: DataType.DATE, field: 'created_at' })
   declare createdAt: Date;
 

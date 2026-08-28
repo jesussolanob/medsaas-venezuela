@@ -95,6 +95,9 @@ const sampleDoctorDetail: DoctorDetail = {
   patientCount: 5,
   consultationCount: 2,
   monthlyRevenue: 100,
+  soldById: null,
+  soldByName: null,
+  soldBySource: null,
 };
 
 const sampleGrowthData: DoctorGrowthData = {

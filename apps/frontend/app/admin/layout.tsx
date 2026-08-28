@@ -32,6 +32,7 @@ import {
   Wallet,
   Plus,
   ChevronDown,
+  Banknote,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import AdminNotifications from './AdminNotifications';
@@ -82,9 +83,15 @@ const navItems: NavEntry[] = [
   { name: 'Verificaciones', href: '/admin/verifications', icon: BadgeCheck },
   { name: 'Especialidades', href: '/admin/specialties', icon: Stethoscope },
   { name: 'Plantillas de email', href: '/admin/email-templates', icon: Mail },
-  // Vendedores: SOLO super_admin. El backend lo aplica con @Roles('super_admin');
-  // la pantalla muestra un aviso si alguien más llega por URL.
-  { name: 'Vendedores', href: '/admin/sellers', icon: Handshake },
+  // Vendedores y comisiones: SOLO super_admin. El backend aplica @Roles('super_admin').
+  {
+    name: 'Vendedores',
+    icon: Handshake,
+    children: [
+      { name: 'Gestión', href: '/admin/sellers', icon: Handshake },
+      { name: 'Comisiones', href: '/admin/comisiones', icon: Banknote },
+    ],
+  },
   { name: 'Roles', href: '/admin/roles', icon: Shield, moduleKey: 'roles' },
   {
     name: 'Sugerencias',

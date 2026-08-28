@@ -18,6 +18,11 @@ interface CatalogPlanFeature {
 interface CatalogPlanPrice {
   period: string;
   price_usd: number;
+  /**
+   * Precio de referencia que se muestra TACHADO al lado del real. null = sin
+   * promoción. El backend garantiza que, si viene, es mayor al precio real.
+   */
+  compare_at_price: number | null;
 }
 
 interface CatalogPlan {
@@ -60,6 +65,7 @@ export default async function UpgradePage() {
       prices: (p.prices ?? []).map((pr) => ({
         period: pr.period as 'monthly' | 'quarterly' | 'semiannual' | 'annual',
         price_usd: pr.price_usd,
+        compare_at_price: pr.compare_at_price ?? null,
         is_active: true,
       })),
     }));

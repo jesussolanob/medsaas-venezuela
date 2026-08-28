@@ -15,6 +15,9 @@ function makeRepoMock(): jest.Mocked<ISellerRepository> {
     findSoldSpecialist: jest.fn(),
     createSoldSpecialist: jest.fn(),
     linkSoldBy: jest.fn(),
+    getSellerPaymentDetails: jest.fn(),
+    updateSellerPaymentDetails: jest.fn(),
+    getSpecialistSellerAssignment: jest.fn(),
   };
 }
 
@@ -24,6 +27,7 @@ const row: SellerAdminRow = {
   email: 'qa.vendedora@example.com',
   sellerCode: 'VEN-4821',
   specialistsCount: 3,
+  isActive: true,
   createdAt: new Date('2026-08-17T12:00:00Z'),
   lastSignInAt: null,
 };

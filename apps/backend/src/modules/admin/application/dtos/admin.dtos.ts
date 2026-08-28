@@ -247,6 +247,14 @@ export const SetPlanPricesBodySchema = z
           period: z.enum(VALID_PERIODS),
           price_usd: z.number().min(0).max(99999.99),
           is_active: z.boolean().default(true),
+          /**
+           * Reference price displayed crossed-out beside the real price (precio tachado).
+           * Must be a positive number. Business-level validation (must be > price_usd)
+           * is enforced by SetPlanPricesUseCase, not by the schema, so the error
+           * message can reference both values in context.
+           * Omit or pass null to clear the promotional display for this period.
+           */
+          compare_at_price: z.number().positive().nullable().optional(),
         }),
       )
       .min(1, 'prices array must not be empty')

@@ -1,10 +1,12 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import type { SubscriptionPlan } from '@delta/shared-types';
 import {
   ADMIN_REPOSITORY,
   type IAdminRepository,
 } from '../../../domain/repositories/admin.repository';
 import { DoctorNotFoundError } from '../../../domain/errors/doctor-not-found.error';
+import { AccruePlanCommissionUseCase } from '../../../../seller-commissions/application/use-cases/accrue-plan-commission.use-case';
+import { reportCommissionFailure } from '../../../../seller-commissions/application/report-commission-failure';
 
 export interface ExtendDoctorSubscriptionInput {
   doctorId: string;
@@ -47,9 +49,13 @@ function addMonthsClamped(date: Date, months: number): Date {
  */
 @Injectable()
 export class ExtendDoctorSubscriptionUseCase {
+  private readonly logger = new Logger(ExtendDoctorSubscriptionUseCase.name);
+
   constructor(
     @Inject(ADMIN_REPOSITORY)
     private readonly repo: IAdminRepository,
+    @Optional()
+    private readonly accruePlanCommission: AccruePlanCommissionUseCase | null = null,
   ) {}
 
   async execute(input: ExtendDoctorSubscriptionInput): Promise<ExtendDoctorSubscriptionOutput> {
@@ -88,6 +94,28 @@ export class ExtendDoctorSubscriptionUseCase {
       newPlan,
       metadata,
     });
+
+    // Best-effort: this path can also land a specialist on a paid plan, so it has to
+    // accrue like the other two. Idempotent — the UNIQUE(specialist_id, type) drops
+    // repeats when the doctor was already on that plan.
+    // CAVEAT: the legacy 'trial' → 'basic' migration above writes a legacy plan key,
+    // and the commission engine only recognises delta_base / delta_plus, so that
+    // particular transition accrues nothing. Deliberate: assigning an amount to the
+    // legacy keys is the owner's call, not a guess to be made here.
+    if (this.accruePlanCommission) {
+      void this.accruePlanCommission.execute(input.doctorId, newPlan).catch((err: unknown) => {
+        reportCommissionFailure(
+          this.logger,
+          {
+            hook: 'extend-subscription',
+            specialistId: input.doctorId,
+            type: 'plan',
+            planKey: newPlan,
+          },
+          err,
+        );
+      });
+    }
 
     return { newExpiresAt };
   }

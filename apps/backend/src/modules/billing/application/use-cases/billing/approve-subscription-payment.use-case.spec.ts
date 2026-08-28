@@ -5,6 +5,7 @@ import { SubscriptionPaymentAlreadyResolvedError } from '../../../domain/errors/
 import type { ISubscriptionPaymentRepository } from '../../../domain/repositories/subscription-payment.repository';
 import type { IProfileLookupRepository } from '../../../domain/repositories/profile-lookup.repository';
 import type { MailerService } from '../../../../email/application/services/mailer.service';
+import type { AccruePlanCommissionUseCase } from '../../../../seller-commissions/application/use-cases/accrue-plan-commission.use-case';
 
 function makePendingPayment(durationMonths = 1): SubscriptionPayment {
   return SubscriptionPayment.create({
@@ -24,6 +25,24 @@ function makePendingPayment(durationMonths = 1): SubscriptionPayment {
 
 function makeProfile() {
   return { id: 'doc-1', fullName: 'Dr. Pérez', email: 'doctor@example.com' };
+}
+
+/** A pending payment that also moves the doctor onto a paid plan. */
+function makePendingPaymentWithPlan(planKey: string): SubscriptionPayment {
+  return SubscriptionPayment.create({
+    id: 'pay-1',
+    doctorId: 'doc-1',
+    amountUsd: 50,
+    method: 'Zelle',
+    referenceNumber: 'REF123',
+    durationMonths: 1,
+    status: 'pending',
+    reviewedBy: null,
+    reviewedAt: null,
+    planKey,
+    createdAt: new Date('2026-01-01'),
+    updatedAt: new Date('2026-01-01'),
+  });
 }
 
 describe('ApproveSubscriptionPaymentUseCase', () => {
@@ -54,7 +73,12 @@ describe('ApproveSubscriptionPaymentUseCase', () => {
       sendTemplate: jest.fn().mockResolvedValue({ id: null }),
     } as unknown as jest.Mocked<MailerService>;
 
-    useCase = new ApproveSubscriptionPaymentUseCase(mockRepo, mockProfileRepo, mockMailer);
+    useCase = new ApproveSubscriptionPaymentUseCase(
+      mockRepo,
+      mockProfileRepo,
+      mockMailer,
+      null, // AccruePlanCommissionUseCase — not tested here (best-effort, @Optional)
+    );
   });
 
   it('throws SubscriptionPaymentNotFoundError when payment does not exist', async () => {
@@ -238,5 +262,71 @@ describe('ApproveSubscriptionPaymentUseCase', () => {
     // Approval still succeeded
     expect(result.newExpiresAt).toBeDefined();
     expect(mockRepo.approveAndExtend).toHaveBeenCalledTimes(1);
+  });
+
+  // ---------------------------------------------------------------------------
+  // Plan commission hook — fire-and-forget, must never affect the approval
+  // ---------------------------------------------------------------------------
+
+  describe('plan commission hook', () => {
+    const flushHook = () => new Promise((resolve) => setImmediate(resolve));
+
+    function makeAccrue(impl?: () => Promise<unknown>) {
+      return {
+        execute: jest.fn(impl ?? (() => Promise.resolve('created'))),
+      } as unknown as jest.Mocked<AccruePlanCommissionUseCase>;
+    }
+
+    function makeUseCaseWith(accrue: AccruePlanCommissionUseCase) {
+      return new ApproveSubscriptionPaymentUseCase(mockRepo, mockProfileRepo, mockMailer, accrue);
+    }
+
+    it('accrues the plan commission with the plan the payment carries', async () => {
+      const accrue = makeAccrue();
+      mockRepo.findById.mockResolvedValue(makePendingPaymentWithPlan('delta_plus'));
+
+      await makeUseCaseWith(accrue).execute({ paymentId: 'pay-1', reviewerId: 'admin-1' });
+      await flushHook();
+
+      expect(accrue.execute).toHaveBeenCalledTimes(1);
+      expect(accrue.execute).toHaveBeenCalledWith('doc-1', 'delta_plus');
+    });
+
+    it('does NOT accrue on an extension-only payment (no plan change)', async () => {
+      const accrue = makeAccrue();
+      // makePendingPayment carries no planKey — the doctor was already on a paid plan.
+      mockRepo.findById.mockResolvedValue(makePendingPayment(1));
+
+      await makeUseCaseWith(accrue).execute({ paymentId: 'pay-1', reviewerId: 'admin-1' });
+      await flushHook();
+
+      expect(accrue.execute).not.toHaveBeenCalled();
+    });
+
+    it('does NOT accrue when the payment cannot be approved', async () => {
+      const accrue = makeAccrue();
+      mockRepo.findById.mockResolvedValue(null);
+
+      await expect(
+        makeUseCaseWith(accrue).execute({ paymentId: 'pay-1', reviewerId: 'admin-1' }),
+      ).rejects.toThrow(SubscriptionPaymentNotFoundError);
+      await flushHook();
+
+      expect(accrue.execute).not.toHaveBeenCalled();
+    });
+
+    it('still approves the payment when the commission blows up', async () => {
+      const accrue = makeAccrue(() => Promise.reject(new Error('commission db down')));
+      mockRepo.findById.mockResolvedValue(makePendingPaymentWithPlan('delta_base'));
+
+      const result = await makeUseCaseWith(accrue).execute({
+        paymentId: 'pay-1',
+        reviewerId: 'admin-1',
+      });
+      await flushHook();
+
+      expect(result.newExpiresAt).toBeDefined();
+      expect(mockRepo.approveAndExtend).toHaveBeenCalledTimes(1);
+    });
   });
 });

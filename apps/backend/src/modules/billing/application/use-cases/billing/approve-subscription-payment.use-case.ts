@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import {
   SUBSCRIPTION_PAYMENT_REPOSITORY,
   type ISubscriptionPaymentRepository,
@@ -9,6 +9,8 @@ import {
 } from '../../../domain/repositories/profile-lookup.repository';
 import { MailerService } from '../../../../email/application/services/mailer.service';
 import { SubscriptionPaymentNotFoundError } from '../../../domain/errors/subscription-payment-not-found.error';
+import { AccruePlanCommissionUseCase } from '../../../../seller-commissions/application/use-cases/accrue-plan-commission.use-case';
+import { reportCommissionFailure } from '../../../../seller-commissions/application/report-commission-failure';
 
 export interface ApproveSubscriptionPaymentInput {
   paymentId: string;
@@ -50,6 +52,8 @@ export class ApproveSubscriptionPaymentUseCase {
     @Inject(PROFILE_LOOKUP_REPOSITORY)
     private readonly profileRepo: IProfileLookupRepository,
     private readonly mailerService: MailerService,
+    @Optional()
+    private readonly accruePlanCommission: AccruePlanCommissionUseCase | null = null,
   ) {}
 
   async execute(input: ApproveSubscriptionPaymentInput): Promise<ApproveSubscriptionPaymentOutput> {
@@ -92,6 +96,25 @@ export class ApproveSubscriptionPaymentUseCase {
     // Non-fatal: send payment_approved email to the doctor.
     // The approval is already committed — email failure must not affect it.
     void this.sendPaymentApprovedEmail(payment.doctorId, payment.amountUsd, input.paymentId);
+
+    // Non-fatal: accrue plan commission when the payment includes a plan change.
+    // A null planKey means extension-only (doctor was already on a paid plan).
+    if (this.accruePlanCommission && payment.planKey) {
+      void this.accruePlanCommission
+        .execute(payment.doctorId, payment.planKey)
+        .catch((err: unknown) => {
+          reportCommissionFailure(
+            this.logger,
+            {
+              hook: 'approve-payment',
+              specialistId: payment.doctorId,
+              type: 'plan',
+              planKey: payment.planKey,
+            },
+            err,
+          );
+        });
+    }
 
     return { newExpiresAt };
   }
