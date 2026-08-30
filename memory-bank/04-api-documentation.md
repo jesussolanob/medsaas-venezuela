@@ -1092,3 +1092,35 @@ La escritura (`PUT /api/admin/plans/:planKey/prices`) va en **snake_case**, como
 ⚠️ El thin-proxy de precios **arma el objeto que manda** en vez de reenviar el original: antes el
 campo viajaba solo porque `filter` conserva las claves extra — invisible en el tipo, y se rompía
 solo el día que alguien mapeara el arreglo.
+
+### Bolívares y baja de cuenta del vendedor (2026-08-30)
+
+**⚠️ DOS CONTRATOS CAMBIARON.** Antes devolvían un array pelado en `data`; ahora vienen envueltos:
+
+| Endpoint                                    | Forma nueva                       |
+| ------------------------------------------- | --------------------------------- |
+| `GET /api/seller/commissions`               | `{ bcvRate, commissions: [...] }` |
+| `GET /api/admin/seller-commissions/pending` | `{ bcvRate, sellers: [...] }`     |
+
+Los de pagos (`GET /api/seller/payments` y `.../payments/:sellerId`) **no** cambiaron de forma:
+siguen siendo arrays, y cada pago suma **`bcvRate: number | null`**.
+
+🔑 **Son dos tasas distintas y no se mezclan:** la de `commissions`/`pending` es la **actual** y
+solo se usa para calcular los bolívares del pago que el admin está por registrar. La de cada pago
+es la **histórica**, la del día en que se transfirió. Un pago ya hecho **nunca** se muestra con la
+tasa de hoy. Ver **ADR-049**.
+
+`bcvRate` es `null` cuando el BCV no estaba disponible, o en pagos anteriores a la columna. En ese
+caso se muestra solo USD y se explica — nunca se cae a otra tasa.
+
+### Baja de cuenta del vendedor
+
+```
+POST /api/seller/deactivate    @Roles('seller')
+Body: { reason?: string | null }
+→ { success, data: { deactivated: true, pendingCommissionsUsd, pendingCommissionsCount } }
+```
+
+El `sellerId` sale de `CurrentUser().sub`: uno solo puede darse de baja a sí mismo. **Nunca se
+bloquea** por tener comisiones pendientes — se le siguen debiendo (ADR-050). El pendiente que
+devuelve es informativo; el aviso que importa está en la pantalla **antes** de confirmar.
