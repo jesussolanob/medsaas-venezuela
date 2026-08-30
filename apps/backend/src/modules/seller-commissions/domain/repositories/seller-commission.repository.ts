@@ -99,6 +99,11 @@ export interface RegisterPaymentParams {
   receiptUrl: string | null;
   notes: string | null;
   paidAt: Date;
+  /**
+   * BCV rate (Bs per USD) captured at the moment the payment is registered.
+   * Null when the rate was unavailable — never blocks a payment from being created.
+   */
+  bcvRate: number | null;
 }
 
 // ---------------------------------------------------------------------------

@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { SequelizeModule } from '@nestjs/sequelize';
 import { StorageModule } from '../storage/storage.module';
+import { FinancesModule } from '../finances/finances.module';
 
 // Models
 import { SellerCommissionModel } from './infrastructure/persistence/models/seller-commission.model';
@@ -21,6 +22,7 @@ import { GetSellerPaymentsUseCase } from './application/use-cases/get-seller-pay
 import { AssignSpecialistToSellerUseCase } from './application/use-cases/assign-specialist-to-seller.use-case';
 import { GetSellerPaymentReceiptUrlUseCase } from './application/use-cases/get-seller-payment-receipt-url.use-case';
 import { GetAdminSellerPaymentReceiptUrlUseCase } from './application/use-cases/get-admin-seller-payment-receipt-url.use-case';
+import { GetSellerPendingSummaryUseCase } from './application/use-cases/get-seller-pending-summary.use-case';
 
 // Guards
 import { RolesGuard } from '../../presentation/guards/roles.guard';
@@ -51,8 +53,9 @@ import {
  *   GET  /api/seller/payments      — payment history for authenticated seller
  *
  * EXPORTS:
- *   AccrueSignupCommissionUseCase  — used by DoctorSettingsModule (complete-onboarding)
- *   AccruePlanCommissionUseCase    — used by BillingModule + AdminModule (plan changes)
+ *   AccrueSignupCommissionUseCase      — used by DoctorSettingsModule (complete-onboarding)
+ *   AccruePlanCommissionUseCase        — used by BillingModule + AdminModule (plan changes)
+ *   GetSellerPendingSummaryUseCase     — used by SellersModule (deactivate-seller-account)
  *
  * IMPORTANT: Sequelize is NOT in providers[] — already registered globally by
  * SequelizeModule.forRootAsync in AppModule.
@@ -61,6 +64,7 @@ import {
   imports: [
     SequelizeModule.forFeature([SellerCommissionModel, SellerPaymentModel, CommissionProfileModel]),
     StorageModule,
+    FinancesModule,
   ],
   controllers: [SellerCommissionsAdminController, SellerCommissionsSellerController],
   providers: [
@@ -78,7 +82,12 @@ import {
     AssignSpecialistToSellerUseCase,
     GetSellerPaymentReceiptUrlUseCase,
     GetAdminSellerPaymentReceiptUrlUseCase,
+    GetSellerPendingSummaryUseCase,
   ],
-  exports: [AccrueSignupCommissionUseCase, AccruePlanCommissionUseCase],
+  exports: [
+    AccrueSignupCommissionUseCase,
+    AccruePlanCommissionUseCase,
+    GetSellerPendingSummaryUseCase,
+  ],
 })
 export class SellerCommissionsModule {}

@@ -43,4 +43,13 @@ export class SellerPaymentModel extends Model {
 
   @Column({ type: DataType.DATE, allowNull: false, field: 'created_at' })
   declare createdAt: Date;
+
+  /**
+   * BCV rate (Bs per USD) at the time the payment was registered.
+   * Null for payments created before migration 20260830000001 or when the BCV
+   * rate was unavailable. pg returns NUMERIC as a string — use parseFloat before
+   * any arithmetic.
+   */
+  @Column({ type: DataType.DECIMAL(18, 4), allowNull: true, field: 'bcv_rate' })
+  declare bcvRate: string | null;
 }

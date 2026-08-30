@@ -311,6 +311,30 @@ export class SequelizeSellerRepository implements ISellerRepository {
       soldBySource: specialist.soldBySource,
     };
   }
+
+  // ---------------------------------------------------------------------------
+  // Self-deactivation
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Immediately deactivates the seller's own account.
+   *
+   * Uses `as Record<string, unknown>` to write the three deactivation columns
+   * (deactivated_at, deactivated_by, deactivation_reason) that live on the
+   * `profiles` table but are NOT declared on SellerProfileModel (to keep the
+   * model focused on the columns needed by seller use cases).
+   */
+  async deactivateOwnAccount(sellerId: string, reason: string | null): Promise<void> {
+    await this.profileModel.update(
+      {
+        isActive: false,
+        deactivatedAt: new Date(),
+        deactivatedBy: 'self',
+        deactivationReason: reason,
+      } as Record<string, unknown>,
+      { where: { id: sellerId, role: 'seller' } },
+    );
+  }
 }
 
 // ---------------------------------------------------------------------------

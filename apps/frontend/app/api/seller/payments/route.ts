@@ -16,6 +16,12 @@ export interface SellerPaymentDto {
   sellerId: string;
   /** Suma de las comisiones liquidadas en este pago. Calculado en el servidor. */
   amountUsd: number;
+  /**
+   * Tasa BCV (Bs por USD) vigente al momento de registrar el pago.
+   * null → tasa no estaba disponible cuando se hizo el pago o el pago es anterior
+   * a este campo. Mostrar solo USD cuando es null.
+   */
+  bcvRate: number | null;
   /** Método de pago (ej. "Zelle", "Transferencia"). */
   method: string;
   /** Referencia de la transacción. */

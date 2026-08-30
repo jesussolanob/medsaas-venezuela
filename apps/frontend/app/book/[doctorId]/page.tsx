@@ -205,7 +205,9 @@ export default async function PublicBookingPage({
         specialty: doctorInfo.specialty ?? '',
         phone: doctorInfo.phone ?? '',
         avatar_url: doctorInfo.avatarUrl ?? null,
-        professional_title: doctorInfo.professionalTitle ?? 'Dr.',
+        // Sin fallback a 'Dr.': es la página que ve el PACIENTE. Un especialista que
+        // no cargó título no debe aparecer tratado de doctor sin haberlo elegido.
+        professional_title: doctorInfo.professionalTitle ?? '',
         state: doctorInfo.state ?? null,
         city: doctorInfo.city ?? null,
         country: doctorInfo.country ?? 'Venezuela',

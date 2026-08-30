@@ -71,6 +71,7 @@ function makeSellerRepoMock(): jest.Mocked<ISellerRepository> {
     getSellerPaymentDetails: jest.fn(),
     updateSellerPaymentDetails: jest.fn(),
     getSpecialistSellerAssignment: jest.fn(),
+    deactivateOwnAccount: jest.fn(),
   };
 }
 

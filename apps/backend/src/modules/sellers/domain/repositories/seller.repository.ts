@@ -249,4 +249,17 @@ export interface ISellerRepository {
    * SECURITY: sellerName is PII — never log it.
    */
   getSpecialistSellerAssignment(specialistId: string): Promise<SpecialistSellerAssignment | null>;
+
+  /**
+   * Immediately deactivates the seller's own account.
+   *
+   * Sets is_active = false with deactivated_by = 'self', deactivated_at = now(),
+   * and stores the optional reason. All commissions, specialists, and attribution
+   * rows remain intact for auditability. A super_admin can reactivate the account
+   * via the existing toggle in /admin/sellers.
+   *
+   * SECURITY: reason is free text from the account owner about themselves — no
+   * patient PII. Do not log the reason.
+   */
+  deactivateOwnAccount(sellerId: string, reason: string | null): Promise<void>;
 }

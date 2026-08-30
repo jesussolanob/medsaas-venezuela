@@ -84,7 +84,11 @@ export default function OnboardingPage() {
   // Form fields
   const [phone, setPhone] = useState('');
   const [specialty, setSpecialty] = useState('');
-  const [professionalTitle, setProfessionalTitle] = useState('Dr.');
+  // Arranca VACÍO a propósito: preseleccionar 'Dr.' hacía que una psicóloga que no
+  // tocara el campo quedara registrada como "Dr." para siempre — y ese título después
+  // sale en su dashboard, en su booking público y en los recordatorios a sus pacientes.
+  // Que lo elija cada quien.
+  const [professionalTitle, setProfessionalTitle] = useState('');
   const [sex, setSex] = useState('');
 
   // F5 (2026-04-29): estado para el paso de bloques de consulta (solo doctor).
