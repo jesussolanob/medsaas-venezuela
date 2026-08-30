@@ -30,8 +30,15 @@ export async function GET(
     return NextResponse.json({ valid: false, sellerName: null });
   }
 
+  // `anonymous` es OBLIGATORIO acá: sin eso el cliente resuelve identidad y
+  // devuelve 401 al visitante deslogueado — que es el ÚNICO que usa esta ruta,
+  // porque el código se valida durante el registro. El 401 caía en el `if
+  // (!result.ok)` de abajo y salía como "código inválido", indistinguible de un
+  // error de tipeo: el especialista que llegaba por el enlace de un vendedor
+  // veía "este enlace no es válido" y la venta quedaba sin acreditar.
   const result = await backendGet<SellerCodeCheck>(
     `/api/public/seller-code/${encodeURIComponent(code.trim().toUpperCase())}`,
+    { anonymous: true },
   );
 
   // Un código inválido NO es un error de la app: se responde 200 con

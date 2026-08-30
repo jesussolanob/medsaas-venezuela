@@ -53,6 +53,20 @@ export interface FetchOptions extends Omit<RequestInit, 'body'> {
    */
   userId?: string;
   role?: string;
+  /**
+   * Llama al backend SIN resolver identidad, para endpoints públicos de verdad.
+   *
+   * POR QUÉ EXISTE: sin esto, una ruta BFF pública seguía pidiendo sesión y
+   * devolvía 401 al visitante deslogueado. El caso real fue la validación del
+   * código de vendedor: se usa **solo** durante el registro, o sea justo cuando
+   * todavía no hay sesión, así que nunca podía funcionar — y como la ruta
+   * traduce cualquier error a "código inválido", el fallo era indistinguible de
+   * un error de tipeo. Un especialista que llegaba por el enlace de un vendedor
+   * veía "este enlace no es válido" y la venta quedaba sin acreditar.
+   *
+   * Usar SOLO en rutas cuyo endpoint del backend no exija usuario.
+   */
+  anonymous?: boolean;
 }
 
 /**
@@ -67,12 +81,17 @@ export async function backendFetch<T>(
   path: string,
   options: FetchOptions = {},
 ): Promise<Result<T, AppError>> {
-  const { body, userId, role, ...fetchOptions } = options;
+  const { body, userId, role, anonymous, ...fetchOptions } = options;
 
   let resolvedId: string;
   let resolvedRole: string;
 
-  if (userId && role) {
+  if (anonymous) {
+    // Endpoint público: no se resuelve identidad ni se mandan cabeceras de
+    // usuario. Cadena vacía = "sin usuario"; abajo se omiten las cabeceras.
+    resolvedId = '';
+    resolvedRole = '';
+  } else if (userId && role) {
     // Complete override — used in tests or explicit impersonation.
     resolvedId = userId;
     resolvedRole = role;
@@ -101,8 +120,9 @@ export async function backendFetch<T>(
   const url = `${BACKEND_URL}${path}`;
   const headers: HeadersInit = {
     'Content-Type': 'application/json',
-    'x-dev-user-id': resolvedId,
-    'x-dev-user-role': resolvedRole,
+    // En modo anónimo NO se mandan: una cabecera de usuario vacía es peor que
+    // ninguna, porque el backend la vería presente y podría tratarla como id.
+    ...(anonymous ? {} : { 'x-dev-user-id': resolvedId, 'x-dev-user-role': resolvedRole }),
     ...fetchOptions.headers,
   };
 
@@ -185,12 +205,21 @@ export async function backendGetPaged<T>(
   path: string,
   options: Omit<FetchOptions, 'method' | 'body'> = {},
 ): Promise<Result<PagedResult<T>, AppError>> {
-  const { body: _body, userId, role, ...fetchOptions } = options as FetchOptions;
+  const { body: _body, userId, role, anonymous, ...fetchOptions } = options as FetchOptions;
 
   let resolvedId: string;
   let resolvedRole: string;
 
-  if (userId && role) {
+  // Se destructura `anonymous` aunque acá no tenga sentido de uso habitual (un
+  // listado paginado suele ser privado). Si no se destructurara, caería dentro
+  // de `fetchOptions` y se pasaría a `fetch` como una opción inexistente,
+  // ignorada en silencio: quien la usara creería estar llamando sin sesión y
+  // seguiría recibiendo un 401. Es el mismo tipo de fallo mudo que este
+  // parámetro vino a arreglar.
+  if (anonymous) {
+    resolvedId = '';
+    resolvedRole = '';
+  } else if (userId && role) {
     resolvedId = userId;
     resolvedRole = role;
   } else {
@@ -209,8 +238,7 @@ export async function backendGetPaged<T>(
   const url = `${BACKEND_URL}${path}`;
   const headers: HeadersInit = {
     'Content-Type': 'application/json',
-    'x-dev-user-id': resolvedId,
-    'x-dev-user-role': resolvedRole,
+    ...(anonymous ? {} : { 'x-dev-user-id': resolvedId, 'x-dev-user-role': resolvedRole }),
     ...fetchOptions.headers,
   };
 
