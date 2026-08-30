@@ -13,10 +13,12 @@
  * perjudica a terceros. Al vendedor no lo bloquea nada: irse no perjudica a nadie
  * y Delta le sigue debiendo lo que le debe.
  *
- * Pero sí hay algo que tiene que saber antes de apretar: **cuánta plata tiene
- * pendiente**. Por eso el backend devuelve el pendiente junto con la baja y acá se
- * muestra después de confirmar. Es la respuesta a "¿pierdo lo que me deben?" —
- * y la respuesta es que no.
+ * Pero sí hay algo que tiene que leer ANTES de apretar, porque es la pregunta que
+ * uno se hace al irse: "¿pierdo lo que me deben?". La respuesta es que no, y está
+ * en el texto de la tarjeta. El backend devuelve además el pendiente exacto junto
+ * con la baja, pero acá NO se muestra a propósito: llegaría en el instante previo
+ * al logout, o sea informando cuando ya no se puede decidir. El monto lo tiene a
+ * la vista en "Mis comisiones", que es donde sirve.
  *
  * Es una DESACTIVACIÓN, nunca un borrado: sus especialistas, comisiones y pagos
  * quedan bajo el mismo id y un administrador puede reactivar la cuenta.
