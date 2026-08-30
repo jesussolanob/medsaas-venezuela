@@ -27,5 +27,18 @@ export class SellerPayment {
     /** Profile id of the admin who registered this payment. */
     public readonly createdBy: string,
     public readonly createdAt: Date,
+    /**
+     * BCV rate (Bs per USD) snapshotted at the moment the payment was registered.
+     *
+     * Null when the BCV rate was unavailable at registration time, or for payments
+     * created before this field was introduced (migration 20260830000001).
+     *
+     * This field is cosmetic: the frontend uses it to show the bolivar equivalent of
+     * the payment. A null value must never block a payment from being registered —
+     * the frontend should show only the USD amount with an explanatory notice.
+     *
+     * SECURITY: never log this field alongside PII.
+     */
+    public readonly bcvRate: number | null,
   ) {}
 }

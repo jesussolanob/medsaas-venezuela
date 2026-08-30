@@ -4,16 +4,21 @@
  * Thin-proxy al backend NestJS `GET /api/admin/seller-commissions/pending`.
  * RBAC (super_admin) lo aplica el backend con @Roles('super_admin').
  *
- * Respuesta: lista de vendedores con comisiones pendientes, ordenada por el
- * backend (totalPendingUsd desc). Cada vendedor incluye el detalle de cada
- * comisión: qué especialista, si es de entrada o de plan, monto y fecha.
+ * Respuesta: lista de vendedores con comisiones pendientes + tasa BCV actual.
+ *
+ * ⚠️ BREAKING CHANGE (2026-08-28): el backend dejó de retornar un array pelado.
+ * Ahora responde { bcvRate: number | null, sellers: [...] }.
+ * El cliente debe leer data.sellers (no data directamente).
  *
  * Shape (camelCase — tal como serializa NestJS):
- *   [{
- *     sellerId, sellerName, totalPendingUsd, pendingCount,
- *     commissions: [{ commissionId, specialistId, specialistName,
- *                     type, amountUsd, planKey, earnedAt }]
- *   }]
+ *   {
+ *     bcvRate: number | null,   // tasa BCV actual; null → no disponible
+ *     sellers: [{
+ *       sellerId, sellerName, totalPendingUsd, pendingCount,
+ *       commissions: [{ commissionId, specialistId, specialistName,
+ *                       type, amountUsd, planKey, earnedAt }]
+ *     }]
+ *   }
  */
 import { NextResponse } from 'next/server';
 import { backendGet } from '@/lib/api-client.server';
@@ -39,8 +44,15 @@ export interface PendingBySeller {
   commissions: PendingCommissionItem[];
 }
 
+/** Shape del data que retorna el backend para este endpoint (post breaking change). */
+interface BackendPendingData {
+  /** Tasa BCV actual (Bs por USD). null → no disponible; mostrar solo USD. */
+  bcvRate: number | null;
+  sellers: PendingBySeller[];
+}
+
 export async function GET(): Promise<NextResponse> {
-  const result = await backendGet<PendingBySeller[]>('/api/admin/seller-commissions/pending');
+  const result = await backendGet<BackendPendingData>('/api/admin/seller-commissions/pending');
 
   if (!result.ok) {
     log.error('[admin/seller-commissions/pending GET] backend error', {
@@ -55,6 +67,9 @@ export async function GET(): Promise<NextResponse> {
 
   return NextResponse.json({
     success: true,
-    data: Array.isArray(result.value) ? result.value : [],
+    data: {
+      bcvRate: result.value?.bcvRate ?? null,
+      sellers: Array.isArray(result.value?.sellers) ? result.value.sellers : [],
+    },
   });
 }

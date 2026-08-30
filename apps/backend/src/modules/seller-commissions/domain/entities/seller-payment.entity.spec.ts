@@ -16,6 +16,7 @@ describe('SellerPayment entity', () => {
       paidAt,
       'admin-1',
       createdAt,
+      36.5,
     );
 
     expect(payment.id).toBe('pay-1');
@@ -28,9 +29,10 @@ describe('SellerPayment entity', () => {
     expect(payment.paidAt).toBe(paidAt);
     expect(payment.createdBy).toBe('admin-1');
     expect(payment.createdAt).toBe(createdAt);
+    expect(payment.bcvRate).toBe(36.5);
   });
 
-  it('accepts null for optional fields', () => {
+  it('accepts null for optional fields including bcvRate', () => {
     const payment = new SellerPayment(
       'pay-2',
       'seller-1',
@@ -42,9 +44,11 @@ describe('SellerPayment entity', () => {
       new Date(),
       'admin-1',
       new Date(),
+      null,
     );
 
     expect(payment.receiptUrl).toBeNull();
     expect(payment.notes).toBeNull();
+    expect(payment.bcvRate).toBeNull();
   });
 });

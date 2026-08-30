@@ -142,6 +142,16 @@ export interface PaymentDetailsEditorProps {
   description?: string;
   /** Texto del botón de guardado. Por defecto "Guardar métodos y datos". */
   saveLabel?: string;
+  /**
+   * Restringe qué métodos se ofrecen, en el orden en que se pasan.
+   *
+   * Existe porque el catálogo completo es el del ESPECIALISTA cobrándole a sus
+   * pacientes (incluye efectivo y punto de venta). Al vendedor, Delta le
+   * **transfiere** la comisión, así que ofrecerle un punto de venta no tiene
+   * sentido. Sin esta prop se muestran todos, que es lo que necesita el
+   * especialista.
+   */
+  allowedMethods?: string[];
 }
 
 // ---------------------------------------------------------------------------
@@ -155,7 +165,16 @@ export default function PaymentDetailsEditor({
   title = 'Métodos de pago aceptados',
   description = 'Activá los métodos que usás y expandí cada uno para configurar sus datos.',
   saveLabel = 'Guardar métodos y datos',
+  allowedMethods,
 }: PaymentDetailsEditorProps) {
+  // Catálogo efectivo. Sin `allowedMethods` se ofrecen todos (caso del especialista).
+  // Se respeta el orden en que vienen: quien restringe también decide la prioridad.
+  const visibleMethods = allowedMethods
+    ? allowedMethods
+        .map((id) => PAYMENT_METHODS.find((m) => m.id === id))
+        .filter((m): m is PaymentMethodData => m !== undefined)
+    : PAYMENT_METHODS;
+
   // Estado interno: qué métodos están activos.
   const [activeMethods, setActiveMethods] = useState<string[]>(initialMethods);
 
@@ -246,14 +265,23 @@ export default function PaymentDetailsEditor({
     }
 
     // Serializar a la forma que entiende la BD.
-    const detallesParaGuardar = Object.entries(details).reduce<Record<string, unknown>>(
-      (acc, [metodo, entradas]) => withEntries(acc, metodo, entradas),
-      {},
-    );
+    //
+    // Solo se guardan los métodos VISIBLES. Sin este filtro, un método restringido
+    // que hubiera quedado con datos de antes se volvería a persistir en cada
+    // guardado, y el admin lo vería en la ficha sin que el vendedor tenga dónde
+    // editarlo ni cómo sacarlo: la pantalla mostraría algo que su dueño no controla.
+    const idsVisibles = new Set(visibleMethods.map((m) => m.id));
+    const detallesParaGuardar = Object.entries(details)
+      .filter(([metodo]) => idsVisibles.has(metodo))
+      .reduce<Record<string, unknown>>(
+        (acc, [metodo, entradas]) => withEntries(acc, metodo, entradas),
+        {},
+      );
+    const metodosParaGuardar = activeMethods.filter((m) => idsVisibles.has(m));
 
     setSaving(true);
     try {
-      const result = await onSave(activeMethods, detallesParaGuardar);
+      const result = await onSave(metodosParaGuardar, detallesParaGuardar);
       if (!result.ok) {
         setSaveError(result.error ?? 'No se pudo guardar.');
         return;
@@ -275,7 +303,7 @@ export default function PaymentDetailsEditor({
       <p className="text-xs text-slate-500 mb-4">{description}</p>
 
       <div className="space-y-2">
-        {PAYMENT_METHODS.map((method) => {
+        {visibleMethods.map((method) => {
           const active = activeMethods.includes(method.id);
           const hasFields = method.fields.length > 0;
           const isExpanded = active && hasFields && expanded.has(method.id);

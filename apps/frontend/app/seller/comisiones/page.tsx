@@ -14,6 +14,15 @@
  *   - Una comisión está 'pending' o 'paid'. No hay más estados.
  *   - El vendedor no puede hacer nada para cambiar el estado: el admin es quien
  *     paga. Acá solo se informa.
+ *   - Los montos se calculan y se deben en USD, y así se informan: lo PENDIENTE
+ *     va solo en dólares. Convertirlo a la tasa de hoy prometería una cifra que
+ *     no va a ser la que reciba — entre que nace la comisión y se liquida, la
+ *     tasa se mueve.
+ *   - Los bolívares aparecen únicamente en los PAGOS ya hechos, con la tasa
+ *     histórica de ese día. Ahí manda el monto en Bs, que es lo que el vendedor
+ *     efectivamente recibió, con el USD y la tasa al lado para poder cuadrarlo
+ *     contra el comprobante del banco.
+ *   - Si un pago no tiene tasa registrada, se muestra el USD y se dice por qué.
  */
 
 import { useCallback, useEffect, useState } from 'react';
@@ -53,6 +62,8 @@ interface SellerPaymentDto {
   id: string;
   sellerId: string;
   amountUsd: number;
+  /** Tasa BCV histórica del día del pago. null → no disponible al registrar. */
+  bcvRate: number | null;
   method: string;
   reference: string;
   receiptUrl: string | null;
@@ -75,6 +86,11 @@ function fmtUsd(amount: number): string {
   }).format(amount);
 }
 
+/** Formatea bolívares sin decimales. Devuelve string con prefijo "Bs." */
+function fmtBs(amountUsd: number, rate: number): string {
+  return `Bs. ${(amountUsd * rate).toLocaleString('es-VE', { maximumFractionDigits: 0 })}`;
+}
+
 function tipoLabel(type: 'signup' | 'plan', planKey: string | null): string {
   if (type === 'signup') return 'Por alta completada';
   if (planKey) return `Plan ${PLAN_LABELS[planKey] ?? planKey}`;
@@ -90,9 +106,19 @@ function tipoAyuda(type: 'signup' | 'plan'): string {
 // Hook de datos
 // ---------------------------------------------------------------------------
 
-function useComisionesData() {
+interface ComisionesData {
+  commissions: SellerCommissionDto[];
+  payments: SellerPaymentDto[];
+  /** Tasa BCV actual para comisiones pendientes. null → no disponible. */
+  bcvRate: number | null;
+  loading: boolean;
+  error: string | null;
+}
+
+function useComisionesData(): ComisionesData {
   const [commissions, setCommissions] = useState<SellerCommissionDto[]>([]);
   const [payments, setPayments] = useState<SellerPaymentDto[]>([]);
+  const [bcvRate, setBcvRate] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -116,10 +142,15 @@ function useComisionesData() {
         return;
       }
 
-      const comJson = (await comRes.json()) as { data?: SellerCommissionDto[] };
+      // El BFF de commissions retorna { data: { bcvRate, commissions } }
+      const comJson = (await comRes.json()) as {
+        data?: { bcvRate?: number | null; commissions?: SellerCommissionDto[] };
+      };
+      // El BFF de payments retorna { data: SellerPaymentDto[] }
       const payJson = (await payRes.json()) as { data?: SellerPaymentDto[] };
 
-      setCommissions(Array.isArray(comJson.data) ? comJson.data : []);
+      setBcvRate(comJson.data?.bcvRate ?? null);
+      setCommissions(Array.isArray(comJson.data?.commissions) ? comJson.data.commissions : []);
       setPayments(Array.isArray(payJson.data) ? payJson.data : []);
     } catch {
       setError('Error de conexión. Revisá tu red e intentá de nuevo.');
@@ -133,7 +164,7 @@ function useComisionesData() {
     return () => clearTimeout(t);
   }, [cargar]);
 
-  return { commissions, payments, loading, error };
+  return { commissions, payments, bcvRate, loading, error };
 }
 
 // ---------------------------------------------------------------------------
@@ -211,6 +242,8 @@ function FilaComision({ c }: { c: SellerCommissionDto }) {
  * ⚠️ `receiptUrl` guarda el **path** del objeto en GCS, NO una URL: los comprobantes
  * son privados y su firma vence a los 15 minutos. Enlazarlo directo daba un 404.
  * Por eso se pide la firma a demanda, recién cuando el vendedor va a abrirlo.
+ *
+ * El monto en Bs se muestra con la tasa histórica del pago (no la de hoy).
  */
 function FilaPago({ p }: { p: SellerPaymentDto }) {
   const [abriendo, setAbriendo] = useState(false);
@@ -239,15 +272,41 @@ function FilaPago({ p }: { p: SellerPaymentDto }) {
   return (
     <div className="flex items-start justify-between gap-3 py-4 border-b border-slate-100 last:border-0">
       <div className="min-w-0">
+        {/*
+          Manda lo que el vendedor efectivamente RECIBIÓ: bolívares. El USD queda
+          como equivalente y la tasa como respaldo del cálculo, que es lo que
+          permite cuadrar el monto contra el comprobante del banco.
+          La tasa es la histórica del pago, nunca la de hoy.
+        */}
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-sm font-bold text-slate-900 tabular-nums">
-            {fmtUsd(p.amountUsd)}
-          </span>
+          {p.bcvRate !== null && p.bcvRate > 0 ? (
+            <>
+              <span className="text-sm font-bold text-slate-900 tabular-nums">
+                {fmtBs(p.amountUsd, p.bcvRate)}
+              </span>
+              <span className="text-xs font-medium text-slate-500 tabular-nums">
+                · {fmtUsd(p.amountUsd)}
+              </span>
+            </>
+          ) : (
+            <span className="text-sm font-bold text-slate-900 tabular-nums">
+              {fmtUsd(p.amountUsd)}
+            </span>
+          )}
           <span className="text-xs font-medium text-slate-500">{p.method}</span>
         </div>
         <p className="text-xs text-slate-500 mt-0.5">
           Ref. <span className="font-mono">{p.reference}</span> · {fmtDate(p.paidAt)}
         </p>
+        {p.bcvRate !== null && p.bcvRate > 0 ? (
+          <p className="text-[11px] text-slate-400 mt-0.5">
+            Tasa BCV del día del pago: {p.bcvRate.toFixed(2)} Bs/USD
+          </p>
+        ) : (
+          <p className="text-[11px] text-slate-400 mt-0.5">
+            No quedó registrada la tasa de este pago.
+          </p>
+        )}
         {p.notes && <p className="text-xs text-slate-400 mt-0.5 italic">{p.notes}</p>}
       </div>
 
@@ -288,6 +347,8 @@ function FilaPago({ p }: { p: SellerPaymentDto }) {
 // ---------------------------------------------------------------------------
 
 export default function ComisionesPage() {
+  // `bcvRate` (la tasa actual) se recibe pero NO se usa acá a propósito: lo pendiente
+  // se informa solo en USD. Los bolívares salen de la tasa histórica de cada pago.
   const { commissions, payments, loading, error } = useComisionesData();
 
   const pendientes = commissions.filter((c) => c.status === 'pending');
@@ -319,7 +380,7 @@ export default function ComisionesPage() {
 
   return (
     <div className="space-y-6">
-      {/* ── Totales ──────────────────────────────────────────────────── */}
+      {/* ��─ Totales ──────────────────────────────────────────────────── */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         {/* Total pendiente — el número que el vendedor entró a ver */}
         <div
@@ -334,11 +395,23 @@ export default function ComisionesPage() {
             <p className="text-4xl font-extrabold text-white tabular-nums mt-0.5">
               {fmtUsd(totalPendiente)}
             </p>
+            {/*
+              Lo pendiente va SOLO en USD, a propósito. La comisión se calcula y se
+              debe en dólares; los bolívares aparecen únicamente cuando el pago ya
+              ocurrió, con la tasa de ESE día. Mostrar acá una conversión a la tasa
+              de hoy prometería una cifra que casi seguro no va a ser la que reciba:
+              entre que se genera la comisión y se liquida, la tasa se mueve.
+            */}
             <p className="text-xs text-white/70 mt-1">
               {pendientes.length === 0
                 ? 'Ninguna comisión pendiente por el momento'
                 : `${pendientes.length} comisión${pendientes.length !== 1 ? 'es' : ''} sin liquidar`}
             </p>
+            {pendientes.length > 0 && (
+              <p className="text-[11px] text-white/60 mt-1">
+                Se te transfiere en bolívares a la tasa del BCV del día del pago.
+              </p>
+            )}
           </div>
         </div>
 
@@ -421,7 +494,8 @@ export default function ComisionesPage() {
         <div className="px-5 py-4 border-b border-slate-100">
           <h2 className="text-sm font-bold text-slate-900">Pagos recibidos</h2>
           <p className="text-xs text-slate-500 mt-0.5">
-            Cada vez que el administrador liquida tus comisiones queda registrado acá.
+            Cada vez que el administrador liquida tus comisiones queda registrado acá. El monto en
+            Bs refleja la tasa del BCV vigente el día de cada pago.
           </p>
         </div>
 

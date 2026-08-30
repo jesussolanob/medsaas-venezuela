@@ -61,6 +61,12 @@ interface SellerPaymentRow {
   id: string;
   sellerId: string;
   amountUsd: number;
+  /**
+   * Tasa BCV (Bs por USD) vigente al momento de registrar el pago.
+   * null → tasa no estaba disponible o el pago es anterior a este campo.
+   * Mostrar solo USD cuando es null.
+   */
+  bcvRate: number | null;
   method: string;
   reference: string;
   receiptUrl: string | null;
@@ -113,6 +119,11 @@ function formatUsd(amount: number): string {
   })}`;
 }
 
+/** Formatea bolívares sin decimales. Devuelve string con prefijo "Bs." */
+function fmtBs(amountUsd: number, rate: number): string {
+  return `Bs. ${(amountUsd * rate).toLocaleString('es-VE', { maximumFractionDigits: 0 })}`;
+}
+
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString('es-VE', {
     day: '2-digit',
@@ -145,13 +156,15 @@ function calcSelectedTotal(commissions: PendingCommissionItem[], selectedIds: Se
 // ---------------------------------------------------------------------------
 
 async function fetchPending(): Promise<
-  { kind: 'ok'; sellers: PendingBySeller[] } | { kind: 'error'; message: string }
+  | { kind: 'ok'; sellers: PendingBySeller[]; bcvRate: number | null }
+  | { kind: 'error'; message: string }
 > {
   try {
     const res = await fetch('/api/admin/seller-commissions/pending', { cache: 'no-store' });
     const json = (await res.json().catch(() => ({}))) as {
       success?: boolean;
-      data?: PendingBySeller[];
+      // ⚠️ BREAKING CHANGE (2026-08-28): data ahora es { bcvRate, sellers }, no un array pelado.
+      data?: { bcvRate?: number | null; sellers?: PendingBySeller[] };
       error?: string;
     };
     if (!res.ok || !json.success) {
@@ -160,7 +173,11 @@ async function fetchPending(): Promise<
         message: json.error ?? 'No se pudo cargar las comisiones pendientes.',
       };
     }
-    return { kind: 'ok', sellers: json.data ?? [] };
+    return {
+      kind: 'ok',
+      bcvRate: json.data?.bcvRate ?? null,
+      sellers: Array.isArray(json.data?.sellers) ? json.data.sellers : [],
+    };
   } catch {
     return { kind: 'error', message: 'Error de conexión al cargar las comisiones.' };
   }
@@ -262,6 +279,8 @@ async function uploadReceiptFile(
 
 export default function ComisionesPage() {
   const [sellers, setSellers] = useState<PendingBySeller[]>([]);
+  /** Tasa BCV actual (Bs por USD) para calcular equivalente de comisiones pendientes. */
+  const [bcvRate, setBcvRate] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -307,6 +326,7 @@ export default function ComisionesPage() {
     } else {
       const sorted = [...result.sellers].sort((a, b) => b.totalPendingUsd - a.totalPendingUsd);
       setSellers(sorted);
+      setBcvRate(result.bcvRate);
     }
     setLoading(false);
   }, []);
@@ -518,6 +538,8 @@ export default function ComisionesPage() {
   // ---------------------------------------------------------------------------
 
   const totalGlobalPending = sellers.reduce((acc, s) => acc + s.totalPendingUsd, 0);
+  // La tasa sigue llegando y se usa en el formulario de pago (`hasBcv`), que es el
+  // único lugar donde los bolívares son reales. Acá arriba ya no se convierte nada.
 
   return (
     <div className="space-y-6">
@@ -575,15 +597,26 @@ export default function ComisionesPage() {
       {!loading && !loadError && sellers.length > 0 && (
         <>
           {/* Global stats */}
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            {/* Total en USD */}
             <div className="bg-white border border-slate-200 rounded-xl px-5 py-4">
               <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">
-                Total pendiente
+                Total pendiente (USD)
               </p>
               <p className="text-2xl font-bold text-teal-600 mt-1">
                 {formatUsd(totalGlobalPending)}
               </p>
             </div>
+
+            {/*
+              Acá había un "Equivalente en Bs" del total pendiente a la tasa de hoy.
+              Se sacó: lo pendiente se debe en USD y la tasa se mueve, así que ese
+              número iba a diferir del que realmente se transfiera. Los bolívares
+              aparecen en el formulario de pago y en el botón de confirmar, calculados
+              sobre las comisiones efectivamente seleccionadas.
+            */}
+
+            {/* Vendedores con saldo */}
             <div className="bg-white border border-slate-200 rounded-xl px-5 py-4">
               <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">
                 Vendedores con saldo
@@ -642,6 +675,11 @@ export default function ComisionesPage() {
                       <p className="text-lg font-bold text-teal-600">
                         {formatUsd(seller.totalPendingUsd)}
                       </p>
+                      {/*
+                        Lo pendiente va solo en USD: es la moneda en la que se debe.
+                        Los bolívares aparecen recién al registrar el pago, con la
+                        tasa de ese momento — que es la que se va a transferir.
+                      */}
                       <p className="text-xs text-slate-400 mt-0.5">por cobrar</p>
                     </div>
 
@@ -793,6 +831,7 @@ export default function ComisionesPage() {
                               selectedIds={selectedIds}
                               selectedTotal={selectedTotal}
                               selectedCount={selectedCount}
+                              bcvRate={bcvRate}
                               form={payForm}
                               step={payStep}
                               error={payError}
@@ -846,6 +885,8 @@ interface PaymentFormProps {
   selectedIds: Set<string>;
   selectedTotal: number;
   selectedCount: number;
+  /** Tasa BCV actual para mostrar equivalente en Bs. null → no mostrar Bs. */
+  bcvRate: number | null;
   form: PayForm;
   step: 'form' | 'submitting';
   error: string | null;
@@ -864,6 +905,7 @@ function PaymentForm({
   selectedIds,
   selectedTotal,
   selectedCount,
+  bcvRate,
   form,
   step,
   error,
@@ -878,6 +920,7 @@ function PaymentForm({
 }: PaymentFormProps) {
   const isSubmitting = step === 'submitting';
   const selectedCommissions = seller.commissions.filter((c) => selectedIds.has(c.commissionId));
+  const hasBcv = bcvRate !== null && bcvRate > 0;
 
   return (
     <div className="bg-slate-50 border border-slate-200 rounded-xl p-5 space-y-5">
@@ -909,7 +952,17 @@ function PaymentForm({
             <span className="text-sm font-bold text-teal-800">
               Total ({selectedCount} {selectedCount === 1 ? 'comisión' : 'comisiones'})
             </span>
-            <span className="text-lg font-bold text-teal-700">{formatUsd(selectedTotal)}</span>
+            <div className="text-right">
+              <span className="text-lg font-bold text-teal-700">{formatUsd(selectedTotal)}</span>
+              {hasBcv && selectedTotal > 0 && (
+                <p className="text-sm font-semibold text-teal-600 mt-0.5">
+                  {fmtBs(selectedTotal, bcvRate)}
+                </p>
+              )}
+              {!hasBcv && (
+                <p className="text-[11px] text-slate-400 mt-0.5">Tasa BCV no disponible</p>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -1113,6 +1166,7 @@ function PaymentForm({
         >
           {isSubmitting && <Loader2 className="w-4 h-4 animate-spin" />}
           Confirmar pago de {formatUsd(selectedTotal)}
+          {hasBcv && selectedTotal > 0 && ` (${fmtBs(selectedTotal, bcvRate)})`}
         </button>
       </div>
     </div>
@@ -1179,47 +1233,66 @@ function HistoryTab({
 
   return (
     <div className="divide-y divide-slate-100">
-      {payments.map((payment) => (
-        <div key={payment.id} className="px-5 py-4">
-          <div className="flex flex-wrap items-start justify-between gap-2">
-            <div>
-              <p className="text-sm font-bold text-slate-800">{formatUsd(payment.amountUsd)}</p>
-              <p className="text-xs text-slate-500 mt-0.5">
-                {payment.method}
-                {payment.reference && (
-                  <>
-                    {' '}
-                    · Ref: <span className="font-mono">{payment.reference}</span>
-                  </>
-                )}
-              </p>
-              {payment.notes && (
-                <p className="text-xs text-slate-400 mt-1 italic">{payment.notes}</p>
-              )}
-            </div>
-            <div className="text-right">
-              <p className="text-xs text-slate-400">{formatDate(payment.paidAt)}</p>
-              {payment.receiptUrl && (
-                /* receiptUrl is a GCS storage path — NOT a URL. We fetch a
-                   short-lived signed URL on demand via the BFF. */
-                <button
-                  type="button"
-                  onClick={() => onOpenReceipt(payment.id)}
-                  disabled={fetchingReceiptId === payment.id}
-                  className="inline-flex items-center gap-1 text-xs text-teal-600 hover:text-teal-700 font-semibold mt-1 disabled:opacity-50 transition-opacity"
-                >
-                  {fetchingReceiptId === payment.id ? (
-                    <Loader2 className="w-3 h-3 animate-spin" />
-                  ) : (
-                    <ExternalLink className="w-3 h-3" />
+      {payments.map((payment) => {
+        const payHasBcv = payment.bcvRate !== null && payment.bcvRate > 0;
+        return (
+          <div key={payment.id} className="px-5 py-4">
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div>
+                <div className="flex items-baseline gap-2 flex-wrap">
+                  <p className="text-sm font-bold text-slate-800">{formatUsd(payment.amountUsd)}</p>
+                  {/* Bs con la tasa histórica del día del pago */}
+                  {payHasBcv && (
+                    <p
+                      className="text-sm font-semibold text-slate-600"
+                      title={`Tasa BCV al registrar: ${payment.bcvRate!.toFixed(2)} Bs/USD`}
+                    >
+                      {fmtBs(payment.amountUsd, payment.bcvRate!)}
+                    </p>
                   )}
-                  Ver comprobante
-                </button>
-              )}
+                </div>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  {payment.method}
+                  {payment.reference && (
+                    <>
+                      {' '}
+                      · Ref: <span className="font-mono">{payment.reference}</span>
+                    </>
+                  )}
+                </p>
+                {payHasBcv && (
+                  <p className="text-[11px] text-slate-400 mt-0.5">
+                    Tasa BCV al registrar: {payment.bcvRate!.toFixed(2)} Bs/USD
+                  </p>
+                )}
+                {payment.notes && (
+                  <p className="text-xs text-slate-400 mt-1 italic">{payment.notes}</p>
+                )}
+              </div>
+              <div className="text-right">
+                <p className="text-xs text-slate-400">{formatDate(payment.paidAt)}</p>
+                {payment.receiptUrl && (
+                  /* receiptUrl is a GCS storage path — NOT a URL. We fetch a
+                     short-lived signed URL on demand via the BFF. */
+                  <button
+                    type="button"
+                    onClick={() => onOpenReceipt(payment.id)}
+                    disabled={fetchingReceiptId === payment.id}
+                    className="inline-flex items-center gap-1 text-xs text-teal-600 hover:text-teal-700 font-semibold mt-1 disabled:opacity-50 transition-opacity"
+                  >
+                    {fetchingReceiptId === payment.id ? (
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                    ) : (
+                      <ExternalLink className="w-3 h-3" />
+                    )}
+                    Ver comprobante
+                  </button>
+                )}
+              </div>
             </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

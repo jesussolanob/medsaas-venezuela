@@ -19,6 +19,7 @@ import { GetSellerPaymentDetailsUseCase } from '../../application/use-cases/get-
 import { UpdateSellerPaymentDetailsUseCase } from '../../application/use-cases/update-seller-payment-details.use-case';
 import { GetAdminSellerPaymentDetailsUseCase } from '../../application/use-cases/get-admin-seller-payment-details.use-case';
 import { GetSpecialistSellerAssignmentUseCase } from '../../application/use-cases/get-specialist-seller-assignment.use-case';
+import { DeactivateSellerAccountUseCase } from '../../application/use-cases/deactivate-seller-account.use-case';
 import type {
   SellerProfile,
   SellerAdminRow,
@@ -76,6 +77,18 @@ const UpdatePaymentDetailsBodySchema = z
   .strict();
 
 type UpdatePaymentDetailsBody = z.infer<typeof UpdatePaymentDetailsBodySchema>;
+
+/**
+ * POST /api/seller/deactivate — seller deactivates their own account.
+ * All fields are optional: the seller can leave a reason or send an empty body.
+ */
+const DeactivateSellerBodySchema = z
+  .object({
+    reason: z.string().max(1000).nullable().optional(),
+  })
+  .strict();
+
+type DeactivateSellerBody = z.infer<typeof DeactivateSellerBodySchema>;
 
 // ---------------------------------------------------------------------------
 // Response helpers
@@ -192,6 +205,7 @@ export class SellersController {
     private readonly updatePaymentDetails: UpdateSellerPaymentDetailsUseCase,
     private readonly getAdminPaymentDetails: GetAdminSellerPaymentDetailsUseCase,
     private readonly getSellerAssignment: GetSpecialistSellerAssignmentUseCase,
+    private readonly deactivateAccount: DeactivateSellerAccountUseCase,
   ) {}
 
   // ---------------------------------------------------------------------------
@@ -396,6 +410,52 @@ export class SellersController {
     });
 
     return ok(toSpecialistDto(specialist));
+  }
+
+  // ---------------------------------------------------------------------------
+  // POST /api/seller/deactivate
+  // ---------------------------------------------------------------------------
+
+  /**
+   * The seller deactivates their own account from the portal.
+   *
+   * This is always permitted — unlike the specialist flow, no pending items
+   * block the exit. The response carries the pending commission summary so the
+   * frontend can surface a warning before the seller clicks "Confirmar".
+   *
+   * sellerId comes from the authenticated session — never from the body.
+   * role is verified both by RolesGuard and by the use case (defence in depth).
+   *
+   * SECURITY: the reason is free text by the account owner and is never logged.
+   * The pending amounts are financial data and must never appear in logs.
+   *
+   * Response shape (exact casing):
+   *   { deactivated: true, pendingCommissionsUsd: number, pendingCommissionsCount: number }
+   */
+  @Post('seller/deactivate')
+  @UseGuards(RolesGuard)
+  @Roles('seller')
+  async deactivateSellerAccount(
+    @CurrentUser() user: CurrentUserPayload,
+    @Body(new ZodValidationPipe(DeactivateSellerBodySchema)) body: DeactivateSellerBody,
+  ): Promise<
+    SuccessResponse<{
+      deactivated: true;
+      pendingCommissionsUsd: number;
+      pendingCommissionsCount: number;
+    }>
+  > {
+    const result = await this.deactivateAccount.execute({
+      sellerId: user.sub,
+      role: user.role,
+      reason: body.reason ?? null,
+    });
+
+    return ok({
+      deactivated: result.deactivated,
+      pendingCommissionsUsd: result.pendingCommissionsUsd,
+      pendingCommissionsCount: result.pendingCommissionsCount,
+    });
   }
 }
 

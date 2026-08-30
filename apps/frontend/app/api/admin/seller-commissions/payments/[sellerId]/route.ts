@@ -21,6 +21,12 @@ export interface SellerPaymentRow {
   id: string;
   sellerId: string;
   amountUsd: number;
+  /**
+   * Tasa BCV (Bs por USD) vigente al momento de registrar el pago.
+   * null → tasa no estaba disponible o el pago es anterior a este campo.
+   * Mostrar solo USD cuando es null.
+   */
+  bcvRate: number | null;
   method: string;
   reference: string;
   receiptUrl: string | null;

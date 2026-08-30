@@ -110,11 +110,20 @@ function toPendingBySellerDto(p: PendingBySeller) {
   };
 }
 
+/**
+ * Maps a SellerPayment entity to the API response DTO.
+ *
+ * bcvRate is the BCV rate (Bs per USD) snapshotted when the payment was
+ * registered. Null for payments created before this field was introduced or
+ * when the rate was unavailable at registration time.
+ */
 function toPaymentDto(p: SellerPayment) {
   return {
     id: p.id,
     sellerId: p.sellerId,
     amountUsd: p.amountUsd,
+    /** BCV rate at registration time. Null → show only USD, no Bs equivalent. */
+    bcvRate: p.bcvRate,
     method: p.method,
     reference: p.reference,
     receiptUrl: p.receiptUrl,
@@ -135,13 +144,15 @@ function toPaymentDto(p: SellerPayment) {
  * Admin-only endpoints (role = super_admin):
  *
  *   GET  /api/admin/seller-commissions/pending
- *     → all pending commissions grouped by seller with totals.
+ *     → { bcvRate, sellers: pending commissions grouped by seller }.
+ *       bcvRate is the current BCV rate for client-side bolivar conversion.
+ *       null → BCV rate unavailable; show only USD amounts.
  *
  *   POST /api/admin/seller-commissions/payments
  *     → register a payment batch for a seller's pending commissions.
  *
  *   GET  /api/admin/seller-commissions/payments/:sellerId
- *     → payment history for a specific seller.
+ *     → payment history for a specific seller (each payment includes bcvRate).
  *
  *   POST /api/admin/seller-commissions/assign
  *     → assign or re-assign a specialist to a seller.
@@ -164,12 +175,32 @@ export class SellerCommissionsAdminController {
 
   /**
    * GET /api/admin/seller-commissions/pending
+   *
    * Lists all pending commissions grouped by seller for the admin payout screen.
+   *
+   * Response shape (breaking change from the previous array):
+   *   {
+   *     success: true,
+   *     data: {
+   *       bcvRate: number | null,   // current BCV rate; null → rate unavailable
+   *       sellers: [...]            // previously the bare array
+   *     }
+   *   }
+   *
+   * The frontend must read data.sellers (not data directly) after this change.
    */
   @Get('pending')
-  async listPending(): Promise<SuccessResponse<ReturnType<typeof toPendingBySellerDto>[]>> {
-    const data = await this.getPending.execute();
-    return ok(data.map(toPendingBySellerDto));
+  async listPending(): Promise<
+    SuccessResponse<{
+      bcvRate: number | null;
+      sellers: ReturnType<typeof toPendingBySellerDto>[];
+    }>
+  > {
+    const result = await this.getPending.execute();
+    return ok({
+      bcvRate: result.bcvRate,
+      sellers: result.sellers.map(toPendingBySellerDto),
+    });
   }
 
   /**
@@ -198,6 +229,7 @@ export class SellerCommissionsAdminController {
   /**
    * GET /api/admin/seller-commissions/payments/:sellerId
    * Payment history for a specific seller.
+   * Each payment includes bcvRate (the historical rate at registration time).
    */
   @Get('payments/:sellerId')
   async listPayments(
@@ -248,8 +280,13 @@ export class SellerCommissionsAdminController {
  *
  * Seller portal endpoints (role = seller):
  *
- *   GET /api/seller/commissions      → my commissions (paid + pending)
- *   GET /api/seller/payments         → my payment history with receipt URLs
+ *   GET /api/seller/commissions
+ *     → { bcvRate, commissions: [...] }
+ *       bcvRate is the current BCV rate for client-side bolivar conversion.
+ *       null → BCV rate unavailable; show only USD amounts.
+ *
+ *   GET /api/seller/payments
+ *     → payment history (each payment includes bcvRate at registration time).
  *
  * SECURITY:
  *   - sellerId always comes from CurrentUser().sub — never from the request body or URL.
@@ -266,19 +303,38 @@ export class SellerCommissionsSellerController {
 
   /**
    * GET /api/seller/commissions
+   *
    * All commissions for the authenticated seller (paid and pending).
+   *
+   * Response shape (breaking change from the previous array):
+   *   {
+   *     success: true,
+   *     data: {
+   *       bcvRate: number | null,   // current BCV rate; null → rate unavailable
+   *       commissions: [...]        // previously the bare array
+   *     }
+   *   }
+   *
+   * The frontend must read data.commissions (not data directly) after this change.
    */
   @Get('commissions')
-  async listMyCommissions(
-    @CurrentUser() user: CurrentUserPayload,
-  ): Promise<SuccessResponse<ReturnType<typeof toCommissionDto>[]>> {
-    const commissions = await this.getCommissions.execute(user.sub);
-    return ok(commissions.map(toCommissionDto));
+  async listMyCommissions(@CurrentUser() user: CurrentUserPayload): Promise<
+    SuccessResponse<{
+      bcvRate: number | null;
+      commissions: ReturnType<typeof toCommissionDto>[];
+    }>
+  > {
+    const result = await this.getCommissions.execute(user.sub);
+    return ok({
+      bcvRate: result.bcvRate,
+      commissions: result.commissions.map(toCommissionDto),
+    });
   }
 
   /**
    * GET /api/seller/payments
    * Payment history for the authenticated seller.
+   * Each payment includes bcvRate (the historical rate at registration time).
    */
   @Get('payments')
   async listMyPayments(

@@ -148,8 +148,12 @@ export default function SellerCobrosPage() {
         key={editorKey}
         initialMethods={initialMethods}
         initialDetails={initialDetails}
+        // Delta TRANSFIERE la comisión, y lo hace en bolívares. Por eso solo se
+        // ofrecen estos dos: el catálogo completo es el del especialista cobrándole
+        // a sus pacientes e incluye efectivo y punto de venta, que acá no aplican.
+        allowedMethods={['pago_movil', 'transferencia']}
         title="Métodos para recibir comisiones"
-        description="Activa los métodos que manejas y expande cada uno para ingresar los datos. Delta usará esta información para transferirte tus comisiones."
+        description="Activá los métodos que manejás y completá los datos de cada uno. Delta te transfiere la comisión en bolívares a la tasa del BCV."
         saveLabel="Guardar datos de cobro"
         onSave={async (methods, details) => {
           const result = await handleSave(methods, details);

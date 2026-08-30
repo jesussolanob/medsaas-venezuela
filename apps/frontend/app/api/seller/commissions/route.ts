@@ -1,10 +1,15 @@
 /**
  * /api/seller/commissions — thin-proxy al módulo `seller-commissions` del backend.
  *
- * GET → todas las comisiones del vendedor autenticado, pagadas y pendientes.
+ * GET → todas las comisiones del vendedor autenticado, pagadas y pendientes,
+ * junto con la tasa BCV actual para conversión a bolívares en el cliente.
  *
  * El `sellerId` lo saca el backend de la sesión — nunca se manda desde acá.
  * El vendedor no puede ver las comisiones de otro vendedor (anti-IDOR en el backend).
+ *
+ * ⚠️ BREAKING CHANGE (2026-08-28): el backend dejó de retornar un array pelado.
+ * Ahora responde { bcvRate: number | null, commissions: [...] }.
+ * El cliente debe leer data.commissions (no data directamente).
  */
 import { NextResponse } from 'next/server';
 import { backendGet } from '@/lib/api-client.server';
@@ -31,8 +36,15 @@ export interface SellerCommissionDto {
   createdAt: string;
 }
 
+/** Shape del data que retorna el backend para este endpoint (post breaking change). */
+interface BackendCommissionsData {
+  /** Tasa BCV actual (Bs por USD). null → no disponible; mostrar solo USD. */
+  bcvRate: number | null;
+  commissions: SellerCommissionDto[];
+}
+
 export async function GET(): Promise<NextResponse> {
-  const result = await backendGet<SellerCommissionDto[]>('/api/seller/commissions');
+  const result = await backendGet<BackendCommissionsData>('/api/seller/commissions');
 
   if (!result.ok) {
     return NextResponse.json(
@@ -41,5 +53,11 @@ export async function GET(): Promise<NextResponse> {
     );
   }
 
-  return NextResponse.json({ success: true, data: result.value ?? [] });
+  return NextResponse.json({
+    success: true,
+    data: {
+      bcvRate: result.value?.bcvRate ?? null,
+      commissions: Array.isArray(result.value?.commissions) ? result.value.commissions : [],
+    },
+  });
 }

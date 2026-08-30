@@ -414,7 +414,13 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
   const { rate: bcvRate, toBs, format, currencyCode } = useBcvRate();
   const { features: planFeatures, loading: planLoading } = useDoctorFeatures();
 
-  const [view, setView] = useState<ViewMode>('list');
+  // Con ?open= se arranca YA en el detalle, no en el listado.
+  //
+  // Antes esto era siempre 'list', así que entrar desde la ficha del paciente
+  // pintaba el listado completo y recién cambiaba al detalle cuando resolvía el
+  // fetch: se veía pasar una pantalla que nadie pidió. El fetch puntual ya estaba
+  // optimizado, pero la primera pintura seguía siendo la lista.
+  const [view, setView] = useState<ViewMode>(openId ? 'consultation' : 'list');
   const [selected, setSelected] = useState<Consultation | null>(null);
   // Si el Server Component pasó datos iniciales, úsalos para evitar el spinner.
   // El cliente puede refrescar/paginar y actualizar este estado normalmente.
@@ -1302,6 +1308,13 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
         }
       } catch (err) {
         reportError('doctor/consultations', 'loadData', err);
+        // Si veníamos con ?open= la vista arranca en 'consultation', así que sin esto
+        // un error de red dejaría al especialista mirando el spinner para siempre.
+        // Se cae al listado, que es un lugar del que sí puede salir.
+        if (openId) {
+          router.replace(pathname);
+          showToast({ type: 'error', message: 'No pudimos abrir la consulta' });
+        }
       }
       setLoading(false);
     });
@@ -3221,6 +3234,20 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
 
   const upcoming = consultations.filter((c) => new Date(c.consultation_date) > now).length;
   const todayCount = consultations.filter((c) => c.consultation_date.startsWith(today)).length;
+
+  // Se entró con ?open= y la consulta todavía no llegó. Sin esta rama caeríamos al
+  // listado, que es exactamente el parpadeo que hay que evitar: el especialista pidió
+  // ver UNA consulta y vería pasar la lista de todas antes.
+  if (view === 'consultation' && !selected) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 className="w-6 h-6 text-teal-500 animate-spin" />
+          <p className="text-sm text-slate-500">Abriendo la consulta…</p>
+        </div>
+      </div>
+    );
+  }
 
   if (view === 'consultation' && selected) {
     const ps = PAYMENT_STATUS[report.payment_status];
