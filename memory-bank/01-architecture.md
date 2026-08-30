@@ -774,3 +774,46 @@ status='active'` con `QueryTypes.UPDATE` (devuelve `[undefined, affectedCount]`;
   el onboarding. ⚠️ `extend-doctor-subscription` migra `'trial' → 'basic'`, claves **legacy**
   que el motor no reconoce (solo conoce `delta_base`/`delta_plus`), así que esa transición
   puntual no acredita nada. Ponerle monto a las claves legacy es decisión del dueño.
+
+- **ADR-049 (2026-08-30):** **La comisión se debe en USD; los bolívares existen solo cuando hay un
+  pago, y cada pago guarda su propia tasa.** El cálculo, la deuda y lo pendiente van **siempre en
+  dólares** — en el portal del vendedor y en el listado del admin. Convertir lo pendiente a la tasa
+  de hoy prometería una cifra que **no va a ser la que reciba**: entre que nace la comisión y se
+  liquida, la tasa se mueve.
+  Los bolívares aparecen en dos lugares y nada más: el **formulario de pago del admin** (es la plata
+  que va a transferir) y el **historial**, con `seller_payments.bcv_rate`, la tasa **snapshotteada
+  al registrar ese pago**. Un pago viejo se muestra con SU tasa, nunca con la de hoy — si no, el
+  vendedor vería bolívares que jamás recibió. Ahí manda el monto en Bs, con el USD y la tasa al lado
+  para poder cuadrarlo contra el comprobante del banco.
+  ⚠️ **Se usa la tasa del BCV específicamente, NO la "efectiva" del sistema.** `IUsdtRateStore`
+  maneja tres (manual, Binance, BCV) y una efectiva según `rate_source`: hoy la app puede estar en
+  Binance y entonces la efectiva **no** es la del BCV. Se lee el campo `bcv` de `getRatesSummary()`.
+  Si no está disponible → `null`, se muestra solo USD y se dice por qué. **Nunca** se cae a la
+  efectiva ni se inventa: un monto en bolívares equivocado en una pantalla de pagos es peor que no
+  mostrarlo. Una tasa faltante **jamás** bloquea el registro de un pago.
+
+- **ADR-050 (2026-08-30):** **El vendedor puede darse de baja, y lo que se le debe no se toca.**
+  Desactivación, nunca borrado: sus especialistas atribuidos, comisiones y pagos quedan bajo el
+  mismo id, auditables, y un super_admin lo reactiva con el botón que ya existe en `/admin/sellers`.
+  A diferencia del especialista —a quien lo **bloquean** las citas futuras, porque dejar pacientes
+  colgados perjudica a terceros—, al vendedor **no lo bloquea nada**: irse no daña a nadie y Delta
+  le sigue debiendo. Pero antes de confirmar tiene que leer lo que de verdad le importa: su enlace
+  deja de atribuir, no genera comisiones nuevas, y **lo pendiente se le paga igual**.
+  🔑 La regla de "cuánto se te debe" vive en el módulo que **posee** las comisiones
+  (`GetSellerPendingSummaryUseCase`), y `SellersModule` lo importa. La primera versión lo resolvía
+  con SQL crudo desde el repositorio de vendedores: eso dejaba a **dos módulos conociendo el mismo
+  esquema**, y el día que cambie qué cuenta como pendiente, la copia seguiría compilando y
+  devolvería un número equivocado justo donde alguien decide irse. No había circularidad que lo
+  justificara — `seller-commissions` no depende de `sellers`.
+
+- **ADR-051 (2026-08-30):** **El título profesional lo elige el especialista; la app no lo asume.**
+  No todos son médicos: hay psicólogos, odontólogos y nutricionistas. `getProfessionalTitle` usa el
+  título cargado y, si no hay, lo **deriva de la especialidad** (psicología → "Psic."). Nadie debe
+  caer a `'Dr.'` fijo.
+  ⚠️ Pasarle `'Dr.'` como fallback **anula la derivación** (`if (title) return title`) — así el
+  booking público mostraba "Dr." aunque la especialidad dijera psicología. El onboarding tampoco lo
+  preselecciona: quien no tocaba el campo quedaba registrado como "Dr." para siempre, y ese título
+  después sale en su dashboard, su booking y los recordatorios a sus pacientes.
+  🔴 **Queda pendiente:** las plantillas de recordatorio (`reminders-settings`) todavía dicen
+  "cita con el **Dr.** {doctor_name}" fijo. Son editables por cada especialista, así que cambiar el
+  default solo afectaría a los nuevos.

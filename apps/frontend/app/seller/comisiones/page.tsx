@@ -109,8 +109,6 @@ function tipoAyuda(type: 'signup' | 'plan'): string {
 interface ComisionesData {
   commissions: SellerCommissionDto[];
   payments: SellerPaymentDto[];
-  /** Tasa BCV actual para comisiones pendientes. null → no disponible. */
-  bcvRate: number | null;
   loading: boolean;
   error: string | null;
 }
@@ -118,7 +116,6 @@ interface ComisionesData {
 function useComisionesData(): ComisionesData {
   const [commissions, setCommissions] = useState<SellerCommissionDto[]>([]);
   const [payments, setPayments] = useState<SellerPaymentDto[]>([]);
-  const [bcvRate, setBcvRate] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -149,7 +146,6 @@ function useComisionesData(): ComisionesData {
       // El BFF de payments retorna { data: SellerPaymentDto[] }
       const payJson = (await payRes.json()) as { data?: SellerPaymentDto[] };
 
-      setBcvRate(comJson.data?.bcvRate ?? null);
       setCommissions(Array.isArray(comJson.data?.commissions) ? comJson.data.commissions : []);
       setPayments(Array.isArray(payJson.data) ? payJson.data : []);
     } catch {
@@ -164,7 +160,7 @@ function useComisionesData(): ComisionesData {
     return () => clearTimeout(t);
   }, [cargar]);
 
-  return { commissions, payments, bcvRate, loading, error };
+  return { commissions, payments, loading, error };
 }
 
 // ---------------------------------------------------------------------------
@@ -347,8 +343,8 @@ function FilaPago({ p }: { p: SellerPaymentDto }) {
 // ---------------------------------------------------------------------------
 
 export default function ComisionesPage() {
-  // `bcvRate` (la tasa actual) se recibe pero NO se usa acá a propósito: lo pendiente
-  // se informa solo en USD. Los bolívares salen de la tasa histórica de cada pago.
+  // Lo pendiente se informa solo en USD. Los bolívares aparecen únicamente en los
+  // pagos ya hechos, con la tasa histórica de ese día (campo bcvRate de cada pago).
   const { commissions, payments, loading, error } = useComisionesData();
 
   const pendientes = commissions.filter((c) => c.status === 'pending');

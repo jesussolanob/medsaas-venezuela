@@ -597,7 +597,8 @@ export default function ComisionesPage() {
       {!loading && !loadError && sellers.length > 0 && (
         <>
           {/* Global stats */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          {/* Dos columnas: quedaron dos tarjetas al sacar la del equivalente en Bs. */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {/* Total en USD */}
             <div className="bg-white border border-slate-200 rounded-xl px-5 py-4">
               <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">
@@ -1238,57 +1239,72 @@ function HistoryTab({
         return (
           <div key={payment.id} className="px-5 py-4">
             <div className="flex flex-wrap items-start justify-between gap-2">
-              <div>
-                <div className="flex items-baseline gap-2 flex-wrap">
-                  <p className="text-sm font-bold text-slate-800">{formatUsd(payment.amountUsd)}</p>
-                  {/* Bs con la tasa histórica del día del pago */}
-                  {payHasBcv && (
-                    <p
-                      className="text-sm font-semibold text-slate-600"
-                      title={`Tasa BCV al registrar: ${payment.bcvRate!.toFixed(2)} Bs/USD`}
-                    >
+              <div className="min-w-0">
+                {/*
+                  El admin transfirió bolívares: Bs manda. El USD queda como
+                  equivalente y la tasa como respaldo del cálculo.
+                  Cuando bcvRate es null, no había tasa al registrar → solo USD.
+                */}
+                {payHasBcv ? (
+                  <>
+                    <p className="text-base font-bold text-slate-900 tabular-nums">
                       {fmtBs(payment.amountUsd, payment.bcvRate!)}
                     </p>
-                  )}
-                </div>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  {payment.method}
-                  {payment.reference && (
-                    <>
-                      {' '}
-                      · Ref: <span className="font-mono">{payment.reference}</span>
-                    </>
-                  )}
-                </p>
-                {payHasBcv && (
-                  <p className="text-[11px] text-slate-400 mt-0.5">
-                    Tasa BCV al registrar: {payment.bcvRate!.toFixed(2)} Bs/USD
-                  </p>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      equivalente {formatUsd(payment.amountUsd)} · {payment.method}
+                      {payment.reference && (
+                        <>
+                          {' '}
+                          · Ref: <span className="font-mono">{payment.reference}</span>
+                        </>
+                      )}
+                    </p>
+                    <p className="text-[11px] text-slate-400 mt-0.5">
+                      Tasa BCV al registrar: {payment.bcvRate!.toFixed(2)} Bs/USD ·{' '}
+                      {formatDate(payment.paidAt)}
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-base font-bold text-slate-900 tabular-nums">
+                      {formatUsd(payment.amountUsd)}
+                    </p>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      {payment.method}
+                      {payment.reference && (
+                        <>
+                          {' '}
+                          · Ref: <span className="font-mono">{payment.reference}</span>
+                        </>
+                      )}{' '}
+                      · {formatDate(payment.paidAt)}
+                    </p>
+                    <p className="text-[11px] text-slate-400 mt-0.5">
+                      No se registró la tasa BCV para este pago.
+                    </p>
+                  </>
                 )}
                 {payment.notes && (
                   <p className="text-xs text-slate-400 mt-1 italic">{payment.notes}</p>
                 )}
               </div>
-              <div className="text-right">
-                <p className="text-xs text-slate-400">{formatDate(payment.paidAt)}</p>
-                {payment.receiptUrl && (
-                  /* receiptUrl is a GCS storage path — NOT a URL. We fetch a
-                     short-lived signed URL on demand via the BFF. */
-                  <button
-                    type="button"
-                    onClick={() => onOpenReceipt(payment.id)}
-                    disabled={fetchingReceiptId === payment.id}
-                    className="inline-flex items-center gap-1 text-xs text-teal-600 hover:text-teal-700 font-semibold mt-1 disabled:opacity-50 transition-opacity"
-                  >
-                    {fetchingReceiptId === payment.id ? (
-                      <Loader2 className="w-3 h-3 animate-spin" />
-                    ) : (
-                      <ExternalLink className="w-3 h-3" />
-                    )}
-                    Ver comprobante
-                  </button>
-                )}
-              </div>
+              {payment.receiptUrl && (
+                /* receiptUrl is a GCS storage path — NOT a URL. We fetch a
+                   short-lived signed URL on demand via the BFF. */
+                <button
+                  type="button"
+                  onClick={() => onOpenReceipt(payment.id)}
+                  disabled={fetchingReceiptId === payment.id}
+                  className="inline-flex items-center gap-1 text-xs text-teal-600 hover:text-teal-700 font-semibold mt-0.5 disabled:opacity-50 transition-opacity shrink-0"
+                >
+                  {fetchingReceiptId === payment.id ? (
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                  ) : (
+                    <ExternalLink className="w-3 h-3" />
+                  )}
+                  Ver comprobante
+                </button>
+              )}
             </div>
           </div>
         );
