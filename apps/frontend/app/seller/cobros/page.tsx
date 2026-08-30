@@ -16,6 +16,7 @@
 import { useEffect, useState } from 'react';
 import { CreditCard } from 'lucide-react';
 import PaymentDetailsEditor from '@/components/shared/PaymentDetailsEditor';
+import DeactivateSellerCard from './DeactivateSellerCard';
 import { showToast } from '@/components/ui/Toaster';
 
 // ---------------------------------------------------------------------------
@@ -168,6 +169,11 @@ export default function SellerCobrosPage() {
           return result;
         }}
       />
+
+      {/* La baja vive al pie de esta pantalla, igual que la del especialista vive
+          al pie de su configuración: es la única del portal que trata la cuenta
+          en sí, no el trabajo del día. */}
+      <DeactivateSellerCard />
     </div>
   );
 }
