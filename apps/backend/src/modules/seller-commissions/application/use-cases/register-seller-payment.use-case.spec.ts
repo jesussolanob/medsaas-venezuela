@@ -2,10 +2,27 @@ import { RegisterSellerPaymentUseCase } from './register-seller-payment.use-case
 import { CommissionSellerNotFoundError } from '../../domain/errors/commission-seller-not-found.error';
 import { InvalidCommissionIdsError } from '../../domain/errors/invalid-commission-ids.error';
 import type { ISellerCommissionRepository } from '../../domain/repositories/seller-commission.repository';
+import type { IUsdtRateStore } from '../../../finances/domain/repositories/usdt-rate.store';
 import type { SellerPayment } from '../../domain/entities/seller-payment.entity';
 
 const SELLER_ID = 'seller-1';
 const ADMIN_ID = 'admin-1';
+const BCV_RATE = 36.5;
+
+function makeRateStore(bcvRate: number | null = BCV_RATE): jest.Mocked<IUsdtRateStore> {
+  return {
+    getRate: jest.fn(),
+    setRate: jest.fn(),
+    setSource: jest.fn(),
+    getRatesSummary: jest.fn().mockResolvedValue({
+      source: 'bcv' as const,
+      manual: null,
+      binance: null,
+      bcv: bcvRate,
+      effective: bcvRate,
+    }),
+  } as jest.Mocked<IUsdtRateStore>;
+}
 
 function makeRepo(): jest.Mocked<ISellerCommissionRepository> {
   return {
@@ -45,6 +62,7 @@ function makeRepo(): jest.Mocked<ISellerCommissionRepository> {
       id: 'pay-1',
       sellerId: SELLER_ID,
       amountUsd: 30,
+      bcvRate: BCV_RATE,
       method: 'Zelle',
       reference: 'REF-001',
       receiptUrl: null,
@@ -72,11 +90,13 @@ const validInput = {
 
 describe('RegisterSellerPaymentUseCase', () => {
   let repo: jest.Mocked<ISellerCommissionRepository>;
+  let rateStore: jest.Mocked<IUsdtRateStore>;
   let useCase: RegisterSellerPaymentUseCase;
 
   beforeEach(() => {
     repo = makeRepo();
-    useCase = new RegisterSellerPaymentUseCase(repo);
+    rateStore = makeRateStore();
+    useCase = new RegisterSellerPaymentUseCase(repo, rateStore);
   });
 
   it('registers payment successfully when seller and commissions are valid', async () => {
@@ -92,6 +112,47 @@ describe('RegisterSellerPaymentUseCase', () => {
       ADMIN_ID,
     );
     expect(result).toBeDefined();
+  });
+
+  it('passes the BCV rate to registerPayment when available', async () => {
+    rateStore.getRatesSummary.mockResolvedValue({
+      source: 'bcv',
+      manual: null,
+      binance: null,
+      bcv: 36.5,
+      effective: 36.5,
+    });
+    useCase = new RegisterSellerPaymentUseCase(repo, rateStore);
+
+    await useCase.execute(validInput, ADMIN_ID);
+
+    expect(repo.registerPayment).toHaveBeenCalledWith(
+      expect.objectContaining({ bcvRate: 36.5 }),
+      ADMIN_ID,
+    );
+  });
+
+  it('passes bcvRate null when the BCV rate is unavailable', async () => {
+    rateStore = makeRateStore(null);
+    useCase = new RegisterSellerPaymentUseCase(repo, rateStore);
+
+    await useCase.execute(validInput, ADMIN_ID);
+
+    expect(repo.registerPayment).toHaveBeenCalledWith(
+      expect.objectContaining({ bcvRate: null }),
+      ADMIN_ID,
+    );
+  });
+
+  it('still registers payment when rate store throws — bcvRate is null', async () => {
+    rateStore.getRatesSummary.mockRejectedValue(new Error('Redis no disponible'));
+    useCase = new RegisterSellerPaymentUseCase(repo, rateStore);
+
+    await expect(useCase.execute(validInput, ADMIN_ID)).resolves.toBeDefined();
+    expect(repo.registerPayment).toHaveBeenCalledWith(
+      expect.objectContaining({ bcvRate: null }),
+      ADMIN_ID,
+    );
   });
 
   it('throws CommissionSellerNotFoundError when seller does not exist', async () => {

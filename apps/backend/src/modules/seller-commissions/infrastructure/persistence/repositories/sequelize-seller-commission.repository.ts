@@ -78,6 +78,9 @@ function toCommissionRow(r: CommissionJoinRow): CommissionRow {
 }
 
 function modelToPayment(row: SellerPaymentModel): SellerPayment {
+  // pg returns NUMERIC columns as strings — parseFloat before any arithmetic.
+  const bcvRate =
+    row.bcvRate !== null && row.bcvRate !== undefined ? parseFloat(row.bcvRate) : null;
   return new SellerPayment(
     row.id,
     row.sellerId,
@@ -89,6 +92,7 @@ function modelToPayment(row: SellerPaymentModel): SellerPayment {
     row.paidAt,
     row.createdBy,
     row.createdAt,
+    bcvRate,
   );
 }
 
@@ -362,6 +366,7 @@ export class SequelizeSellerCommissionRepository implements ISellerCommissionRep
           receiptUrl: params.receiptUrl,
           notes: params.notes,
           paidAt: params.paidAt,
+          bcvRate: params.bcvRate,
           createdBy: adminId,
           createdAt: new Date(),
         } as Parameters<typeof SellerPaymentModel.create>[0],
@@ -398,6 +403,7 @@ export class SequelizeSellerCommissionRepository implements ISellerCommissionRep
         params.paidAt,
         adminId,
         new Date(),
+        params.bcvRate,
       );
     } catch (err) {
       await t.rollback();

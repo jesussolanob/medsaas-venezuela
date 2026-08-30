@@ -35,6 +35,7 @@ describe('GetSellerPaymentsUseCase', () => {
         id: 'pay-1',
         sellerId: 'seller-1',
         amountUsd: 30,
+        bcvRate: null,
         method: 'Zelle',
         reference: 'REF-001',
         receiptUrl: null,

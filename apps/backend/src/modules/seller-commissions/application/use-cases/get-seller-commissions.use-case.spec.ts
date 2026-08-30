@@ -1,5 +1,23 @@
 import { GetSellerCommissionsUseCase } from './get-seller-commissions.use-case';
 import type { ISellerCommissionRepository } from '../../domain/repositories/seller-commission.repository';
+import type { IUsdtRateStore } from '../../../finances/domain/repositories/usdt-rate.store';
+
+const BCV_RATE = 36.5;
+
+function makeRateStore(bcvRate: number | null = BCV_RATE): jest.Mocked<IUsdtRateStore> {
+  return {
+    getRate: jest.fn(),
+    setRate: jest.fn(),
+    setSource: jest.fn(),
+    getRatesSummary: jest.fn().mockResolvedValue({
+      source: 'bcv' as const,
+      manual: null,
+      binance: null,
+      bcv: bcvRate,
+      effective: bcvRate,
+    }),
+  } as jest.Mocked<IUsdtRateStore>;
+}
 
 function makeRepo(): jest.Mocked<ISellerCommissionRepository> {
   return {
@@ -20,14 +38,14 @@ function makeRepo(): jest.Mocked<ISellerCommissionRepository> {
 describe('GetSellerCommissionsUseCase', () => {
   it('delegates to repo.listCommissionsBySeller with the given sellerId', async () => {
     const repo = makeRepo();
-    const useCase = new GetSellerCommissionsUseCase(repo);
+    const useCase = new GetSellerCommissionsUseCase(repo, makeRateStore());
 
     await useCase.execute('seller-1');
 
     expect(repo.listCommissionsBySeller).toHaveBeenCalledWith('seller-1');
   });
 
-  it('returns the rows from the repository', async () => {
+  it('returns commissions and bcvRate from the repository and rate store', async () => {
     const repo = makeRepo();
     const rows = [
       {
@@ -45,10 +63,32 @@ describe('GetSellerCommissionsUseCase', () => {
       },
     ];
     repo.listCommissionsBySeller.mockResolvedValue(rows);
-    const useCase = new GetSellerCommissionsUseCase(repo);
+    const useCase = new GetSellerCommissionsUseCase(repo, makeRateStore(36.5));
 
     const result = await useCase.execute('seller-1');
 
-    expect(result).toEqual(rows);
+    expect(result.commissions).toEqual(rows);
+    expect(result.bcvRate).toBe(36.5);
+  });
+
+  it('returns bcvRate null when the rate store returns null bcv', async () => {
+    const repo = makeRepo();
+    const useCase = new GetSellerCommissionsUseCase(repo, makeRateStore(null));
+
+    const result = await useCase.execute('seller-1');
+
+    expect(result.bcvRate).toBeNull();
+  });
+
+  it('returns bcvRate null when the rate store throws', async () => {
+    const repo = makeRepo();
+    const rateStore = makeRateStore();
+    rateStore.getRatesSummary.mockRejectedValue(new Error('Redis no disponible'));
+    const useCase = new GetSellerCommissionsUseCase(repo, rateStore);
+
+    const result = await useCase.execute('seller-1');
+
+    expect(result.bcvRate).toBeNull();
+    expect(result.commissions).toEqual([]);
   });
 });
