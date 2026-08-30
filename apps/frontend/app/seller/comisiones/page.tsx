@@ -14,11 +14,15 @@
  *   - Una comisión está 'pending' o 'paid'. No hay más estados.
  *   - El vendedor no puede hacer nada para cambiar el estado: el admin es quien
  *     paga. Acá solo se informa.
- *   - Los montos se calculan y guardan en USD. El equivalente en Bs se muestra
- *     como referencia usando la tasa del BCV.
- *   - Las comisiones pendientes usan la tasa actual del BCV.
- *   - Los pagos ya recibidos usan la tasa histórica del día del pago.
- *   - Si la tasa del BCV no está disponible, solo se muestra el USD.
+ *   - Los montos se calculan y se deben en USD, y así se informan: lo PENDIENTE
+ *     va solo en dólares. Convertirlo a la tasa de hoy prometería una cifra que
+ *     no va a ser la que reciba — entre que nace la comisión y se liquida, la
+ *     tasa se mueve.
+ *   - Los bolívares aparecen únicamente en los PAGOS ya hechos, con la tasa
+ *     histórica de ese día. Ahí manda el monto en Bs, que es lo que el vendedor
+ *     efectivamente recibió, con el USD y la tasa al lado para poder cuadrarlo
+ *     contra el comprobante del banco.
+ *   - Si un pago no tiene tasa registrada, se muestra el USD y se dice por qué.
  */
 
 import { useCallback, useEffect, useState } from 'react';
