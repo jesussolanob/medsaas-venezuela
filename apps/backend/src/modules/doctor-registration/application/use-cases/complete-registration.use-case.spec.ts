@@ -372,6 +372,7 @@ describe('CompleteRegistrationUseCase', () => {
       'doctor_pending_verification',
       ['a1@x.com', 'a2@x.com'],
       {
+        panelUrl: 'https://app.deltasalud.com/admin/verifications',
         doctorId: 'doc-1',
         fullName: 'Carlos M.',
         doctorEmail: 'carlos@example.com',
@@ -380,6 +381,63 @@ describe('CompleteRegistrationUseCase', () => {
         mppsNumber: 'MP-001',
         colegiadoNumber: 'COL-002',
       },
+      { type: 'admin', id: null },
+    );
+  });
+
+  // El boton del correo de verificacion apuntaba a
+  // https://deltamedical.app/admin/doctor-verifications: dominio equivocado y ruta
+  // inexistente. Ahora la arma el use case, asi que el enlace sigue al entorno que
+  // mando el correo. Estos dos tests son para que no vuelva a quedar escrita a mano.
+  it('arma panelUrl apuntando a /admin/verifications sobre la URL configurada', async () => {
+    mockRepo.findById.mockResolvedValue(makeEmptyRegistration());
+    mockRepo.updateRegistration.mockResolvedValue(makeRegistration());
+    mockRepo.findAllSuperAdmins.mockResolvedValue([
+      { id: 'a1', email: 'a1@x.com', fullName: 'Admin' },
+    ]);
+    mockMailer.sendTemplate.mockResolvedValue({ id: 'msg-1' });
+
+    await useCase.execute({
+      doctorId: 'doc-1',
+      phone: '584141234567',
+      fullName: 'Carlos M.',
+      cedula: 'V-12345678',
+    });
+    await Promise.resolve();
+
+    expect(mockMailer.sendTemplate).toHaveBeenCalledWith(
+      'doctor_pending_verification',
+      ['a1@x.com'],
+      expect.objectContaining({
+        panelUrl: 'https://app.deltasalud.com/admin/verifications',
+      }),
+      { type: 'admin', id: null },
+    );
+  });
+
+  it('cae a deltasalud.app cuando no hay URL configurada, en vez de mandar un href vacio', async () => {
+    (mockConfig.get as jest.Mock).mockReturnValue(undefined);
+    mockRepo.findById.mockResolvedValue(makeEmptyRegistration());
+    mockRepo.updateRegistration.mockResolvedValue(makeRegistration());
+    mockRepo.findAllSuperAdmins.mockResolvedValue([
+      { id: 'a1', email: 'a1@x.com', fullName: 'Admin' },
+    ]);
+    mockMailer.sendTemplate.mockResolvedValue({ id: 'msg-1' });
+
+    await useCase.execute({
+      doctorId: 'doc-1',
+      phone: '584141234567',
+      fullName: 'Carlos M.',
+      cedula: 'V-12345678',
+    });
+    await Promise.resolve();
+
+    expect(mockMailer.sendTemplate).toHaveBeenCalledWith(
+      'doctor_pending_verification',
+      ['a1@x.com'],
+      expect.objectContaining({
+        panelUrl: 'https://deltasalud.app/admin/verifications',
+      }),
       { type: 'admin', id: null },
     );
   });
