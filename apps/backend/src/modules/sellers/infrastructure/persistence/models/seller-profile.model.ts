@@ -115,6 +115,32 @@ export class SellerProfileModel extends Model {
   @Column({ type: DataType.JSONB, allowNull: true, field: 'payment_details' })
   declare paymentDetails: Record<string, unknown> | null;
 
+  /**
+   * Rastro de la baja de cuenta.
+   *
+   * ⚠️ Estas tres columnas EXISTEN en `profiles` y el repositorio las escribía,
+   * pero el modelo no las declaraba: Sequelize descarta en silencio las claves
+   * que no conoce, así que la baja apagaba `is_active` y perdía el motivo, la
+   * fecha y la procedencia. Sin error y sin rastro.
+   *
+   * Es el mismo bug que ya pasó con `phone` y `cedula` en createSoldSpecialist
+   * —ver el comentario en el repositorio—: agregar un campo al UPDATE no alcanza
+   * si el modelo no lo declara.
+   */
+  @Column({ type: DataType.DATE, allowNull: true, field: 'deactivated_at' })
+  declare deactivatedAt: Date | null;
+
+  /** 'self' = se dio de baja el propio vendedor; 'admin' = lo bloqueó un admin. */
+  @Column({ type: DataType.TEXT, allowNull: true, field: 'deactivated_by' })
+  declare deactivatedBy: string | null;
+
+  /**
+   * Texto libre que escribe el dueño de la cuenta sobre su propia cuenta.
+   * No es PII de pacientes, pero NO se loguea.
+   */
+  @Column({ type: DataType.TEXT, allowNull: true, field: 'deactivation_reason' })
+  declare deactivationReason: string | null;
+
   @Column({ type: DataType.DATE, allowNull: true, field: 'created_at' })
   declare createdAt: Date;
 
