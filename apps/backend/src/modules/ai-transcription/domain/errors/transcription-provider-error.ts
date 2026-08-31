@@ -9,7 +9,13 @@ import { DomainError } from '../../../../domain/errors/domain.error';
  */
 export class TranscriptionProviderError extends DomainError {
   readonly code = 'TRANSCRIPTION_PROVIDER_ERROR';
-  override readonly httpStatus = 502;
+
+  /**
+   * 503, NO 502 — mismo motivo que `AiTextProviderError`: Cloudflare descarta el
+   * cuerpo de los 502 del origen y sirve su propia página HTML, así que el
+   * mensaje en español nunca llegaba al navegador.
+   */
+  override readonly httpStatus = 503;
 
   /**
    * @param internalDetail — logged server-side only; NEVER sent to the client.
