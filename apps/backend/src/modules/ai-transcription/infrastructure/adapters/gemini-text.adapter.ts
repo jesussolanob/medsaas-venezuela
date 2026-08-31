@@ -62,15 +62,16 @@ export class GeminiTextAdapter implements IAiTextGenerator {
       throw new AiTextProviderError('missing_api_key');
     }
 
-    // Attempt with primary model; fall back to FALLBACK_GEMINI_MODEL on 429.
+    // Se intenta con el modelo primario y se cae al de respaldo cuando el error
+    // es reintentable (429 cuota, 503 saturado).
     const result = await this.callGemini(apiKey, this.model, prompt);
-    if (result.rateLimited) {
+    if (result.retryable) {
       this.logger.warn(
-        `[GeminiTextAdapter] primary model ${this.model} returned 429 — retrying with ${FALLBACK_GEMINI_MODEL}`,
+        `[GeminiTextAdapter] ${this.model} no disponible — reintentando con ${FALLBACK_GEMINI_MODEL}`,
       );
       const fallbackResult = await this.callGemini(apiKey, FALLBACK_GEMINI_MODEL, prompt);
-      if (fallbackResult.rateLimited) {
-        throw new AiTextProviderError('rate_limited_on_both_models');
+      if (fallbackResult.retryable) {
+        throw new AiTextProviderError('ai_unavailable');
       }
       return fallbackResult.text ?? '';
     }
@@ -86,7 +87,7 @@ export class GeminiTextAdapter implements IAiTextGenerator {
     apiKey: string,
     model: string,
     prompt: string,
-  ): Promise<{ text?: string; rateLimited?: boolean }> {
+  ): Promise<{ text?: string; retryable?: boolean }> {
     const url = `${GEMINI_API_BASE}/${model}:generateContent`;
 
     let res: Response;
@@ -121,8 +122,17 @@ export class GeminiTextAdapter implements IAiTextGenerator {
       throw new AiTextProviderError(detail);
     }
 
-    if (res.status === 429) {
-      return { rateLimited: true };
+    // 429 = cuota agotada. 503 = el modelo está SATURADO, que en Gemini es
+    // frecuente y transitorio. Los dos se tratan igual porque los dos se
+    // resuelven reintentando con el modelo alternativo.
+    //
+    // Antes el 503 caía en el `if (!res.ok)` de abajo y lanzaba en el acto, sin
+    // reintentar: en producción eso dejaba al especialista con "Error al conectar
+    // con la IA" cada vez que Gemini estaba ocupado, aunque el modelo de respaldo
+    // hubiera respondido.
+    if (res.status === 429 || res.status === 503) {
+      this.logger.warn(`[GeminiTextAdapter] ${model} devolvió ${res.status} (reintentable)`);
+      return { retryable: true };
     }
 
     if (!res.ok) {

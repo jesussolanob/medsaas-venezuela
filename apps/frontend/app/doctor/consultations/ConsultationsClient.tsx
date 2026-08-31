@@ -3133,12 +3133,35 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
         headers,
         body: JSON.stringify(payload),
       });
-      const data = await res.json();
-      if (data.error) setAiResult(`Error: ${data.error}`);
-      else if (!res.ok) setAiResult('Función de IA no disponible aún.');
-      else setAiResult(data.result);
-    } catch {
-      setAiResult('Error al conectar con la IA');
+      // La respuesta puede NO ser JSON: si la ruta del BFF revienta, Next devuelve
+      // una página de error HTML y `res.json()` lanza. Antes eso caía al catch de
+      // abajo y salía "Error al conectar con la IA", que oculta la causa real —
+      // el especialista no puede distinguir un problema de red de uno del servidor,
+      // y desde soporte tampoco.
+      let data: { error?: string; result?: string } | null = null;
+      try {
+        data = await res.json();
+      } catch {
+        reportError(
+          'doctor/consultations',
+          'callAI',
+          new Error(`respuesta no-JSON (HTTP ${res.status})`),
+        );
+        setAiResult(
+          res.status === 504 || res.status === 408
+            ? 'La IA tardó demasiado en responder. Probá de nuevo en un momento.'
+            : `El servidor devolvió una respuesta inesperada (código ${res.status}). Si sigue pasando, avisale al soporte.`,
+        );
+        return;
+      }
+
+      if (data?.error) setAiResult(`Error: ${data.error}`);
+      else if (!res.ok) setAiResult(`No se pudo usar la IA (código ${res.status}).`);
+      else setAiResult(data?.result ?? '');
+    } catch (err: unknown) {
+      // Acá solo llega un fallo de red real: el fetch nunca completó.
+      reportError('doctor/consultations', 'callAI', err);
+      setAiResult('No se pudo conectar con el servidor. Revisá tu conexión e intentá de nuevo.');
     } finally {
       setAiLoading(false);
     }
