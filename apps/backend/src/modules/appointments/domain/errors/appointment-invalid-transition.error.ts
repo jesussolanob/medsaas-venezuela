@@ -1,34 +1,14 @@
 import { DomainError } from '../../../../domain/errors/domain.error';
 import type { AppointmentStatus } from '@delta/shared-types';
+import { ESTADOS_FINALES, nombreDeEstado } from '../appointment-status-names';
 
 /**
- * Nombres que la app usa EN PANTALLA para cada estado.
+ * Se lanza al intentar un cambio de estado que la máquina de estados no permite.
  *
- * El mensaje de este error lo lee un especialista, no un desarrollador: decía
- * "No se puede pasar la cita de 'completed' a 'no_show'" y filtraba las claves
- * internas, que además están en inglés. El `GlobalExceptionFilter` reenvía este
- * texto tal cual al navegador, así que es literalmente lo que ve la persona.
- *
- * La taxonomía sale de `CLAUDE.md`: `completed` es "atendida" (el paciente vino),
- * no "completada".
+ * El mensaje decía «No se puede pasar la cita de 'completed' a 'no_show'»: las
+ * claves internas, en inglés, dentro de un texto en español. El
+ * `GlobalExceptionFilter` lo reenvía tal cual al navegador.
  */
-const NOMBRES: Record<string, string> = {
-  scheduled: 'agendada',
-  confirmed: 'aprobada',
-  cancelled: 'cancelada',
-  completed: 'atendida',
-  no_show: 'marcada como no asistió',
-  pending: 'pendiente',
-  accepted: 'aceptada',
-};
-
-/** Estados de los que ya no se sale: una vez ahí, la cita quedó cerrada. */
-const FINALES = new Set(['completed', 'cancelled', 'no_show']);
-
-function nombre(estado: AppointmentStatus): string {
-  return NOMBRES[estado] ?? estado;
-}
-
 export class AppointmentInvalidTransitionError extends DomainError {
   readonly code = 'APPOINTMENT_INVALID_TRANSITION';
 
@@ -44,12 +24,12 @@ export class AppointmentInvalidTransitionError extends DomainError {
    * otra forma — y que el camino para corregirlo existe pero no es ese botón.
    */
   private static mensaje(from: AppointmentStatus, to: AppointmentStatus): string {
-    if (FINALES.has(from)) {
+    if (ESTADOS_FINALES.has(from)) {
       return (
-        `Esta cita ya quedó ${nombre(from)} y no se puede volver a cambiar. ` +
+        `Esta cita ya quedó ${nombreDeEstado(from)} y no se puede volver a cambiar. ` +
         `Si necesitás corregirlo, escribile al soporte de Delta Salud.`
       );
     }
-    return `Una cita ${nombre(from)} no se puede pasar a ${nombre(to)}.`;
+    return `Una cita ${nombreDeEstado(from)} no se puede pasar a ${nombreDeEstado(to)}.`;
   }
 }
