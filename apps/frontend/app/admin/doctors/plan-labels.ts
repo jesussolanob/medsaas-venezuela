@@ -1,18 +1,18 @@
 import type { DoctorPlan } from './actions';
+import { PLAN_DISPLAY_NAMES, formatPlanLabel } from '@/lib/plan-features';
 
 /**
- * Nombre comercial de cada plan, tal como el admin lo ve en el resto del panel.
+ * Nombres de plan para el panel de admin.
  *
- * Vive acá y no en `actions.ts` porque ese archivo es `'use server'` y solo puede
- * exportar funciones asincronicas — el tipo `DoctorPlan` viaja igual porque los
- * tipos se borran al compilar, pero un objeto no.
+ * Delegan en `lib/plan-features.ts`, que es la fuente única: la lista estaba
+ * copiada en cuatro lugares y se fue separando. No se redefine acá.
+ *
+ * Este archivo existe —y no vive en `actions.ts`, que sería el lugar natural
+ * junto a `DoctorPlan`— porque ese archivo es `'use server'` y solo puede
+ * exportar funciones asincrónicas. El tipo viaja igual porque se borra al
+ * compilar; un objeto no.
  */
-export const PLAN_LABELS: Record<DoctorPlan, string> = {
-  free_trial: 'Free Trial',
-  delta_free: 'Delta Free',
-  delta_base: 'Delta Base',
-  delta_plus: 'Delta Plus',
-};
+export const PLAN_LABELS = PLAN_DISPLAY_NAMES as Record<DoctorPlan, string>;
 
 /** Nombre del estado de la suscripcion, en español. */
 export const SUBSCRIPTION_STATUS_LABELS: Record<string, string> = {
@@ -24,19 +24,18 @@ export const SUBSCRIPTION_STATUS_LABELS: Record<string, string> = {
   cancelled: 'Cancelado',
 };
 
-/**
- * Traduce la clave del plan que llega de la BD.
- *
- * Devuelve la clave cruda cuando no la conoce: es preferible que el admin lea
- * `delta_enterprise` a que la pantalla invente un nombre. La lista de planes es
- * parametrizable desde `/admin/plans`, asi que este mapa puede quedarse corto.
- */
+/** Nombre legible del plan; 'Sin plan' cuando la columna viene vacía. */
 export function planLabel(plan: string | null | undefined): string {
   if (!plan) return 'Sin plan';
-  return PLAN_LABELS[plan as DoctorPlan] ?? plan;
+  return formatPlanLabel(plan);
 }
 
-/** Traduce el estado de la suscripcion; ver `planLabel` para el criterio. */
+/**
+ * Traduce el estado de la suscripción.
+ *
+ * Devuelve la clave cruda si no la conoce: es preferible que el admin lea
+ * `expired` a que la pantalla invente un estado.
+ */
 export function subscriptionStatusLabel(status: string | null | undefined): string {
   if (!status) return 'Sin estado';
   return SUBSCRIPTION_STATUS_LABELS[status] ?? status;

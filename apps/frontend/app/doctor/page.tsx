@@ -63,7 +63,13 @@ import { showToast } from '@/components/ui/Toaster';
 import { SetupStepper } from '@/components/doctor/SetupStepper';
 import { WelcomeModal } from '@/components/doctor/WelcomeModal';
 import { getDoctorPlanFeatures } from '@/app/doctor/plan-features-actions';
-import { planUnlocks, EMPTY_PLAN_FEATURES, type PlanFeatures } from '@/lib/plan-features';
+import {
+  planUnlocks,
+  planAccessSummary,
+  formatPlanLabel,
+  EMPTY_PLAN_FEATURES,
+  type PlanFeatures,
+} from '@/lib/plan-features';
 // MIGRATED (Etapa 1): data fetching now goes through NestJS backend actions.
 import {
   getDoctorProfile,
@@ -765,11 +771,15 @@ export default function DoctorDashboard() {
           >
             <CheckCircle className="w-4 h-4" style={{ color: 'var(--dh-turquoise)' }} />
             <div>
+              {/* Decía "Plan activo · Acceso completo" fijo: no nombraba el plan y le
+                  prometía acceso total a cualquiera, incluso a un Delta Free que tenía
+                  medio menú con candados. Ahora sale del mismo dato que gatea los
+                  módulos, igual que el badge de la barra lateral. */}
               <p className="text-xs font-semibold" style={{ color: 'var(--dh-turquoise-700)' }}>
-                Plan activo
+                {formatPlanLabel(planFeatures.effective_plan_key)}
               </p>
               <p className="text-[10px]" style={{ color: 'var(--dh-gray-400)' }}>
-                Acceso completo
+                {planAccessSummary(planFeatures)}
               </p>
             </div>
           </div>
