@@ -60,14 +60,24 @@ export class AccrueSignupCommissionUseCase {
     }
 
     // 2. No seller attributed → nothing to accrue
+    //
+    // Este camino retornaba MUDO. Es el más frecuente en operación normal (un
+    // especialista que se dio de alta solo, sin código), pero también es el que
+    // aparece cuando la atribución se escribió tarde o no se escribió — y ahí
+    // el silencio hace imposible distinguir "no corresponde" de "algo falló".
     if (!profile.soldBy) {
+      this.logger.log(
+        `[signup-commission] sin vendedor atribuido — no corresponde comisión, specialistId=${specialistId}`,
+      );
       return 'skipped';
     }
 
     // 3. Signup commission only when the seller actually brought the specialist in
     if (!profile.soldBySource || !SIGNUP_ELIGIBLE_SOURCES.has(profile.soldBySource)) {
-      this.logger.debug(
-        `[signup-commission] sold_by_source is '${profile.soldBySource}' — signup commission skipped`,
+      // `log` y no `debug`: en producción el nivel debug no se emite, y este
+      // salteo decide si alguien cobra o no.
+      this.logger.log(
+        `[signup-commission] sold_by_source='${profile.soldBySource}' no elegible — sin comisión`,
       );
       return 'skipped';
     }

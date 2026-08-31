@@ -46,7 +46,26 @@ export class CompleteOnboardingUseCase {
     private readonly pricingPlanRepo: IPricingPlanRepository,
     @Optional()
     private readonly accrueSignupCommission: AccrueSignupCommissionUseCase | null = null,
-  ) {}
+  ) {
+    // DIAGNÓSTICO DE CABLEO — se emite UNA vez, al construirse el use case.
+    //
+    // El enganche es @Optional() para que una comisión que falla no bloquee el
+    // onboarding. El precio de eso es que si la dependencia NO se inyecta, no
+    // pasa absolutamente nada: sin error, sin aviso, sin comisión. Ya ocurrió
+    // —un especialista se dio de alta por código, la atribución quedó bien, y no
+    // se acreditó nada ni quedó rastro— y desde afuera era indistinguible de un
+    // problema de reglas de negocio.
+    //
+    // Este log convierte ese silencio en una señal visible al arrancar.
+    if (this.accrueSignupCommission) {
+      this.logger.log('[cableo] AccrueSignupCommissionUseCase inyectado OK');
+    } else {
+      this.logger.warn(
+        '[cableo] AccrueSignupCommissionUseCase NO se inyectó — ' +
+          'NINGUNA comisión de entrada se va a acreditar',
+      );
+    }
+  }
 
   async execute(doctorId: string): Promise<CompleteOnboardingOutput> {
     // 1. Verify requirements in parallel — server-side validation cannot be bypassed.
@@ -67,6 +86,10 @@ export class CompleteOnboardingUseCase {
 
     // 3. Best-effort: accrue signup commission (does not affect the response on failure).
     if (this.accrueSignupCommission) {
+      // Temporal: confirma que el camino se recorre de verdad. Sin esto, un
+      // "no pasó nada" no distingue entre no haber llegado acá y haberse
+      // salteado adentro del accrual.
+      this.logger.log(`[cableo] disparando accrue-signup para doctorId=${doctorId}`);
       void this.accrueSignupCommission.execute(doctorId).catch((err: unknown) => {
         reportCommissionFailure(
           this.logger,
