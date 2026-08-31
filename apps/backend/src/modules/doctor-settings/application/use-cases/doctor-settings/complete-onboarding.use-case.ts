@@ -44,7 +44,10 @@ export class CompleteOnboardingUseCase {
     private readonly officeRepo: IOfficeRepository,
     @Inject(PRICING_PLAN_REPOSITORY)
     private readonly pricingPlanRepo: IPricingPlanRepository,
+    // @Inject EXPLICITO: sin el token, Nest resuelve por el tipo reflejado y acá
+    // no resolvía — el enganche llegaba nulo y, al ser @Optional(), en silencio.
     @Optional()
+    @Inject(AccrueSignupCommissionUseCase)
     private readonly accrueSignupCommission: AccrueSignupCommissionUseCase | null = null,
   ) {
     // DIAGNÓSTICO DE CABLEO — se emite UNA vez, al construirse el use case.

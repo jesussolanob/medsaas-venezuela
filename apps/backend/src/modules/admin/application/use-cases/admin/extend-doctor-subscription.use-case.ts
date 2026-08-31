@@ -54,7 +54,10 @@ export class ExtendDoctorSubscriptionUseCase {
   constructor(
     @Inject(ADMIN_REPOSITORY)
     private readonly repo: IAdminRepository,
+    // @Inject EXPLICITO: sin el token, Nest resuelve por el tipo reflejado y acá
+    // no resolvía — el enganche llegaba nulo y, al ser @Optional(), en silencio.
     @Optional()
+    @Inject(AccruePlanCommissionUseCase)
     private readonly accruePlanCommission: AccruePlanCommissionUseCase | null = null,
   ) {}
 
