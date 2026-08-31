@@ -14,6 +14,7 @@ import {
   Stethoscope,
 } from 'lucide-react';
 import { createDoctor, type CreateDoctorInput, type DoctorPlan } from './actions';
+import { PLAN_LABELS } from './plan-labels';
 import CedulaInput from '@/components/shared/CedulaInput';
 import PhoneInput from '@/components/shared/PhoneInput';
 import { showToast } from '@/components/ui/Toaster';
@@ -686,11 +687,14 @@ function inputClass(hasError: boolean) {
     ${hasError ? 'border-red-300 bg-red-50' : 'border-slate-200 bg-white'}`;
 }
 
+/**
+ * Los nombres salen de `plan-labels.ts` para que el alta y el detalle del
+ * especialista no puedan discrepar. Acá el Free Trial agrega la duración porque
+ * es lo primero que el admin quiere saber recién creada la cuenta.
+ */
 const PLAN_LABELS_DISPLAY: Record<DoctorPlan, string> = {
-  free_trial: 'Free Trial (30 días)',
-  delta_free: 'Delta Free',
-  delta_base: 'Delta Base',
-  delta_plus: 'Delta Plus',
+  ...PLAN_LABELS,
+  free_trial: `${PLAN_LABELS.free_trial} (30 días)`,
 };
 
 function SuccessView({
