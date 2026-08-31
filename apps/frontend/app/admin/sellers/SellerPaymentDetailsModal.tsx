@@ -142,15 +142,21 @@ export default function SellerPaymentDetailsModal({
               {error}
             </div>
           ) : isEmpty ? (
-            /* El vendedor todavía no cargó sus datos de cobro. Sin esta info no se le puede pagar. */
+            /* El vendedor todavía no cargó sus datos de cobro.
+               El texto decía "no se le puede transferir una comisión hasta que los
+               complete": era falso. Registrar un pago nunca mira los datos de cobro
+               —RegisterSellerPaymentUseCase no los consulta— porque lo que se
+               registra es una transferencia que YA se hizo. Bloquearla dejaría al
+               admin sin poder asentar una plata que el vendedor ya recibió. */
             <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-2">
               <div className="flex items-center gap-2 text-amber-700">
                 <AlertTriangle className="w-4 h-4 shrink-0" />
                 <p className="text-sm font-bold">Sin datos de cobro</p>
               </div>
               <p className="text-sm text-amber-900">
-                Este vendedor todavía no cargó sus datos de pago. No se le puede transferir una
-                comisión hasta que los complete desde su portal.
+                Este vendedor todavía no cargó sus datos de pago, así que acá no figura a dónde
+                transferirle. Podés pedírselos por otro medio y registrar el pago igual, o avisarle
+                que los complete desde su portal.
               </p>
             </div>
           ) : (

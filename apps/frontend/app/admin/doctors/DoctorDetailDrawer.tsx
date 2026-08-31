@@ -5,6 +5,7 @@ import { reportError } from '@/lib/report-error';
 import { showToast } from '@/components/ui/Toaster';
 import DoctorPatientsList from './DoctorPatientsList';
 import AssignSellerModal from './AssignSellerModal';
+import { planLabel, subscriptionStatusLabel } from './plan-labels';
 
 interface DoctorDetailDrawerProps {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -202,12 +203,21 @@ export default function DoctorDetailDrawer({
                 )}
               </div>
 
-              {/* Plan badge */}
+              {/* Plan badge — sale de la suscripcion real del especialista.
+                  Antes decia "Plan profesional · Acceso completo a todas las
+                  funcionalidades" FIJO para todos: un Free Trial y un Delta Plus se
+                  veian igual, y la tabla de atras mostraba la clave verdadera, asi
+                  que la misma pantalla se contradecia a si misma. */}
               <div className="bg-teal-50 border border-teal-200 p-3 rounded-lg">
                 <p className="text-xs text-slate-500 uppercase mb-1">Plan</p>
-                <p className="text-sm font-bold text-teal-700">Plan profesional</p>
+                <p className="text-sm font-bold text-teal-700">{planLabel(subscription?.plan)}</p>
                 <p className="text-[10px] text-slate-400 mt-0.5">
-                  Acceso completo a todas las funcionalidades
+                  {subscriptionStatusLabel(subscription?.status)}
+                  {subscription?.current_period_end
+                    ? ` · vence el ${new Date(subscription.current_period_end).toLocaleDateString(
+                        'es-VE',
+                      )}`
+                    : ''}
                 </p>
               </div>
 
