@@ -55,9 +55,9 @@ describe('Transcription domain errors', () => {
       expect(err.code).toBe('TRANSCRIPTION_PROVIDER_ERROR');
     });
 
-    it('has httpStatus 502', () => {
+    it('has httpStatus 503', () => {
       const err = new TranscriptionProviderError('timeout');
-      expect(err.httpStatus).toBe(502);
+      expect(err.httpStatus).toBe(503);
     });
 
     it('exposes a generic client-facing message (no internal detail)', () => {
