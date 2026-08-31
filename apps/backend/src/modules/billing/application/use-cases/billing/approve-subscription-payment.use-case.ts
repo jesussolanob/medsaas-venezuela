@@ -52,7 +52,10 @@ export class ApproveSubscriptionPaymentUseCase {
     @Inject(PROFILE_LOOKUP_REPOSITORY)
     private readonly profileRepo: IProfileLookupRepository,
     private readonly mailerService: MailerService,
+    // @Inject EXPLICITO: sin el token, Nest resuelve por el tipo reflejado y acá
+    // no resolvía — el enganche llegaba nulo y, al ser @Optional(), en silencio.
     @Optional()
+    @Inject(AccruePlanCommissionUseCase)
     private readonly accruePlanCommission: AccruePlanCommissionUseCase | null = null,
   ) {}
 
