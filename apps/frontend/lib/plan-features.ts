@@ -42,6 +42,32 @@ export function planUnlocks(
 }
 
 /**
+ * Módulos cuyo acceso depende del PLAN.
+ *
+ * Es el universo contra el que se cuenta cuánto tiene bloqueado un especialista.
+ * Sale de `PLAN_GATED_ROUTES` del layout, que es la lista que la app ya usaba
+ * para decidir qué ruta mandar a `/doctor/upgrade`.
+ *
+ * NO incluye `dashboard` ni `settings`: esos no se gatean nunca, y contarlos
+ * inflaría el número. Las claves de IA tampoco — son features sueltas dentro de
+ * la consulta, no módulos del menú.
+ */
+export const PLAN_GATED_MODULES: readonly string[] = [
+  'agenda',
+  'patients',
+  'consultations',
+  'ehr',
+  'finances',
+  'billing',
+  'services',
+  'reports',
+  'crm',
+  'reminders',
+  'messages',
+  'invitations',
+];
+
+/**
  * Nombre comercial de cada plan.
  *
  * FUENTE ÚNICA. Había cuatro copias de esta lista —la barra lateral del
@@ -87,10 +113,16 @@ export function formatPlanLabel(planKey: string | undefined | null): string {
  * Ahora sale de `features`, que es el dato que gatea los módulos de verdad.
  */
 export function planAccessSummary(planFeatures: PlanFeatures | null): string {
-  if (!planFeatures) return '';
+  // `EMPTY_PLAN_FEATURES` es el estado inicial mientras carga: tiene `features`
+  // vacío, así que contar ahí diría "12 módulos bloqueados" por un instante.
+  if (!planFeatures || !planFeatures.effective_plan_key) return '';
   if (planFeatures.is_downgraded) return 'Plan degradado temporalmente';
 
-  const bloqueados = Object.values(planFeatures.features).filter((activo) => !activo).length;
+  // Se cuenta con `planUnlocks`, NO con los `false` del mapa: un módulo que el
+  // plan no habilita puede venir como `enabled: false` O directamente no venir,
+  // y `planUnlocks` ya trata la ausencia como bloqueado. Contar solo los `false`
+  // daba cero siempre y el texto volvía a decir "Acceso completo".
+  const bloqueados = PLAN_GATED_MODULES.filter((clave) => !planUnlocks(planFeatures, clave)).length;
   if (bloqueados === 0) return 'Acceso completo';
   return bloqueados === 1 ? '1 módulo bloqueado' : `${bloqueados} módulos bloqueados`;
 }
