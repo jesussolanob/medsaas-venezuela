@@ -48,7 +48,13 @@ import { DeltaMark } from '@/components/dh';
 import { getMyCapabilities } from '@/app/capabilities-actions';
 import { can, EMPTY_CAPABILITIES, type Capabilities } from '@/lib/capabilities';
 import { getDoctorPlanFeatures } from '@/app/doctor/plan-features-actions';
-import { planUnlocks, EMPTY_PLAN_FEATURES, type PlanFeatures } from '@/lib/plan-features';
+import {
+  planUnlocks,
+  planAccessSummary,
+  formatPlanLabel,
+  EMPTY_PLAN_FEATURES,
+  type PlanFeatures,
+} from '@/lib/plan-features';
 import { checkOnboardingComplete } from './actions';
 import TelemetryProvider from '@/components/telemetry/TelemetryProvider';
 import TermsModal from '@/components/legal/TermsModal';
@@ -156,24 +162,6 @@ function isItemVisible(item: NavItem, caps: Capabilities | null): boolean {
  */
 function isPlanUnlocked(item: NavItem, planFeatures: PlanFeatures | null): boolean {
   return planUnlocks(planFeatures, item.moduleKey);
-}
-
-/** Human-readable plan name for the sidebar badge (e.g. 'delta_free' → 'Delta Free'). */
-const PLAN_DISPLAY_NAMES: Record<string, string> = {
-  delta_free: 'Delta Free',
-  delta_base: 'Delta Base',
-  delta_plus: 'Delta Plus',
-};
-
-function formatPlanLabel(planKey: string | undefined): string {
-  if (!planKey) return 'Plan activo';
-  return (
-    PLAN_DISPLAY_NAMES[planKey] ??
-    planKey
-      .split('_')
-      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-      .join(' ')
-  );
 }
 
 /**
@@ -724,7 +712,7 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
                 )}
               </div>
               <p className="mt-0.5" style={{ fontSize: 10, color: 'var(--dh-gray-400)' }}>
-                {planFeatures?.is_downgraded ? 'Plan degradado temporalmente' : 'Acceso completo'}
+                {planAccessSummary(planFeatures)}
               </p>
             </div>
 

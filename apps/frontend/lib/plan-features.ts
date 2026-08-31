@@ -40,3 +40,57 @@ export function planUnlocks(
   if (planFeatures === null) return true; // cargando: mostrar todo provisoriamente
   return planFeatures.features[moduleKey] ?? false;
 }
+
+/**
+ * Nombre comercial de cada plan.
+ *
+ * FUENTE ÚNICA. Había cuatro copias de esta lista —la barra lateral del
+ * especialista, el alta de especialista del admin, el detalle del especialista y
+ * el filtro de suscripciones— y se fueron separando: a la de la barra lateral le
+ * faltaba `free_trial`, así que a un especialista en prueba el badge le decía
+ * "Free Trial" solo por el `split('_')` de respaldo, por casualidad.
+ */
+export const PLAN_DISPLAY_NAMES: Record<string, string> = {
+  free_trial: 'Free Trial',
+  delta_free: 'Delta Free',
+  delta_base: 'Delta Base',
+  delta_plus: 'Delta Plus',
+};
+
+/**
+ * Nombre legible del plan.
+ *
+ * Cuando la clave no está en el mapa la formatea (`delta_pro` → `Delta Pro`) en
+ * vez de inventar un nombre: los planes se crean desde `/admin/plans`, así que
+ * la lista puede quedarse corta en cualquier momento.
+ */
+export function formatPlanLabel(planKey: string | undefined | null): string {
+  if (!planKey) return 'Plan activo';
+  return (
+    PLAN_DISPLAY_NAMES[planKey] ??
+    planKey
+      .split('_')
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ')
+  );
+}
+
+/**
+ * Frase que acompaña al nombre del plan en la barra lateral y en el inicio.
+ *
+ * Antes estaba escrita a mano como "Acceso completo" y salía igual para todos:
+ * un especialista en Delta Free leía "Delta Free · Acceso completo" mientras la
+ * misma barra le mostraba candados en Marketing y "Disponible en un plan
+ * superior" en el asistente de IA. La pantalla se contradecía a sí misma y, de
+ * paso, el mensaje trabajaba en contra de la mejora de plan.
+ *
+ * Ahora sale de `features`, que es el dato que gatea los módulos de verdad.
+ */
+export function planAccessSummary(planFeatures: PlanFeatures | null): string {
+  if (!planFeatures) return '';
+  if (planFeatures.is_downgraded) return 'Plan degradado temporalmente';
+
+  const bloqueados = Object.values(planFeatures.features).filter((activo) => !activo).length;
+  if (bloqueados === 0) return 'Acceso completo';
+  return bloqueados === 1 ? '1 módulo bloqueado' : `${bloqueados} módulos bloqueados`;
+}
