@@ -31,7 +31,7 @@ import type { SellerPayment } from '../../domain/entities/seller-payment.entity'
  * Registers a cash-out for a set of pending commissions. The amount is
  * calculated server-side from the validated commissions (never from the client).
  */
-const RegisterPaymentBodySchema = z
+export const RegisterPaymentBodySchema = z
   .object({
     seller_id: z.string().uuid('seller_id must be a UUID'),
     // El techo evita que un lote enorme arme un IN (...) gigante contra la BD.
@@ -42,7 +42,25 @@ const RegisterPaymentBodySchema = z
       .max(500, 'No se pueden pagar más de 500 comisiones en un mismo pago.'),
     method: z.string().min(1).max(200),
     reference: z.string().min(1).max(500),
-    receipt_url: z.string().url().nullable().optional(),
+    /**
+     * El PATH del comprobante en GCS, no una URL.
+     *
+     * Validaba `.url()` y rechazaba el pago con "Invalid URL": los comprobantes
+     * son privados, así que se persiste el path y la URL se firma a demanda —
+     * un path nunca va a pasar una validación de URL. El nombre de la columna
+     * quedó de cuando sí se guardaba una URL.
+     *
+     * Se acota a lo que devuelve el storage: sin espacios, sin `..` (que
+     * permitiría apuntar fuera del prefijo del objeto) y con un techo de largo.
+     */
+    receipt_url: z
+      .string()
+      .min(1)
+      .max(500)
+      .regex(/^[A-Za-z0-9/._-]+$/, 'El comprobante no es válido.')
+      .refine((v) => !v.includes('..'), 'El comprobante no es válido.')
+      .nullable()
+      .optional(),
     notes: z.string().max(1000).nullable().optional(),
   })
   .strict();
