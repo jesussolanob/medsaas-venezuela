@@ -232,6 +232,21 @@ export class CompleteRegistrationUseCase {
     );
   }
 
+  /**
+   * URL publica de la app, sin la barra final.
+   *
+   * Cae a deltasalud.app cuando no hay nada configurado: el correo de
+   * verificacion lleva un enlace y un href vacio no le sirve a nadie.
+   */
+  private appBaseUrl(): string {
+    const configured = (
+      this.config.get<string>('APP_BASE_URL') ??
+      this.config.get<string>('FRONTEND_URL') ??
+      ''
+    ).replace(/\/+$/, '');
+    return /^https?:\/\//i.test(configured) ? configured : 'https://deltasalud.app';
+  }
+
   private async notifySuperAdmins(registration: DoctorRegistration): Promise<void> {
     const admins = await this.repo.findAllSuperAdmins();
 
@@ -246,6 +261,7 @@ export class CompleteRegistrationUseCase {
       'doctor_pending_verification',
       emails,
       {
+        panelUrl: `${this.appBaseUrl()}/admin/verifications`,
         doctorId: registration.id,
         fullName: registration.fullName || NOT_SPECIFIED,
         doctorEmail: registration.email || NOT_SPECIFIED,

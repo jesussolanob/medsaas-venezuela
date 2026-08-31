@@ -16,8 +16,15 @@
  *
  * ⚠️ NO se toca la palabra "doctor" en general, a propósito: `{{doctorName}}`,
  * `{{doctorEmail}}` y `{{doctorId}}` son variables atadas al código que arma el
- * correo, y la URL `/admin/doctor-verifications` es una ruta real. Un REPLACE
- * amplio rompería las tres cosas y el correo saldría con los marcadores crudos.
+ * correo. Un REPLACE amplio las rompería y el correo saldría con los marcadores
+ * crudos.
+ *
+ * CORRECCIÓN (20260901000001): esta cabecera decía además que
+ * `/admin/doctor-verifications` "es una ruta real". Es falso —el directorio no
+ * existe en `apps/frontend/app/admin/`, la página vive en `/admin/verifications`—
+ * y encima el enlace apuntaba al dominio equivocado. Dejar la URL afuera del
+ * REPLACE fue lo correcto igual, pero por el motivo de arriba y no por ese.
+ * La migración 20260901000001 la reemplaza por `{{panelUrl}}`.
  *
  * El `down` revierte exactamente las mismas tres frases.
  *
