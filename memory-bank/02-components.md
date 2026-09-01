@@ -944,3 +944,35 @@ simulado: verifican qué SQL se emite, no que Postgres lo acepte.
 ⚠️ **El gating "solo Plus" se cumple únicamente en el frontend.** No es de este módulo: **ningún
 módulo del repo tiene gating de plan en el backend** (`CapabilitiesGuard` existe con cero usos; el
 único caso server-side es el ad-hoc de booking). Deuda del sistema, no de acá.
+
+## `quotes` — cotizaciones con enlace público (2026-09-01)
+
+Módulo `apps/backend/src/modules/quotes/` (DDD de 4 capas) + pantallas `/doctor/quotes`,
+`/doctor/quotes/[id]` y la vista pública `/quotes/[token]`. **Plan: solo `delta_plus`** (y su
+espejo `free_trial`). Spec en `docs/specs/`. Commits `f8cf4997` (backend) y `95e6ecbf` (frontend).
+
+- **`quotes`**: para un paciente existente **o** un cliente potencial (`lead_id`). Máquina de
+  estados con guardia: sin ella se podía pasar de borrador a aceptada sin haber enviado nunca,
+  dejando una cotización aceptada con la tasa en nulo. `markAsSent` y `update` filtran por estado
+  **dentro** de la transacción — la guardia vivía en el use case y dos clics simultáneos generaban
+  dos enlaces activos y dos correos al mismo cliente.
+- **`quote_items`**: **copian** nombre, descripción y precio; `source_id` va **sin clave foránea
+  dura**. Una cotización emitida no cambia porque alguien tocó el catálogo o dio de baja un
+  producto.
+- **`quote_share_links`**: token por cotización. La tasa BCV y el monto en Bs **se congelan al
+  enviar, no al mirar**.
+- **`leads`** ganó `email` y `last_name`: crear un paciente exige cédula, y relajar eso rompería
+  el dedupe y la identidad global. Un prospecto se registra como `'lead'` en `email_send_log`.
+
+**Frontend.** El PDF del especialista se arma **en el navegador** con `pdf().toBlob()`; la ruta del
+servidor es solo para el enlace público, y como exige token, un borrador sin enviar no se podía
+descargar. El botón de copiar el enlace lee `share_url` del backend y **solo aparece si viene**.
+
+⚠️ **Ver ADR-056 antes de tocar el logo del PDF**: si la bajada con guardas falla, sale sin logo.
+Reponer la URL cruda reabre un SSRF.
+
+⚠️ **CRM entró al sidebar con este lote.** `/doctor/crm` existía solo como prefijo gateado, sin
+entrada de navegación: la pantalla estaba construida y era inalcanzable. Cuarto caso del patrón.
+
+⚠️ **Sin probar en navegador y la migración no se aplicó a ninguna base.** Mismo gating de frontend
+solamente que inventario — ningún módulo del repo lo tiene en el backend.

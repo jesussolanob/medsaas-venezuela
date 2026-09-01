@@ -858,3 +858,15 @@ status='active'` con `QueryTypes.UPDATE` (devuelve `[undefined, affectedCount]`;
   medio y sin PII yendo a Gemini. **La Etapa 0 bloquea al bot, no al canal**, así que se invierte el
   orden. ⚠️ Cuando se agregue el bot comercial, Vertex vuelve a ser bloqueante: es una decisión
   postergada junto con lo que la motivaba, no anulada.
+
+- **ADR-056 (2026-09-01):** **Si la bajada con guardas falla, el PDF sale sin logo. No hay
+  fallback a la URL cruda.** `imageUrlToDataUri` baja logo y firma con tiempo límite, verificación
+  de `Content-Type` y tope de tamaño. Pasarle la URL cruda a `@react-pdf` cuando eso falla **no es
+  un respaldo**: la librería la vuelve a bajar del lado del servidor **sin ninguna de las tres
+  guardas**. Y `logo_url` se guarda tal cual la manda el especialista, así que se podía apuntar a
+  una dirección interna de la infraestructura y hacer que el propio servidor la consultara (SSRF
+  autenticado). El fallback pasa a `null` en **las dos** rutas de PDF —cotizaciones y documentos
+  compartidos, esta última ya viva en producción con el defecto—. ⚠️ **Un logo faltante es el
+  comportamiento correcto, no un bug a "arreglar" reponiendo la URL.** Además, la ruta pública del
+  PDF **nunca devuelve el error crudo**: es alcanzable sin credenciales y el mensaje puede traer
+  direcciones internas (`ECONNREFUSED 10.x.x.x`).

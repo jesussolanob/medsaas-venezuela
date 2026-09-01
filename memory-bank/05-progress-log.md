@@ -4,6 +4,76 @@
 > ⚠️ Orden: **la entrada más nueva va ARRIBA**. La del 2026-08-11 quedó al final
 > del archivo por error; no se movió para no ensuciar el diff.
 
+## 2026-09-01 — Cotizaciones: frontend, vista pública y SSRF en las dos rutas de PDF
+
+> Commit `95e6ecbf` sobre `f8cf4997` (backend), rama `feature/cotizaciones`.
+> Nada mergeado a `develop`. Migración **sin aplicar** y módulo **sin abrir en un navegador**.
+
+Cierre del módulo por el lado del frontend: listado con filtros, detalle con máquina de estados,
+modal de alta sobre servicios del catálogo y productos del inventario, vista pública por token y
+PDF con el branding del especialista. Entra al sidebar y al gating por plan como `quotes`.
+
+### SSRF: el fallback del logo, en producción desde antes
+
+`imageUrlToDataUri` baja el logo y la firma con **tres guardas**: tiempo límite, verificación de
+`Content-Type` y tope de tamaño. Si esa bajada fallaba, el código le pasaba **la URL cruda** a
+`@react-pdf`, que la vuelve a bajar del lado del servidor **sin ninguna de las tres**. Como
+`logo_url` se guarda tal cual la manda el especialista, se podía apuntar a una dirección interna
+de la infraestructura y hacer que el propio servidor la consultara.
+
+Hace falta cuenta de especialista, así que no es explotable por un desconocido, y no hay evidencia
+de que haya pasado. Pero **la ruta de documentos compartidos ya estaba viva en producción con el
+mismo fallback** — no era un defecto del módulo nuevo, era uno viejo que el módulo nuevo copió.
+
+Arreglo en las dos rutas: el fallback pasa a `null`. Un logo faltante es mejor que una petición
+que no controlamos, y por lo que ya se sabe de esta librería, ese respaldo probablemente nunca
+funcionó igual.
+
+Además, la ruta pública del PDF devolvía **el error crudo al cliente**, que puede traer direcciones
+internas (un fetch fallido sale como `ECONNREFUSED 10.x.x.x`). Se loguea y sale un mensaje
+genérico: esa ruta es alcanzable **sin credenciales**.
+
+### Dos pantallas construidas que nadie podía alcanzar
+
+**CRM nunca estuvo en el sidebar.** Existía solo como prefijo en `PLAN_GATED_ROUTES`: gateado,
+construido y sin una sola forma de llegar desde la UI. Cuarto caso del patrón. Entra al sidebar
+ahora, que hacía falta igual porque una cotización puede ir a un prospecto.
+
+**El PDF del especialista dependía de tener enlace.** Se armaba por la ruta del servidor, que exige
+token, así que **un borrador sin enviar no se podía descargar**. Pasó a armarse en el navegador con
+`pdf().toBlob()`; la ruta del servidor queda para el enlace público, que es para lo que es.
+
+### El `EXIT=0` que era mentira
+
+La suite se reportó verde y **estaba roja**. El comando terminaba en `| tail -35; echo $?`, así que
+el código leído era **el de `tail`**, no el de jest. Regla: capturar el exit **antes** de cualquier
+pipe (`cmd > log 2>&1; echo $?`), nunca después.
+
+Lo que ocultaba: `quotes.controller.spec` construía el controlador con 7 argumentos y el constructor
+pedía 8 tras sumar `ConfigService`. **`tsc` del backend no lo ve porque excluye los `.spec`** — solo
+aparece corriendo jest. Mismo patrón ya documentado: tocar una dependencia inyectada rompe los mocks
+del módulo.
+
+Al arreglarlo, el mock resuelve una **URL base real**: con uno vacío las 8 aserciones existentes
+seguían pasando mientras el controlador producía un `share_url` **sin origen**. Y `share_url` no
+tenía **ninguna** cobertura, siendo el campo del que depende el botón de copiar; se sumaron sus dos
+casos (con token arma la URL, en borrador queda en `null`).
+
+### Verificación
+
+445 suites / 4183 tests, `tsc` de frontend y backend, `build` de ambos sin caché — **los cinco con
+exit 0 real**. Lint acotado sin hallazgos nuevos (los 4 de `crm/page.tsx` son preexistentes,
+medidos contra HEAD con un stash). La migración se revisó **leyendo**, contra la tabla que la creó:
+`plan_features` coincide en columnas y el UNIQUE existe, y `uuid_generate_v4()` está disponible
+porque el esquema inicial crea `uuid-ossp`.
+
+### Qué falta
+
+- **Aplicar la migración** — no se corrió en ninguna base.
+- **Abrir el módulo en un navegador.** Es exactamente el escenario donde este proyecto acumuló sus
+  peores sorpresas: verde en tests no es verde en pantalla.
+- Merge a `develop` → `staging` → validar → `main`.
+
 ## 2026-09-01 — Módulo Inventario (backend + frontend) · rama `feature/inventario`
 
 > Commits `cd38c246` (backend), `9b4d2516` (specs), `74af359b` (frontend), `b50c857c` (fix).

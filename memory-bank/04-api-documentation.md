@@ -1140,6 +1140,34 @@ Un producto ajeno y un id inexistente devuelven **el mismo** error (impide enume
 | GET    | `/api/doctor/inventory/products/:id/movements`                |                                                                                                    |
 | POST   | `/api/doctor/inventory/products/:id/movements`                | solo `purchase`/`adjustment`/`loss`: **`sale` no se acepta**, las ventas nacen de aprobar el cobro |
 
+## Cotizaciones (2026-09-01)
+
+Todos con `AppAuthGuard`; el `doctorId` sale de `user.sub` (anti-IDOR). Envelope `{success, data}`.
+Una cotización ajena y un id inexistente devuelven **el mismo** 404.
+
+| Método | Ruta                                                                     | Notas                                                                  |
+| ------ | ------------------------------------------------------------------------ | ---------------------------------------------------------------------- |
+| GET    | `/api/doctor/quotes?status=&patient_name=&product_name=&supplier=&page=` | `patient_name` resuelve a ids; sin coincidencias devuelve página vacía |
+| POST   | `/api/doctor/quotes`                                                     | items **copian** nombre, descripción y precio del catálogo/inventario  |
+| GET    | `/api/doctor/quotes/:id`                                                 | agrega `share_token` y `share_url` (ver abajo)                         |
+| PUT    | `/api/doctor/quotes/:id`                                                 | filtra por estado **dentro** de la transacción                         |
+| DELETE | `/api/doctor/quotes/:id`                                                 |                                                                        |
+| POST   | `/api/doctor/quotes/:id/send`                                            | congela tasa BCV y monto en Bs; genera el enlace                       |
+| PUT    | `/api/doctor/quotes/:id/status`                                          | máquina de estados con guardia: no se acepta sin haber enviado         |
+
+**`share_url` lo arma el backend**, no el cliente. Sale de `APP_BASE_URL` (o `FRONTEND_URL`) más
+`/quotes/<token>`, y es `null` cuando no hay token. El frontend **solo muestra el botón de copiar
+si viene**: armarlo a mano daba un enlace que en un borrador apunta a un 404.
+
+**Ruta pública** — `GET /api/quotes/:token`, **sin guard y sin sesión**. Devuelve el branding del
+especialista con las imágenes re-firmadas y **no expone cédula, teléfono ni datos clínicos**. Un
+token inexistente, uno vencido y uno revocado son indistinguibles.
+
+**BFF del PDF público** — `GET /api/quotes/:token/pdf` (Next.js). Es **solo para el enlace público**:
+el PDF del especialista se arma en el navegador con `pdf().toBlob()`, para que un borrador sin
+enviar también se pueda descargar. ⚠️ Esta ruta es alcanzable sin credenciales, así que **devuelve
+un mensaje genérico**: el error crudo puede traer direcciones internas de red.
+
 **Cambio en un endpoint existente:** `PATCH /api/consultations/:id/approve-payment` acepta
 `product_extras: [{ product_id, quantity }]`. **El precio y el monto los resuelve el backend** — el
 esquema es `.strict()`, así que mandar un `unit_price_usd` hace fallar la petición con 422.
