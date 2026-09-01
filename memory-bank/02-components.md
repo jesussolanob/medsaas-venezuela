@@ -3,6 +3,46 @@
 > Inventario de módulos backend, páginas frontend y schemas compartidos.
 > Actualizar al crear cualquier módulo, página o schema Zod.
 
+## ⚠️ `/patient` — MÓDULO INALCANZABLE (comprobado 2026-09-01)
+
+**El portal del paciente está construido entero y nadie puede entrar.** No es una
+pantalla rota: son **12 páginas** (`page`, `dashboard`, `appointments`,
+`prescriptions`, `reports`, `messages`, `profile`, `seguimiento`, `login`,
+`register`, `[patientId]`, `[patientId]/report/[consultationId]`) con su backend
+(`patient-portal`), su guarda en `proxy.ts` y su redirección por rol.
+
+**Por qué no se llega** — tres candados, todos en el código:
+
+1. `/patient/login` y `/patient/register` **solo hacen `router.push('/login')`**: son
+   cáscaras, no tienen formulario propio.
+2. En `/login`, el frontend siempre manda `role: claimRole ?? 'doctor'`
+   (`proxy.ts`, `lib/identity.server.ts`) y el backend tiene
+   `DEFAULT_ROLE = 'doctor'` (`resolve-identity.use-case.ts`). **Ningún camino de
+   alta crea un perfil con `role='patient'`.** El booking tampoco: crea filas en
+   `patients` (el registro clínico del doctor), que NO es lo mismo que un perfil
+   con rol paciente.
+3. Las dos únicas entradas al portal (`onboarding/page.tsx`) están dentro de
+   `if (role === 'patient')` — una condición que nunca se cumple.
+
+El rol existe en el enum desde `20260602000000-initial-schema` y tiene fila en
+`role_capabilities`, así que **abrirlo es cuestión de crear los perfiles**, no de
+construir pantallas. Faltaría además decidir cómo se asigna el rol (claim de
+Auth0 o alta explícita) y revisar qué pantallas funcionan de verdad contra el
+backend actual — varias tienen TODOs de Fase 5.
+
+**Decisión 2026-09-01 (dueño): se deja como está.** No se abre ni se borra.
+
+⚠️ **Antes de arreglar algo acá, acordate de que no lo ve nadie.** El 31/08 se
+corrigió el "Dr." escrito a mano de la tarjeta de paquetes (commit `830df658`,
+que además agregó `doctorTitle`/`doctorSpecialty` a `PackageSummary`): el arreglo
+es correcto y queda listo para cuando el portal se abra, pero **hoy no tiene
+efecto para ningún usuario**. Se hizo sin comprobar primero que la pantalla
+estuviera viva.
+
+Mismo patrón que la ruta de vendedores, la aprobación de cobro y el acortado de
+la inmediata: código completo y correcto, desconectado de la UI. Los tests están
+verdes y no significa nada.
+
 ## Páginas frontend (Next.js App Router) — existentes
 
 ### `/admin` (super admin)
