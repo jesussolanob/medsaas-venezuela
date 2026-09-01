@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { Calendar, FileText, ArrowRight, Zap } from 'lucide-react';
 import { getPatientDashboard, getPatientProfile } from './actions';
 import { reportError } from '@/lib/report-error';
+import { getProfessionalTitle } from '@/lib/professional-title';
 
 const styles = `
   .card-hover {
@@ -42,6 +43,7 @@ interface PatientPackage {
   used_sessions: number;
   doctor_id: string;
   doctor_name?: string;
+  doctor_title?: string;
   doctor_specialty?: string;
 }
 
@@ -96,7 +98,10 @@ export default function PatientHome() {
           used_sessions: pkg.usedSessions,
           doctor_id: pkg.doctorId,
           doctor_name: pkg.doctorName ?? undefined,
-          doctor_specialty: undefined,
+          // Antes esto era `undefined` fijo, asi que la especialidad que se
+          // renderiza mas abajo NUNCA aparecia: la rama era inalcanzable.
+          doctor_title: pkg.doctorTitle ?? undefined,
+          doctor_specialty: pkg.doctorSpecialty ?? undefined,
         }));
         setPackages(enriched);
 
@@ -336,7 +341,14 @@ export default function PatientHome() {
                         </p>
                         {pkg.doctor_name && (
                           <p className="text-xs text-slate-500">
-                            Dr. {pkg.doctor_name}
+                            {/* Decia "Dr." escrito a mano: a la paciente de una
+                                psicologa la app le mostraba "Dr. <nombre>".
+                                getProfessionalTitle usa el titulo que cargo el
+                                especialista y, si no hay, lo deriva de la
+                                especialidad — el mismo helper que el booking
+                                publico y el inicio del especialista. */}
+                            {getProfessionalTitle(pkg.doctor_title, pkg.doctor_specialty)}{' '}
+                            {pkg.doctor_name}
                             {pkg.doctor_specialty && (
                               <span className="text-slate-400"> · {pkg.doctor_specialty}</span>
                             )}

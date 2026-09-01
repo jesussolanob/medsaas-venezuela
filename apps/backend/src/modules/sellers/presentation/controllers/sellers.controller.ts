@@ -72,7 +72,11 @@ type CreateSellerSpecialistBody = z.infer<typeof CreateSellerSpecialistBodySchem
  */
 const UpdatePaymentDetailsBodySchema = z
   .object({
-    paymentDetails: z.record(z.unknown()),
+    // Dos argumentos: en Zod 4 la forma de uno solo dejó de tipar (el resto del
+    // repo ya la usa así). En ejecución andaba igual, pero dejaba `tsc -p
+    // tsconfig.app.json` en rojo, y una verificación de tipos que siempre falla
+    // no sirve para detectar nada.
+    paymentDetails: z.record(z.string(), z.unknown()),
   })
   .strict();
 

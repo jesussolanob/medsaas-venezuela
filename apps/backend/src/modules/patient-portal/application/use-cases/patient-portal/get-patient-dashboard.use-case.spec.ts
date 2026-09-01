@@ -28,6 +28,8 @@ function makePackageSummary(): PackageSummary {
     status: 'active',
     doctorId: 'doctor-1',
     doctorName: 'Dr. García',
+    doctorTitle: 'Psic.',
+    doctorSpecialty: 'Psicología',
     bookingLink: '/book/token-abc',
   };
 }
