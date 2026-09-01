@@ -4,6 +4,61 @@
 > ⚠️ Orden: **la entrada más nueva va ARRIBA**. La del 2026-08-11 quedó al final
 > del archivo por error; no se movió para no ensuciar el diff.
 
+## 2026-09-01 — Cierre del lote: guion de QA, dos módulos inalcanzables y el precio tachado
+
+> Todo en **staging** (`4aa3112e`). **39 commits** desde `5faac77d`, **5 migraciones**, nada en `main`.
+> Guion de QA manual completo en `10-qa-lote-comisiones-septiembre-2026.md`.
+
+### El precio tachado nunca se dibujó en la landing
+
+El dueño lo buscó en `https://staging.deltasalud.app/` y no estaba. **No era un problema de
+despliegue.** El dato viajaba (`/api/public/plans` devuelve `compare_at_price`; en staging Delta
+Base tiene 20 contra un precio de 10), la landing ya consumía ese endpoint, y **la clase
+`.original` con su `text-decoration: line-through` estaba escrita en el CSS desde siempre**. Lo
+único que faltaba era el código que los une: la función que arma la tarjeta solo imprimía `price`.
+
+Funcionaba en `/admin/plans` y `/doctor/upgrade` — las dos pantallas **internas**— y no en la
+**pública**, que es la única que ve quien todavía no es cliente.
+
+⚠️ **El guion de QA lo dejó pasar por estar mal escrito:** decía _"verificar que se ve tachado en
+la tabla de planes"_, a secas. Se verificó el admin y se dio por hecho el resto. Corregido: ahora
+enumera **las tres pantallas** una por una. Regla que queda: cuando una feature se muestra en
+varios lados, listarlos todos, nunca "en la tabla".
+
+Queda sin usar la clase `.savings` del mismo CSS (la pastilla de "ahorrás X"): estilo escrito que
+nadie emite. No se agregó — es una decisión de diseño que no se pidió.
+
+### `/patient` — módulo entero inalcanzable
+
+El dueño preguntó "¿no hay portal de paciente?" y tenía razón. 12 páginas construidas, enrutadas
+y protegidas, a las que **nadie puede entrar**: ningún alta crea un perfil con `role='patient'`.
+Detalle de los tres candados y la decisión (dejarlo como está) en `02-components.md`.
+
+⚠️ Antes de comprobarlo se arregló ahí el "Dr." escrito a mano —correcto, pero **sin efecto para
+nadie**— e incluso se agregaron dos campos al backend. Verificar la alcanzabilidad **antes** de
+invertir, no después.
+
+### Quinta aparición del mismo patrón
+
+Landing sin tachado, portal del paciente, y antes en la sesión: la ruta de vendedores, la
+aprobación de cobro, el acortado de la inmediata. **Código completo y correcto, desconectado.**
+Los tests en verde no dicen nada sobre esto.
+
+### Correcciones menores
+
+- `z.record(z.unknown())` en `sellers.controller`: en Zod 4 la forma de un argumento dejó de
+  tipar y era el único sitio del repo que la usaba. En ejecución andaba, pero dejaba
+  `tsc -p tsconfig.app.json` en rojo. **Ahora el typecheck del backend pasa limpio por primera vez.**
+- Se actualizó la ficha de `seller-commissions` en `02-components.md`, que seguía diciendo "no lo
+  llama nadie todavía" y que `compare_at_price` no se usaba. Las dos cosas quedaron viejas.
+
+### Pendiente
+
+- **Producción arrastra los 39 commits.** El "Dr." que el dueño ve en prod se arregla
+  **promoviendo**, no tocando código: el fix (`b02ef771`) está en staging y no en `main`.
+- Sin verificar: el saludo "Psic." con la cuenta de psicología, y el reintento de la IA con
+  Gemini realmente saturado (no se puede forzar).
+
 ## 2026-08-31 — QA en navegador: la IA de producción, el reagendado y cinco textos que mentían
 
 > Todo **desplegado y verde en staging** (`98aba792`), esperando el QA del dueño. Nada en `main`.

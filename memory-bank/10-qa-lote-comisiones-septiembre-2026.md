@@ -1,7 +1,7 @@
 # 10 — Guion de QA · lote de comisiones y correcciones (staging, 2026-09-01)
 
-> **Entorno:** `https://staging.deltasalud.app` · **Rama:** `staging` · **HEAD:** `6ad52199`
-> **Alcance:** 38 commits desde `5faac77d`. Nada de esto está en producción.
+> **Entorno:** `https://staging.deltasalud.app` · **Rama:** `staging` · **HEAD:** `4aa3112e`
+> **Alcance:** 39 commits desde `5faac77d`. Nada de esto está en producción.
 >
 > ⚠️ **Staging manda correo REAL a la dirección real, sobre un clon de la base de
 > producción con pacientes de verdad.** Probar envíos SOLO con pacientes de prueba.
@@ -102,11 +102,23 @@ Es lo más grande del lote y lo más importante: **mueve plata**.
 
 ---
 
-## 2. Planes y precios
+## 2. Planes y precios — el tachado tiene que verse en LAS TRES pantallas
 
-24. `/admin/plans` → cargar un **precio tachado** (`compare_at_price`) en un plan.
-25. Verificar que se ve tachado en la tabla de planes.
-26. Confirmar que el precio real sigue siendo el que se cobra.
+> ⚠️ Este bloque decía antes "verificar que se ve tachado en la tabla de planes", a secas.
+> Era ambiguo y por eso se escapó: el tachado funcionaba en las dos pantallas internas y
+> **no en la pública**, que es la única que ve quien todavía no es cliente. Cuando una
+> feature se muestra en varios lados, hay que enumerarlos **todos**.
+
+24. `/admin/plans` → cargar un **precio tachado** (`compare_at_price`) en un plan de pago.
+    Probar que **rechaza** un tachado menor o igual al precio real (sería un descuento al revés).
+25. **`/admin/plans`** — se ve tachado en el editor.
+26. **`/doctor/upgrade`** (como especialista) — se ve el precio anterior tachado junto al actual.
+27. **`https://staging.deltasalud.app/` (landing pública)** — en la tarjeta del plan debe
+    aparecer _"Antes $N"_ tachado debajo del precio.
+    ❌ Hasta el 2026-09-01 **nunca se dibujó acá**: el dato viajaba en `/api/public/plans`, la
+    clase `.original` estaba en el CSS, y el código que los unía no existía.
+28. Confirmar que el precio real **sigue siendo el que se cobra** en los tres lados.
+29. Quitar el tachado desde el admin y confirmar que desaparece en las tres pantallas.
 
 ---
 
@@ -114,14 +126,14 @@ Es lo más grande del lote y lo más importante: **mueve plata**.
 
 Este bloque es corto pero **cada punto era una afirmación falsa en pantalla**.
 
-27. **`/admin/doctors` → Ver detalle** de un especialista: el bloque **Plan** debe mostrar su
+30. **`/admin/doctors` → Ver detalle** de un especialista: el bloque **Plan** debe mostrar su
     plan real, su estado y la fecha de vencimiento.
     ❌ Antes decía _"Plan profesional · Acceso completo a todas las funcionalidades"_ a **todos**.
     ✔️ Comprobar con al menos **dos especialistas de planes distintos** — si no, no se detecta.
-28. **Inicio del especialista** y **barra lateral**: junto al nombre del plan debe decir
+31. **Inicio del especialista** y **barra lateral**: junto al nombre del plan debe decir
     _"Acceso completo"_ **solo si de verdad lo tiene**; si no, _"N módulos bloqueados"_.
     ❌ Antes decía "Acceso completo" siempre, con medio menú con candados.
-29. **`/admin/sellers` → Ver cobro** sin datos (ya cubierto en 1.5, punto 16).
+32. **`/admin/sellers` → Ver cobro** sin datos (ya cubierto en 1.5, punto 16).
 
 ---
 
@@ -129,27 +141,27 @@ Este bloque es corto pero **cada punto era una afirmación falsa en pantalla**.
 
 ⚠️ Recordar: **staging envía correo real**.
 
-30. **Alta de un especialista nuevo** → el admin recibe _"Nuevo especialista pendiente de
+33. **Alta de un especialista nuevo** → el admin recibe _"Nuevo especialista pendiente de
     verificación"_ (ya no dice "doctor").
-31. En ese correo, pulsar **"Revisar en el panel"**.
+34. En ese correo, pulsar **"Revisar en el panel"**.
     ❌ Antes llevaba a un enlace muerto (dominio equivocado y ruta inexistente).
     ✔️ Ahora debe abrir la pantalla de verificaciones **de staging**, no de producción.
-32. **Correo de bienvenida**: no debe tratar de "Dr/a." a quien no eligió ese título.
+35. **Correo de bienvenida**: no debe tratar de "Dr/a." a quien no eligió ese título.
 
 ---
 
 ## 5. Especialista: consultas, IA y títulos
 
-33. **Ficha de un paciente → Historial → Abrir una consulta.**
+36. **Ficha de un paciente → Historial → Abrir una consulta.**
     Debe ir **directo al detalle**, sin pasar por el listado.
-34. **Asistente de IA** dentro de una consulta (requiere plan con IA): mejorar redacción,
+37. **Asistente de IA** dentro de una consulta (requiere plan con IA): mejorar redacción,
     resumir informe y resumen del historial deben responder.
     Si falla, el mensaje debe ser claro y **en español** — nunca _"Error al conectar con la IA"_
     a secas.
-35. **Título profesional**: entrar con un especialista de **psicología** y mirar el saludo del
+38. **Título profesional**: entrar con un especialista de **psicología** y mirar el saludo del
     inicio. Debe decir **"Psic. \<nombre\>"**, no "Dr.".
     Probar también odontología ("Odont.") si hay cuenta.
-36. **Documento PDF** generado desde una consulta: debe conservar el **formato que escribió el
+39. **Documento PDF** generado desde una consulta: debe conservar el **formato que escribió el
     especialista** (negritas, listas, saltos), no texto plano.
 
 ---
@@ -159,12 +171,12 @@ Este bloque es corto pero **cada punto era una afirmación falsa en pantalla**.
 Estos solo aparecen al intentar algo inválido. **Ninguno debe salir en inglés ni mostrar
 claves internas como `completed` o `no_show`.**
 
-37. Abrir una consulta **ya atendida** y pulsar **"No asistió"** → **"No reagenda"**.
+40. Abrir una consulta **ya atendida** y pulsar **"No asistió"** → **"No reagenda"**.
     Debe decir: _"Esta cita ya quedó atendida y no se puede volver a cambiar…"_.
     ❌ Antes: _"No se puede pasar la cita de 'completed' a 'no_show'"_.
-38. Intentar **reagendar** una cita ya cerrada.
+41. Intentar **reagendar** una cita ya cerrada.
     Debe explicar que una cita cerrada no se mueve de fecha y sugerir agendar una nueva.
-39. Intentar agendar a un paciente en un horario **donde ya tiene otra cita**.
+42. Intentar agendar a un paciente en un horario **donde ya tiene otra cita**.
     El mensaje debe mostrar la hora **legible en horario de Caracas** y **no** el identificador
     del paciente.
 
@@ -172,12 +184,12 @@ claves internas como `completed` o `no_show`.**
 
 ## 7. Regresión — lo que no debía romperse
 
-40. Alta de especialista **sin** código de vendedor: debe funcionar igual.
-41. Configuración del especialista → **datos de cobro**: el editor se compartió con el portal
+43. Alta de especialista **sin** código de vendedor: debe funcionar igual.
+44. Configuración del especialista → **datos de cobro**: el editor se compartió con el portal
     del vendedor. Verificar que el especialista sigue guardando bien sus métodos, **incluidos**
     Zelle, Binance y efectivo (al especialista **no** se le restringen).
-42. Booking público `/book/<id>`: nombre y título del especialista correctos.
-43. Aprobar un pago de suscripción y extender una suscripción desde el admin: siguen andando
+45. Booking público `/book/<id>`: nombre y título del especialista correctos.
+46. Aprobar un pago de suscripción y extender una suscripción desde el admin: siguen andando
     (se les añadió el enganche de comisión).
 
 ---
