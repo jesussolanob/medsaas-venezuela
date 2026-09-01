@@ -817,3 +817,44 @@ status='active'` con `QueryTypes.UPDATE` (devuelve `[undefined, affectedCount]`;
   🔴 **Queda pendiente:** las plantillas de recordatorio (`reminders-settings`) todavía dicen
   "cita con el **Dr.** {doctor_name}" fijo. Son editables por cada especialista, así que cambiar el
   default solo afectaría a los nuevos.
+
+- **ADR-052 (2026-09-01):** **La venta de un producto se cobra por `consultation_extra_items`, no
+  por `payment_items`.** Los dos caminos existían y el segundo parecía más elegante: `payment_items`
+  ya tiene un gancho polimórfico libre (`source_type` / `source_id`). Pero **finanzas suma por dos
+  vías distintas**: `getIncomeBreakdown`/`getFinancialSummary` suman `consultations.amount`, mientras
+  `listIncomePaginated`/`getPaymentTotals` suman `payments.amount_usd`. `consultation_extra_items`
+  propaga a las dos (`base + Σ extras` → `consultations.amount` → Step 5b sincroniza `payments`);
+  `payment_items` movería solo la segunda y **el especialista vería dos totales distintos para el
+  mismo mes**. Consecuencia: la venta de un producto **necesita una consulta**; una venta de
+  mostrador suelta todavía no tiene camino.
+
+- **ADR-053 (2026-09-01):** **El precio del producto se guarda en su moneda; la conversión ocurre al
+  vender y queda congelada.** El catálogo persiste `sale_price_amount` + `sale_price_currency`
+  (`USD` | `VES`) **sin convertir**: guardarlo ya pasado a dólares fosiliza la tasa del día de la
+  carga y en tres semanas el precio en bolívares es ficción. Cada venta escribe en
+  `inventory_movements` su `unit_price_usd`, `rate_used` y `rate_source`. **Nunca se recalcula un
+  movimiento viejo con la tasa de hoy** — eso reescribe la historia financiera todas las mañanas.
+  Un precio en VES sin tasa disponible es **error de dominio** (`MissingExchangeRateError`), nunca
+  un monto que cae a dólares por omisión: el defecto original cobraba 1.500 Bs como US$ 1.500.
+  `rate_source` no existía en ninguna tabla de operaciones; este módulo es el primero.
+
+- **ADR-054 (2026-09-01):** **El stock se revierte y se vuelve a asentar en cada aprobación, dentro
+  de la misma transacción.** `approveWithExtras` tiene semántica **replace-all**: borra e inserta
+  todos los extras cada vez (por eso `base_amount` se congela en la primera aprobación). Si el
+  descuento de stock se hiciera al insertar la línea, reaprobar descontaría dos veces **sin un solo
+  error**. El lock de la fila de `consultations` es **la primera consulta de la transacción**: sin
+  él, dos primeras aprobaciones simultáneas (doble clic, reintento de red) leen ambas "no hay
+  movimientos previos", se saltean el revert y descuentan dos veces.
+  El reflejo del mismo problema vive en la UI: `extra_items` expone `product_id`, `quantity` y
+  `unit_price_usd` para que el modal **reconstruya** las líneas de producto al reabrirlo. Sin eso el
+  backend revierte el stock y no lo vuelve a descontar — la plata queda bien y **el inventario queda
+  inflado, en silencio**. La reconstrucción corre también cuando el catálogo no carga (incluido el
+  500, que resuelve la promesa en vez de rechazarla).
+
+- **ADR-055 (2026-09-01):** **Chatwoot arranca por el canal humano; Vertex AI deja de bloquear.**
+  El plan del 18/08 (`12-plan-whatsapp-ventas.md`) tenía una Etapa 0 bloqueante —mover Gemini a
+  Vertex— porque el nivel gratuito entrena con lo que recibe. El pedido del dueño (2026-09-01) es
+  **que los vendedores hablen con especialistas potenciales**: humano contra humano, sin IA en el
+  medio y sin PII yendo a Gemini. **La Etapa 0 bloquea al bot, no al canal**, así que se invierte el
+  orden. ⚠️ Cuando se agregue el bot comercial, Vertex vuelve a ser bloqueante: es una decisión
+  postergada junto con lo que la motivaba, no anulada.

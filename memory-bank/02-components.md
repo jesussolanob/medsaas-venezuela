@@ -918,3 +918,29 @@ especialista editen sus datos de cobro con **un solo componente**. Respeta la re
 ⚠️ Al extraerlo, la pantalla de configuración del especialista —que está en producción— quedó
 un rato sin compilar. Si se vuelve a tocar, correr `tsc` sobre **todo** el proyecto, no filtrado
 por los archivos propios: así es como un error de sintaxis pasa desapercibido.
+
+## `inventory` — catálogo de productos del especialista (2026-09-01)
+
+Módulo nuevo `apps/backend/src/modules/inventory/` (DDD de 4 capas) + pantalla `/doctor/inventory`.
+**Plan: solo `delta_plus`** (y su espejo `free_trial`). Spec completo en `docs/specs/inventario.md`.
+
+- **`products`**: `doctor_id`, `name`, `description`, `supplier` (texto libre), `photo_path`,
+  `sale_price_amount` + `sale_price_currency` (`USD`|`VES`), `stock_qty`, `low_stock_threshold`,
+  `is_active`. **Decisión del dueño: solo precio de venta, sin costo de proveedor** — el módulo no
+  calcula margen ni valoriza el stock.
+- **`inventory_movements`**: libro mayor con signo (`purchase`, `sale`, `adjustment`, `loss`),
+  `unit_price_usd`, `rate_used`, `rate_source`, `consultation_id`. Ver ADR-053.
+- **`consultation_extra_items`** ganó `product_id`, `quantity`, `unit_price_usd`: por ahí se cobra
+  la venta (ADR-052) y por ahí la UI reconstruye las líneas al reaprobar (ADR-054).
+- Endpoints bajo `/api/doctor/inventory` (ver `04-api-documentation.md`). La foto se guarda como
+  **path de GCS** y se firma en cada lectura; `kind: 'product'` es privado, así que el anti-IDOR del
+  path (`product/<userId>/`) sale gratis. **Se valida en alta y edición**: sin esa validación un
+  especialista podía guardar la ruta de un documento de OTRO y recibir una URL firmada válida.
+- **Stock en cero: se avisa, no se bloquea** (decisión del dueño). Puede quedar negativo.
+
+⚠️ **Sin probar en navegador y la migración no se aplicó a ninguna base.** Los tests usan Sequelize
+simulado: verifican qué SQL se emite, no que Postgres lo acepte.
+
+⚠️ **El gating "solo Plus" se cumple únicamente en el frontend.** No es de este módulo: **ningún
+módulo del repo tiene gating de plan en el backend** (`CapabilitiesGuard` existe con cero usos; el
+único caso server-side es el ad-hoc de booking). Deuda del sistema, no de acá.

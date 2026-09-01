@@ -161,3 +161,24 @@ downgrade/reminders.
 2. Cada feature nueva entra como controller/use-case en el backend NestJS, nunca
    como query directa a la BD en el frontend (el frontend solo proxya vía BFF).
 3. Actualizar el estado de cada ítem al iniciarlo y completarlo, con fecha.
+
+## Lote de septiembre 2026 — tres pedidos del dueño (2026-09-01)
+
+Entran acá por la regla 1 del documento: toda feature nueva se registra antes de codificar.
+
+| Ítem                                                                                                                                               | Justificación de negocio                                                                                                                                   | Plan                      | Estado                                                                   |
+| -------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------- | ------------------------------------------------------------------------ |
+| **Inventario** — catálogo de productos con stock, vendibles dentro del cobro de la consulta                                                        | El especialista que vende en el consultorio (cremas, lentes, prótesis, suplementos) hoy lo cobra por fuera del sistema: ese ingreso no aparece en finanzas | `delta_plus`              | **backend + frontend hechos** (`feature/inventario`), sin QA, sin migrar |
+| **Cotizaciones / presupuestos** — servicios + productos, PDF con el branding del especialista, envío por enlace, y listado de clientes potenciales | Presupuestar es el paso previo a vender un tratamiento caro; hoy se hace por WhatsApp y no queda registro ni seguimiento                                   | `delta_plus`              | spec listo (`docs/specs/cotizaciones.md`), sin empezar                   |
+| **Chatwoot para vendedores** — WhatsApp con un usuario por vendedor                                                                                | El médico no ve el celular personal del vendedor y, si el vendedor se va, **la cartera se queda**. Hoy no hay registro de qué se conversó                  | — (no es feature de plan) | runbook listo (`docs/specs/chatwoot-vendedores.md`), bloqueado por Meta  |
+
+**Decisiones del dueño en este lote:** ambos módulos solo en Plus · el inventario guarda **solo
+precio de venta**, sin costo de proveedor (no hay margen ni valorización) · stock en cero **avisa,
+no bloquea** · la cotización se manda **por enlace**, no adjunta.
+
+**Dependencia dura:** cotizaciones incluye productos, así que inventario va primero.
+
+**Lo que la cotización va a destapar de paso:** el módulo **CRM está construido, gateado y no está
+en el menú lateral** — igual que `ehr`, `billing`, `reports`, `messages` e `invitations`. El listado
+de clientes potenciales es la puerta natural para volverlo alcanzable, y hay que sacarle la
+auto-siembra de 8 leads de demostración antes de que convivan con prospectos reales.
