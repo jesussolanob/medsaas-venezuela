@@ -166,8 +166,12 @@ export default function ApprovePaymentModal({
       setLoadingInventory(true);
       fetch('/api/doctor/inventory/products?active=true&limit=200')
         .then(async (res) => {
+          // A failed response RESOLVES the promise, so these early returns must
+          // rehydrate too — otherwise a 500 silently drops the product lines and
+          // the re-approval reverts the stock without applying it again.
           if (!res.ok) {
             setInventoryLoadError(true);
+            if (productExtras.length > 0) setProductRows(rehydrateProductRows(productExtras, []));
             return;
           }
           const json = (await res.json()) as {
@@ -176,6 +180,7 @@ export default function ApprovePaymentModal({
           };
           if (!json.success) {
             setInventoryLoadError(true);
+            if (productExtras.length > 0) setProductRows(rehydrateProductRows(productExtras, []));
             return;
           }
           const raw = json.data;
