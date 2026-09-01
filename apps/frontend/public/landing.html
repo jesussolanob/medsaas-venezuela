@@ -2185,9 +2185,19 @@ button { font-family: var(--dh-font-body); cursor: pointer; border: none; }
         grid.innerHTML = '<p style="grid-column:1/-1;text-align:center;color:var(--dh-gray-400);padding:40px 0">No pudimos cargar los planes. Recarga la página o contáctanos.</p>';
         return;
       }
+      const monthlyRow = (p) => (p.prices || []).find(x => x.period === 'monthly') || (p.prices || [])[0];
       const monthly = (p) => {
-        const m = (p.prices || []).find(x => x.period === 'monthly') || (p.prices || [])[0];
+        const m = monthlyRow(p);
         return m ? m.price_usd : 0;
+      };
+      // Precio tachado (compare_at_price). Se carga desde /admin/plans y viaja en
+      // /api/public/plans, pero la tarjeta no lo dibujaba: la clase .original del CSS
+      // estaba escrita y nunca se emitia. Solo se muestra si es MAYOR que el precio
+      // real — un tachado menor o igual seria un descuento al reves.
+      const compareAt = (p) => {
+        const m = monthlyRow(p);
+        const c = m && m.compare_at_price;
+        return (typeof c === 'number' && c > (m.price_usd || 0)) ? c : null;
       };
       // Orden por precio ascendente (Free, Base, Plus). El de mayor precio (Plus) = recomendado.
       plans.sort((a, b) => monthly(a) - monthly(b));
@@ -2196,6 +2206,7 @@ button { font-family: var(--dh-font-body); cursor: pointer; border: none; }
       // ── Tarjetas (solo precio + CTA — el detalle de features vive en la tabla) ──
       grid.innerHTML = plans.map((p, i) => {
         const price = monthly(p);
+        const antes = compareAt(p);
         const featured = i === featuredIdx ? 'featured' : '';
         const isFree = price === 0;
         return [
@@ -2203,6 +2214,7 @@ button { font-family: var(--dh-font-body); cursor: pointer; border: none; }
           featured ? '<div class="badge">Recomendado</div>' : '',
           '<div class="duration">' + p.name + '</div>',
           '<div class="price">' + (isFree ? 'Gratis' : '$' + price + '<small> /mes</small>') + '</div>',
+          (!isFree && antes) ? '<div class="original">Antes $' + antes + '</div>' : '',
           p.description ? '<div class="per-month">' + p.description + '</div>' : '',
           '<a href="/register" target="_top" class="plan-cta">' + (isFree ? 'Comenzar gratis' : 'Elegir ' + p.name) + '</a>',
           '</div>',
