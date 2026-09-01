@@ -7,6 +7,8 @@ export interface UpdateLeadInput {
   leadId: string;
   doctorId: string;
   name?: string;
+  lastName?: string | null;
+  email?: string | null;
   phone?: string | null;
   channel?: string | null;
   message?: string | null;
@@ -27,11 +29,15 @@ export class UpdateLeadUseCase {
 
     const fields: {
       name?: string;
+      lastName?: string | null;
+      email?: string | null;
       phone?: string | null;
       channel?: string | null;
       message?: string | null;
     } = {};
     if (input.name !== undefined) fields.name = input.name;
+    if (input.lastName !== undefined) fields.lastName = input.lastName;
+    if (input.email !== undefined) fields.email = input.email;
     if (input.phone !== undefined) fields.phone = input.phone;
     if (input.channel !== undefined) fields.channel = input.channel;
     if (input.message !== undefined) fields.message = input.message;

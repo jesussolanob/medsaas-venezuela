@@ -40,6 +40,14 @@ export class LeadModel extends Model {
   @Column({ type: DataType.TEXT, allowNull: false })
   declare name: string;
 
+  // Added by migration 20260901000003-quotes-module
+  @Column({ type: DataType.TEXT, allowNull: true, field: 'last_name' })
+  declare lastName: string | null;
+
+  // Not encrypted — leads are prospect data, not PHI (same policy as phone).
+  @Column({ type: DataType.TEXT, allowNull: true })
+  declare email: string | null;
+
   @Column({ type: DataType.TEXT, allowNull: true })
   declare phone: string | null;
 

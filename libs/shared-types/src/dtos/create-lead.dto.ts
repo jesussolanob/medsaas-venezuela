@@ -22,6 +22,8 @@ export type LeadChannelType = z.infer<typeof LeadChannelSchema>;
 
 export const CreateLeadDtoSchema = z.object({
   name: z.string().min(1, 'name is required').max(200),
+  last_name: z.string().max(200).nullable().optional(),
+  email: z.string().email('email inválido').max(300).nullable().optional(),
   phone: z.string().max(50).nullable().optional(),
   channel: LeadChannelSchema.nullable().optional(),
   stage: LeadStageSchema.optional().default('new'),
@@ -32,6 +34,8 @@ export type CreateLeadDto = z.infer<typeof CreateLeadDtoSchema>;
 
 export const UpdateLeadDtoSchema = z.object({
   name: z.string().min(1).max(200).optional(),
+  last_name: z.string().max(200).nullable().optional(),
+  email: z.string().email('email inválido').max(300).nullable().optional(),
   phone: z.string().max(50).nullable().optional(),
   channel: LeadChannelSchema.nullable().optional(),
   message: z.string().max(2000).nullable().optional(),

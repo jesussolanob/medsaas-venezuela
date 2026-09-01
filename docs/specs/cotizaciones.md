@@ -100,6 +100,20 @@ le presupuestó. El modelo de amenaza es el de cualquier enlace mágico: el toke
 viaja solo al correo del destinatario. Si el dueño prefiere el segundo factor, se agrega el código
 de 6 dígitos **solo para cotizaciones de pacientes** (los prospectos no pueden tenerlo).
 
+### 4.1 Las notas son públicas — y el especialista tiene que saberlo
+
+`notes` viaja al enlace público y se imprime en el PDF: son las **condiciones del presupuesto**,
+escritas para que el cliente las lea. **Se queda así.**
+
+Lo que falta es que la pantalla lo diga. La auditoría de seguridad (2026-09-01) marcó el riesgo real:
+un especialista puede escribir ahí algo clínico —"consulta por ca. de cuello uterino, incluye
+biopsia"— sin sospechar que eso queda visible para cualquiera que tenga el enlace. Nada en la
+interfaz se lo advierte.
+
+**Obligatorio en el formulario:** rótulo explícito junto al campo, del tipo _"Estas notas las va a
+ver el destinatario del presupuesto"_. Es más barato y más honesto que agregar un segundo campo, y
+ataca la causa: hoy el campo no dice para quién escribe.
+
 ## 5. El PDF — composición, no obra nueva
 
 | Pieza                                                   | De dónde sale                                                                           |

@@ -92,4 +92,32 @@ describe('CreateLeadUseCase', () => {
     expect(result.message).toBeNull();
     expect(result.source).toBeNull();
   });
+
+  /**
+   * Regression: last_name and email added for the Quotes/Cotizaciones module
+   * so leads can be quoted recipients. These fields must travel end-to-end
+   * from the DTO through the use case to the repository.
+   */
+  it('stores last_name and email when provided', async () => {
+    mockRepo.create.mockImplementation(async (lead) => lead);
+
+    const result = await useCase.execute({
+      doctorId: DOCTOR_ID,
+      name: 'María',
+      lastName: 'Torres',
+      email: 'maria.torres@example.com',
+    });
+
+    expect(result.lastName).toBe('Torres');
+    expect(result.email).toBe('maria.torres@example.com');
+  });
+
+  it('defaults last_name and email to null when not provided', async () => {
+    mockRepo.create.mockImplementation(async (lead) => lead);
+
+    const result = await useCase.execute({ doctorId: DOCTOR_ID, name: 'Sin Apellido' });
+
+    expect(result.lastName).toBeNull();
+    expect(result.email).toBeNull();
+  });
 });

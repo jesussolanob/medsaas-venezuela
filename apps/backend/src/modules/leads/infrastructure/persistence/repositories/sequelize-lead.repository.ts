@@ -49,6 +49,8 @@ export class SequelizeLeadRepository implements ILeadRepository {
       id: lead.id,
       doctorId: lead.doctorId,
       name: lead.name,
+      lastName: lead.lastName,
+      email: lead.email,
       phone: lead.phone,
       channel: lead.channel,
       stage: lead.stage,
@@ -66,6 +68,8 @@ export class SequelizeLeadRepository implements ILeadRepository {
     doctorId: string,
     fields: {
       name?: string;
+      lastName?: string | null;
+      email?: string | null;
       phone?: string | null;
       channel?: string | null;
       message?: string | null;
@@ -76,6 +80,8 @@ export class SequelizeLeadRepository implements ILeadRepository {
     const updateData: Record<string, unknown> = {};
 
     if (fields.name !== undefined) updateData.name = fields.name;
+    if (fields.lastName !== undefined) updateData.lastName = fields.lastName;
+    if (fields.email !== undefined) updateData.email = fields.email;
     if (fields.phone !== undefined) updateData.phone = fields.phone;
     if (fields.channel !== undefined) updateData.channel = fields.channel;
     if (fields.message !== undefined) updateData.message = fields.message;
@@ -114,6 +120,8 @@ export class SequelizeLeadRepository implements ILeadRepository {
       id: row.id,
       doctorId: row.doctorId,
       name: row.name,
+      lastName: row.lastName,
+      email: row.email,
       phone: row.phone,
       channel: row.channel,
       stage: (row.stage ?? 'new') as LeadStage,

@@ -16,6 +16,8 @@ export interface LeadCreateParams {
   id: string;
   doctorId: string;
   name: string;
+  lastName?: string | null;
+  email?: string | null;
   phone: string | null;
   channel: string | null;
   stage: LeadStage;
@@ -40,6 +42,8 @@ export class Lead {
   readonly id: string;
   readonly doctorId: string;
   readonly name: string;
+  readonly lastName: string | null;
+  readonly email: string | null;
   readonly phone: string | null;
   readonly channel: string | null;
   readonly stage: LeadStage;
@@ -54,6 +58,8 @@ export class Lead {
     this.id = params.id;
     this.doctorId = params.doctorId;
     this.name = params.name;
+    this.lastName = params.lastName ?? null;
+    this.email = params.email ?? null;
     this.phone = params.phone ?? null;
     this.channel = params.channel ?? null;
     this.stage = params.stage;
@@ -96,6 +102,8 @@ export class Lead {
       id: this.id,
       doctorId: this.doctorId,
       name: this.name,
+      lastName: this.lastName,
+      email: this.email,
       phone: this.phone,
       channel: this.channel,
       stage: this.stage,

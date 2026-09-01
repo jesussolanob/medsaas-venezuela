@@ -52,6 +52,7 @@ import { PendingConsultationsModule } from './modules/pending-consultations/pend
 import { SellersModule } from './modules/sellers/sellers.module';
 import { SellerCommissionsModule } from './modules/seller-commissions/seller-commissions.module';
 import { InventoryModule } from './modules/inventory/inventory.module';
+import { QuotesModule } from './modules/quotes/quotes.module';
 import { InfraAuthModule } from './infrastructure/auth/infra-auth.module';
 
 @Module({
@@ -114,6 +115,7 @@ import { InfraAuthModule } from './infrastructure/auth/infra-auth.module';
     SellersModule,
     SellerCommissionsModule,
     InventoryModule,
+    QuotesModule,
   ],
   controllers: [HealthController],
   providers: [
