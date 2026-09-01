@@ -874,13 +874,18 @@ Motor de comisiones del programa de ventas. DDD de 4 capas en
 Las reglas de negocio están en **ADR-046** (una sola comisión de plan, la del primero pago),
 **ADR-047** (`sold_by_source` viaja con `sold_by`) y **ADR-048** (los cuatro enganches).
 
-⚠️ **No lo llama nadie todavía.** El backend está completo y verificado, pero no existen las
-rutas BFF ni las pantallas — ni la del admin para pagar ni la del vendedor para ver lo suyo.
-Es el patrón de "código completo que nadie llama", así que **está sin ejercitar de punta a
-punta**: la migración no se aplicó a ninguna base y no hubo boot del dist ni curl real.
+✅ **Actualizado 2026-09-01 — ya es alcanzable y está ejercitado de punta a punta.** La
+advertencia de "no lo llama nadie todavía" que estuvo acá quedó vieja: se construyeron las
+rutas BFF y las pantallas (ver la sección siguiente), la migración se aplicó a staging y el
+circuito se probó en un navegador real — alta con código, comisión de entrada, registro de
+pago con comprobante y baja del vendedor.
 
-⚠️ `plan_prices.compare_at_price` (el precio tachado) existe **solo en la migración**: ningún
-código lo lee ni lo escribe todavía.
+Montos: **entrada USD 10** (solo si `sold_by_source` es `code` o `seller_manual` — los leads
+asignados por el admin NO la generan) y **plan: delta_base USD 10, delta_plus USD 20**, una
+sola vez, en el primer pago.
+
+✅ `plan_prices.compare_at_price` (el precio tachado) ya se carga desde `/admin/plans` y se
+muestra en la tabla de planes.
 
 ## Pantallas del programa de vendedores (2026-08-28)
 
