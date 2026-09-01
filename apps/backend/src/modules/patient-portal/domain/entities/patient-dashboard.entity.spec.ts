@@ -24,6 +24,8 @@ function makePackageSummary(overrides: Partial<PackageSummary> = {}): PackageSum
     status: 'active',
     doctorId: 'doctor-1',
     doctorName: 'Dr. Smith',
+    doctorTitle: 'Psic.',
+    doctorSpecialty: 'Psicología',
     bookingLink: 'https://booking.example.com/dr-smith',
     ...overrides,
   };
