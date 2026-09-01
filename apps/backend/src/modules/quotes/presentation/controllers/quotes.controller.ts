@@ -12,6 +12,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { AppAuthGuard } from '../../../../infrastructure/auth/app-auth.guard';
 import {
   CurrentUser,
@@ -53,6 +54,16 @@ interface SuccessListResponse<T> {
 }
 
 /**
+ * Extends the Quote entity fields with the share link data for the doctor view.
+ * share_token / share_url are null when the quote is a draft or link is revoked.
+ * These fields are NEVER returned through the public (unauthenticated) endpoint.
+ */
+interface QuoteDetailData extends Quote {
+  share_token: string | null;
+  share_url: string | null;
+}
+
+/**
  * QuotesController — CRUD + send operations for the Quotes module.
  *
  * All routes under /api/doctor/quotes.
@@ -73,6 +84,7 @@ export class QuotesController {
     private readonly deleteQuote: DeleteQuoteUseCase,
     private readonly sendQuote: SendQuoteUseCase,
     private readonly updateStatus: UpdateQuoteStatusUseCase,
+    private readonly config: ConfigService,
   ) {}
 
   /**
@@ -107,15 +119,16 @@ export class QuotesController {
 
   /**
    * GET /api/doctor/quotes/:id
-   * Returns a single quote with its items. 404 for missing or foreign.
+   * Returns a single quote with its items plus share link data. 404 for missing or foreign.
+   * share_token / share_url are null when the quote is still a draft.
    */
   @Get(':id')
   async show(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: CurrentUserPayload,
-  ): Promise<SuccessResponse<Quote>> {
+  ): Promise<SuccessResponse<QuoteDetailData>> {
     const quote = await this.getQuote.execute(id, user.sub);
-    return { success: true, data: quote };
+    return { success: true, data: this.withShareData(quote) };
   }
 
   /**
@@ -154,7 +167,7 @@ export class QuotesController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body(new ZodValidationPipe(SendQuoteDtoSchema)) dto: SendQuoteDto,
     @CurrentUser() user: CurrentUserPayload,
-  ): Promise<SuccessResponse<Quote>> {
+  ): Promise<SuccessResponse<QuoteDetailData>> {
     // doctorName is sourced from the user profile — for Phase 1 we use the user.sub
     // as a fallback; the frontend can send the display name via the DTO if needed.
     // doctorName is now resolved inside SendQuoteUseCase from profiles.full_name.
@@ -165,7 +178,7 @@ export class QuotesController {
       recipientEmail: dto.recipient_email ?? undefined,
       recipientName: dto.recipient_name ?? undefined,
     });
-    return { success: true, data: quote };
+    return { success: true, data: this.withShareData(quote) };
   }
 
   /**
@@ -180,5 +193,32 @@ export class QuotesController {
   ): Promise<SuccessResponse<Quote>> {
     const quote = await this.updateStatus.execute(id, user.sub, dto);
     return { success: true, data: quote };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Private helpers
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Builds the share-link fields for a doctor-authenticated quote response.
+   *
+   * share_token mirrors quote.shareToken (null for drafts or revoked links).
+   * share_url is the ready-to-paste public URL the frontend uses for the
+   * "Copy link" button — the frontend should not have to know the URL structure.
+   */
+  private withShareData(quote: Quote): QuoteDetailData {
+    const appUrl = (
+      this.config.get<string>('APP_BASE_URL') ??
+      this.config.get<string>('FRONTEND_URL') ??
+      ''
+    ).replace(/\/+$/, '');
+
+    const shareToken = quote.shareToken ?? null;
+    const shareUrl = shareToken ? `${appUrl}/quotes/${shareToken}` : null;
+
+    return Object.assign(Object.create(Object.getPrototypeOf(quote)) as Quote, quote, {
+      share_token: shareToken,
+      share_url: shareUrl,
+    }) as QuoteDetailData;
   }
 }

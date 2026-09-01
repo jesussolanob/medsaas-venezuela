@@ -76,6 +76,46 @@ export class SequelizeQuoteRepository implements IQuoteRepository {
       }
     }
 
+    // Supplier filter: join quote_items (kind='product') → products via source_id.
+    //
+    // SNAPSHOT CAVEAT: The supplier is NOT stored in the quote item snapshot.
+    // This filter resolves live from the products catalog. If a product is
+    // deactivated or its supplier is changed after the quote was created, the
+    // quote will either disappear from supplier-filtered results or appear under
+    // the new supplier name. This is a known trade-off; snapshotting supplier
+    // was not requested. All other filters (status, product_name, patient_name)
+    // operate on frozen/encrypted data stored at creation time.
+    if (filters.supplier) {
+      const escaped = filters.supplier
+        .replace(/\\/g, '\\\\')
+        .replace(/%/g, '\\%')
+        .replace(/_/g, '\\_');
+      const rows = await this.sequelize.query<{ quote_id: string }>(
+        `SELECT DISTINCT qi.quote_id
+         FROM quote_items qi
+         JOIN products p ON p.id = qi.source_id AND p.doctor_id = :doctorId
+         WHERE qi.doctor_id = :doctorId
+           AND qi.kind = 'product'
+           AND p.supplier ILIKE :pattern ESCAPE '\\'`,
+        {
+          replacements: { doctorId: filters.doctorId, pattern: `%${escaped}%` },
+          type: QueryTypes.SELECT,
+        },
+      );
+      const supplierQuoteIds = rows.map((r) => r.quote_id);
+      if (supplierQuoteIds.length === 0) {
+        return { items: [], total: 0, page: filters.page, limit: filters.limit };
+      }
+      // Intersect with any existing quoteIds from the product_name filter.
+      quoteIds =
+        quoteIds === null
+          ? supplierQuoteIds
+          : quoteIds.filter((id) => supplierQuoteIds.includes(id));
+      if (quoteIds.length === 0) {
+        return { items: [], total: 0, page: filters.page, limit: filters.limit };
+      }
+    }
+
     if (quoteIds !== null) {
       where['id'] = quoteIds;
     }
@@ -102,7 +142,18 @@ export class SequelizeQuoteRepository implements IQuoteRepository {
       where: { id, doctorId } as WhereOptions,
       include: [{ model: QuoteItemModel, as: 'items' }],
     });
-    return row ? this.toDomain(row) : null;
+    if (!row) return null;
+
+    // Fetch the active (non-revoked) share link so the authenticated caller can
+    // build the "Copy link" button without needing a separate round-trip.
+    const link = await this.linkModel.findOne({
+      where: { quoteId: id } as WhereOptions,
+      order: [['createdAt', 'DESC']],
+      attributes: ['token', 'revokedAt'],
+    });
+    const shareToken = link && link.revokedAt === null ? link.token : null;
+
+    return this.toDomain(row, shareToken);
   }
 
   async findShareLinkByToken(token: string): Promise<QuoteShareLink | null> {
@@ -389,7 +440,8 @@ export class SequelizeQuoteRepository implements IQuoteRepository {
         include: [{ model: QuoteItemModel, as: 'items' }],
         transaction: t,
       });
-      return this.toDomain(updated!);
+      // The token was just created — inject it directly without a second DB round-trip.
+      return this.toDomain(updated!, params.shareLink.token);
     });
   }
 
@@ -446,7 +498,14 @@ export class SequelizeQuoteRepository implements IQuoteRepository {
     }));
   }
 
-  private toDomain(row: QuoteModel): Quote {
+  /**
+   * Maps a QuoteModel row to a domain Quote.
+   *
+   * @param shareToken  Active (non-revoked) share link token. Pass null for draft
+   *                    quotes and for any path that must not expose the token
+   *                    (e.g. the public endpoint).
+   */
+  private toDomain(row: QuoteModel, shareToken: string | null = null): Quote {
     const itemRows = (row.items ?? []) as QuoteItemModel[];
     return Quote.create({
       id: row.id,
@@ -466,6 +525,7 @@ export class SequelizeQuoteRepository implements IQuoteRepository {
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
       items: itemRows.map((i) => this.itemToDomain(i)),
+      shareToken,
     });
   }
 

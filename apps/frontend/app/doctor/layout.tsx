@@ -36,6 +36,7 @@ import {
   FileUp,
   CalendarClock,
   Boxes,
+  FileText,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { logoutAction } from './logout-action';
@@ -101,6 +102,7 @@ const navSections: NavSection[] = [
       { name: 'Cobros', href: '/doctor/cobros', icon: Receipt, moduleKey: 'finances' },
       { name: 'Servicios', href: '/doctor/services', icon: Package, moduleKey: 'services' },
       { name: 'Inventario', href: '/doctor/inventory', icon: Boxes, moduleKey: 'inventory' },
+      { name: 'Cotizaciones', href: '/doctor/quotes', icon: FileText, moduleKey: 'quotes' },
     ],
   },
   {
@@ -109,6 +111,7 @@ const navSections: NavSection[] = [
     icon: Megaphone,
     items: [
       { name: 'Recordatorios', href: '/doctor/reminders', icon: Bell, moduleKey: 'reminders' },
+      { name: 'CRM', href: '/doctor/crm', icon: Users, moduleKey: 'crm' },
     ],
   },
 ];
@@ -136,6 +139,7 @@ const PLAN_GATED_ROUTES: ReadonlyArray<{ prefix: string; moduleKey: string }> = 
   { prefix: '/doctor/patients', moduleKey: 'patients' },
   { prefix: '/doctor/consultations', moduleKey: 'consultations' },
   { prefix: '/doctor/inventory', moduleKey: 'inventory' },
+  { prefix: '/doctor/quotes', moduleKey: 'quotes' },
 ];
 
 /** Resuelve la feature key de plan que gatea una ruta del doctor, o null si es libre. */

@@ -66,6 +66,7 @@ export const PLAN_GATED_MODULES: readonly string[] = [
   'messages',
   'invitations',
   'inventory',
+  'quotes',
 ];
 
 /**

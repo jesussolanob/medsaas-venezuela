@@ -147,6 +147,12 @@ export const ListQuotesQuerySchema = z
     status: QuoteStatusSchema.optional(),
     patient_name: z.string().max(200).optional(),
     product_name: z.string().max(200).optional(),
+    /**
+     * Free-text filter on the supplier field of the linked product.
+     * Only finds quotes whose items still reference an active product with a
+     * matching supplier — see QuoteListFilters.supplier for the caveat.
+     */
+    supplier: z.string().max(200).optional(),
     page: z
       .string()
       .optional()

@@ -34,6 +34,13 @@ export interface QuoteCreateParams {
   createdAt: Date;
   updatedAt: Date;
   items?: QuoteItem[];
+  /**
+   * Active (non-revoked) share link token for this quote.
+   * Null when the quote is a draft or the link has been revoked.
+   * Only populated on doctor-authenticated fetch paths (GET /:id, POST /:id/send).
+   * Never included in the public endpoint response.
+   */
+  shareToken?: string | null;
 }
 
 export class Quote {
@@ -54,6 +61,8 @@ export class Quote {
   readonly createdAt: Date;
   readonly updatedAt: Date;
   readonly items: QuoteItem[];
+  /** Active share token — null for drafts or revoked links. Doctor-side only. */
+  readonly shareToken: string | null;
 
   constructor(params: QuoteCreateParams) {
     this.id = params.id;
@@ -73,6 +82,7 @@ export class Quote {
     this.createdAt = params.createdAt;
     this.updatedAt = params.updatedAt;
     this.items = params.items ?? [];
+    this.shareToken = params.shareToken ?? null;
   }
 
   /** Anti-IDOR: returns false for foreign doctor IDs. */

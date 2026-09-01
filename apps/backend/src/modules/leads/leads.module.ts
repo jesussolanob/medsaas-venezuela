@@ -37,5 +37,6 @@ import { LeadsController } from './presentation/controllers/leads.controller';
     UpdateLeadStageUseCase,
     DeleteLeadUseCase,
   ],
+  exports: [LEAD_REPOSITORY],
 })
 export class LeadsModule {}

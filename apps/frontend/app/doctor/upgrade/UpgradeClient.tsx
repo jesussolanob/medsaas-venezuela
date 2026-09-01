@@ -97,6 +97,7 @@ const FEATURE_LABELS: Record<string, string> = {
   ai_transcription: 'Transcripción IA',
   ai_reports: 'Reportes IA',
   inventory: 'Inventario',
+  quotes: 'Cotizaciones',
 };
 
 const WHATSAPP_NUMBER = '584221033582'; // WhatsApp de soporte Delta Salud (+58 422 103 3582)

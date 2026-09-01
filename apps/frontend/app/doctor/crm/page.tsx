@@ -31,6 +31,8 @@ interface Lead {
   id: string;
   doctor_id: string;
   name: string;
+  last_name?: string;
+  email?: string;
   phone: string;
   channel: LeadChannel;
   stage: LeadStage;
@@ -77,65 +79,6 @@ const CHANNEL_LABELS: Record<LeadChannel, string> = {
   referido: 'Referido',
 };
 
-const SEED_LEADS = [
-  {
-    name: 'María Fernández',
-    phone: '+58 412 123 4567',
-    channel: 'whatsapp' as LeadChannel,
-    stage: 'new' as LeadStage,
-    message: 'Hola, quisiera agendar consulta',
-  },
-  {
-    name: 'Carlos Torres',
-    phone: '+58 414 234 5678',
-    channel: 'instagram' as LeadChannel,
-    stage: 'contacted' as LeadStage,
-    message: 'Vi tu perfil, precios?',
-  },
-  {
-    name: 'Ana Morales',
-    phone: '+58 424 345 6789',
-    channel: 'facebook' as LeadChannel,
-    stage: 'qualified' as LeadStage,
-    message: 'Puedo ir mañana?',
-  },
-  {
-    name: 'Pedro Silva',
-    phone: '+58 416 456 7890',
-    channel: 'web' as LeadChannel,
-    stage: 'appointment' as LeadStage,
-    message: 'Formulario enviado desde web',
-  },
-  {
-    name: 'Sofía Ramos',
-    phone: '+58 412 567 8901',
-    channel: 'whatsapp' as LeadChannel,
-    stage: 'new' as LeadStage,
-    message: 'Primera consulta disponible?',
-  },
-  {
-    name: 'Diego Castro',
-    phone: '+58 414 678 9012',
-    channel: 'referido' as LeadChannel,
-    stage: 'contacted' as LeadStage,
-    message: 'Me recomendó Juan',
-  },
-  {
-    name: 'Luisa Medina',
-    phone: '+58 424 789 0123',
-    channel: 'llamada' as LeadChannel,
-    stage: 'qualified' as LeadStage,
-    message: 'Llamó pidiendo info',
-  },
-  {
-    name: 'Roberto Díaz',
-    phone: '+58 416 890 1234',
-    channel: 'whatsapp' as LeadChannel,
-    stage: 'converted' as LeadStage,
-    message: 'Ya agendé, gracias!',
-  },
-];
-
 export default function CRMPage() {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [messages, setMessages] = useState<Record<string, Message[]>>({});
@@ -145,6 +88,8 @@ export default function CRMPage() {
   const [showNewLeadModal, setShowNewLeadModal] = useState(false);
   const [newLeadData, setNewLeadData] = useState({
     name: '',
+    last_name: '',
+    email: '',
     phone: '',
     channel: 'whatsapp' as LeadChannel,
     message: '',
@@ -162,24 +107,7 @@ export default function CRMPage() {
 
       try {
         const existing = await getLeads();
-
-        if (existing.length > 0) {
-          setLeads(existing as Lead[]);
-        } else {
-          // Seed demo leads on first load (preserves legacy behavior).
-          const created = await Promise.all(
-            SEED_LEADS.map((lead) =>
-              createLead({
-                name: lead.name,
-                phone: lead.phone,
-                channel: lead.channel,
-                message: lead.message,
-                stage: lead.stage,
-              }),
-            ),
-          );
-          setLeads(created.filter((l): l is NonNullable<typeof l> => l !== null) as Lead[]);
-        }
+        setLeads(existing as Lead[]);
       } catch (e) {
         reportError('doctor/crm', 'loadLeads', e);
       }
@@ -249,6 +177,8 @@ export default function CRMPage() {
     try {
       const data = await createLead({
         name: newLeadData.name,
+        last_name: newLeadData.last_name || undefined,
+        email: newLeadData.email || undefined,
         phone: newLeadData.phone,
         channel: newLeadData.channel,
         message: newLeadData.message,
@@ -264,7 +194,14 @@ export default function CRMPage() {
       showToast({ type: 'error', message: 'Error al agregar el contacto' });
     }
 
-    setNewLeadData({ name: '', phone: '', channel: 'whatsapp', message: '' });
+    setNewLeadData({
+      name: '',
+      last_name: '',
+      email: '',
+      phone: '',
+      channel: 'whatsapp',
+      message: '',
+    });
     setShowNewLeadModal(false);
   };
 
@@ -482,15 +419,41 @@ export default function CRMPage() {
               </button>
             </div>
             <form onSubmit={handleAddLead} className="p-6 space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1.5">Nombre</label>
+                  <input
+                    type="text"
+                    value={newLeadData.name}
+                    onChange={(e) => setNewLeadData((p) => ({ ...p, name: e.target.value }))}
+                    placeholder="María"
+                    className="input-field"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                    Apellido
+                  </label>
+                  <input
+                    type="text"
+                    value={newLeadData.last_name}
+                    onChange={(e) => setNewLeadData((p) => ({ ...p, last_name: e.target.value }))}
+                    placeholder="Pérez"
+                    className="input-field"
+                  />
+                </div>
+              </div>
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1.5">Nombre</label>
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                  Correo electrónico
+                </label>
                 <input
-                  type="text"
-                  value={newLeadData.name}
-                  onChange={(e) => setNewLeadData((p) => ({ ...p, name: e.target.value }))}
-                  placeholder="María Pérez"
+                  type="email"
+                  value={newLeadData.email}
+                  onChange={(e) => setNewLeadData((p) => ({ ...p, email: e.target.value }))}
+                  placeholder="correo@ejemplo.com"
                   className="input-field"
-                  required
                 />
               </div>
               <div>
@@ -589,10 +552,20 @@ export default function CRMPage() {
 
             {/* Lead Info */}
             <div className="px-4 py-3 border-b border-slate-200 space-y-2 text-sm">
-              <div className="flex justify-between">
-                <span className="text-slate-600">Teléfono</span>
-                <span className="font-medium text-slate-900">{selectedLead.phone}</span>
-              </div>
+              {selectedLead.phone && (
+                <div className="flex justify-between">
+                  <span className="text-slate-600">Teléfono</span>
+                  <span className="font-medium text-slate-900">{selectedLead.phone}</span>
+                </div>
+              )}
+              {selectedLead.email && (
+                <div className="flex justify-between gap-4">
+                  <span className="text-slate-600 shrink-0">Correo</span>
+                  <span className="font-medium text-slate-900 truncate text-right">
+                    {selectedLead.email}
+                  </span>
+                </div>
+              )}
               <div className="flex justify-between">
                 <span className="text-slate-600">Etapa</span>
                 <span className="font-medium text-slate-900">

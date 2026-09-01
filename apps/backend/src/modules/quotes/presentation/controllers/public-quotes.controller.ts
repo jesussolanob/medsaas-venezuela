@@ -35,6 +35,12 @@ interface PublicQuoteResponse {
     doctor: PublicDoctorProfile;
     /** PDF template config (null when doctor has no template configured). */
     templateConfig: PublicTemplateConfig | null;
+    /**
+     * Full name of the recipient for the PDF "Destinatario" section.
+     * Decrypted patient name or lead name. Null only when neither record is found.
+     * Cédula, phone, email and clinical data are never included.
+     */
+    recipient_name: string | null;
   };
 }
 
@@ -70,7 +76,7 @@ export class PublicQuotesController {
   @Get(':token')
   async show(@Param('token') token: string): Promise<PublicQuoteResponse> {
     const result: PublicQuoteRenderData = await this.getPublicQuote.execute(token);
-    const { quote, doctor, templateConfig } = result;
+    const { quote, doctor, templateConfig, recipientName } = result;
 
     const items: PublicQuoteItemResponse[] = quote.items
       .slice()
@@ -101,6 +107,7 @@ export class PublicQuotesController {
         items,
         doctor,
         templateConfig,
+        recipient_name: recipientName,
       },
     };
   }

@@ -15,6 +15,14 @@ import {
 } from '../../../doctor-templates/domain/repositories/doctor-template.repository';
 import { STORAGE_PORT, type IStoragePort } from '../../../storage/application/ports/storage.port';
 import { resignGcsImageUrl } from '../../../storage/application/helpers/resign-gcs-image.helper';
+import {
+  PATIENT_REPOSITORY,
+  type IPatientRepository,
+} from '../../../patients/domain/repositories/patient.repository';
+import {
+  LEAD_REPOSITORY,
+  type ILeadRepository,
+} from '../../../leads/domain/repositories/lead.repository';
 
 /** Doctor branding block returned to the public render page. */
 export interface PublicDoctorProfile {
@@ -53,6 +61,17 @@ export interface PublicQuoteRenderData {
    * The frontend should render with defaults when this is null.
    */
   templateConfig: PublicTemplateConfig | null;
+  /**
+   * Full name of the quote recipient for the PDF "Destinatario" section.
+   * Resolved from the decrypted patient name (patient quote) or lead name
+   * (prospect quote). Null only if neither patient nor lead record is found.
+   *
+   * SECURITY NOTE: this is the only PII field allowed on the public endpoint.
+   * The share link is sent to this person's email — the document without their
+   * name is not a usable quote. Cédula, phone, email and clinical data are
+   * never included.
+   */
+  recipientName: string | null;
 }
 
 /**
@@ -86,6 +105,10 @@ export class GetPublicQuoteUseCase {
     private readonly doctorTemplateRepo: IDoctorTemplateRepository,
     @Inject(STORAGE_PORT)
     private readonly storage: IStoragePort,
+    @Inject(PATIENT_REPOSITORY)
+    private readonly patientRepo: IPatientRepository,
+    @Inject(LEAD_REPOSITORY)
+    private readonly leadRepo: ILeadRepository,
   ) {}
 
   async execute(token: string): Promise<PublicQuoteRenderData> {
@@ -98,12 +121,13 @@ export class GetPublicQuoteUseCase {
       throw new QuoteLinkExpiredError();
     }
 
-    // 3. Fetch doctor profile and template in parallel (doctorId from the link)
+    // 3. Fetch doctor profile, template, and recipient in parallel.
     //    Quote PDFs share the 'informe' template (letterhead, colors, logo, signature).
     //    A dedicated 'cotizacion' type does not exist in the template system.
-    const [doctorProfile, template] = await Promise.all([
+    const [doctorProfile, template, recipientName] = await Promise.all([
       this.doctorProfileRepo.findByDoctorId(quote.doctorId),
       this.doctorTemplateRepo.findByDoctorAndType(quote.doctorId, 'informe'),
+      this.resolveRecipientName(quote),
     ]);
 
     // 4. Re-sign GCS image URLs so they don't arrive expired
@@ -138,12 +162,38 @@ export class GetPublicQuoteUseCase {
         }
       : null;
 
-    return { quote, doctor, templateConfig };
+    return { quote, doctor, templateConfig, recipientName };
   }
 
   // ---------------------------------------------------------------------------
   // Private helpers
   // ---------------------------------------------------------------------------
+
+  /**
+   * Resolves the display name of the quote recipient.
+   *
+   * For patient quotes: returns the decrypted fullName from IPatientRepository.
+   * For lead quotes: returns "<name> <lastName>" (lastName omitted when absent).
+   *
+   * Logs + returns null on error so a missing name does not break the render.
+   */
+  private async resolveRecipientName(quote: Quote): Promise<string | null> {
+    try {
+      if (quote.patientId !== null) {
+        const patient = await this.patientRepo.findById(quote.patientId, quote.doctorId);
+        return patient?.fullName ?? null;
+      }
+      if (quote.leadId !== null) {
+        const lead = await this.leadRepo.findByIdForDoctor(quote.leadId, quote.doctorId);
+        if (!lead) return null;
+        return [lead.name, lead.lastName].filter(Boolean).join(' ') || null;
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger.warn(`[public-quote] failed to resolve recipient name: ${message}`);
+    }
+    return null;
+  }
 
   /**
    * Re-signs a GCS logo/signature path to a fresh URL.

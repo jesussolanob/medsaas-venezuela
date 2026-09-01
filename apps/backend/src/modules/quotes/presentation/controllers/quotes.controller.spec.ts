@@ -1,4 +1,5 @@
 import { QuotesController } from './quotes.controller';
+import type { ConfigService } from '@nestjs/config';
 import type { ListQuotesUseCase } from '../../application/use-cases/list-quotes.use-case';
 import type { GetQuoteUseCase } from '../../application/use-cases/get-quote.use-case';
 import type { CreateQuoteUseCase } from '../../application/use-cases/create-quote.use-case';
@@ -17,6 +18,8 @@ import type {
   ListQuotesQuery,
 } from '@delta/shared-types';
 
+const APP_BASE_URL = 'https://app.test';
+const SHARE_TOKEN = 'sharetoken0000000000000000000001';
 const DOCTOR_ID = 'dddddddd-0000-0000-0000-000000000001';
 const QUOTE_ID = 'qqqqqqqq-0000-0000-0000-000000000001';
 const PATIENT_ID = 'pppppppp-0000-0000-0000-000000000001';
@@ -68,6 +71,13 @@ function makeController(): {
   const sendUC = { execute: jest.fn() } as unknown as jest.Mocked<SendQuoteUseCase>;
   const statusUC = { execute: jest.fn() } as unknown as jest.Mocked<UpdateQuoteStatusUseCase>;
 
+  // The controller reads APP_BASE_URL (falling back to FRONTEND_URL) to build
+  // share_url. A stub returning undefined would still pass every assertion below
+  // while silently producing a link with no origin, so it resolves a real value.
+  const config = {
+    get: jest.fn((key: string) => (key === 'APP_BASE_URL' ? APP_BASE_URL : undefined)),
+  } as unknown as jest.Mocked<ConfigService>;
+
   const controller = new QuotesController(
     listUC,
     getUC,
@@ -76,6 +86,7 @@ function makeController(): {
     deleteUC,
     sendUC,
     statusUC,
+    config,
   );
 
   return { controller, listUC, getUC, createUC, updateUC, deleteUC, sendUC, statusUC };
@@ -150,6 +161,30 @@ describe('QuotesController', () => {
       expect(getUC.execute).toHaveBeenCalledWith(QUOTE_ID, DOCTOR_ID);
       expect(result.success).toBe(true);
       expect(result.data.quoteNumber).toBe('COT-0001');
+    });
+
+    it('builds share_url from the base URL when the quote has a share token', async () => {
+      const { controller, getUC } = makeController();
+      getUC.execute.mockResolvedValue(
+        Quote.create({ ...makeQuote('sent'), shareToken: SHARE_TOKEN }),
+      );
+
+      const result = await controller.show(QUOTE_ID, makeUser());
+
+      expect(result.data.share_token).toBe(SHARE_TOKEN);
+      expect(result.data.share_url).toBe(`${APP_BASE_URL}/quotes/${SHARE_TOKEN}`);
+    });
+
+    it('leaves share_url null for a draft with no share token', async () => {
+      // The frontend hides the "Copy link" button on null; returning a
+      // token-less URL here would surface a link that 404s.
+      const { controller, getUC } = makeController();
+      getUC.execute.mockResolvedValue(makeQuote());
+
+      const result = await controller.show(QUOTE_ID, makeUser());
+
+      expect(result.data.share_token).toBeNull();
+      expect(result.data.share_url).toBeNull();
     });
   });
 

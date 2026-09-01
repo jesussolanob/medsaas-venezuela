@@ -24,6 +24,8 @@ export interface LeadRow {
   id: string;
   doctor_id: string;
   name: string;
+  last_name?: string;
+  email?: string;
   phone: string;
   channel: LeadChannel;
   stage: LeadStage;
@@ -36,6 +38,8 @@ interface BackendLead {
   id: string;
   doctor_id: string;
   name: string;
+  last_name?: string | null;
+  email?: string | null;
   phone: string | null;
   channel: string | null;
   stage: LeadStage;
@@ -50,6 +54,8 @@ function toLeadRow(l: BackendLead): LeadRow {
     id: l.id,
     doctor_id: l.doctor_id,
     name: l.name,
+    last_name: l.last_name ?? undefined,
+    email: l.email ?? undefined,
     phone: l.phone ?? '',
     channel: (l.channel ?? 'web') as LeadChannel,
     stage: l.stage,
@@ -69,6 +75,8 @@ export async function getLeads(): Promise<LeadRow[]> {
 /** Create a new lead. Returns the created row, or null on failure. */
 export async function createLead(input: {
   name: string;
+  last_name?: string;
+  email?: string;
   phone: string;
   channel: LeadChannel;
   message: string;
@@ -76,6 +84,8 @@ export async function createLead(input: {
 }): Promise<LeadRow | null> {
   const result = await backendPost<BackendLead>('/api/doctor/leads', {
     name: input.name,
+    ...(input.last_name ? { last_name: input.last_name } : {}),
+    ...(input.email ? { email: input.email } : {}),
     phone: input.phone,
     channel: input.channel,
     stage: input.stage ?? 'new',

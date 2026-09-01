@@ -14,6 +14,19 @@ export interface QuoteListFilters {
   /** Free-text filter on item name or description (SQL ILIKE on quote_items.name). */
   productName?: string;
   /**
+   * Free-text filter on the supplier field of the referenced product catalog entry.
+   *
+   * Implementation note — snapshot limitation:
+   *   The supplier is NOT part of the quote item snapshot. This filter resolves
+   *   suppliers by joining quote_items (kind='product') → products via source_id.
+   *   Consequence: if a product is deactivated or its supplier field is changed
+   *   after the quote is created, the quote will either not appear under the
+   *   original supplier or will appear under the new one. This is a known
+   *   trade-off accepted by design (snapshotting supplier was not requested).
+   *   All other filters (status, product_name, patient) operate on frozen data.
+   */
+  supplier?: string;
+  /**
    * Pre-resolved patient IDs for the patient name filter.
    *
    * Patient names are AES-256-GCM encrypted — no SQL LIKE is possible.

@@ -397,8 +397,12 @@ export async function GET(
   ]);
   const tmplWithImages: TemplateConfigPdf = {
     ...tmpl,
-    logo_url: logoDataUri ?? tmpl.logo_url,
-    signature_url: signatureDataUri ?? tmpl.signature_url,
+    // No fallback to the raw URL on purpose — see the quotes PDF route for the
+    // full rationale: imageUrlToDataUri guards timeout, Content-Type and size,
+    // and handing the raw URL to @react-pdf re-fetches it server-side with none
+    // of those guards. A missing logo beats a server-side request we don't control.
+    logo_url: logoDataUri ?? null,
+    signature_url: signatureDataUri ?? null,
   };
 
   // 6. Render PDF server-side

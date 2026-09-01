@@ -31,6 +31,7 @@ import { DoctorSettingsModule } from '../doctor-settings/doctor-settings.module'
 import { DoctorTemplatesModule } from '../doctor-templates/doctor-templates.module';
 import { StorageModule } from '../storage/storage.module';
 import { PatientsModule } from '../patients/patients.module';
+import { LeadsModule } from '../leads/leads.module';
 
 /**
  * QuotesModule — presupuestos/cotizaciones for specialists.
@@ -45,7 +46,8 @@ import { PatientsModule } from '../patients/patients.module';
  *   - DoctorSettingsModule  → DOCTOR_PROFILE_REPOSITORY (branding for public view + doctor name in email)
  *   - DoctorTemplatesModule → DOCTOR_TEMPLATE_REPOSITORY (template config for PDF)
  *   - StorageModule      → STORAGE_PORT (re-sign GCS URLs for logo / signature)
- *   - PatientsModule     → PATIENT_REPOSITORY (patient name → IDs for encrypted name filter)
+ *   - PatientsModule     → PATIENT_REPOSITORY (patient name → IDs for encrypted name filter + recipient name on public view)
+ *   - LeadsModule        → LEAD_REPOSITORY (lead name on public quote view)
  *
  * IMPORTANT: Sequelize is NOT in providers[] — already registered globally by
  * SequelizeModule.forRootAsync in AppModule. Adding it here causes a boot crash.
@@ -59,6 +61,7 @@ import { PatientsModule } from '../patients/patients.module';
     DoctorTemplatesModule,
     StorageModule,
     PatientsModule,
+    LeadsModule,
   ],
   controllers: [QuotesController, PublicQuotesController],
   providers: [

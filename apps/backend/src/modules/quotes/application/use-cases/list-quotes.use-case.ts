@@ -50,6 +50,7 @@ export class ListQuotesUseCase {
       doctorId,
       status: query.status,
       productName: query.product_name,
+      supplier: query.supplier,
       patientIds,
       page: query.page,
       limit: query.limit,
