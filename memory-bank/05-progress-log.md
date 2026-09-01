@@ -4,6 +4,78 @@
 > ⚠️ Orden: **la entrada más nueva va ARRIBA**. La del 2026-08-11 quedó al final
 > del archivo por error; no se movió para no ensuciar el diff.
 
+## 2026-08-31 — QA en navegador: la IA de producción, el reagendado y cinco textos que mentían
+
+> Todo **desplegado y verde en staging** (`98aba792`), esperando el QA del dueño. Nada en `main`.
+
+**Punto de partida:** dos capturas del dueño desde producción (errores de IA y un mensaje de
+reagenda poco claro) y una prueba pendiente del modal de asignación de vendedor.
+
+### La IA de producción — dos causas independientes
+
+Los logs de Cloud Run dieron las dos, y ninguna era la que se suponía:
+
+1. **Gemini devuelve 503 cuando el modelo está saturado.** El adaptador solo caía al modelo de
+   respaldo con 429, así que el 503 lanzaba en el acto sin reintentar. El modelo alternativo
+   habría respondido. Solo **dos ocurrencias en 14 días**, las dos en la sesión del dueño: fue
+   una ráfaga, no un problema crónico.
+2. **`AiTextProviderError` declaraba `httpStatus = 502`.** Cloudflare **descarta el cuerpo de los
+   502/504 del origen** y sirve su propia página HTML (el pass-thru viene apagado fuera de
+   Enterprise). El navegador recibía HTML, `res.json()` reventaba y salía el catch genérico —
+   por eso el mensaje en español que sí existía nunca se vio. Se pasó a **503**, igual en
+   `TranscriptionProviderError`. Ver ADR pendiente / memoria `cloudflare-se-come-el-502`.
+
+### Mensajes de error del módulo de citas
+
+La captura mostraba **"No se puede pasar la cita de 'completed' a 'no_show'"** (claves internas en
+inglés dentro de un texto español). Al revisar los diez errores del módulo aparecieron dos más:
+
+- `AppointmentNotReschedulableError`: **entero en inglés**.
+- `AppointmentDuplicateError`: inglés, marca UTC con milisegundos y **el UUID del paciente
+  expuesto en el navegador**.
+
+Se extrajo la taxonomía de estados y el formato de fecha a `domain/appointment-status-names.ts` y
+se agregó `appointment-errors.spec.ts`, que **no existía** — por eso dos mensajes pudieron quedarse
+en inglés meses sin que nada se pusiera rojo.
+
+### Cinco textos escritos a mano que afirmaban lo que el sistema no cumple
+
+| Dónde                          | Decía                                                 | Realidad                       |
+| ------------------------------ | ----------------------------------------------------- | ------------------------------ |
+| Drawer del admin               | "Plan profesional · Acceso completo" fijo             | la tabla mostraba `free_trial` |
+| Barra lateral del especialista | "Delta Free · Acceso completo"                        | 10 módulos bloqueados          |
+| Inicio del especialista        | "Plan activo · Acceso completo"                       | ni nombraba el plan            |
+| Modal de cobro del vendedor    | "no se le puede transferir"                           | el pago nunca mira esos datos  |
+| Correo de verificación         | botón a `deltamedical.app/admin/doctor-verifications` | dominio y ruta inexistentes    |
+
+El correo llevaba **desde junio** con el botón muerto; ahora la URL es `{{panelUrl}}`, que arma el
+use case desde `APP_BASE_URL`, así que además apunta al entorno que envió el correo (staging
+enlazaba a producción). Migración `20260901000001`.
+
+⚠️ **El primer arreglo del badge no funcionó y solo se vio al desplegarlo:** conté los `false` de
+`planFeatures.features` y da cero siempre — un módulo no habilitado puede venir con `enabled: false`
+**o directamente no venir**. Hay que contar con `planUnlocks` contra `PLAN_GATED_MODULES`.
+
+De paso: los nombres de plan estaban copiados en **cuatro** archivos y ya se habían separado (a la
+copia de la barra lateral le faltaba `free_trial`). Fuente única en `lib/plan-features.ts`.
+
+### Verificado en navegador contra staging
+
+- Modal de asignación de vendedor: abre con **"Vendedor actual: Lucas Rivas"** (el endpoint nuevo
+  lee la asignación real), el botón de confirmar arranca deshabilitado, y **cancelar no dispara
+  ninguna mutación** — solo GETs en la red.
+- Mensaje de reagenda: ahora dice _"Esta cita ya quedó atendida y no se puede volver a cambiar…"_.
+- IA: `POST /api/doctor/ai` responde **200 con JSON** y texto real.
+- Badges de plan: _"Delta Free · 10 módulos bloqueados"_ en las dos superficies.
+- Plantilla del correo: `deltamedical.app` ya no aparece; quedó `href="{{panelUrl}}"`.
+
+**Sin verificar todavía:** el saludo "Dr." para especialistas de psicología (requiere entrar como
+`lucas.rivas.55@gmail.com`) y el reintento del 503 con Gemini realmente saturado, que no se puede
+forzar a voluntad.
+
+**Suite:** 427 suites / 4067 tests, build del backend, `tsc` del frontend. El lint del frontend
+quedó igual que antes (4 errores preexistentes en los archivos tocados, comprobado con `git stash`).
+
 ## 2026-08-27 — 🚀 PROMOCIÓN A PRODUCCIÓN: 290 commits y ocho lotes de QA
 
 > **El atraso se cerró.** Desde el 2026-07-31 (`eac4a1c`) no se promovía nada: `main` quedó
