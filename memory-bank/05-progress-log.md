@@ -4,6 +4,63 @@
 > ⚠️ Orden: **la entrada más nueva va ARRIBA**. La del 2026-08-11 quedó al final
 > del archivo por error; no se movió para no ensuciar el diff.
 
+## 2026-09-01 — Módulo Inventario (backend + frontend) · rama `feature/inventario`
+
+> Commits `cd38c246` (backend), `9b4d2516` (specs), `74af359b` (frontend), `b50c857c` (fix).
+> Nada mergeado a `develop` todavía. Specs en `docs/specs/`.
+
+Arranque de un lote de tres pedidos del dueño: **inventario**, **cotizaciones** y **Chatwoot para
+vendedores**. Inventario primero porque las cotizaciones incluyen productos.
+
+### Trece defectos que la suite verde no vio
+
+El agente entregó con build y 4106 tests en verde. Verificando en disco aparecieron **trece**
+defectos. Los que más enseñan:
+
+| #   | Defecto                                                                                               | Por qué importaba                                                                                                                                                          |
+| --- | ----------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | La migración insertaba en `plan_features.plan_key`; la columna se llama `plan`                        | **Bloqueaba TODOS los despliegues** del proyecto: el deploy corre migraciones antes del build. Ningún test lo ve porque los tests no tocan Postgres                        |
+| 2   | `photo_path` era texto libre del cliente y se firmaba sin validar                                     | Un especialista podía guardar la ruta de un **documento clínico de otro** y recibir una URL firmada válida por una hora. Exfiltración de PHI, no un problema de inventario |
+| 3   | Los 6 tests obligatorios corrían contra un use case **que no llamaba nadie**                          | La lógica real vivía inline en el repositorio, sin cobertura. Verde total sobre código muerto                                                                              |
+| 4   | Producto ajeno → cobraba **cero** en silencio; producto en VES sin tasa → se cobraba **como dólares** | 1.500 Bs pasaban a ser US$ 1.500                                                                                                                                           |
+| 5   | Dos aprobaciones simultáneas de la misma consulta descontaban el stock **dos veces**                  | Leía los movimientos previos **antes** del candado. Un doble clic alcanzaba                                                                                                |
+| 6   | El "Total a cobrar" no sumaba los productos                                                           | Base 50 + producto 30 + servicio 20: la pantalla decía **$70** y el cobro quedaba en **$120**                                                                              |
+| 7   | Al reaprobar, el stock se **inflaba solo**                                                            | Los extras volvían como texto sin `product_id`: el backend revertía el descuento y no lo volvía a aplicar. La plata bien, el inventario mal, sin un error                  |
+
+**El 3 y el 7 son la misma familia** que ya tiene su memoria en este repo: código correcto y
+desconectado. El 7 es el espejo del 5 — uno descuenta de más, el otro de menos.
+
+### Falsos positivos descartados (el lead juzga, no acata)
+
+- _"Redondear cada suma parcial de montos"_: al revés. Redondear parciales **introduce** sesgo;
+  sumar y redondear una vez al final es lo correcto. Sí se aceptó el doble redondeo en VES.
+- _"Se puede colar un precio en la línea de producto"_ y _"`limit` sin cota"_: los dos esquemas son
+  `.strict()` y `limit` ya está acotado a 100. No explotables.
+- _"Falta gating de plan en el backend"_: cierto, pero **ningún módulo lo tiene**. No se hace una
+  excepción suelta; queda como deuda del sistema.
+- Un revisor **elogió como correcta la línea que rompía la migración**. Recordatorio de por qué no
+  se firma nada sobre el reporte de un agente.
+
+### Verificación
+
+Backend: build 0 · **438 suites / 4113 tests** exit 0 · lint acotado 0 (⚠️ `nx lint backend`
+completo se queda sin memoria). Frontend: `tsc` 0 · lint **igual a la línea base** (6 problemas
+preexistentes en los modificados, 0 en los nuevos), medido con `git stash` porque el absoluto no
+dice nada con 122 errores previos en `develop`.
+
+### 🔴 Lo que NO está probado
+
+- **La migración no corrió contra ningún Postgres.** Los tests usan Sequelize simulado: verifican
+  qué SQL se emite, no que Postgres lo acepte. El defecto que bloqueaba despliegues se encontró
+  **leyendo**, no ejecutando.
+- **No se abrió en un navegador.** En este repo esa distinción ya costó caro.
+- El gating "solo Plus" vive solo en el frontend (deuda del sistema, ver `02-components.md`).
+
+### Pendiente del lote
+
+Cotizaciones (spec listo, sin empezar) y Chatwoot (runbook listo; depende de que el dueño confirme
+con Meta si la Cloud API acepta un número venezolano, y de acceso a `gcloud`).
+
 ## 2026-09-01 — Cierre del lote: guion de QA, dos módulos inalcanzables y el precio tachado
 
 > Todo en **staging** (`4aa3112e`). **39 commits** desde `5faac77d`, **5 migraciones**, nada en `main`.

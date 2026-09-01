@@ -9,6 +9,9 @@ import type { BlockDefinition } from '../../../domain/entities/consultation.enti
 import { ConsultationExtraItem } from '../../../domain/entities/consultation-extra-item.entity';
 import { ConsultationNotFoundError } from '../../../domain/errors/consultation-not-found.error';
 import { ConsultationCodeConflictError } from '../../../domain/errors/consultation-code-conflict.error';
+import { MissingExchangeRateError } from '../../../domain/errors/missing-exchange-rate.error';
+import { ProductNotFoundError } from '../../../../inventory/domain/errors/product-not-found.error';
+import { InvalidQuantityError } from '../../../../inventory/domain/errors/invalid-quantity.error';
 import { DecryptionError } from '../../../domain/errors/decryption.error';
 import type {
   IConsultationRepository,
@@ -71,6 +74,9 @@ interface ExtraItemRow {
   description: string;
   amount_usd: string;
   created_at: string;
+  product_id: string | null;
+  quantity: string;
+  unit_price_usd: string | null;
 }
 
 /**
@@ -647,10 +653,26 @@ export class SequelizeConsultationRepository implements IConsultationRepository 
   async approveWithExtras(
     id: string,
     doctorId: string,
-    extras: Array<{ description: string; amountUsd: number }>,
+    extras: Array<{
+      description: string;
+      amountUsd: number;
+      productId?: string | null;
+      quantity?: number | null;
+    }>,
     paymentMethod?: string | null,
   ): Promise<Consultation> {
     return this.sequelize.transaction(async (t) => {
+      // H — Serialize concurrent approvals of the same consultation.
+      // Taking the row lock FIRST prevents two simultaneous first-approvals from
+      // both reading oldMovements=[] and both skipping the stock revert, which
+      // would produce a double decrement without a single error.
+      await this.sequelize.query(
+        `SELECT id FROM consultations
+           WHERE id = :id AND doctor_id = :doctorId
+           FOR UPDATE`,
+        { replacements: { id, doctorId }, type: QueryTypes.SELECT, transaction: t },
+      );
+
       // Step 1 — Resolve base amount inside the transaction for a consistent read.
       const baseRows = await this.sequelize.query<{
         base_amount: string | null;
@@ -683,23 +705,259 @@ export class SequelizeConsultationRepository implements IConsultationRepository 
         transaction: t,
       });
 
-      // Step 3 — Insert new extras.
+      // Step D validation: every extra that carries a productId MUST also carry
+      // a positive quantity. If only one of the pair is present, the inventory
+      // sync is silently skipped while the DB row gets quantity=1 by default —
+      // a phantom sale with no stock movement and no error.
+      for (const e of extras) {
+        if (e.productId && (!e.quantity || e.quantity <= 0)) {
+          throw new InvalidQuantityError();
+        }
+      }
+
+      // Step 2.5 — Inventory sync (revert previous sale movements for this consultation).
+      // This makes re-approval idempotent: reaprobar N veces deja el mismo stock
+      // que aprobar una sola vez. See §3 of the inventory spec.
+      const productExtras = extras.filter((e) => e.productId && e.quantity);
+
+      // Collect product IDs from new extras AND from old movements to lock them.
+      const oldMovementRows = await this.sequelize.query<{ product_id: string }>(
+        `SELECT DISTINCT product_id FROM inventory_movements
+          WHERE consultation_id = :id AND kind = 'sale' AND doctor_id = :doctorId`,
+        { replacements: { id, doctorId }, type: QueryTypes.SELECT, transaction: t },
+      );
+      const oldProductIds = oldMovementRows.map((r) => r.product_id);
+      const newProductIds = productExtras.map((e) => e.productId as string);
+      const allProductIds = [...new Set([...oldProductIds, ...newProductIds])];
+
+      if (allProductIds.length > 0) {
+        // Lock only THIS doctor's product rows. Adding doctor_id prevents a
+        // malicious or buggy client from triggering cross-tenant row locks on
+        // products owned by another specialist (availability DoS between tenants).
+        await this.sequelize.query(
+          `SELECT id FROM products
+            WHERE id = ANY(ARRAY[:productIds]::uuid[])
+              AND doctor_id = :doctorId
+            FOR UPDATE`,
+          {
+            replacements: { productIds: allProductIds, doctorId },
+            type: QueryTypes.SELECT,
+            transaction: t,
+          },
+        );
+      }
+
+      if (oldProductIds.length > 0) {
+        // Restore stock: add back the negated sale qty for each product.
+        // J: also filter outer UPDATE by doctor_id as defense-in-depth.
+        await this.sequelize.query(
+          `UPDATE products p
+             SET stock_qty  = stock_qty + rev.qty_to_restore,
+                 updated_at = NOW()
+             FROM (
+               SELECT product_id, SUM(qty) * -1 AS qty_to_restore
+                 FROM inventory_movements
+                WHERE consultation_id = :id
+                  AND doctor_id       = :doctorId
+                  AND kind            = 'sale'
+                GROUP BY product_id
+             ) rev
+           WHERE p.id = rev.product_id
+             AND p.doctor_id = :doctorId`,
+          { replacements: { id, doctorId }, type: QueryTypes.UPDATE, transaction: t },
+        );
+
+        // Delete old sale movements.
+        await this.sequelize.query(
+          `DELETE FROM inventory_movements
+            WHERE consultation_id = :id
+              AND doctor_id       = :doctorId
+              AND kind            = 'sale'`,
+          { replacements: { id, doctorId }, type: QueryTypes.DELETE, transaction: t },
+        );
+      }
+
+      // Step 2.6 — Resolve product prices for product extras (within the transaction).
+      // Queries products table + app_settings for the exchange rate (VES products).
+      // SECURITY: AND doctor_id = :doctorId prevents cross-doctor product access.
+      //
+      // L2: Uses a discriminated union (productId !== null) instead of _-prefixed
+      // shadow fields, eliminating all type casts and ??>0 fallbacks.
+
+      // Service extras pass through unchanged (they already have amountUsd from the client).
+      type ServiceEnriched = (typeof extras)[number] & { productId: null | undefined };
+      type ProductEnriched = {
+        description: string;
+        amountUsd: number;
+        productId: string;
+        quantity: number;
+        unitPriceUsd: number;
+        rateUsed: number | null;
+        rateSource: string | null;
+      };
+      type EnrichedExtra = ServiceEnriched | ProductEnriched;
+
+      const enrichedExtras: EnrichedExtra[] = await Promise.all(
+        extras.map(async (e): Promise<EnrichedExtra> => {
+          if (!e.productId || !e.quantity) {
+            return e as ServiceEnriched;
+          }
+
+          const productRows = await this.sequelize.query<{
+            name: string;
+            sale_price_amount: string;
+            sale_price_currency: string;
+          }>(
+            `SELECT name, sale_price_amount::text, sale_price_currency
+               FROM products
+              WHERE id = :productId AND doctor_id = :doctorId
+              LIMIT 1`,
+            {
+              replacements: { productId: e.productId, doctorId },
+              type: QueryTypes.SELECT,
+              transaction: t,
+            },
+          );
+
+          const product = productRows[0];
+          if (!product) {
+            // §8-5 (B1): product not found or owned by another doctor.
+            // Throws → transaction rollback. Same error prevents resource enumeration.
+            throw new ProductNotFoundError();
+          }
+
+          const priceAmount = parseFloat(product.sale_price_amount);
+
+          if (product.sale_price_currency === 'VES') {
+            const rateRows = await this.sequelize.query<{ key: string; value: string }>(
+              `SELECT key, value FROM app_settings
+                WHERE key IN ('usdt_rate', 'rate_source')`,
+              { type: QueryTypes.SELECT, transaction: t },
+            );
+            const rateRow = rateRows.find((r) => r.key === 'usdt_rate');
+            const sourceRow = rateRows.find((r) => r.key === 'rate_source');
+            const rate = rateRow ? parseFloat(rateRow.value) : null;
+            if (!rate || rate <= 0) {
+              // B2: VES price must never fall through to USD by omission.
+              // Bs. 1500 billed as US$ 1500 is a silent financial error.
+              throw new MissingExchangeRateError();
+            }
+            // L4: compute amount in one step, round once (avoids double-rounding).
+            const amountUsd = parseFloat(((e.quantity * priceAmount) / rate).toFixed(2));
+            const unitPriceUsd = parseFloat((priceAmount / rate).toFixed(2));
+            return {
+              description: product.name,
+              amountUsd,
+              productId: e.productId,
+              quantity: e.quantity,
+              unitPriceUsd,
+              rateUsed: rate,
+              rateSource: sourceRow?.value ?? 'manual',
+            };
+          }
+
+          // USD product: amount = quantity × price, no rate conversion.
+          const amountUsd = parseFloat((e.quantity * priceAmount).toFixed(2));
+          return {
+            description: product.name,
+            amountUsd,
+            productId: e.productId,
+            quantity: e.quantity,
+            unitPriceUsd: priceAmount,
+            rateUsed: null,
+            rateSource: null,
+          };
+        }),
+      );
+
+      // Step 3 — Insert new extras (with product fields for inventory lines).
       const now = new Date();
-      const extraRecords = extras.map((e) => ({
-        id: randomUUID(),
-        consultationId: id,
-        doctorId,
-        description: e.description.trim(),
-        amountUsd: e.amountUsd,
-        createdAt: now,
-      }));
+      const extraRecords = enrichedExtras.map((e) => {
+        const isProduct = e.productId != null;
+        return {
+          id: randomUUID(),
+          consultationId: id,
+          doctorId,
+          description: e.description.trim(),
+          amountUsd: e.amountUsd,
+          productId: e.productId ?? null,
+          quantity: isProduct ? (e as ProductEnriched).quantity : (e.quantity ?? 1),
+          unitPriceUsd: isProduct ? (e as ProductEnriched).unitPriceUsd : null,
+          createdAt: now,
+        };
+      });
 
       if (extraRecords.length > 0) {
         await this.extraItemModel.bulkCreate(extraRecords, { transaction: t });
       }
 
+      // Step 3.5 — Insert inventory_movements for product extras and decrement stock.
+      const productExtraEnriched = enrichedExtras.filter(
+        (e): e is ProductEnriched => e.productId != null,
+      );
+      if (productExtraEnriched.length > 0) {
+        const movementInserts = productExtraEnriched.map((e) => ({
+          id: randomUUID(),
+          doctor_id: doctorId,
+          product_id: e.productId,
+          kind: 'sale',
+          qty: -e.quantity, // negative: stock exits
+          unit_price_usd: e.unitPriceUsd,
+          rate_used: e.rateUsed,
+          rate_source: e.rateSource,
+          consultation_id: id,
+          note: null,
+          created_at: now,
+        }));
+
+        // Bulk insert movements.
+        const movementValues = movementInserts
+          .map(
+            (_, i) =>
+              `(:id_${i}, :doctor_id_${i}, :product_id_${i}, :kind_${i}, :qty_${i}, :unit_price_usd_${i}, :rate_used_${i}, :rate_source_${i}, :consultation_id_${i}, :note_${i}, :created_at_${i})`,
+          )
+          .join(', ');
+        const movementReplacements: Record<string, unknown> = {};
+        movementInserts.forEach((m, i) => {
+          movementReplacements[`id_${i}`] = m.id;
+          movementReplacements[`doctor_id_${i}`] = m.doctor_id;
+          movementReplacements[`product_id_${i}`] = m.product_id;
+          movementReplacements[`kind_${i}`] = m.kind;
+          movementReplacements[`qty_${i}`] = m.qty;
+          movementReplacements[`unit_price_usd_${i}`] = m.unit_price_usd;
+          movementReplacements[`rate_used_${i}`] = m.rate_used;
+          movementReplacements[`rate_source_${i}`] = m.rate_source;
+          movementReplacements[`consultation_id_${i}`] = m.consultation_id;
+          movementReplacements[`note_${i}`] = m.note;
+          movementReplacements[`created_at_${i}`] = m.created_at;
+        });
+
+        await this.sequelize.query(
+          `INSERT INTO inventory_movements
+             (id, doctor_id, product_id, kind, qty, unit_price_usd, rate_used, rate_source,
+              consultation_id, note, created_at)
+           VALUES ${movementValues}`,
+          { replacements: movementReplacements, type: QueryTypes.INSERT, transaction: t },
+        );
+
+        // Decrement stock_qty for each product sold.
+        for (const m of movementInserts) {
+          await this.sequelize.query(
+            `UPDATE products
+               SET stock_qty  = stock_qty + :qty,
+                   updated_at = NOW()
+             WHERE id = :productId AND doctor_id = :doctorId`,
+            {
+              replacements: { qty: m.qty, productId: m.product_id, doctorId },
+              type: QueryTypes.UPDATE,
+              transaction: t,
+            },
+          );
+        }
+      }
+
       // Step 4 — Compute total.
-      const extrasSum = extras.reduce((acc, e) => acc + e.amountUsd, 0);
+      const extrasSum = enrichedExtras.reduce((acc, e) => acc + e.amountUsd, 0);
       const total = parseFloat((resolvedBase + extrasSum).toFixed(2));
 
       // Step 5 — Update the consultation row.
@@ -795,6 +1053,9 @@ export class SequelizeConsultationRepository implements IConsultationRepository 
           description: r.description,
           amountUsd: r.amountUsd,
           createdAt: r.createdAt,
+          productId: r.productId ?? null,
+          quantity: r.quantity ?? 1,
+          unitPriceUsd: r.unitPriceUsd ?? null,
         }),
       );
 
@@ -872,7 +1133,8 @@ export class SequelizeConsultationRepository implements IConsultationRepository 
     doctorId: string,
   ): Promise<ConsultationExtraItem[]> {
     const rows = await this.sequelize.query<ExtraItemRow>(
-      `SELECT id, consultation_id, doctor_id, description, amount_usd, created_at
+      `SELECT id, consultation_id, doctor_id, description, amount_usd, created_at,
+              product_id, quantity, unit_price_usd
          FROM consultation_extra_items
          WHERE consultation_id = :consultationId AND doctor_id = :doctorId
          ORDER BY created_at ASC`,
@@ -887,6 +1149,9 @@ export class SequelizeConsultationRepository implements IConsultationRepository 
         description: r.description,
         amountUsd: parseFloat(r.amount_usd),
         createdAt: new Date(r.created_at),
+        productId: r.product_id ?? null,
+        quantity: parseFloat(r.quantity),
+        unitPriceUsd: r.unit_price_usd !== null ? parseFloat(r.unit_price_usd) : null,
       }),
     );
   }

@@ -13,11 +13,25 @@ export interface ExtraItemInput {
   amountUsd: number;
 }
 
+/** A product-inventory item to add to the consultation payment. */
+export interface ProductExtraInput {
+  /** UUID of the product in the doctor's catalog. */
+  productId: string;
+  /** Quantity sold. Must be > 0. */
+  quantity: number;
+}
+
 export interface ApprovePaymentWithExtrasInput {
   consultationId: string;
   doctorId: string;
-  /** Additional service items. Empty array = no extras (base price only). */
+  /** Additional free-text service items. Empty array = no extras (base price only). */
   extras: ExtraItemInput[];
+  /**
+   * Product-catalog items sold in this consultation.
+   * Prices are resolved by the repo from the products table.
+   * amount_usd is NEVER trusted from the client for these lines.
+   */
+  productExtras?: ProductExtraInput[];
   /** Optional payment method. May be set later via update-payment-details. */
   paymentMethod?: string | null;
 }
@@ -71,10 +85,27 @@ export class ApprovePaymentWithExtrasUseCase {
       throw new PaymentMethodRequiredError();
     }
 
+    // Combine service extras and product extras into one list.
+    // Product extras carry productId + quantity; the repo resolves price and description.
+    const allExtras = [
+      ...input.extras.map((e) => ({
+        description: e.description,
+        amountUsd: e.amountUsd,
+        productId: null as string | null,
+        quantity: null as number | null,
+      })),
+      ...(input.productExtras ?? []).map((p) => ({
+        description: '', // Repo fills in the product name snapshot.
+        amountUsd: 0, // Repo recalculates from price × quantity.
+        productId: p.productId,
+        quantity: p.quantity,
+      })),
+    ];
+
     return this.repo.approveWithExtras(
       input.consultationId,
       input.doctorId,
-      input.extras,
+      allExtras,
       effectiveMethod,
     );
   }

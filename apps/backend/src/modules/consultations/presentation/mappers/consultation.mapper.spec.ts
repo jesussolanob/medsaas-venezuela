@@ -180,7 +180,7 @@ describe('toConsultationResponse — base_amount and extra_items', () => {
     expect(result.extra_items).toEqual([]);
   });
 
-  it('serializes extra_items with id, description, and amount_usd', () => {
+  it('serializes service extra_items with id, description, amount_usd, product_id=null, quantity=1, unit_price_usd=null', () => {
     const extraItem = ConsultationExtraItem.create({
       id: 'eeeeeeee-0000-0000-0000-000000000001',
       consultationId: CONSULTATION_ID,
@@ -197,6 +197,37 @@ describe('toConsultationResponse — base_amount and extra_items', () => {
         id: 'eeeeeeee-0000-0000-0000-000000000001',
         description: 'Limpieza dental',
         amount_usd: 20,
+        product_id: null,
+        quantity: 1,
+        unit_price_usd: null,
+      },
+    ]);
+  });
+
+  it('serializes product extra_items with product_id, quantity, unit_price_usd — enables frontend re-hydration', () => {
+    const PRODUCT_ID = 'pppppppp-0000-0000-0000-000000000001';
+    const productItem = ConsultationExtraItem.create({
+      id: 'eeeeeeee-0000-0000-0000-000000000002',
+      consultationId: CONSULTATION_ID,
+      doctorId: DOCTOR_ID,
+      description: 'Crema A',
+      amountUsd: 30,
+      productId: PRODUCT_ID,
+      quantity: 3,
+      unitPriceUsd: 10,
+      createdAt: now,
+    });
+    const consultation = makeConsultation({ extraItems: [productItem] });
+    const result = toConsultationResponse(consultation);
+
+    expect(result.extra_items).toEqual([
+      {
+        id: 'eeeeeeee-0000-0000-0000-000000000002',
+        description: 'Crema A',
+        amount_usd: 30,
+        product_id: PRODUCT_ID,
+        quantity: 3,
+        unit_price_usd: 10,
       },
     ]);
   });

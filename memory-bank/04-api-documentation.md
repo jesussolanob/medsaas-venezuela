@@ -1124,3 +1124,24 @@ Body: { reason?: string | null }
 El `sellerId` sale de `CurrentUser().sub`: uno solo puede darse de baja a sí mismo. **Nunca se
 bloquea** por tener comisiones pendientes — se le siguen debiendo (ADR-050). El pendiente que
 devuelve es informativo; el aviso que importa está en la pantalla **antes** de confirmar.
+
+## Inventario (2026-09-01)
+
+Todos con `AppAuthGuard`; el `doctorId` sale de `user.sub` (anti-IDOR). Envelope `{success, data}`.
+Un producto ajeno y un id inexistente devuelven **el mismo** error (impide enumerar).
+
+| Método | Ruta                                                          | Notas                                                                                              |
+| ------ | ------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| GET    | `/api/doctor/inventory/products?search=&active=&page=&limit=` | `limit` acotado a 100. `photo_path` se devuelve firmado                                            |
+| POST   | `/api/doctor/inventory/products`                              | valida que `photo_path` empiece con `product/<userId>/`                                            |
+| GET    | `/api/doctor/inventory/products/:id`                          |                                                                                                    |
+| PUT    | `/api/doctor/inventory/products/:id`                          | misma validación de `photo_path`                                                                   |
+| DELETE | `/api/doctor/inventory/products/:id`                          | baja lógica (`is_active=false`); nunca borra                                                       |
+| GET    | `/api/doctor/inventory/products/:id/movements`                |                                                                                                    |
+| POST   | `/api/doctor/inventory/products/:id/movements`                | solo `purchase`/`adjustment`/`loss`: **`sale` no se acepta**, las ventas nacen de aprobar el cobro |
+
+**Cambio en un endpoint existente:** `PATCH /api/consultations/:id/approve-payment` acepta
+`product_extras: [{ product_id, quantity }]`. **El precio y el monto los resuelve el backend** — el
+esquema es `.strict()`, así que mandar un `unit_price_usd` hace fallar la petición con 422.
+Y `extra_items` de la respuesta de consulta ahora incluye `product_id`, `quantity` y
+`unit_price_usd` (ver ADR-054: sin ellos la UI pierde el producto y el stock se infla al reaprobar).

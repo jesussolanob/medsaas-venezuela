@@ -42,6 +42,28 @@ export class ConsultationExtraItemModel extends Model {
   @Column({ type: DataType.DECIMAL(12, 2), allowNull: false, field: 'amount_usd' })
   declare amountUsd: number;
 
+  /**
+   * Populated when this extra item represents an inventory product sale.
+   * NULL for free-text service extras (e.g. "Limpieza dental").
+   * Set to ON DELETE SET NULL in the DB — the line persists even if the
+   * product is later deleted.
+   */
+  @Column({ type: DataType.UUID, allowNull: true, field: 'product_id' })
+  declare productId: string | null;
+
+  /**
+   * Quantity sold. Always >= 1. Defaults to 1 for service extras.
+   */
+  @Column({ type: DataType.DECIMAL(12, 2), allowNull: false, defaultValue: 1, field: 'quantity' })
+  declare quantity: number;
+
+  /**
+   * Unit price in USD at the moment of sale. NULL for service extras (they
+   * carry the total in amount_usd directly).
+   */
+  @Column({ type: DataType.DECIMAL(12, 2), allowNull: true, field: 'unit_price_usd' })
+  declare unitPriceUsd: number | null;
+
   @CreatedAt
   @Column({ field: 'created_at' })
   declare createdAt: Date;

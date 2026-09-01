@@ -3,7 +3,7 @@ import { IStoragePort, StorageUploadResult, STORAGE_PORT } from '../ports/storag
 import { StorageValidationError, StorageUploadError } from '../../domain/errors/storage.error';
 
 /** Allowed `kind` values that scope the storage path. */
-export type UploadKind = 'avatar' | 'receipt' | 'document' | 'logo' | 'signature';
+export type UploadKind = 'avatar' | 'receipt' | 'document' | 'logo' | 'signature' | 'product';
 
 const ALLOWED_KINDS: ReadonlySet<string> = new Set<UploadKind>([
   'avatar',
@@ -11,6 +11,7 @@ const ALLOWED_KINDS: ReadonlySet<string> = new Set<UploadKind>([
   'document',
   'logo',
   'signature',
+  'product',
 ]);
 
 /**
@@ -24,7 +25,16 @@ const ALLOWED_KINDS: ReadonlySet<string> = new Set<UploadKind>([
  * of a handwritten mark, equivalent to a logo, and do not contain health data).
  * SVG uploads remain BLOCKED at the MIME type layer (XSS vector) regardless of kind.
  */
-export const PRIVATE_KINDS: ReadonlySet<string> = new Set<UploadKind>(['receipt', 'document']);
+/**
+ * `product` is private: product photos are scoped to the doctor and accessed
+ * via signed URLs. Storing them privately provides anti-IDOR at the storage
+ * layer — the path must start with `product/<userId>/`.
+ */
+export const PRIVATE_KINDS: ReadonlySet<string> = new Set<UploadKind>([
+  'receipt',
+  'document',
+  'product',
+]);
 
 /** Max file size: 10 MB */
 const MAX_BYTES = 10 * 1024 * 1024;
