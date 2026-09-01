@@ -31,6 +31,8 @@ import { Appointment as AppointmentEntity } from '../../../../appointments/domai
 interface DoctorRow {
   id: string;
   full_name: string;
+  professional_title: string | null;
+  specialty: string | null;
   booking_token: string | null;
 }
 
@@ -233,7 +235,7 @@ export class SequelizePatientPortalRepository implements IPatientPortalRepositor
 
     const summaries: PackageSummary[] = [];
     for (const row of rows) {
-      const doctorName = await this.resolveDoctorName(row.doctorId);
+      const doctor = await this.resolveDoctor(row.doctorId);
       const bookingLink = await this.resolveDoctorBookingLink(row.doctorId);
       summaries.push({
         id: row.id,
@@ -243,7 +245,9 @@ export class SequelizePatientPortalRepository implements IPatientPortalRepositor
         remainingSessions: Number(row.totalSessions) - Number(row.usedSessions),
         status: row.status,
         doctorId: row.doctorId,
-        doctorName,
+        doctorName: doctor.name,
+        doctorTitle: doctor.title,
+        doctorSpecialty: doctor.specialty,
         bookingLink,
       });
     }
@@ -264,7 +268,7 @@ export class SequelizePatientPortalRepository implements IPatientPortalRepositor
 
     const summaries: PackageSummary[] = [];
     for (const row of rows) {
-      const doctorName = await this.resolveDoctorName(row.doctorId);
+      const doctor = await this.resolveDoctor(row.doctorId);
       const bookingLink = await this.resolveDoctorBookingLink(row.doctorId);
       summaries.push({
         id: row.id,
@@ -274,7 +278,9 @@ export class SequelizePatientPortalRepository implements IPatientPortalRepositor
         remainingSessions: Number(row.totalSessions) - Number(row.usedSessions),
         status: row.status,
         doctorId: row.doctorId,
-        doctorName,
+        doctorName: doctor.name,
+        doctorTitle: doctor.title,
+        doctorSpecialty: doctor.specialty,
         bookingLink,
       });
     }
@@ -381,12 +387,32 @@ export class SequelizePatientPortalRepository implements IPatientPortalRepositor
   // Private helpers
   // ---------------------------------------------------------------------------
 
-  private async resolveDoctorName(doctorId: string): Promise<string | null> {
+  /**
+   * Nombre, titulo profesional y especialidad del especialista.
+   *
+   * El titulo y la especialidad salen para que el portal del paciente pueda
+   * armar el tratamiento correcto. Antes solo viajaba el nombre y la pantalla
+   * anteponia "Dr." a mano, asi que a la paciente de una psicologa le decia
+   * "Dr. <nombre>". `specialty` es el respaldo: cuando el especialista no cargo
+   * su titulo, se deriva de ahi (psicologia -> "Psic.").
+   */
+  private async resolveDoctor(
+    doctorId: string,
+  ): Promise<{ name: string | null; title: string | null; specialty: string | null }> {
     const rows = await this.sequelize.query<DoctorRow>(
-      'SELECT id, full_name FROM profiles WHERE id = :doctorId LIMIT 1',
+      'SELECT id, full_name, professional_title, specialty FROM profiles WHERE id = :doctorId LIMIT 1',
       { replacements: { doctorId }, type: QueryTypes.SELECT },
     );
-    return rows[0]?.full_name ?? null;
+    const row = rows[0];
+    return {
+      name: row?.full_name ?? null,
+      title: row?.professional_title ?? null,
+      specialty: row?.specialty ?? null,
+    };
+  }
+
+  private async resolveDoctorName(doctorId: string): Promise<string | null> {
+    return (await this.resolveDoctor(doctorId)).name;
   }
 
   private async resolveDoctorBookingLink(doctorId: string): Promise<string | null> {

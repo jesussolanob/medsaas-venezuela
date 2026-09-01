@@ -12,6 +12,8 @@ function makePkg(id: string, status: 'active' | 'completed' = 'active'): Package
     status,
     doctorId: 'doctor-1',
     doctorName: 'Dr. García',
+    doctorTitle: 'Psic.',
+    doctorSpecialty: 'Psicología',
     bookingLink: '/book/token-abc',
   };
 }

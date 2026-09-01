@@ -27,6 +27,16 @@ export interface PackageSummary {
   doctorId: string;
   /** Doctor's display name — resolved from profiles.full_name. */
   doctorName: string | null;
+  /**
+   * Título profesional elegido por el especialista (`Dr.`, `Psic.`, `Lic.`…).
+   *
+   * Viaja porque el portal del paciente anteponía "Dr." escrito a mano y a la
+   * paciente de una psicóloga le decía "Dr. <nombre>". Puede venir vacío: hay
+   * especialistas que nunca lo cargaron.
+   */
+  doctorTitle: string | null;
+  /** Especialidad — respaldo para derivar el título cuando no está cargado. */
+  doctorSpecialty: string | null;
   /** Doctor's booking link (if any). Resolved from doctor_invitations. */
   bookingLink: string | null;
 }

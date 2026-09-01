@@ -53,6 +53,10 @@ export interface PatientPackageSummary {
   status: string;
   doctorId: string;
   doctorName: string | null;
+  /** Título elegido por el especialista (`Dr.`, `Psic.`, `Lic.`…). Puede venir vacío. */
+  doctorTitle: string | null;
+  /** Especialidad — respaldo para derivar el título cuando no está cargado. */
+  doctorSpecialty: string | null;
   bookingLink: string | null;
 }
 
@@ -116,7 +120,6 @@ export type PatientActionResult = { success: true } | { success: false; error: s
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
 
 interface Envelope<T> {
   success: boolean;
