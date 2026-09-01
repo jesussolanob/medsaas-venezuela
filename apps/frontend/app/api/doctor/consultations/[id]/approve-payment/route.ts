@@ -37,13 +37,15 @@ export async function PATCH(
     return NextResponse.json({ error: 'Body JSON inválido' }, { status: 400 });
   }
 
-  const { extras, method } = body as {
+  const { extras, product_extras, method } = body as {
     extras?: Array<{ description: string; amount_usd: number }>;
+    product_extras?: Array<{ product_id: string; quantity: number }>;
     method?: string;
   };
 
   const backendBody: Record<string, unknown> = {
     extras: Array.isArray(extras) ? extras : [],
+    product_extras: Array.isArray(product_extras) ? product_extras : [],
   };
   if (method) backendBody.method = method;
 
