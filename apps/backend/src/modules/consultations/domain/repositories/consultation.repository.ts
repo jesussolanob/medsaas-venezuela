@@ -209,30 +209,49 @@ export interface IConsultationRepository {
   }): Promise<ConsultationWithAppointmentRow[]>;
 
   /**
-   * Atomically approves a consultation payment with extra service items.
+   * Atomically approves a consultation payment with extra service items and
+   * optional inventory product sales.
    *
    * Within a single DB transaction:
    *   1. If `baseAmount` is null on the consultation (first approval), sets
    *      `base_amount = COALESCE(current_amount, appointment.plan_price, 0)`.
    *   2. Deletes all existing `consultation_extra_items` for this consultationId.
-   *   3. Inserts the provided extras (empty array = no extras).
-   *   4. Computes `total = base_amount + Σ(extras.amount_usd)`.
-   *   5. Updates `consultations.amount = total`, `payment_status = 'approved'`,
+   *   2.5 (inventory) Reverts previous sale movements for this consultationId and
+   *       restores stock in the `products` table.
+   *   3. For extras that have a `productId`: queries the product price, computes
+   *      `unitPriceUsd`, and sets `amountUsd = quantity × unitPriceUsd`.
+   *   4. Inserts new `consultation_extra_items` rows, with `product_id`, `quantity`,
+   *      and `unit_price_usd` populated for inventory lines.
+   *   4.5 (inventory) Inserts new `inventory_movements` (kind = 'sale') and
+   *       decrements `products.stock_qty` for each product extra.
+   *   5. Computes `total = base_amount + Σ(extras.amount_usd)`.
+   *   6. Updates `consultations.amount = total`, `payment_status = 'approved'`,
    *      `payment_method`, and `payment_date = NOW()`.
-   *   6. Returns the updated Consultation with `extraItems` populated.
+   *   7. Returns the updated Consultation with `extraItems` populated.
    *
-   * Anti-double-count guarantee:
-   *   `base_amount` is written only once (on first approval) and is derived from
-   *   the consultation's amount BEFORE any extras are added. On re-approval the
-   *   stored `base_amount` is used directly — the extras sum is NOT re-accumulated
-   *   on top of a total that already includes a previous extras sum.
+   * Anti-double-count guarantee (extras):
+   *   `base_amount` is written only once (first approval). On re-approval the
+   *   stored `base_amount` is reused — no double accumulation.
    *
-   * Scoped to (id, doctorId) — returns null if not found or not owned.
+   * Anti-double-decrement guarantee (stock):
+   *   Previous sale movements for this consultationId are reverted before new
+   *   ones are applied. Re-approving N times yields the same final stock as
+   *   approving once (idempotent). See §3 of the inventory spec.
+   *
+   * Scoped to (id, doctorId) — throws ConsultationNotFoundError if not owned.
+   *
+   * extras.productId / extras.quantity are optional. When present the repo
+   * resolves price from the products table and manages inventory sync.
    */
   approveWithExtras(
     id: string,
     doctorId: string,
-    extras: Array<{ description: string; amountUsd: number }>,
+    extras: Array<{
+      description: string;
+      amountUsd: number;
+      productId?: string | null;
+      quantity?: number | null;
+    }>,
     paymentMethod?: string | null,
   ): Promise<Consultation>;
 

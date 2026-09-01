@@ -108,7 +108,7 @@ describe('ApprovePaymentWithExtrasUseCase', () => {
     expect(mockRepo.approveWithExtras).toHaveBeenCalledWith(
       CONSULTATION_ID,
       DOCTOR_ID,
-      [{ description: 'Limpieza', amountUsd: 20 }],
+      [expect.objectContaining({ description: 'Limpieza', amountUsd: 20 })],
       'pago_movil',
     );
   });
@@ -142,7 +142,7 @@ describe('ApprovePaymentWithExtrasUseCase', () => {
     expect(mockRepo.approveWithExtras).toHaveBeenCalledWith(
       CONSULTATION_ID,
       DOCTOR_ID,
-      [{ description: 'ECG', amountUsd: 15 }],
+      [expect.objectContaining({ description: 'ECG', amountUsd: 15 })],
       'zelle',
     );
   });

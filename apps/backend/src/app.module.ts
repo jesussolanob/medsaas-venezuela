@@ -51,6 +51,7 @@ import { LegalModule } from './modules/legal/legal.module';
 import { PendingConsultationsModule } from './modules/pending-consultations/pending-consultations.module';
 import { SellersModule } from './modules/sellers/sellers.module';
 import { SellerCommissionsModule } from './modules/seller-commissions/seller-commissions.module';
+import { InventoryModule } from './modules/inventory/inventory.module';
 import { InfraAuthModule } from './infrastructure/auth/infra-auth.module';
 
 @Module({
@@ -112,6 +113,7 @@ import { InfraAuthModule } from './infrastructure/auth/infra-auth.module';
     PendingConsultationsModule,
     SellersModule,
     SellerCommissionsModule,
+    InventoryModule,
   ],
   controllers: [HealthController],
   providers: [
