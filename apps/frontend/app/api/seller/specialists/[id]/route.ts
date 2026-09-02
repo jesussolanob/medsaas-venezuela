@@ -11,7 +11,7 @@
  * pero NADA de esto se loguea.
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { backendGet } from '@/lib/api-client.server';
+import { backendGet, backendPatch } from '@/lib/api-client.server';
 import { log } from '@/lib/logger';
 
 export const dynamic = 'force-dynamic';
@@ -23,6 +23,7 @@ export interface SellerSpecialistDetail {
   email: string;
   phone: string | null;
   cedula: string | null;
+  sellerNotes: string | null;
   isActive: boolean;
   specialty: string | null;
   plan: string | null;
@@ -48,6 +49,64 @@ export async function GET(
   if (!result.ok) {
     // Sin cuerpo en el log: trae nombre, correo, teléfono y cédula.
     log.error('[seller/specialists/:id] backend error', {
+      code: result.error.code,
+      status: result.error.status,
+    });
+    return NextResponse.json(
+      { success: false, error: result.error.message },
+      { status: result.error.status ?? 502 },
+    );
+  }
+
+  return NextResponse.json({ success: true, data: result.value });
+}
+
+/**
+ * PATCH /api/seller/specialists/:id — el vendedor carga teléfono y notas.
+ *
+ * Solo reenvía esos dos campos. Un `plan` o un `role` que llegue en el cuerpo
+ * NO viaja al backend (que además lo rechazaría por `.strict()`).
+ *
+ * SECURITY: el cuerpo trae PII — nunca se loguea.
+ */
+export async function PATCH(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+): Promise<NextResponse> {
+  const { id } = await params;
+
+  if (!id) {
+    return NextResponse.json({ success: false, error: 'id requerido' }, { status: 400 });
+  }
+
+  let body: { phone?: string | null; seller_notes?: string | null };
+  try {
+    body = (await req.json()) as { phone?: string | null; seller_notes?: string | null };
+  } catch {
+    return NextResponse.json(
+      { success: false, error: 'Cuerpo de la solicitud inválido' },
+      { status: 400 },
+    );
+  }
+
+  const payload: Record<string, unknown> = {};
+  if (body.phone !== undefined) payload.phone = body.phone;
+  if (body.seller_notes !== undefined) payload.seller_notes = body.seller_notes;
+
+  if (Object.keys(payload).length === 0) {
+    return NextResponse.json(
+      { success: false, error: 'Mandá al menos un campo para actualizar.' },
+      { status: 400 },
+    );
+  }
+
+  const result = await backendPatch<SellerSpecialistDetail>(
+    `/api/seller/specialists/${encodeURIComponent(id)}`,
+    payload,
+  );
+
+  if (!result.ok) {
+    log.error('[seller/specialists/:id PATCH] backend error', {
       code: result.error.code,
       status: result.error.status,
     });

@@ -48,6 +48,10 @@ interface PendingBySellerRow {
   total_pending_usd: string;
   /** Casteado a ::int en la query, así que llega como number. */
   pending_count: number;
+  /** Casteado a ::int en la query. */
+  approved_count: number;
+  /** NUMERIC — string, igual que total_pending_usd. */
+  total_approved_usd: string;
 }
 
 interface SpecialistProfileRow {
@@ -217,16 +221,23 @@ export class SequelizeSellerCommissionRepository implements ISellerCommissionRep
   // ---------------------------------------------------------------------------
 
   async listPendingBySeller(): Promise<PendingBySeller[]> {
-    // 1. Aggregate pending commissions by seller
+    // 1. Aggregate unpaid commissions by seller.
+    //    "Pendiente" acá = lo NO pagado, o sea pending + approved: aprobar no
+    //    salda la deuda, solo habilita el pago. Si esto filtrara por 'pending' a
+    //    secas, aprobar una comisión la haría DESAPARECER del panel y del total
+    //    adeudado sin que nadie la haya cobrado.
     const summaryRows = await this.sequelize.query<PendingBySellerRow>(
       `SELECT
          c.seller_id,
          p.full_name           AS seller_name,
          SUM(c.amount_usd)     AS total_pending_usd,
-         COUNT(*)::int         AS pending_count
+         COUNT(*)::int         AS pending_count,
+         COUNT(*) FILTER (WHERE c.status = 'approved')::int AS approved_count,
+         COALESCE(SUM(c.amount_usd) FILTER (WHERE c.status = 'approved'), 0)
+                               AS total_approved_usd
        FROM seller_commissions c
        JOIN profiles p ON p.id = c.seller_id
-       WHERE c.status = 'pending'
+       WHERE c.status IN ('pending', 'approved')
        GROUP BY c.seller_id, p.full_name
        ORDER BY total_pending_usd DESC`,
       { type: QueryTypes.SELECT },
@@ -252,7 +263,7 @@ export class SequelizeSellerCommissionRepository implements ISellerCommissionRep
        FROM seller_commissions c
        JOIN profiles p ON p.id = c.specialist_id
        WHERE c.seller_id IN (:sellerIds)
-         AND c.status = 'pending'
+         AND c.status IN ('pending', 'approved')
        ORDER BY c.earned_at DESC`,
       {
         replacements: { sellerIds },
@@ -272,6 +283,7 @@ export class SequelizeSellerCommissionRepository implements ISellerCommissionRep
         amountUsd: parseFloat(d.amount_usd),
         planKey: d.plan_key,
         earnedAt: d.earned_at,
+        status: d.status as CommissionStatus,
       });
       detailBySeller.set(d.seller_id, arr);
     }
@@ -281,8 +293,49 @@ export class SequelizeSellerCommissionRepository implements ISellerCommissionRep
       sellerName: s.seller_name,
       totalPendingUsd: parseFloat(s.total_pending_usd),
       pendingCount: s.pending_count,
+      approvedCount: s.approved_count,
+      totalApprovedUsd: parseFloat(s.total_approved_usd),
       commissions: detailBySeller.get(s.seller_id) ?? [],
     }));
+  }
+
+  // ---------------------------------------------------------------------------
+  // approveCommissions
+  // ---------------------------------------------------------------------------
+
+  async approveCommissions(
+    sellerId: string,
+    commissionIds: string[],
+    adminId: string,
+  ): Promise<number> {
+    if (commissionIds.length === 0) {
+      throw new InvalidCommissionIdsError();
+    }
+
+    // El filtro por estado va DENTRO del UPDATE, no en una lectura previa: dos
+    // clics simultáneos con una guarda en el use case pasarían los dos.
+    const [, affected] = await this.sequelize.query(
+      `UPDATE seller_commissions
+          SET status      = 'approved',
+              approved_at = NOW(),
+              approved_by = :adminId
+        WHERE id        IN (:commissionIds)
+          AND seller_id  = :sellerId
+          AND status     = 'pending'`,
+      {
+        replacements: { commissionIds, sellerId, adminId },
+        type: QueryTypes.UPDATE,
+      },
+    );
+
+    // Si no se movieron todas, alguna no era del vendedor, no existía o ya no
+    // estaba pendiente. Se corta con el mismo error indistinguible que el resto
+    // del módulo, para no filtrar cuál de las tres cosas pasó.
+    if (affected !== commissionIds.length) {
+      throw new InvalidCommissionIdsError();
+    }
+
+    return affected;
   }
 
   // ---------------------------------------------------------------------------
@@ -314,14 +367,15 @@ export class SequelizeSellerCommissionRepository implements ISellerCommissionRep
        JOIN profiles p ON p.id = c.specialist_id
        WHERE c.id IN (:commissionIds)
          AND c.seller_id = :sellerId
-         AND c.status = 'pending'`,
+         AND c.status = 'approved'`,
       {
         replacements: { commissionIds, sellerId },
         type: QueryTypes.SELECT,
       },
     );
 
-    // If any ID was invalid, paid, or from another seller — partial match → error.
+    // Partial match → error. Ahora también cubre "todavía pendiente": pagar sin
+    // aprobar deja de ser posible, que es el punto del estado nuevo.
     if (rows.length !== commissionIds.length) {
       throw new InvalidCommissionIdsError();
     }
@@ -341,8 +395,9 @@ export class SequelizeSellerCommissionRepository implements ISellerCommissionRep
 
     try {
       // Re-validate inside the transaction (prevents TOCTOU).
+      // 'approved', no 'pending': solo se paga lo que un admin habilitó.
       const commissions = await this.commissionModel.findAll({
-        where: { id: params.commissionIds, sellerId: params.sellerId, status: 'pending' },
+        where: { id: params.commissionIds, sellerId: params.sellerId, status: 'approved' },
         transaction: t,
         lock: true,
       });
@@ -384,7 +439,7 @@ export class SequelizeSellerCommissionRepository implements ISellerCommissionRep
           where: {
             id: params.commissionIds,
             sellerId: params.sellerId,
-            status: 'pending',
+            status: 'approved',
           },
           transaction: t,
         },

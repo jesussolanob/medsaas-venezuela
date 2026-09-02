@@ -16,13 +16,24 @@
  *   - At most one 'plan' commission per specialist.
  *
  * No domain methods beyond construction — commissions are immutable once created.
- * The status transitions (pending → paid) are managed by RegisterSellerPaymentUseCase
- * via the repository, which updates status and sets payment_id atomically.
+ *
+ * Status transitions: pending → approved → paid.
+ *   pending  — accrued automatically; not yet reviewed.
+ *   approved — an admin reviewed it and enabled it for payment.
+ *   paid     — included in a seller_payment. Terminal.
+ *
+ * ApproveCommissionsUseCase drives pending → approved; RegisterSellerPaymentUseCase
+ * drives approved → paid via the repository, which updates status and sets
+ * payment_id atomically.
+ *
+ * ⚠️ Paying skips no step: a pending commission can NOT go straight to paid. The
+ * guard lives in the repository query (inside the transaction), not only in the
+ * use case — two concurrent clicks would otherwise slip past it.
  *
  * NOTE: No NestJS / Sequelize imports here — pure domain.
  */
 export type CommissionType = 'signup' | 'plan';
-export type CommissionStatus = 'pending' | 'paid';
+export type CommissionStatus = 'pending' | 'approved' | 'paid';
 
 export class SellerCommission {
   constructor(
@@ -40,13 +51,26 @@ export class SellerCommission {
     /** Set when status = 'paid'. References a seller_payments row. */
     public readonly paymentId: string | null,
     public readonly createdAt: Date,
+    /** Set when an admin approves. Null for rows paid before approval existed. */
+    public readonly approvedAt: Date | null = null,
+    /** Admin profile id that approved. Null for the same historical reason. */
+    public readonly approvedBy: string | null = null,
   ) {}
 
   isPending(): boolean {
     return this.status === 'pending';
   }
 
+  isApproved(): boolean {
+    return this.status === 'approved';
+  }
+
   isPaid(): boolean {
     return this.status === 'paid';
+  }
+
+  /** Only an approved commission can be included in a payment. */
+  isPayable(): boolean {
+    return this.status === 'approved';
   }
 }

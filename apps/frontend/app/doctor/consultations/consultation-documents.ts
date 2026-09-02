@@ -8,10 +8,26 @@
  */
 
 import type { ContentBlock, DocumentPage } from '@/components/pdf/MedicalDocumentPdf';
+import { parseRichHtml } from '@/lib/html-to-rich-text';
+import { htmlToPlainText } from '@delta/shared-utils';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export type DocumentTypeKey = 'recipe' | 'paraclinical' | 'history' | 'rest' | 'informe';
+
+/**
+ * Reposo tal como se persiste en `consultations.blocks_snapshot['reposo']`.
+ *
+ * `diagnosis` y `comments` pueden traer HTML del editor enriquecido, por eso
+ * viajan por `parseRichHtml` (que sanitiza antes de parsear) y no crudos.
+ */
+export interface RestData {
+  diagnosis: string;
+  days: number;
+  from: string;
+  to?: string | null;
+  comments?: string | null;
+}
 
 export interface DocumentTypeDescriptor {
   key: DocumentTypeKey;
@@ -471,6 +487,87 @@ export function buildConsolidatedContent(args: BuildConsolidatedContentArgs): Co
   }
 
   return allBlocks;
+}
+
+// ─── Reposo: un solo constructor para todos los caminos ───────────────────────
+
+/**
+ * Convierte el reposo persistido en los bloques que entiende el PDF.
+ *
+ * ⚠️ ESTA ES LA ÚNICA FORMA PERMITIDA de armar los bloques de reposo. Vivía
+ * duplicada dentro de GenerateDocumentModal, y la ruta del documento compartido
+ * —que no la tenía— caía a un string plano: el reposo generado salía con negritas
+ * y viñetas y el compartido no. Cualquier camino nuevo que arme un PDF con reposo
+ * llama acá; no se copia.
+ *
+ * Devuelve [] cuando no hay reposo cargado o los días son 0, para que el llamador
+ * pueda distinguir "sin reposo" de "reposo vacío".
+ */
+export function buildRestBlocks(rest: RestData | null | undefined): ContentBlock[] {
+  if (!rest || !rest.days || rest.days <= 0) return [];
+
+  const diagRich = parseRichHtml(rest.diagnosis ?? '');
+  const commentsRich = rest.comments ? parseRichHtml(rest.comments) : [];
+
+  const fecha = (iso: string): string =>
+    new Date(iso).toLocaleDateString('es-VE', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+    });
+
+  const periodo =
+    `${rest.days} día${rest.days !== 1 ? 's' : ''}` +
+    ` — desde ${fecha(rest.from)}` +
+    (rest.to ? ` hasta ${fecha(rest.to)}` : '');
+
+  return [
+    {
+      key: 'reposo-diag',
+      label: 'Diagnóstico',
+      value: htmlToPlainText(rest.diagnosis ?? ''),
+      ...(diagRich.length > 0 ? { richValue: diagRich } : {}),
+    },
+    {
+      key: 'reposo-period',
+      label: 'Período de reposo',
+      value: periodo,
+    },
+    ...(rest.comments
+      ? [
+          {
+            key: 'reposo-comments',
+            label: 'Comentarios',
+            value: htmlToPlainText(rest.comments),
+            ...(commentsRich.length > 0 ? { richValue: commentsRich } : {}),
+          },
+        ]
+      : []),
+  ];
+}
+
+/**
+ * Lee el reposo del `blocks_snapshot` de una consulta. Devuelve null si el bloque
+ * no está o no tiene la forma esperada — el snapshot es JSONB sin esquema.
+ */
+export function readRestFromSnapshot(
+  blocksSnapshot: Record<string, unknown> | null | undefined,
+): RestData | null {
+  const raw = blocksSnapshot?.['reposo'];
+  if (!raw || typeof raw !== 'object') return null;
+
+  const r = raw as Record<string, unknown>;
+  const days = typeof r.days === 'number' ? r.days : Number(r.days);
+  if (!Number.isFinite(days) || days <= 0) return null;
+  if (typeof r.from !== 'string' || !r.from) return null;
+
+  return {
+    diagnosis: typeof r.diagnosis === 'string' ? r.diagnosis : '',
+    days,
+    from: r.from,
+    to: typeof r.to === 'string' ? r.to : null,
+    comments: typeof r.comments === 'string' ? r.comments : null,
+  };
 }
 
 // ─── Argumentos para buildDocumentPages ───────────────────────────────────────

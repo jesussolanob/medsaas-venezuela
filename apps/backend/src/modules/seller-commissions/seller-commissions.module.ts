@@ -18,6 +18,7 @@ import { AccruePlanCommissionUseCase } from './application/use-cases/accrue-plan
 import { GetSellerCommissionsUseCase } from './application/use-cases/get-seller-commissions.use-case';
 import { GetPendingCommissionsBySellerUseCase } from './application/use-cases/get-pending-commissions-by-seller.use-case';
 import { RegisterSellerPaymentUseCase } from './application/use-cases/register-seller-payment.use-case';
+import { ApproveCommissionsUseCase } from './application/use-cases/approve-commissions.use-case';
 import { GetSellerPaymentsUseCase } from './application/use-cases/get-seller-payments.use-case';
 import { AssignSpecialistToSellerUseCase } from './application/use-cases/assign-specialist-to-seller.use-case';
 import { GetSellerPaymentReceiptUrlUseCase } from './application/use-cases/get-seller-payment-receipt-url.use-case';
@@ -77,6 +78,7 @@ import {
     AccruePlanCommissionUseCase,
     GetSellerCommissionsUseCase,
     GetPendingCommissionsBySellerUseCase,
+    ApproveCommissionsUseCase,
     RegisterSellerPaymentUseCase,
     GetSellerPaymentsUseCase,
     AssignSpecialistToSellerUseCase,

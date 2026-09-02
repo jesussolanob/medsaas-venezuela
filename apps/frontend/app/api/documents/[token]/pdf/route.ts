@@ -17,6 +17,8 @@ import {
   type SavedPrescription,
   type EhrRecord,
   buildDocumentPages,
+  buildRestBlocks,
+  readRestFromSnapshot,
   INFORME_CHECKED_BY_DEFAULT,
 } from '@/app/doctor/consultations/consultation-documents';
 
@@ -368,6 +370,14 @@ export async function GET(
   const diagnosisRaw = informeContent.find((b) => b.key === 'diagnosis')?.value;
   const diagnosisValue = typeof diagnosisRaw === 'string' ? diagnosisRaw : undefined;
 
+  // El reposo sale del MISMO constructor que usa el modal de generar. Antes esta
+  // ruta no pasaba restBlocks y buildDocumentPages caía a restContent (texto
+  // plano): el reposo generado conservaba negritas y viñetas y el compartido no.
+  // Si el snapshot no trae reposo, restBlocks queda undefined y el fallback de
+  // restContent sigue funcionando igual que antes.
+  const restFromSnapshot = readRestFromSnapshot(renderData.consultation.blocksSnapshot);
+  const builtRestBlocks = buildRestBlocks(restFromSnapshot);
+
   const pages = buildDocumentPages({
     selectedTypes,
     informeSelectedBlockKeys,
@@ -375,6 +385,7 @@ export async function GET(
     savedPrescriptions,
     ehrRecords,
     restContent,
+    ...(builtRestBlocks.length > 0 ? { restBlocks: builtRestBlocks } : {}),
     diagnosisValue,
   });
 

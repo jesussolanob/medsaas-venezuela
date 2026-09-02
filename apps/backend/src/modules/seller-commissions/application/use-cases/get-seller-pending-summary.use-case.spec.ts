@@ -35,6 +35,7 @@ function makeRepo(rows: CommissionRow[] = []): jest.Mocked<ISellerCommissionRepo
     findPaymentById: jest.fn(),
     findSellerById: jest.fn(),
     findSpecialistById: jest.fn(),
+    approveCommissions: jest.fn(),
     assignSpecialistToSeller: jest.fn(),
   } as jest.Mocked<ISellerCommissionRepository>;
 }

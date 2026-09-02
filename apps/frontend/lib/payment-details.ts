@@ -126,6 +126,38 @@ export function fieldLabel(key: string): string {
   return FIELD_LABELS[key] ?? key.replace(/_/g, ' ');
 }
 
+/** Rótulo del método de pago. Vivía copiado en cada pantalla que lo mostraba. */
+const METHOD_LABELS: Record<string, string> = {
+  pago_movil: 'Pago Móvil',
+  transferencia: 'Transferencia bancaria',
+  zelle: 'Zelle',
+  binance: 'Binance Pay',
+  efectivo_usd: 'Efectivo USD',
+  efectivo_bs: 'Efectivo Bs',
+  pos: 'POS',
+};
+
+export function methodLabel(method: string): string {
+  return METHOD_LABELS[method] ?? method.replace(/_/g, ' ');
+}
+
+/**
+ * Métodos que el vendedor tiene REALMENTE configurados, en el orden de
+ * METHOD_LABELS. Un método sin entradas cargadas no sirve para pagarle, así que
+ * no se ofrece: antes la pantalla de comisiones listaba una constante fija con
+ * todos los métodos del sistema y el admin podía elegir uno para el que el
+ * vendedor no había dejado ningún dato.
+ */
+export function activeMethodsOf(details: PaymentDetails | null | undefined): string[] {
+  if (!details) return [];
+  const known = Object.keys(METHOD_LABELS);
+  const present = Object.keys(details).filter((m) => entriesOf(details, m).length > 0);
+  return [
+    ...known.filter((m) => present.includes(m)),
+    ...present.filter((m) => !known.includes(m)),
+  ];
+}
+
 /**
  * Rótulo de una entrada cuando hay varias ("Banesco · 0414…").
  *

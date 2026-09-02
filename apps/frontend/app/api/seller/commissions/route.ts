@@ -28,7 +28,7 @@ export interface SellerCommissionDto {
   amountUsd: number;
   /** Plan del que vino la comisión. Solo presente en type = 'plan'. */
   planKey: string | null;
-  status: 'pending' | 'paid';
+  status: 'pending' | 'approved' | 'paid';
   /** ISO 8601. Cuándo se generó la comisión. */
   earnedAt: string;
   /** UUID del pago que la liquidó. null si todavía está pendiente. */

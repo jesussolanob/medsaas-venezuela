@@ -45,6 +45,13 @@ export class SellerProfileModel extends Model {
   @Column({ type: DataType.TEXT, allowNull: true })
   declare cedula: string | null;
 
+  /**
+   * Anotaciones del vendedor sobre este especialista. Texto libre, nunca se
+   * loguea: puede contener datos de contacto o comentarios personales.
+   */
+  @Column({ type: DataType.TEXT, allowNull: true, field: 'seller_notes' })
+  declare sellerNotes: string | null;
+
   @Default(true)
   @Column({ type: DataType.BOOLEAN, allowNull: true, field: 'is_active' })
   declare isActive: boolean | null;

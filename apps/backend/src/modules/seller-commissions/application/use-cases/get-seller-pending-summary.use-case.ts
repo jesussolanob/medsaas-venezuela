@@ -44,7 +44,10 @@ export class GetSellerPendingSummaryUseCase {
 
   async execute(sellerId: string): Promise<SellerPendingSummary> {
     const rows = await this.repo.listCommissionsBySeller(sellerId);
-    const pending = rows.filter((r) => r.status === 'pending');
+    // "Pendiente" = todo lo que NO se pagó, o sea 'pending' Y 'approved'. Aprobar
+    // habilita el pago pero no lo hace: filtrar por 'pending' a secas subestimaría
+    // lo que se le debe justo cuando el vendedor se está dando de baja.
+    const pending = rows.filter((r) => r.status !== 'paid');
     const pendingCommissionsUsd = pending.reduce((sum, r) => sum + r.amountUsd, 0);
     return {
       pendingCommissionsUsd,

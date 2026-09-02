@@ -1,4 +1,14 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Put, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Patch,
+  Post,
+  Put,
+  UseGuards,
+} from '@nestjs/common';
 import { z } from 'zod';
 import { AppAuthGuard } from '../../../../infrastructure/auth/app-auth.guard';
 import { RolesGuard } from '../../../../presentation/guards/roles.guard';
@@ -13,6 +23,7 @@ import { ValidateSellerCodeUseCase } from '../../application/use-cases/validate-
 import { CreateSellerSpecialistUseCase } from '../../application/use-cases/create-seller-specialist.use-case';
 import { ListSellerSpecialistsUseCase } from '../../application/use-cases/list-seller-specialists.use-case';
 import { GetSellerSpecialistUseCase } from '../../application/use-cases/get-seller-specialist.use-case';
+import { UpdateSellerSpecialistUseCase } from '../../application/use-cases/update-seller-specialist.use-case';
 import { GetSellerProfileUseCase } from '../../application/use-cases/get-seller-profile.use-case';
 import { ListSellersUseCase } from '../../application/use-cases/list-sellers.use-case';
 import { GetSellerPaymentDetailsUseCase } from '../../application/use-cases/get-seller-payment-details.use-case';
@@ -59,6 +70,30 @@ const CreateSellerSpecialistBodySchema = z
   .strict();
 
 type CreateSellerSpecialistBody = z.infer<typeof CreateSellerSpecialistBodySchema>;
+
+/**
+ * PATCH /api/seller/specialists/:id
+ *
+ * El vendedor completa el teléfono y sus notas. `.strict()` a propósito: si
+ * alguien manda `plan` o `role`, el pedido falla en vez de ignorarlos en
+ * silencio — un campo de más acá sería una escalada de privilegios.
+ *
+ * `.refine` exige al menos un campo: un PATCH vacío no debería devolver 200
+ * como si hubiera guardado algo.
+ *
+ * SECURITY: teléfono y notas son PII — NO loguear el cuerpo.
+ */
+const UpdateSellerSpecialistBodySchema = z
+  .object({
+    phone: z.string().max(50).nullable().optional(),
+    seller_notes: z.string().max(2000).nullable().optional(),
+  })
+  .strict()
+  .refine((b) => b.phone !== undefined || b.seller_notes !== undefined, {
+    message: 'Mandá al menos un campo para actualizar.',
+  });
+
+type UpdateSellerSpecialistBody = z.infer<typeof UpdateSellerSpecialistBodySchema>;
 
 /**
  * PUT /api/seller/payment-details
@@ -151,6 +186,8 @@ function toSpecialistDto(row: SellerSpecialistRow) {
     email: row.email,
     phone: row.phone,
     cedula: row.cedula,
+    // Notas del propio vendedor sobre este especialista. Nunca se loguean.
+    sellerNotes: row.sellerNotes,
     isActive: row.isActive,
     specialty: row.specialty,
     plan: row.plan,
@@ -203,6 +240,7 @@ export class SellersController {
     private readonly createSpecialist: CreateSellerSpecialistUseCase,
     private readonly listSpecialists: ListSellerSpecialistsUseCase,
     private readonly getSpecialist: GetSellerSpecialistUseCase,
+    private readonly updateSpecialist: UpdateSellerSpecialistUseCase,
     private readonly getProfile: GetSellerProfileUseCase,
     private readonly listSellers: ListSellersUseCase,
     private readonly getPaymentDetails: GetSellerPaymentDetailsUseCase,
@@ -390,6 +428,32 @@ export class SellersController {
     @Param('id', ParseUUIDPipe) specialistId: string,
   ): Promise<SuccessResponse<ReturnType<typeof toSpecialistDto>>> {
     const specialist = await this.getSpecialist.execute(user.sub, specialistId);
+    return ok(toSpecialistDto(specialist));
+  }
+
+  // ---------------------------------------------------------------------------
+  // PATCH /api/seller/specialists/:id
+  // ---------------------------------------------------------------------------
+
+  /**
+   * El vendedor carga el teléfono y sus notas del especialista.
+   *
+   * Nace de un hueco real: un especialista ASIGNADO por el admin llega sin
+   * teléfono y la ficha era de solo lectura, así que no había forma de cargarlo.
+   */
+  @Patch('seller/specialists/:id')
+  @UseGuards(RolesGuard)
+  @Roles('seller')
+  async updateSpecialistEndpoint(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('id', ParseUUIDPipe) specialistId: string,
+    @Body(new ZodValidationPipe(UpdateSellerSpecialistBodySchema))
+    body: UpdateSellerSpecialistBody,
+  ): Promise<SuccessResponse<ReturnType<typeof toSpecialistDto>>> {
+    const specialist = await this.updateSpecialist.execute(user.sub, specialistId, {
+      ...(body.phone !== undefined ? { phone: body.phone } : {}),
+      ...(body.seller_notes !== undefined ? { sellerNotes: body.seller_notes } : {}),
+    });
     return ok(toSpecialistDto(specialist));
   }
 

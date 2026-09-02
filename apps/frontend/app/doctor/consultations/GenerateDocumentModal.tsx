@@ -19,8 +19,6 @@
 
 import { useState, useCallback } from 'react';
 import { FileText, X, AlertCircle, Loader2, Download, ChevronDown } from 'lucide-react';
-import { htmlToPlainText } from '@delta/shared-utils';
-import { parseRichHtml } from '@/lib/html-to-rich-text';
 import type {
   TemplateConfigPdf,
   ContentBlock,
@@ -30,8 +28,10 @@ import {
   type DocumentTypeKey,
   type SavedPrescription,
   type EhrRecord,
+  type RestData,
   computeAvailableDocTypes,
   buildDocumentPages,
+  buildRestBlocks,
   INFORME_EXCLUDED_KEYS,
   INFORME_CHECKED_BY_DEFAULT,
   INFORME_SPECIAL_RENDER_KEYS,
@@ -39,14 +39,11 @@ import {
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
-/** Datos estructurados del reposo para construir bloques idénticos al botón "Descargar PDF Reposo". */
-export interface RestData {
-  diagnosis: string;
-  days: number;
-  from: string;
-  to: string;
-  comments: string;
-}
+/**
+ * El tipo vive en consultation-documents.ts junto a su constructor. Se re-exporta
+ * para no romper a quien ya lo importaba desde acá.
+ */
+export type { RestData };
 
 interface GenerateDocumentModalProps {
   consultationCode: string;
@@ -305,46 +302,11 @@ export default function GenerateDocumentModal({
         // Non-fatal: si el fetch falla, continuamos sin la sección EHR
       }
 
-      // Construir bloques de reposo estructurados (idéntico al botón "Descargar PDF Reposo")
-      // cuando restData está disponible — garantiza el mismo formato en ambos caminos.
-      // WP-D: restData.diagnosis and restData.comments may carry HTML when the doctor's
-      // diagnosis field uses the rich-text editor and the reposo form prefills from it.
-      // ADR-039 rev.2: parse rich content to preserve formatting; keep plain text as fallback.
-      const builtRestBlocks: ContentBlock[] | undefined =
-        restData && restData.days > 0
-          ? (() => {
-              const diagRich = parseRichHtml(restData.diagnosis);
-              const commentsRich = restData.comments ? parseRichHtml(restData.comments) : [];
-              return [
-                {
-                  key: 'reposo-diag',
-                  label: 'Diagnóstico',
-                  value: htmlToPlainText(restData.diagnosis),
-                  ...(diagRich.length > 0 ? { richValue: diagRich } : {}),
-                },
-                {
-                  key: 'reposo-period',
-                  label: 'Período de reposo',
-                  value:
-                    `${restData.days} día${restData.days !== 1 ? 's' : ''}` +
-                    ` — desde ${new Date(restData.from).toLocaleDateString('es-VE', { day: '2-digit', month: '2-digit', year: 'numeric' })}` +
-                    (restData.to
-                      ? ` hasta ${new Date(restData.to).toLocaleDateString('es-VE', { day: '2-digit', month: '2-digit', year: 'numeric' })}`
-                      : ''),
-                },
-                ...(restData.comments
-                  ? [
-                      {
-                        key: 'reposo-comments',
-                        label: 'Comentarios',
-                        value: htmlToPlainText(restData.comments),
-                        ...(commentsRich.length > 0 ? { richValue: commentsRich } : {}),
-                      },
-                    ]
-                  : []),
-              ];
-            })()
-          : undefined;
+      // Bloques de reposo: los arma buildRestBlocks, el ÚNICO constructor. Esta
+      // lógica vivía acá copiada y la ruta del documento compartido no la tenía,
+      // así que el reposo compartido perdía el formato. Ver consultation-documents.ts.
+      const built = buildRestBlocks(restData);
+      const builtRestBlocks: ContentBlock[] | undefined = built.length > 0 ? built : undefined;
 
       // Armar una página por tipo de documento seleccionado
       const docPages = buildDocumentPages({

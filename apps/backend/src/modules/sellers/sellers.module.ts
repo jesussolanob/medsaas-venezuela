@@ -17,6 +17,7 @@ import { ValidateSellerCodeUseCase } from './application/use-cases/validate-sell
 import { CreateSellerSpecialistUseCase } from './application/use-cases/create-seller-specialist.use-case';
 import { ListSellerSpecialistsUseCase } from './application/use-cases/list-seller-specialists.use-case';
 import { GetSellerSpecialistUseCase } from './application/use-cases/get-seller-specialist.use-case';
+import { UpdateSellerSpecialistUseCase } from './application/use-cases/update-seller-specialist.use-case';
 import { GetSellerProfileUseCase } from './application/use-cases/get-seller-profile.use-case';
 import { ListSellersUseCase } from './application/use-cases/list-sellers.use-case';
 import { GetSellerPaymentDetailsUseCase } from './application/use-cases/get-seller-payment-details.use-case';
@@ -70,6 +71,7 @@ import {
     CreateSellerSpecialistUseCase,
     ListSellerSpecialistsUseCase,
     GetSellerSpecialistUseCase,
+    UpdateSellerSpecialistUseCase,
     GetSellerProfileUseCase,
     ListSellersUseCase,
     GetSellerPaymentDetailsUseCase,
