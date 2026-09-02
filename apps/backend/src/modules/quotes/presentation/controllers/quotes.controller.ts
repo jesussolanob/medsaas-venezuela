@@ -61,6 +61,13 @@ interface SuccessListResponse<T> {
 interface QuoteDetailData extends Quote {
   share_token: string | null;
   share_url: string | null;
+  /**
+   * Nombre del destinatario ya resuelto (paciente o prospecto). null si se borró
+   * después de emitir la cotización.
+   *
+   * SECURITY: PII — este endpoint es del especialista dueño. No loguear.
+   */
+  recipient_name: string | null;
 }
 
 /**
@@ -127,8 +134,8 @@ export class QuotesController {
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: CurrentUserPayload,
   ): Promise<SuccessResponse<QuoteDetailData>> {
-    const quote = await this.getQuote.execute(id, user.sub);
-    return { success: true, data: this.withShareData(quote) };
+    const { quote, recipientName } = await this.getQuote.execute(id, user.sub);
+    return { success: true, data: this.withShareData(quote, recipientName) };
   }
 
   /**
@@ -206,7 +213,7 @@ export class QuotesController {
    * share_url is the ready-to-paste public URL the frontend uses for the
    * "Copy link" button — the frontend should not have to know the URL structure.
    */
-  private withShareData(quote: Quote): QuoteDetailData {
+  private withShareData(quote: Quote, recipientName: string | null = null): QuoteDetailData {
     const appUrl = (
       this.config.get<string>('APP_BASE_URL') ??
       this.config.get<string>('FRONTEND_URL') ??
@@ -219,6 +226,10 @@ export class QuotesController {
     return Object.assign(Object.create(Object.getPrototypeOf(quote)) as Quote, quote, {
       share_token: shareToken,
       share_url: shareUrl,
+      // Nombre de a quién va dirigida. La pantalla y el PDF mostraban la
+      // CATEGORÍA ("Paciente"/"Prospecto") en vez de a quién.
+      // SECURITY: es PII — nunca loguear esta respuesta.
+      recipient_name: recipientName,
     }) as QuoteDetailData;
   }
 }

@@ -154,7 +154,7 @@ describe('QuotesController', () => {
     it('delegates to GetQuoteUseCase with id and doctorId', async () => {
       const { controller, getUC } = makeController();
       const quote = makeQuote();
-      getUC.execute.mockResolvedValue(quote);
+      getUC.execute.mockResolvedValue({ quote, recipientName: 'Ana Pérez' });
 
       const result = await controller.show(QUOTE_ID, makeUser());
 
@@ -163,11 +163,22 @@ describe('QuotesController', () => {
       expect(result.data.quoteNumber).toBe('COT-0001');
     });
 
+    it('exposes the recipient name so the screen and the PDF can show who it is for', async () => {
+      // Antes solo viajaban patient_id / lead_id y la UI pintaba la CATEGORÍA.
+      const { controller, getUC } = makeController();
+      getUC.execute.mockResolvedValue({ quote: makeQuote(), recipientName: 'Ana Pérez' });
+
+      const result = await controller.show(QUOTE_ID, makeUser());
+
+      expect(result.data.recipient_name).toBe('Ana Pérez');
+    });
+
     it('builds share_url from the base URL when the quote has a share token', async () => {
       const { controller, getUC } = makeController();
-      getUC.execute.mockResolvedValue(
-        Quote.create({ ...makeQuote('sent'), shareToken: SHARE_TOKEN }),
-      );
+      getUC.execute.mockResolvedValue({
+        quote: Quote.create({ ...makeQuote('sent'), shareToken: SHARE_TOKEN }),
+        recipientName: 'Ana Pérez',
+      });
 
       const result = await controller.show(QUOTE_ID, makeUser());
 
@@ -179,7 +190,7 @@ describe('QuotesController', () => {
       // The frontend hides the "Copy link" button on null; returning a
       // token-less URL here would surface a link that 404s.
       const { controller, getUC } = makeController();
-      getUC.execute.mockResolvedValue(makeQuote());
+      getUC.execute.mockResolvedValue({ quote: makeQuote(), recipientName: null });
 
       const result = await controller.show(QUOTE_ID, makeUser());
 

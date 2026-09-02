@@ -14,6 +14,8 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { getDoctorProfile } from '@/app/doctor/actions';
+import { loadTemplateConfigs, type TemplateConfigView } from '@/app/doctor/templates/actions';
 import {
   ArrowLeft,
   Pencil,
@@ -372,11 +374,39 @@ export default function QuoteDetailClient({ initialQuote }: Props) {
   async function downloadPdf() {
     showToast({ type: 'success', message: 'Generando PDF...' });
     try {
-      const [{ pdf }, QuotePdfModule] = await Promise.all([
+      const [{ pdf }, QuotePdfModule, perfil, plantillas] = await Promise.all([
         import('@react-pdf/renderer'),
         import('@/components/pdf/QuotePdf'),
+        // El branding se PIDE. Antes acá iban `doctor` vacío y `templateConfig:
+        // null` escritos a mano, así que el presupuesto que descargaba el
+        // especialista salía sin su nombre, sin especialidad, sin matrícula, sin
+        // logo y sin firma. La ruta pública del PDF sí los mandaba: el documento
+        // que veía el destinatario y el que descargaba el especialista no eran
+        // el mismo.
+        getDoctorProfile().catch(() => null),
+        loadTemplateConfigs().catch(() => ({}) as Record<string, TemplateConfigView>),
       ]);
       const QuotePdf = QuotePdfModule.default;
+
+      // Cascada igual que en los documentos de consulta: plantilla del tipo →
+      // perfil del especialista → vacío. Así no hace falta configurar una
+      // plantilla aparte para que la cotización lleve marca.
+      const tc = plantillas['quote'] ?? plantillas['informe'] ?? null;
+      const mostrarLogo = tc?.show_logo ?? true;
+      const mostrarFirma = tc?.show_signature ?? true;
+
+      // Las URLs firmadas de GCS van directo: el bucket ya permite CORS desde
+      // los orígenes de la app, así que @react-pdf puede bajarlas en el navegador.
+      const templateConfig = {
+        header_text: tc?.header_text ?? perfil?.fullName ?? '',
+        footer_text: tc?.footer_text ?? '',
+        primary_color: tc?.primary_color ?? '#0891b2',
+        font_family: tc?.font_family ?? 'Helvetica',
+        logo_url: mostrarLogo ? (tc?.logo_url ?? perfil?.logoUrl ?? null) : null,
+        signature_url: mostrarFirma ? (tc?.signature_url ?? perfil?.signatureUrl ?? null) : null,
+        show_logo: mostrarLogo,
+        show_signature: mostrarFirma,
+      };
 
       const React = (await import('react')).default;
       const element = React.createElement(QuotePdf, {
@@ -390,7 +420,10 @@ export default function QuoteDetailClient({ initialQuote }: Props) {
         bcv_rate: quote.bcv_rate,
         total_bs: quote.total_bs,
         created_at: quote.created_at,
-        recipientName: quote.patient_id ? 'Paciente' : 'Prospecto',
+        // El nombre real, igual que hace la ruta pública del PDF. Acá estaba
+        // escrita a mano la CATEGORÍA, así que el presupuesto que descargaba el
+        // especialista salía dirigido a "Paciente".
+        recipientName: quote.recipient_name ?? '',
         items: quote.items.map((it) => ({
           kind: it.kind,
           name: it.name,
@@ -399,8 +432,12 @@ export default function QuoteDetailClient({ initialQuote }: Props) {
           unit_price_usd: it.unit_price_usd,
           amount_usd: it.amount_usd,
         })),
-        doctor: { fullName: '', specialty: null, licenseNumber: null },
-        templateConfig: null,
+        doctor: {
+          fullName: perfil?.fullName ?? '',
+          specialty: perfil?.specialty ?? null,
+          licenseNumber: perfil?.licenseNumber ?? null,
+        },
+        templateConfig,
       });
 
       const blob = await pdf(element as Parameters<typeof pdf>[0]).toBlob();
@@ -627,13 +664,23 @@ export default function QuoteDetailClient({ initialQuote }: Props) {
             <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">
               Destinatario
             </p>
-            <span
-              className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold ${
-                quote.patient_id ? 'bg-violet-50 text-violet-700' : 'bg-amber-50 text-amber-700'
-              }`}
-            >
-              {quote.patient_id ? 'Paciente' : 'Prospecto'}
-            </span>
+            {/* El NOMBRE manda; la categoría queda como etiqueta al lado. Antes
+                acá solo salía "Paciente"/"Prospecto" y no había forma de saber
+                a quién estaba dirigido el presupuesto. */}
+            <div className="flex items-center gap-2 flex-wrap">
+              <p className="text-slate-700 font-medium">
+                {quote.recipient_name ?? (
+                  <span className="text-slate-400 font-normal">Sin nombre</span>
+                )}
+              </p>
+              <span
+                className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold ${
+                  quote.patient_id ? 'bg-violet-50 text-violet-700' : 'bg-amber-50 text-amber-700'
+                }`}
+              >
+                {quote.patient_id ? 'Paciente' : 'Prospecto'}
+              </span>
+            </div>
           </div>
           <div>
             <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">
