@@ -23,6 +23,7 @@ import {
   entriesOf,
   fieldLabel,
   entryLabel,
+  methodLabel,
   MULTI_ENTRY_METHODS,
   type PaymentDetails,
 } from '@/lib/payment-details';
@@ -31,21 +32,6 @@ interface SellerPaymentDetailsModalProps {
   sellerId: string;
   sellerName: string;
   onClose: () => void;
-}
-
-/** Rótulo legible para el bloque de cada método de pago. */
-const METHOD_LABELS: Record<string, string> = {
-  pago_movil: 'Pago Móvil',
-  transferencia: 'Transferencia bancaria',
-  zelle: 'Zelle',
-  binance: 'Binance Pay',
-  efectivo_usd: 'Efectivo USD',
-  efectivo_bs: 'Efectivo Bs',
-  pos: 'POS',
-};
-
-function methodLabel(method: string): string {
-  return METHOD_LABELS[method] ?? method.replace(/_/g, ' ');
 }
 
 export default function SellerPaymentDetailsModal({

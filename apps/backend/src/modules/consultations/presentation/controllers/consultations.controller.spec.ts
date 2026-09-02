@@ -554,6 +554,7 @@ describe('ConsultationsController', () => {
         CONSULTATION_ID,
         {
           extras: [{ description: 'Limpieza', amount_usd: 20 }],
+          product_extras: [],
           method: 'zelle',
         },
         mockUser,
@@ -575,7 +576,7 @@ describe('ConsultationsController', () => {
 
       const result = await controller.approvePaymentWithExtrasEndpoint(
         CONSULTATION_ID,
-        { extras: [] },
+        { extras: [], product_extras: [] },
         mockUser,
       );
 
@@ -598,7 +599,11 @@ describe('ConsultationsController', () => {
       });
       mockApproveWithExtras.execute.mockResolvedValue(consultation);
 
-      await controller.approvePaymentWithExtrasEndpoint(CONSULTATION_ID, { extras: [] }, mockUser);
+      await controller.approvePaymentWithExtrasEndpoint(
+        CONSULTATION_ID,
+        { extras: [], product_extras: [] },
+        mockUser,
+      );
 
       expect(mockApproveWithExtras.execute).toHaveBeenCalledWith(
         expect.objectContaining({ doctorId: DOCTOR_ID }),
@@ -609,7 +614,11 @@ describe('ConsultationsController', () => {
       mockApproveWithExtras.execute.mockRejectedValue(new ConsultationNotFoundError());
 
       await expect(
-        controller.approvePaymentWithExtrasEndpoint(CONSULTATION_ID, { extras: [] }, mockUser),
+        controller.approvePaymentWithExtrasEndpoint(
+          CONSULTATION_ID,
+          { extras: [], product_extras: [] },
+          mockUser,
+        ),
       ).rejects.toThrow(ConsultationNotFoundError);
     });
   });

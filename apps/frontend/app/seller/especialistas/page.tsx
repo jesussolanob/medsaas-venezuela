@@ -45,6 +45,59 @@ export default function SellerEspecialistasPage() {
   const [fichaCargando, setFichaCargando] = useState(false);
   const [fichaError, setFichaError] = useState('');
 
+  // Edición del teléfono y las notas. Un especialista ASIGNADO por el admin
+  // llega sin teléfono y antes la ficha era de solo lectura: no había forma de
+  // cargarlo desde el portal.
+  const [editando, setEditando] = useState(false);
+  const [editPhone, setEditPhone] = useState('');
+  const [editNotes, setEditNotes] = useState('');
+  const [guardandoFicha, setGuardandoFicha] = useState(false);
+  const [fichaGuardarError, setFichaGuardarError] = useState('');
+
+  function empezarEdicion() {
+    setEditPhone(ficha?.phone ?? '');
+    setEditNotes(ficha?.sellerNotes ?? '');
+    setFichaGuardarError('');
+    setEditando(true);
+  }
+
+  function cancelarEdicion() {
+    setEditando(false);
+    setFichaGuardarError('');
+  }
+
+  async function guardarFicha() {
+    if (!ficha) return;
+    setGuardandoFicha(true);
+    setFichaGuardarError('');
+    try {
+      const res = await fetch(`/api/seller/specialists/${ficha.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: editPhone, seller_notes: editNotes }),
+      });
+      const j = (await res.json().catch(() => ({}))) as {
+        success?: boolean;
+        data?: SpecialistDetail;
+        error?: string;
+      };
+      if (!res.ok || !j.success || !j.data) {
+        setFichaGuardarError(j.error ?? 'No se pudieron guardar los cambios.');
+        return;
+      }
+      // Se toma la ficha que devuelve el servidor, no el estado local: así lo
+      // que se ve es lo que quedó guardado (el backend recorta y normaliza).
+      setFicha(j.data);
+      setEditando(false);
+      showToast({ type: 'success', message: 'Ficha actualizada' });
+      await recargar();
+    } catch {
+      setFichaGuardarError('No se pudieron guardar los cambios.');
+    } finally {
+      setGuardandoFicha(false);
+    }
+  }
+
   /**
    * Filtro del lado del cliente: la lista llega completa en un solo fetch.
    *
@@ -302,7 +355,15 @@ export default function SellerEspecialistasPage() {
                   <div>
                     <dt className="text-[11px] font-semibold text-slate-400 uppercase">Teléfono</dt>
                     <dd className="text-slate-800">
-                      {ficha.phone ? (
+                      {editando ? (
+                        <input
+                          type="tel"
+                          value={editPhone}
+                          onChange={(e) => setEditPhone(e.target.value)}
+                          placeholder="04141234567"
+                          className="w-full text-sm border-2 border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:border-teal-400"
+                        />
+                      ) : ficha.phone ? (
                         <a href={`tel:${ficha.phone}`} className="text-teal-700 hover:underline">
                           {ficha.phone}
                         </a>
@@ -333,7 +394,66 @@ export default function SellerEspecialistasPage() {
                       {ficha.lastSignInAt ? fmtDate(ficha.lastSignInAt) : 'Nunca entró'}
                     </dd>
                   </div>
+
+                  {/* Notas del vendedor: seguimiento comercial, no dato clínico. */}
+                  <div className="pt-2 border-t border-slate-100">
+                    <dt className="text-[11px] font-semibold text-slate-400 uppercase">
+                      Mis notas
+                    </dt>
+                    <dd className="text-slate-800 mt-1">
+                      {editando ? (
+                        <textarea
+                          value={editNotes}
+                          onChange={(e) => setEditNotes(e.target.value)}
+                          rows={4}
+                          maxLength={2000}
+                          placeholder="Cómo viene la conversación, cuándo volver a llamarlo…"
+                          className="w-full text-sm border-2 border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-teal-400 resize-y"
+                        />
+                      ) : ficha.sellerNotes ? (
+                        <p className="whitespace-pre-wrap text-sm">{ficha.sellerNotes}</p>
+                      ) : (
+                        <span className="text-slate-400 text-sm">Sin notas</span>
+                      )}
+                    </dd>
+                  </div>
                 </dl>
+
+                {fichaGuardarError && (
+                  <p className="mt-3 text-xs text-red-600">{fichaGuardarError}</p>
+                )}
+
+                {/* Editar / guardar */}
+                <div className="mt-4 flex gap-2">
+                  {editando ? (
+                    <>
+                      <button
+                        type="button"
+                        disabled={guardandoFicha}
+                        onClick={() => void guardarFicha()}
+                        className="flex-1 rounded-lg bg-teal-500 hover:bg-teal-600 disabled:bg-slate-200 disabled:text-slate-400 text-white py-2 text-sm font-semibold transition-colors"
+                      >
+                        {guardandoFicha ? 'Guardando…' : 'Guardar'}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={guardandoFicha}
+                        onClick={cancelarEdicion}
+                        className="rounded-lg border-2 border-slate-200 hover:bg-slate-50 px-4 py-2 text-sm font-semibold text-slate-600 transition-colors"
+                      >
+                        Cancelar
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={empezarEdicion}
+                      className="w-full rounded-lg border-2 border-teal-500 text-teal-700 hover:bg-teal-50 py-2 text-sm font-semibold transition-colors"
+                    >
+                      Editar teléfono y notas
+                    </button>
+                  )}
+                </div>
 
                 <a
                   href={ficha.phone ? `https://wa.me/${ficha.phone}` : undefined}

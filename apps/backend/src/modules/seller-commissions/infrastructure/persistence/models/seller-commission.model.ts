@@ -34,7 +34,7 @@ export class SellerCommissionModel extends Model {
   @Column({ type: DataType.TEXT, allowNull: true, field: 'plan_key' })
   declare planKey: string | null;
 
-  /** 'pending' | 'paid' */
+  /** 'pending' | 'approved' | 'paid' */
   @Default('pending')
   @Column({ type: DataType.TEXT, allowNull: false })
   declare status: string;
@@ -48,4 +48,12 @@ export class SellerCommissionModel extends Model {
 
   @Column({ type: DataType.DATE, allowNull: false, field: 'created_at' })
   declare createdAt: Date;
+
+  /** Cuándo un admin la habilitó para pago. Null en las pagadas antes del estado. */
+  @Column({ type: DataType.DATE, allowNull: true, field: 'approved_at' })
+  declare approvedAt: Date | null;
+
+  /** Qué admin la habilitó. Null por el mismo motivo histórico. */
+  @Column({ type: DataType.UUID, allowNull: true, field: 'approved_by' })
+  declare approvedBy: string | null;
 }

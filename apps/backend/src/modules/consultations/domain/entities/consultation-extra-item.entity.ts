@@ -19,6 +19,18 @@ export interface ConsultationExtraItemCreateParams {
   description: string;
   amountUsd: number;
   createdAt: Date;
+  /**
+   * When set, this extra item is linked to an inventory product sale.
+   * NULL for free-text service extras (e.g. "Limpieza dental").
+   */
+  productId?: string | null;
+  /** Quantity sold. Defaults to 1 for service extras. */
+  quantity?: number | null;
+  /**
+   * Unit price in USD at the moment of sale (before multiplying by quantity).
+   * NULL for service extras.
+   */
+  unitPriceUsd?: number | null;
 }
 
 export class ConsultationExtraItem {
@@ -28,6 +40,9 @@ export class ConsultationExtraItem {
   readonly description: string;
   readonly amountUsd: number;
   readonly createdAt: Date;
+  readonly productId: string | null;
+  readonly quantity: number;
+  readonly unitPriceUsd: number | null;
 
   constructor(params: ConsultationExtraItemCreateParams) {
     if (!params.description || params.description.trim().length === 0) {
@@ -43,6 +58,9 @@ export class ConsultationExtraItem {
     this.description = params.description.trim();
     this.amountUsd = params.amountUsd;
     this.createdAt = params.createdAt;
+    this.productId = params.productId ?? null;
+    this.quantity = params.quantity ?? 1;
+    this.unitPriceUsd = params.unitPriceUsd ?? null;
   }
 
   static create(params: ConsultationExtraItemCreateParams): ConsultationExtraItem {

@@ -89,6 +89,8 @@ export class LeadsController {
     const lead = await this.createLead.execute({
       doctorId: user.sub,
       name: dto.name,
+      lastName: dto.last_name ?? null,
+      email: dto.email ?? null,
       phone: dto.phone ?? null,
       channel: dto.channel ?? null,
       stage: dto.stage,
@@ -113,6 +115,8 @@ export class LeadsController {
       leadId: id,
       doctorId: user.sub,
       name: dto.name,
+      lastName: dto.last_name,
+      email: dto.email,
       phone: dto.phone,
       channel: dto.channel ?? undefined,
       message: dto.message,

@@ -38,6 +38,8 @@ export interface ILeadRepository {
     doctorId: string,
     fields: {
       name?: string;
+      lastName?: string | null;
+      email?: string | null;
       phone?: string | null;
       channel?: string | null;
       message?: string | null;

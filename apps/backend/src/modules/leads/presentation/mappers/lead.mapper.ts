@@ -11,6 +11,8 @@ export function toLeadResponse(lead: Lead): Record<string, unknown> {
     id: lead.id,
     doctor_id: lead.doctorId,
     name: lead.name,
+    last_name: lead.lastName,
+    email: lead.email,
     phone: lead.phone,
     channel: lead.channel,
     stage: lead.stage,

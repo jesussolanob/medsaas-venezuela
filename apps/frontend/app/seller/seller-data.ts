@@ -30,6 +30,8 @@ export type SpecialistDetail = SpecialistRow & {
   email: string;
   phone: string | null;
   cedula: string | null;
+  /** Notas del vendedor sobre este especialista. Editables desde la ficha. */
+  sellerNotes: string | null;
   isActive: boolean;
 };
 

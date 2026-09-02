@@ -359,6 +359,21 @@ function FeaturesEditor({
 
 // ─── Prices editor ────────────────────────────────────────────────────────────
 
+/**
+ * Estado de EDICIÓN del precio. `price_usd` admite null porque un campo vacío es
+ * un paso legítimo mientras se teclea: antes `parseFloat('') || 0` lo reescribía
+ * como 0 y el cursor quedaba peleando contra un cero que no se podía borrar.
+ * El null nunca se persiste — `save()` lo rechaza con un mensaje.
+ */
+type PlanPriceDraft = Omit<PlanPrice, 'price_usd'> & { price_usd: number | null };
+
+const emptyDraft = (period: Period): PlanPriceDraft => ({
+  period,
+  price_usd: 0,
+  compare_at_price: null,
+  is_active: false,
+});
+
 function PricesEditor({
   planKey,
   prices,
@@ -369,10 +384,10 @@ function PricesEditor({
   onSaved: (planKey: string, prices: PlanPrice[]) => void;
 }) {
   // Build a complete set for all periods using existing data or defaults
-  const [local, setLocal] = useState<PlanPrice[]>(() => {
+  const [local, setLocal] = useState<PlanPriceDraft[]>(() => {
     return ALL_PERIODS.map((period) => {
       const existing = prices.find((p) => p.period === period);
-      return existing ?? { period, price_usd: 0, compare_at_price: null, is_active: false };
+      return existing ?? emptyDraft(period);
     });
   });
   const [saving, setSaving] = useState(false);
@@ -383,12 +398,26 @@ function PricesEditor({
     JSON.stringify(
       ALL_PERIODS.map((period) => {
         const existing = prices.find((p) => p.period === period);
-        return existing ?? { period, price_usd: 0, compare_at_price: null, is_active: false };
+        return existing ?? emptyDraft(period);
       }),
     );
 
-  function updatePrice(period: Period, field: 'price_usd' | 'is_active', value: number | boolean) {
+  function updatePrice(
+    period: Period,
+    field: 'price_usd' | 'is_active',
+    value: number | boolean | null,
+  ) {
     setLocal((prev) => prev.map((p) => (p.period === period ? { ...p, [field]: value } : p)));
+  }
+
+  /** Vacío = null (se puede borrar del todo). Cualquier basura tecleada queda en null. */
+  function updatePriceUsd(period: Period, raw: string) {
+    if (raw.trim() === '') {
+      updatePrice(period, 'price_usd', null);
+      return;
+    }
+    const parsed = parseFloat(raw);
+    updatePrice(period, 'price_usd', Number.isFinite(parsed) ? parsed : null);
   }
 
   /** El campo vacío se guarda como null = sin promoción, y deja de tacharse. */
@@ -404,20 +433,35 @@ function PricesEditor({
   }
 
   async function save() {
+    // Un período activo sin precio no se guarda como 0: eso publicaría el plan
+    // gratis sin que nadie lo haya pedido. Se avisa y no se manda nada.
+    const sinPrecio = local.filter((p) => p.is_active && p.price_usd === null);
+    if (sinPrecio.length > 0) {
+      const faltantes = sinPrecio
+        .map((p) => PERIOD_LABELS[p.period as Period] ?? p.period)
+        .join(', ');
+      setError(`Falta el precio de: ${faltantes}.`);
+      return;
+    }
+
+    // Los inactivos con el campo vacío van en 0 — no se muestran en ningún lado.
+    const prices: PlanPrice[] = local.map((p) => ({ ...p, price_usd: p.price_usd ?? 0 }));
+
     setSaving(true);
     setError('');
     try {
       const res = await fetch('/api/admin/plans/prices', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ planKey, prices: local }),
+        body: JSON.stringify({ planKey, prices }),
       });
       if (!res.ok) {
         const j = (await res.json()) as { error?: string };
         throw new Error(j.error ?? 'Error guardando precios');
       }
       showToast({ type: 'success', message: 'Precios del plan guardados' });
-      onSaved(planKey, local);
+      // `prices`, no `local`: es lo que realmente se guardó, ya sin nulls.
+      onSaved(planKey, prices);
     } catch (e: unknown) {
       const errMsg = e instanceof Error ? e.message : 'Error desconocido';
       setError(errMsg);
@@ -454,12 +498,12 @@ function PricesEditor({
               </span>
               <input
                 type="number"
-                value={price.price_usd}
-                onChange={(e) =>
-                  updatePrice(price.period as Period, 'price_usd', parseFloat(e.target.value) || 0)
-                }
+                value={price.price_usd ?? ''}
+                onChange={(e) => updatePriceUsd(price.period as Period, e.target.value)}
                 min={0}
-                step={0.01}
+                // Las flechas mueven de a 1 dólar. Con 0.01 hacían falta 100 clics
+                // para subir un dólar. Tipear centavos sigue permitido.
+                step={1}
                 disabled={!price.is_active}
                 className="w-full pl-7 pr-3 py-1.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-teal-400 focus:ring-2 focus:ring-teal-500/10 disabled:bg-slate-100 disabled:text-slate-400"
               />
@@ -475,18 +519,21 @@ function PricesEditor({
                 value={price.compare_at_price ?? ''}
                 onChange={(e) => updateCompareAt(price.period as Period, e.target.value)}
                 min={0}
-                step={0.01}
+                step={1}
                 disabled={!price.is_active}
                 placeholder="Sin oferta"
                 title="Precio tachado: se muestra al lado del real. Vacío = sin promoción. Tiene que ser mayor al precio real."
                 className="w-full pl-7 pr-3 py-1.5 text-sm border border-slate-200 rounded-lg focus:outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-500/10 disabled:bg-slate-100 disabled:text-slate-400"
               />
             </div>
-            {price.compare_at_price !== null && price.compare_at_price <= price.price_usd && (
-              <span className="text-[11px] text-red-600 max-w-[150px]">
-                El tachado tiene que ser mayor al precio real.
-              </span>
-            )}
+            {/* Con el precio vacío no hay contra qué comparar: el aviso espera. */}
+            {price.compare_at_price !== null &&
+              price.price_usd !== null &&
+              price.compare_at_price <= price.price_usd && (
+                <span className="text-[11px] text-red-600 max-w-[150px]">
+                  El tachado tiene que ser mayor al precio real.
+                </span>
+              )}
           </div>
         ))}
       </div>

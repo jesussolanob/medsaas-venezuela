@@ -31,6 +31,7 @@ function makeRepo(): jest.Mocked<ISellerCommissionRepository> {
     findPaymentById: jest.fn(),
     findSellerById: jest.fn(),
     findSpecialistById: jest.fn(),
+    approveCommissions: jest.fn(),
     assignSpecialistToSeller: jest.fn(),
   } as jest.Mocked<ISellerCommissionRepository>;
 }
@@ -42,8 +43,12 @@ describe('GetPendingCommissionsBySellerUseCase', () => {
       {
         sellerId: 'seller-1',
         sellerName: 'Vendedor A',
+        // totalPendingUsd es lo NO pagado (pendiente + aprobado); las aprobadas
+        // se cuentan aparte porque son las únicas que se pueden pagar hoy.
         totalPendingUsd: 20,
         pendingCount: 2,
+        approvedCount: 1,
+        totalApprovedUsd: 10,
         commissions: [],
       },
     ];

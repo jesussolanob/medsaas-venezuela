@@ -34,10 +34,21 @@ import {
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { showToast } from '@/components/ui/Toaster';
+import {
+  activeMethodsOf,
+  entriesOf,
+  entryLabel,
+  fieldLabel,
+  methodLabel,
+  type PaymentDetails,
+} from '@/lib/payment-details';
 
 // ---------------------------------------------------------------------------
 // Types (mirror controller DTOs — all camelCase)
 // ---------------------------------------------------------------------------
+
+/** pending = sin revisar · approved = habilitada para pago · paid = liquidada. */
+type CommissionStatus = 'pending' | 'approved' | 'paid';
 
 interface PendingCommissionItem {
   commissionId: string;
@@ -47,13 +58,19 @@ interface PendingCommissionItem {
   amountUsd: number;
   planKey: string | null;
   earnedAt: string;
+  /** Nunca llega 'paid' acá: esta lista es de lo NO pagado. */
+  status: CommissionStatus;
 }
 
 interface PendingBySeller {
   sellerId: string;
   sellerName: string;
+  /** Lo NO pagado: pendientes + aprobadas. Aprobar no salda la deuda. */
   totalPendingUsd: number;
   pendingCount: number;
+  /** Cuántas están aprobadas — las únicas que se pueden pagar hoy. */
+  approvedCount: number;
+  totalApprovedUsd: number;
   commissions: PendingCommissionItem[];
 }
 
@@ -88,16 +105,9 @@ interface PayForm {
 // Constants
 // ---------------------------------------------------------------------------
 
-const PAYMENT_METHODS = [
-  'Zelle',
-  'Pago Móvil',
-  'Transferencia bancaria',
-  'Binance Pay',
-  'Efectivo USD',
-  'Efectivo Bs',
-  'POS',
-  'Otro',
-];
+// Acá había un PAYMENT_METHODS fijo con todos los métodos del sistema. Los
+// métodos ahora salen de los datos de cobro del vendedor (activeMethodsOf):
+// ofrecer uno que el vendedor no configuró no sirve para pagarle.
 
 const EMPTY_PAY_FORM: PayForm = {
   method: '',
@@ -290,6 +300,7 @@ export default function ComisionesPage() {
   const [activeTab, setActiveTab] = useState<TabKind>('commissions');
   // Commission checkboxes — IDs of selected commissions
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [approving, setApproving] = useState(false);
 
   // History state
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -370,7 +381,13 @@ export default function ComisionesPage() {
     setPayError(null);
     const seller = sellers.find((s) => s.sellerId === sellerId);
     if (seller) {
-      setSelectedIds(new Set(seller.commissions.map((c) => c.commissionId)));
+      // Se preseleccionan las aprobadas: son las que se pueden pagar. Las
+      // pendientes se marcan a mano para aprobarlas.
+      setSelectedIds(
+        new Set(
+          seller.commissions.filter((c) => c.status === 'approved').map((c) => c.commissionId),
+        ),
+      );
     }
   }
 
@@ -484,16 +501,63 @@ export default function ComisionesPage() {
     setPayError(null);
   }
 
+  /**
+   * Aprueba las comisiones PENDIENTES que estén marcadas. No paga nada: las deja
+   * habilitadas para el pago posterior.
+   */
+  async function handleApprove(seller: PendingBySeller) {
+    const ids = seller.commissions
+      .filter((c) => selectedIds.has(c.commissionId) && c.status === 'pending')
+      .map((c) => c.commissionId);
+
+    if (ids.length === 0) {
+      setPayError('Marcá al menos una comisión pendiente para aprobar.');
+      return;
+    }
+
+    setApproving(true);
+    setPayError(null);
+    try {
+      const res = await fetch('/api/admin/seller-commissions/approve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ seller_id: seller.sellerId, commission_ids: ids }),
+      });
+      const json = (await res.json().catch(() => ({}))) as { success?: boolean; error?: string };
+      if (!res.ok || !json.success) {
+        setPayError(json.error ?? 'No se pudieron aprobar las comisiones.');
+        return;
+      }
+      showToast({
+        type: 'success',
+        message:
+          ids.length === 1
+            ? 'Comisión aprobada. Ya se puede pagar.'
+            : `${ids.length} comisiones aprobadas. Ya se pueden pagar.`,
+      });
+      setSelectedIds(new Set());
+      await reload();
+    } catch {
+      setPayError('No se pudieron aprobar las comisiones.');
+    } finally {
+      setApproving(false);
+    }
+  }
+
   async function handleSubmitPay(seller: PendingBySeller) {
     if (!payForm.method || !payForm.reference.trim()) {
       setPayError('El método y la referencia son obligatorios.');
       return;
     }
-    const ids = [...selectedIds].filter((id) =>
-      seller.commissions.some((c) => c.commissionId === id),
-    );
+    // Solo las APROBADAS. El backend rechaza el lote entero si viene una
+    // pendiente, así que filtrar acá evita un error críptico por una casilla
+    // que el admin marcó sin querer.
+    const ids = seller.commissions
+      .filter((c) => selectedIds.has(c.commissionId) && c.status === 'approved')
+      .map((c) => c.commissionId);
+
     if (ids.length === 0) {
-      setPayError('Seleccioná al menos una comisión para pagar.');
+      setPayError('Seleccioná al menos una comisión aprobada para pagar.');
       return;
     }
 
@@ -630,10 +694,18 @@ export default function ComisionesPage() {
           <div className="space-y-3">
             {sellers.map((seller) => {
               const isExpanded = expandedId === seller.sellerId;
-              const selectedTotal = calcSelectedTotal(seller.commissions, selectedIds);
-              const selectedCount = seller.commissions.filter((c) =>
-                selectedIds.has(c.commissionId),
-              ).length;
+              const marcadas = seller.commissions.filter((c) => selectedIds.has(c.commissionId));
+              const aprobadasMarcadas = marcadas.filter((c) => c.status === 'approved');
+              // "Total a pagar" cuenta SOLO las aprobadas: marcar una pendiente no
+              // suma plata pagable, y mostrarla en ese total prometía un pago que
+              // el backend iba a rechazar.
+              const selectedTotal = calcSelectedTotal(
+                seller.commissions.filter((c) => c.status === 'approved'),
+                selectedIds,
+              );
+              const selectedCount = marcadas.length;
+              const selectedApprovedCount = aprobadasMarcadas.length;
+              const selectedPendingCount = marcadas.length - aprobadasMarcadas.length;
               const allSelected = seller.commissions.every((c) => selectedIds.has(c.commissionId));
 
               return (
@@ -783,6 +855,19 @@ export default function ComisionesPage() {
                                     </p>
                                   </div>
 
+                                  {/* Estado: distingue lo que falta revisar de lo
+                                      que ya se puede pagar. */}
+                                  <span
+                                    className={clsx(
+                                      'inline-flex items-center text-[11px] font-bold px-2 py-0.5 rounded-full shrink-0',
+                                      commission.status === 'approved'
+                                        ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                        : 'bg-amber-50 text-amber-700 border border-amber-200',
+                                    )}
+                                  >
+                                    {commission.status === 'approved' ? 'Aprobada' : 'Pendiente'}
+                                  </span>
+
                                   <span
                                     className={clsx(
                                       'inline-flex items-center text-xs font-bold px-2 py-0.5 rounded-full shrink-0',
@@ -814,14 +899,37 @@ export default function ComisionesPage() {
                               </p>
                             </div>
                             {payStep === 'none' && (
-                              <button
-                                type="button"
-                                disabled={selectedCount === 0}
-                                onClick={handleStartPay}
-                                className="inline-flex items-center gap-2 bg-teal-500 hover:bg-teal-600 disabled:bg-slate-200 disabled:text-slate-400 text-white text-sm font-semibold rounded-lg px-5 py-2.5 transition-colors"
-                              >
-                                Registrar pago
-                              </button>
+                              <div className="flex flex-wrap items-center gap-2">
+                                {/* Aprobar: habilita para pago. Solo aparece si hay
+                                    alguna pendiente marcada. */}
+                                {selectedPendingCount > 0 && (
+                                  <button
+                                    type="button"
+                                    disabled={approving}
+                                    onClick={() => void handleApprove(seller)}
+                                    className="inline-flex items-center gap-2 bg-white hover:bg-emerald-50 border-2 border-emerald-500 text-emerald-700 disabled:opacity-50 text-sm font-semibold rounded-lg px-4 py-2.5 transition-colors"
+                                  >
+                                    {approving
+                                      ? 'Aprobando…'
+                                      : `Aprobar ${selectedPendingCount} ${
+                                          selectedPendingCount === 1 ? 'comisión' : 'comisiones'
+                                        }`}
+                                  </button>
+                                )}
+                                <button
+                                  type="button"
+                                  disabled={selectedApprovedCount === 0}
+                                  onClick={handleStartPay}
+                                  title={
+                                    selectedApprovedCount === 0
+                                      ? 'Solo se pueden pagar comisiones aprobadas.'
+                                      : undefined
+                                  }
+                                  className="inline-flex items-center gap-2 bg-teal-500 hover:bg-teal-600 disabled:bg-slate-200 disabled:text-slate-400 text-white text-sm font-semibold rounded-lg px-5 py-2.5 transition-colors"
+                                >
+                                  Registrar pago
+                                </button>
+                              </div>
                             )}
                           </div>
 
@@ -901,6 +1009,63 @@ interface PaymentFormProps {
   onSubmit: () => void;
 }
 
+/**
+ * Datos de cobro del vendedor, para que el admin sepa A DÓNDE transferir y solo
+ * pueda elegir un método que el vendedor tenga realmente cargado.
+ *
+ * Se piden acá y no al abrir la pantalla: son datos de un solo vendedor y solo
+ * hacen falta cuando se va a registrar el pago.
+ */
+function useSellerPaymentDetails(sellerId: string): {
+  details: PaymentDetails | null;
+  loading: boolean;
+  error: string | null;
+} {
+  const [details, setDetails] = useState<PaymentDetails | null>(null);
+  // Arranca en true y NO se resetea de forma síncrona dentro del efecto: la
+  // regla react-hooks/set-state-in-effect lo prohíbe (dispara un render en
+  // cascada). El reset vive dentro de la función async de abajo.
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function cargar(): Promise<void> {
+      setLoading(true);
+      setError(null);
+      try {
+        const res = await fetch(`/api/admin/sellers/${sellerId}/payment-details`, {
+          cache: 'no-store',
+        });
+        const json = (await res.json().catch(() => ({}))) as {
+          success?: boolean;
+          data?: { paymentDetails: PaymentDetails };
+          error?: string;
+        };
+        if (cancelled) return;
+        if (!res.ok || !json.success) {
+          setError(json.error ?? 'No se pudieron cargar los datos de cobro.');
+          return;
+        }
+        setDetails(json.data?.paymentDetails ?? null);
+      } catch {
+        if (!cancelled) setError('No se pudieron cargar los datos de cobro.');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    void cargar();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [sellerId]);
+
+  return { details, loading, error };
+}
+
 function PaymentForm({
   seller,
   selectedIds,
@@ -922,6 +1087,13 @@ function PaymentForm({
   const isSubmitting = step === 'submitting';
   const selectedCommissions = seller.commissions.filter((c) => selectedIds.has(c.commissionId));
   const hasBcv = bcvRate !== null && bcvRate > 0;
+
+  const {
+    details: paymentDetails,
+    loading: detailsLoading,
+    error: detailsError,
+  } = useSellerPaymentDetails(seller.sellerId);
+  const metodosDelVendedor = activeMethodsOf(paymentDetails);
 
   return (
     <div className="bg-slate-50 border border-slate-200 rounded-xl p-5 space-y-5">
@@ -988,16 +1160,57 @@ function PaymentForm({
             id="pay-method"
             value={form.method}
             onChange={(e) => onFormChange({ method: e.target.value })}
-            disabled={isSubmitting}
+            disabled={isSubmitting || detailsLoading || metodosDelVendedor.length === 0}
             className="w-full text-sm border-2 border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-teal-400 transition-colors bg-white disabled:opacity-50"
           >
-            <option value="">Seleccioná un método…</option>
-            {PAYMENT_METHODS.map((m) => (
+            <option value="">
+              {detailsLoading ? 'Cargando métodos…' : 'Seleccioná un método…'}
+            </option>
+            {/* Solo los métodos que el vendedor tiene cargados. Antes era una lista
+                fija con todos los del sistema y se podía elegir uno sin datos. */}
+            {metodosDelVendedor.map((m) => (
               <option key={m} value={m}>
-                {m}
+                {methodLabel(m)}
               </option>
             ))}
           </select>
+
+          {!detailsLoading && metodosDelVendedor.length === 0 && (
+            <p className="mt-1.5 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+              {detailsError ??
+                'Este vendedor todavía no cargó sus datos de cobro. Pedile que los complete en su portal antes de registrarle el pago.'}
+            </p>
+          )}
+
+          {/* Datos para hacer la transferencia. Sin esto el admin tenía que salir
+              a buscarlos a otra pantalla para poder pagar. */}
+          {form.method && paymentDetails && (
+            <div className="mt-2 rounded-lg border border-slate-200 bg-white px-3 py-2.5">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400 mb-1.5">
+                Datos para el pago
+              </p>
+              {entriesOf(paymentDetails, form.method).map((entry, i, arr) => (
+                <div
+                  key={i}
+                  className={i < arr.length - 1 ? 'mb-2 pb-2 border-b border-slate-100' : ''}
+                >
+                  {arr.length > 1 && (
+                    <p className="text-[11px] font-semibold text-slate-500 mb-0.5">
+                      {entryLabel(entry, i)}
+                    </p>
+                  )}
+                  {Object.entries(entry)
+                    .filter(([, v]) => v && v.trim() !== '')
+                    .map(([k, v]) => (
+                      <p key={k} className="text-sm text-slate-700">
+                        <span className="text-slate-400">{fieldLabel(k)}:</span>{' '}
+                        <span className="font-medium select-all">{v}</span>
+                      </p>
+                    ))}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         <div>
@@ -1251,7 +1464,9 @@ function HistoryTab({
                       {fmtBs(payment.amountUsd, payment.bcvRate!)}
                     </p>
                     <p className="text-xs text-slate-500 mt-0.5">
-                      equivalente {formatUsd(payment.amountUsd)} · {payment.method}
+                      {/* methodLabel tolera las dos formas: los pagos viejos guardaron
+                          el rótulo ("Zelle") y los nuevos guardan la clave ("zelle"). */}
+                      equivalente {formatUsd(payment.amountUsd)} · {methodLabel(payment.method)}
                       {payment.reference && (
                         <>
                           {' '}
@@ -1270,7 +1485,7 @@ function HistoryTab({
                       {formatUsd(payment.amountUsd)}
                     </p>
                     <p className="text-xs text-slate-500 mt-0.5">
-                      {payment.method}
+                      {methodLabel(payment.method)}
                       {payment.reference && (
                         <>
                           {' '}

@@ -11,9 +11,11 @@
  *   - Cada especialista genera hasta DOS comisiones:
  *     · 'signup' ($10) → cuando completa el alta
  *     · 'plan'   ($10 Base o $20 Plus) → la primera vez que pasa a plan pago
- *   - Una comisión está 'pending' o 'paid'. No hay más estados.
+ *   - Una comisión pasa por 'pending' → 'approved' → 'paid'. 'approved' significa
+ *     que el admin la revisó y la habilitó para pago: todavía NO se cobró, así
+ *     que para el vendedor sigue siendo plata que le deben y suma al pendiente.
  *   - El vendedor no puede hacer nada para cambiar el estado: el admin es quien
- *     paga. Acá solo se informa.
+ *     aprueba y paga. Acá solo se informa.
  *   - Los montos se calculan y se deben en USD, y así se informan: lo PENDIENTE
  *     va solo en dólares. Convertirlo a la tasa de hoy prometería una cifra que
  *     no va a ser la que reciba — entre que nace la comisión y se liquida, la
@@ -52,7 +54,7 @@ interface SellerCommissionDto {
   type: 'signup' | 'plan';
   amountUsd: number;
   planKey: string | null;
-  status: 'pending' | 'paid';
+  status: 'pending' | 'approved' | 'paid';
   earnedAt: string;
   paymentId: string | null;
   createdAt: string;
@@ -170,7 +172,10 @@ function useComisionesData(): ComisionesData {
 /** Fila de una comisión en la tabla de detalle. */
 function FilaComision({ c }: { c: SellerCommissionDto }) {
   const [expandida, setExpandida] = useState(false);
-  const pendiente = c.status === 'pending';
+  const pagada = c.status === 'paid';
+  // 'approved' se le muestra al vendedor como "Aprobada": ya pasó la revisión
+  // del admin y está en camino, pero todavía no la cobró.
+  const aprobada = c.status === 'approved';
 
   return (
     <>
@@ -194,15 +199,19 @@ function FilaComision({ c }: { c: SellerCommissionDto }) {
         <td className="px-5 py-3">
           <span
             className={`inline-flex items-center gap-1.5 text-[11px] font-semibold px-2 py-0.5 rounded-full ${
-              pendiente ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700'
+              pagada
+                ? 'bg-emerald-50 text-emerald-700'
+                : aprobada
+                  ? 'bg-sky-50 text-sky-700'
+                  : 'bg-amber-50 text-amber-700'
             }`}
           >
-            {pendiente ? (
-              <Clock className="w-3 h-3 shrink-0" />
-            ) : (
+            {pagada ? (
               <CheckCircle2 className="w-3 h-3 shrink-0" />
+            ) : (
+              <Clock className="w-3 h-3 shrink-0" />
             )}
-            {pendiente ? 'Pendiente' : 'Pagada'}
+            {pagada ? 'Pagada' : aprobada ? 'Aprobada' : 'Pendiente'}
           </span>
         </td>
 
@@ -219,7 +228,7 @@ function FilaComision({ c }: { c: SellerCommissionDto }) {
         <tr className="bg-slate-50/80">
           <td colSpan={5} className="px-6 py-3">
             <p className="text-xs text-slate-500">{tipoAyuda(c.type)}</p>
-            {!pendiente && c.paymentId && (
+            {pagada && c.paymentId && (
               <p className="text-xs text-emerald-700 mt-1">
                 Liquidada el {fmtDate(c.earnedAt)} · ref. pago:{' '}
                 <span className="font-mono text-[11px]">{c.paymentId.slice(0, 8)}…</span>
@@ -347,7 +356,10 @@ export default function ComisionesPage() {
   // pagos ya hechos, con la tasa histórica de ese día (campo bcvRate de cada pago).
   const { commissions, payments, loading, error } = useComisionesData();
 
-  const pendientes = commissions.filter((c) => c.status === 'pending');
+  // "Pendiente" para el vendedor = todo lo que todavía no cobró, o sea 'pending'
+  // Y 'approved'. Filtrar por 'pending' a secas hacía DESAPARECER de su lista y
+  // de su total adeudado cada comisión que el admin aprobaba.
+  const pendientes = commissions.filter((c) => c.status !== 'paid');
   const pagadas = commissions.filter((c) => c.status === 'paid');
   const totalPendiente = pendientes.reduce((s, c) => s + c.amountUsd, 0);
   const totalCobrado = payments.reduce((s, p) => s + p.amountUsd, 0);

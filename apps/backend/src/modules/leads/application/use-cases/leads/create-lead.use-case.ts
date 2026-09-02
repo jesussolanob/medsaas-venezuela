@@ -6,6 +6,8 @@ import { ILeadRepository, LEAD_REPOSITORY } from '../../../domain/repositories/l
 export interface CreateLeadInput {
   doctorId: string;
   name: string;
+  lastName?: string | null;
+  email?: string | null;
   phone?: string | null;
   channel?: string | null;
   stage?: LeadStage;
@@ -26,6 +28,8 @@ export class CreateLeadUseCase {
       id: randomUUID(),
       doctorId: input.doctorId,
       name: input.name,
+      lastName: input.lastName ?? null,
+      email: input.email ?? null,
       phone: input.phone ?? null,
       channel: input.channel ?? null,
       stage: input.stage ?? 'new',

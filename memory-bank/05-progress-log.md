@@ -4,6 +4,204 @@
 > ⚠️ Orden: **la entrada más nueva va ARRIBA**. La del 2026-08-11 quedó al final
 > del archivo por error; no se movió para no ensuciar el diff.
 
+## 2026-09-02 — Seis observaciones del QA: un solo generador de PDF y comisiones aprobadas
+
+> Commit `6a62fad1`, rama `feature/cotizaciones`. **Dos migraciones sin aplicar a ninguna base.**
+> ADR-057 (generador único) y ADR-058 (estado `approved`).
+
+### 1. El formato se perdía al compartir (lo que pidió el dueño: un solo generador)
+
+El diagnóstico del QA era correcto pero el código estaba a mitad de camino: **no había tres
+generadores paralelos, y tampoco uno**. El modal y la ruta de compartir **ya** compartían
+`buildDocumentPages` — se le entraba distinto. El modal pasaba `restBlocks` (bloques con formato);
+la ruta de compartir **no pasaba ese argumento** y caía a `restContent`, un string plano.
+
+`TemplatePdfPreview` sí era un tercer generador de verdad: **espejaba a mano** la decisión de qué
+hojas salen por tipo, incluido el corte del récipe en dos. Su propio comentario lo admitía.
+
+Se extrajo `buildRestBlocks` como constructor único y los tres caminos lo usan. La ruta de
+compartir lee el reposo de `blocks_snapshot` con `readRestFromSnapshot`.
+
+**Lo que destapó unificar:** la muestra de paraclínicos usaba la clave `exams` y el generador real
+busca `paraclinical` — delegando tal cual, **la vista previa salía en blanco**. Y mostraba **dos**
+bloques cuando el documento real emite **uno**. La vista previa venía mintiendo sobre el resultado,
+y era imposible notarlo mientras fueran dos códigos distintos. `tsc` no vio nada de esto.
+
+### 2. Comisiones: el estado `approved` y el balde que se vacía solo
+
+`pending → approved → paid` (ADR-058). Al agregarlo apareció un defecto **serio** en la pantalla
+del vendedor: partía las comisiones en `'pending'` y `'paid'`, así que una **aprobada no caía en
+ninguna de las dos** y **desaparecía de su lista y de su total adeudado**. El vendedor veía su plata
+evaporarse. Además `!pendiente` decía **"Liquidada"** sobre una aprobada que nadie pagó, y el
+resumen de baja de cuenta habría **subestimado lo que se le debe**.
+
+Regla que queda: **un estado nuevo en el medio de un flujo rompe a todo el que partía el mundo en
+dos.** Buscar `=== 'pending'` y `=== 'paid'` en TODO el repo, no solo en el módulo tocado.
+
+### 3. Métodos de pago y datos del vendedor
+
+`PAYMENT_METHODS` era una constante fija con todos los métodos del sistema: el admin podía elegir
+uno para el que el vendedor no había dejado ningún dato. Ahora salen de sus datos de cobro
+(`activeMethodsOf`) y **se muestran los datos** para poder transferir. `methodLabel` se movió a
+`lib/payment-details` y tolera las dos formas guardadas —los pagos viejos guardaron el rótulo
+("Zelle") y los nuevos la clave ("zelle")—.
+
+### 4. Precios de planes
+
+`step={0.01}` (100 clics para subir un dólar) y `parseFloat(...) || 0`, que **impedía vaciar el
+campo**: `NaN` caía en `0` y el cero no se podía borrar. El vacío pasa a ser un estado de edición
+válido y guardar **avisa** si falta un precio en vez de publicar el plan en cero.
+
+### 5. Ficha del especialista editable
+
+Era de **solo lectura**, así que un especialista **asignado por el admin** llegaba sin teléfono y no
+había forma de cargarlo. Teléfono y notas editables; `profiles.seller_notes` es columna nueva. El
+`PATCH` acepta **solo esos dos campos** y es `.strict()`: un `plan` o un `role` en el cuerpo falla
+en vez de ignorarse en silencio.
+
+### La regla de los mocks, cobrada dos veces en un día
+
+Agregar **un** método a `ISellerCommissionRepository` rompió **10 suites**; agregar otro a
+`ISellerRepository` rompió **11 más**. `tsc` no las ve porque excluye los `.spec`. 21 en total.
+
+### Verificación
+
+**447 suites / 4193 tests**, `tsc` de frontend y backend, `build` de ambos sin caché — **los cinco
+con exit 0 real**. Lint sin hallazgos nuevos (los 2 avisos de `PlansAdminClient` son preexistentes,
+medidos contra HEAD con un stash).
+
+### Qué falta
+
+- **Aplicar las dos migraciones** — ninguna se corrió.
+- **Abrir todo en un navegador.** Nada de esto se vio funcionando.
+
+## 2026-09-01 — Cotizaciones: frontend, vista pública y SSRF en las dos rutas de PDF
+
+> Commit `95e6ecbf` sobre `f8cf4997` (backend), rama `feature/cotizaciones`.
+> Nada mergeado a `develop`. Migración **sin aplicar** y módulo **sin abrir en un navegador**.
+
+Cierre del módulo por el lado del frontend: listado con filtros, detalle con máquina de estados,
+modal de alta sobre servicios del catálogo y productos del inventario, vista pública por token y
+PDF con el branding del especialista. Entra al sidebar y al gating por plan como `quotes`.
+
+### SSRF: el fallback del logo, en producción desde antes
+
+`imageUrlToDataUri` baja el logo y la firma con **tres guardas**: tiempo límite, verificación de
+`Content-Type` y tope de tamaño. Si esa bajada fallaba, el código le pasaba **la URL cruda** a
+`@react-pdf`, que la vuelve a bajar del lado del servidor **sin ninguna de las tres**. Como
+`logo_url` se guarda tal cual la manda el especialista, se podía apuntar a una dirección interna
+de la infraestructura y hacer que el propio servidor la consultara.
+
+Hace falta cuenta de especialista, así que no es explotable por un desconocido, y no hay evidencia
+de que haya pasado. Pero **la ruta de documentos compartidos ya estaba viva en producción con el
+mismo fallback** — no era un defecto del módulo nuevo, era uno viejo que el módulo nuevo copió.
+
+Arreglo en las dos rutas: el fallback pasa a `null`. Un logo faltante es mejor que una petición
+que no controlamos, y por lo que ya se sabe de esta librería, ese respaldo probablemente nunca
+funcionó igual.
+
+Además, la ruta pública del PDF devolvía **el error crudo al cliente**, que puede traer direcciones
+internas (un fetch fallido sale como `ECONNREFUSED 10.x.x.x`). Se loguea y sale un mensaje
+genérico: esa ruta es alcanzable **sin credenciales**.
+
+### Dos pantallas construidas que nadie podía alcanzar
+
+**CRM nunca estuvo en el sidebar.** Existía solo como prefijo en `PLAN_GATED_ROUTES`: gateado,
+construido y sin una sola forma de llegar desde la UI. Cuarto caso del patrón. Entra al sidebar
+ahora, que hacía falta igual porque una cotización puede ir a un prospecto.
+
+**El PDF del especialista dependía de tener enlace.** Se armaba por la ruta del servidor, que exige
+token, así que **un borrador sin enviar no se podía descargar**. Pasó a armarse en el navegador con
+`pdf().toBlob()`; la ruta del servidor queda para el enlace público, que es para lo que es.
+
+### El `EXIT=0` que era mentira
+
+La suite se reportó verde y **estaba roja**. El comando terminaba en `| tail -35; echo $?`, así que
+el código leído era **el de `tail`**, no el de jest. Regla: capturar el exit **antes** de cualquier
+pipe (`cmd > log 2>&1; echo $?`), nunca después.
+
+Lo que ocultaba: `quotes.controller.spec` construía el controlador con 7 argumentos y el constructor
+pedía 8 tras sumar `ConfigService`. **`tsc` del backend no lo ve porque excluye los `.spec`** — solo
+aparece corriendo jest. Mismo patrón ya documentado: tocar una dependencia inyectada rompe los mocks
+del módulo.
+
+Al arreglarlo, el mock resuelve una **URL base real**: con uno vacío las 8 aserciones existentes
+seguían pasando mientras el controlador producía un `share_url` **sin origen**. Y `share_url` no
+tenía **ninguna** cobertura, siendo el campo del que depende el botón de copiar; se sumaron sus dos
+casos (con token arma la URL, en borrador queda en `null`).
+
+### Verificación
+
+445 suites / 4183 tests, `tsc` de frontend y backend, `build` de ambos sin caché — **los cinco con
+exit 0 real**. Lint acotado sin hallazgos nuevos (los 4 de `crm/page.tsx` son preexistentes,
+medidos contra HEAD con un stash). La migración se revisó **leyendo**, contra la tabla que la creó:
+`plan_features` coincide en columnas y el UNIQUE existe, y `uuid_generate_v4()` está disponible
+porque el esquema inicial crea `uuid-ossp`.
+
+### Qué falta
+
+- **Aplicar la migración** — no se corrió en ninguna base.
+- **Abrir el módulo en un navegador.** Es exactamente el escenario donde este proyecto acumuló sus
+  peores sorpresas: verde en tests no es verde en pantalla.
+- Merge a `develop` → `staging` → validar → `main`.
+
+## 2026-09-01 — Módulo Inventario (backend + frontend) · rama `feature/inventario`
+
+> Commits `cd38c246` (backend), `9b4d2516` (specs), `74af359b` (frontend), `b50c857c` (fix).
+> Nada mergeado a `develop` todavía. Specs en `docs/specs/`.
+
+Arranque de un lote de tres pedidos del dueño: **inventario**, **cotizaciones** y **Chatwoot para
+vendedores**. Inventario primero porque las cotizaciones incluyen productos.
+
+### Trece defectos que la suite verde no vio
+
+El agente entregó con build y 4106 tests en verde. Verificando en disco aparecieron **trece**
+defectos. Los que más enseñan:
+
+| #   | Defecto                                                                                               | Por qué importaba                                                                                                                                                          |
+| --- | ----------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | La migración insertaba en `plan_features.plan_key`; la columna se llama `plan`                        | **Bloqueaba TODOS los despliegues** del proyecto: el deploy corre migraciones antes del build. Ningún test lo ve porque los tests no tocan Postgres                        |
+| 2   | `photo_path` era texto libre del cliente y se firmaba sin validar                                     | Un especialista podía guardar la ruta de un **documento clínico de otro** y recibir una URL firmada válida por una hora. Exfiltración de PHI, no un problema de inventario |
+| 3   | Los 6 tests obligatorios corrían contra un use case **que no llamaba nadie**                          | La lógica real vivía inline en el repositorio, sin cobertura. Verde total sobre código muerto                                                                              |
+| 4   | Producto ajeno → cobraba **cero** en silencio; producto en VES sin tasa → se cobraba **como dólares** | 1.500 Bs pasaban a ser US$ 1.500                                                                                                                                           |
+| 5   | Dos aprobaciones simultáneas de la misma consulta descontaban el stock **dos veces**                  | Leía los movimientos previos **antes** del candado. Un doble clic alcanzaba                                                                                                |
+| 6   | El "Total a cobrar" no sumaba los productos                                                           | Base 50 + producto 30 + servicio 20: la pantalla decía **$70** y el cobro quedaba en **$120**                                                                              |
+| 7   | Al reaprobar, el stock se **inflaba solo**                                                            | Los extras volvían como texto sin `product_id`: el backend revertía el descuento y no lo volvía a aplicar. La plata bien, el inventario mal, sin un error                  |
+
+**El 3 y el 7 son la misma familia** que ya tiene su memoria en este repo: código correcto y
+desconectado. El 7 es el espejo del 5 — uno descuenta de más, el otro de menos.
+
+### Falsos positivos descartados (el lead juzga, no acata)
+
+- _"Redondear cada suma parcial de montos"_: al revés. Redondear parciales **introduce** sesgo;
+  sumar y redondear una vez al final es lo correcto. Sí se aceptó el doble redondeo en VES.
+- _"Se puede colar un precio en la línea de producto"_ y _"`limit` sin cota"_: los dos esquemas son
+  `.strict()` y `limit` ya está acotado a 100. No explotables.
+- _"Falta gating de plan en el backend"_: cierto, pero **ningún módulo lo tiene**. No se hace una
+  excepción suelta; queda como deuda del sistema.
+- Un revisor **elogió como correcta la línea que rompía la migración**. Recordatorio de por qué no
+  se firma nada sobre el reporte de un agente.
+
+### Verificación
+
+Backend: build 0 · **438 suites / 4113 tests** exit 0 · lint acotado 0 (⚠️ `nx lint backend`
+completo se queda sin memoria). Frontend: `tsc` 0 · lint **igual a la línea base** (6 problemas
+preexistentes en los modificados, 0 en los nuevos), medido con `git stash` porque el absoluto no
+dice nada con 122 errores previos en `develop`.
+
+### 🔴 Lo que NO está probado
+
+- **La migración no corrió contra ningún Postgres.** Los tests usan Sequelize simulado: verifican
+  qué SQL se emite, no que Postgres lo acepte. El defecto que bloqueaba despliegues se encontró
+  **leyendo**, no ejecutando.
+- **No se abrió en un navegador.** En este repo esa distinción ya costó caro.
+- El gating "solo Plus" vive solo en el frontend (deuda del sistema, ver `02-components.md`).
+
+### Pendiente del lote
+
+Cotizaciones (spec listo, sin empezar) y Chatwoot (runbook listo; depende de que el dueño confirme
+con Meta si la Cloud API acepta un número venezolano, y de acceso a `gcloud`).
+
 ## 2026-09-01 — Cierre del lote: guion de QA, dos módulos inalcanzables y el precio tachado
 
 > Todo en **staging** (`4aa3112e`). **39 commits** desde `5faac77d`, **5 migraciones**, nada en `main`.

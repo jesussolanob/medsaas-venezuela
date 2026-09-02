@@ -17,6 +17,8 @@ import {
   type SavedPrescription,
   type EhrRecord,
   buildDocumentPages,
+  buildRestBlocks,
+  readRestFromSnapshot,
   INFORME_CHECKED_BY_DEFAULT,
 } from '@/app/doctor/consultations/consultation-documents';
 
@@ -368,6 +370,14 @@ export async function GET(
   const diagnosisRaw = informeContent.find((b) => b.key === 'diagnosis')?.value;
   const diagnosisValue = typeof diagnosisRaw === 'string' ? diagnosisRaw : undefined;
 
+  // El reposo sale del MISMO constructor que usa el modal de generar. Antes esta
+  // ruta no pasaba restBlocks y buildDocumentPages caía a restContent (texto
+  // plano): el reposo generado conservaba negritas y viñetas y el compartido no.
+  // Si el snapshot no trae reposo, restBlocks queda undefined y el fallback de
+  // restContent sigue funcionando igual que antes.
+  const restFromSnapshot = readRestFromSnapshot(renderData.consultation.blocksSnapshot);
+  const builtRestBlocks = buildRestBlocks(restFromSnapshot);
+
   const pages = buildDocumentPages({
     selectedTypes,
     informeSelectedBlockKeys,
@@ -375,6 +385,7 @@ export async function GET(
     savedPrescriptions,
     ehrRecords,
     restContent,
+    ...(builtRestBlocks.length > 0 ? { restBlocks: builtRestBlocks } : {}),
     diagnosisValue,
   });
 
@@ -397,8 +408,12 @@ export async function GET(
   ]);
   const tmplWithImages: TemplateConfigPdf = {
     ...tmpl,
-    logo_url: logoDataUri ?? tmpl.logo_url,
-    signature_url: signatureDataUri ?? tmpl.signature_url,
+    // No fallback to the raw URL on purpose — see the quotes PDF route for the
+    // full rationale: imageUrlToDataUri guards timeout, Content-Type and size,
+    // and handing the raw URL to @react-pdf re-fetches it server-side with none
+    // of those guards. A missing logo beats a server-side request we don't control.
+    logo_url: logoDataUri ?? null,
+    signature_url: signatureDataUri ?? null,
   };
 
   // 6. Render PDF server-side

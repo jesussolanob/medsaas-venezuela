@@ -161,6 +161,32 @@ export class SequelizeSellerRepository implements ISellerRepository {
     return toSpecialistRow(row);
   }
 
+  async updateSoldSpecialistContact(
+    sellerId: string,
+    specialistId: string,
+    patch: { phone?: string | null; sellerNotes?: string | null },
+  ): Promise<SellerSpecialistRow | null> {
+    // La lista blanca se arma acá y no se pasa el patch entero al update: si
+    // mañana alguien agrega un campo al DTO, no viaja solo hasta `profiles`.
+    const campos: Partial<SellerProfileModel> = {};
+    if (patch.phone !== undefined) campos.phone = patch.phone;
+    if (patch.sellerNotes !== undefined) campos.sellerNotes = patch.sellerNotes;
+
+    if (Object.keys(campos).length === 0) {
+      return this.findSoldSpecialist(sellerId, specialistId);
+    }
+
+    // El WHERE incluye soldBy: un id de otro vendedor no actualiza nada y cae
+    // al null de abajo, indistinguible de "no existe".
+    const [affected] = await this.profileModel.update(campos, {
+      where: { id: specialistId, soldBy: sellerId },
+    });
+
+    if (affected === 0) return null;
+
+    return this.findSoldSpecialist(sellerId, specialistId);
+  }
+
   async createSoldSpecialist(params: CreateSoldSpecialistParams): Promise<SellerSpecialistRow> {
     const now = new Date();
     const periodEnd = new Date(now);
@@ -348,6 +374,7 @@ function toSpecialistRow(row: SellerProfileModel): SellerSpecialistRow {
     email: row.email,
     phone: row.phone ?? null,
     cedula: row.cedula ?? null,
+    sellerNotes: row.sellerNotes ?? null,
     isActive: row.isActive ?? true,
     specialty: row.specialty ?? null,
     plan: row.plan ?? null,

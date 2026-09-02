@@ -53,6 +53,12 @@ export function toConsultationResponse(consultation: Consultation): Record<strin
       id: ei.id,
       description: ei.description,
       amount_usd: ei.amountUsd,
+      // These three fields allow the frontend to re-hydrate the product selector
+      // when the doctor reopens a consultation that already has approved product lines.
+      // Without them, the UI loses product_id and re-approves with no stock decrement.
+      product_id: ei.productId ?? null,
+      quantity: ei.quantity ?? 1,
+      unit_price_usd: ei.unitPriceUsd ?? null,
     })),
   };
 }

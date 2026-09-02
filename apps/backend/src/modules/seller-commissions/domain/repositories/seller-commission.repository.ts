@@ -5,7 +5,7 @@
  * any specialist or seller.
  */
 
-import type { CommissionType } from '../entities/seller-commission.entity';
+import type { CommissionStatus, CommissionType } from '../entities/seller-commission.entity';
 import type { SellerPayment } from '../entities/seller-payment.entity';
 
 export const SELLER_COMMISSION_REPOSITORY = Symbol('ISellerCommissionRepository');
@@ -61,7 +61,7 @@ export interface CommissionRow {
   type: CommissionType;
   amountUsd: number;
   planKey: string | null;
-  status: 'pending' | 'paid';
+  status: CommissionStatus;
   earnedAt: Date;
   paymentId: string | null;
   createdAt: Date;
@@ -76,14 +76,24 @@ export interface PendingCommissionDetail {
   amountUsd: number;
   planKey: string | null;
   earnedAt: Date;
+  /** 'pending' (sin revisar) o 'approved' (habilitada para pago). Nunca 'paid'. */
+  status: CommissionStatus;
 }
 
 export interface PendingBySeller {
   sellerId: string;
   /** PII — never log. */
   sellerName: string;
+  /**
+   * Total de lo NO pagado (pendiente + aprobado). Es lo que se le debe al
+   * vendedor; la aprobación no cambia la deuda, solo habilita el pago.
+   */
   totalPendingUsd: number;
   pendingCount: number;
+  /** Cuántas están aprobadas y por lo tanto se pueden pagar ahora. */
+  approvedCount: number;
+  /** Suma en USD de las aprobadas — el máximo que se puede pagar hoy. */
+  totalApprovedUsd: number;
   commissions: PendingCommissionDetail[];
 }
 
@@ -152,17 +162,32 @@ export interface ISellerCommissionRepository {
   listCommissionsBySeller(sellerId: string): Promise<CommissionRow[]>;
 
   /**
-   * Returns all pending commissions grouped by seller, with totals.
-   * Used by the admin panel to decide who to pay next.
+   * Returns all unpaid commissions (pending + approved) grouped by seller.
+   * Used by the admin panel to decide what to approve and who to pay next.
    * SECURITY: sellerName/specialistName are PII — admin-only endpoint.
    */
   listPendingBySeller(): Promise<PendingBySeller[]>;
 
   /**
-   * Validates that all commissionIds belong to sellerId and are 'pending'.
+   * Marks the given commissions as 'approved', stamping approved_at/approved_by.
+   *
+   * Only rows currently 'pending' and belonging to sellerId are touched — the
+   * status filter lives in the UPDATE's WHERE clause so two concurrent approvals
+   * can't double-apply. Returns how many rows actually changed.
+   *
+   * Throws InvalidCommissionIdsError if any id doesn't belong to the seller or
+   * isn't pending (anti-IDOR + no re-approving something already paid).
+   *
+   * SECURITY: adminId must come from the authenticated session, never the body.
+   */
+  approveCommissions(sellerId: string, commissionIds: string[], adminId: string): Promise<number>;
+
+  /**
+   * Validates that all commissionIds belong to sellerId and are 'approved'.
    * Returns the matching rows.
-   * Throws InvalidCommissionIdsError if any ID is invalid, paid, or belongs
-   * to another seller (anti-IDOR + anti-double-payment).
+   * Throws InvalidCommissionIdsError if any ID is invalid, still pending,
+   * already paid, or belongs to another seller
+   * (anti-IDOR + anti-double-payment + no skipping the approval step).
    */
   findCommissionsForPayment(sellerId: string, commissionIds: string[]): Promise<CommissionRow[]>;
 

@@ -109,6 +109,8 @@ export interface SellerSpecialistRow {
   phone: string | null;
   /** PII — identidad. Do NOT log. */
   cedula: string | null;
+  /** Anotaciones libres del vendedor. Texto del usuario — do NOT log. */
+  sellerNotes: string | null;
   /** false = cuenta dada de baja o desactivada por un admin. */
   isActive: boolean;
   specialty: string | null;
@@ -199,6 +201,23 @@ export interface ISellerRepository {
    * sold by the given seller. Returns null otherwise (anti-IDOR).
    */
   findSoldSpecialist(sellerId: string, specialistId: string): Promise<SellerSpecialistRow | null>;
+
+  /**
+   * Actualiza el teléfono y/o las notas de un especialista de la cartera del
+   * vendedor. Devuelve la fila actualizada, o null si el especialista no existe
+   * o es de otro vendedor (anti-IDOR: el WHERE filtra por sold_by).
+   *
+   * ⚠️ Solo esos dos campos. El vendedor NO puede tocar plan, rol, correo ni
+   * estado de la cuenta desde acá: un update genérico sobre `profiles` desde el
+   * portal del vendedor sería una escalada de privilegios.
+   *
+   * `undefined` = no tocar ese campo. `null` = borrarlo.
+   */
+  updateSoldSpecialistContact(
+    sellerId: string,
+    specialistId: string,
+    patch: { phone?: string | null; sellerNotes?: string | null },
+  ): Promise<SellerSpecialistRow | null>;
 
   /**
    * Creates a specialist profile + subscription with sold_by = sellerId.

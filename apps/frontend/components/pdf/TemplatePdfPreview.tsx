@@ -33,8 +33,7 @@ import type {
 } from './MedicalDocumentPdf';
 import { MedicalDocumentPdf } from './MedicalDocumentPdf';
 import {
-  buildRecetasContent,
-  buildRecipeHoja2Content,
+  buildDocumentPages,
   type SavedPrescription,
 } from '@/app/doctor/consultations/consultation-documents';
 
@@ -170,9 +169,14 @@ const SAMPLE_PRESCRIPTIONS: SavedPrescription[] = [
 // Datos de muestra para paraclínicos
 // ---------------------------------------------------------------------------
 
+// ⚠️ La clave TIENE que ser 'paraclinical' (o 'requested_exams'): es la que busca
+// buildDocumentPages para armar la hoja. Con cualquier otra, la muestra sale vacía.
+// El bloque 'notes' de abajo queda como dato de ejemplo pero NO se renderiza: el
+// documento real emite una sola sección. Mientras esta función decidía las hojas
+// por su cuenta, la muestra mostraba dos y el PDF descargado traía una.
 const SAMPLE_PARACLINICAL_BLOCKS: ContentBlock[] = [
   {
-    key: 'exams',
+    key: 'paraclinical',
     label: 'Exámenes solicitados',
     value: [
       'Hematología completa (hemograma)',
@@ -239,8 +243,18 @@ const SAMPLE_RECIBO_BLOCKS: ContentBlock[] = [
 // ---------------------------------------------------------------------------
 
 /**
- * Construye las páginas del documento de muestra usando el mismo pipeline
- * que buildDocumentPages (consultation-documents.ts).
+ * Construye las páginas de la muestra.
+ *
+ * Los cuatro tipos que el generador real conoce (informe, récipe, paraclínicos y
+ * reposo) se delegan a `buildDocumentPages` con contenido de muestra. Antes esta
+ * función DECIDÍA por su cuenta qué hojas salían por tipo —incluido el corte del
+ * récipe en dos— y había que acordarse de actualizar los dos lados: la vista
+ * previa podía mostrar algo distinto de lo que el especialista terminaba
+ * descargando. Ahora la forma del documento la define un solo lugar; acá solo se
+ * eligen los datos de ejemplo.
+ *
+ * Los tipos que el generador no conoce (recibo y los genéricos) siguen armándose
+ * acá: existen solo como muestra de plantilla.
  *
  * `enabledBlocks` — para docType 'informe', array de {key, label} de los
  * bloques habilitados del doctor (en orden). Cuando está vacío o ausente,
@@ -282,34 +296,54 @@ function buildSampleDocuments(
       informeBlocks.push(sampleBlockForKey('diagnosis', 'Diagnóstico'));
     }
 
-    return [{ docType: 'informe', content: informeBlocks }];
+    return buildDocumentPages({
+      selectedTypes: ['informe'],
+      informeSelectedBlockKeys: new Set(informeBlocks.map((b) => b.key)),
+      informeContent: informeBlocks,
+      savedPrescriptions: [],
+      ehrRecords: [],
+      restContent: null,
+    });
   }
 
-  // ── RÉCIPE — 2 hojas (igual que buildDocumentPages) ──────────────────────
+  // ── RÉCIPE — el corte en 2 hojas lo decide buildDocumentPages ────────────
   if (docType === 'recipe' || docType === 'receta') {
-    const hoja1Blocks = buildRecetasContent(SAMPLE_PRESCRIPTIONS);
-    const hoja2Blocks = buildRecipeHoja2Content(SAMPLE_PRESCRIPTIONS);
-    const pages: DocumentPage[] = [];
-    if (hoja1Blocks.length > 0) {
-      pages.push({ docType: 'recipe', content: hoja1Blocks });
-    }
-    if (hoja2Blocks.length > 0) {
-      pages.push({ docType: 'indications', content: hoja2Blocks });
-    }
-    return pages;
+    return buildDocumentPages({
+      selectedTypes: ['recipe'],
+      informeSelectedBlockKeys: new Set(),
+      informeContent: [],
+      savedPrescriptions: SAMPLE_PRESCRIPTIONS,
+      ehrRecords: [],
+      restContent: null,
+    });
   }
 
   // ── PARACLÍNICOS ──────────────────────────────────────────────────────────
   if (docType === 'paraclinical' || docType === 'prescripciones' || docType === 'requested_exams') {
-    return [{ docType: 'paraclinical', content: SAMPLE_PARACLINICAL_BLOCKS }];
+    return buildDocumentPages({
+      selectedTypes: ['paraclinical'],
+      informeSelectedBlockKeys: new Set(),
+      informeContent: SAMPLE_PARACLINICAL_BLOCKS,
+      savedPrescriptions: [],
+      ehrRecords: [],
+      restContent: null,
+    });
   }
 
   // ── REPOSO ────────────────────────────────────────────────────────────────
   if (docType === 'rest' || docType === 'reposo') {
-    return [{ docType: 'rest', content: SAMPLE_REST_BLOCKS }];
+    return buildDocumentPages({
+      selectedTypes: ['rest'],
+      informeSelectedBlockKeys: new Set(),
+      informeContent: [],
+      savedPrescriptions: [],
+      ehrRecords: [],
+      restContent: null,
+      restBlocks: SAMPLE_REST_BLOCKS,
+    });
   }
 
-  // ── RECIBO ────────────────────────────────────────────────────────────────
+  // ── RECIBO — sin equivalente en el generador real ─────────────────────────
   if (docType === 'recibo') {
     return [{ docType: 'recibo', content: SAMPLE_RECIBO_BLOCKS }];
   }

@@ -817,3 +817,76 @@ status='active'` con `QueryTypes.UPDATE` (devuelve `[undefined, affectedCount]`;
   🔴 **Queda pendiente:** las plantillas de recordatorio (`reminders-settings`) todavía dicen
   "cita con el **Dr.** {doctor_name}" fijo. Son editables por cada especialista, así que cambiar el
   default solo afectaría a los nuevos.
+
+- **ADR-052 (2026-09-01):** **La venta de un producto se cobra por `consultation_extra_items`, no
+  por `payment_items`.** Los dos caminos existían y el segundo parecía más elegante: `payment_items`
+  ya tiene un gancho polimórfico libre (`source_type` / `source_id`). Pero **finanzas suma por dos
+  vías distintas**: `getIncomeBreakdown`/`getFinancialSummary` suman `consultations.amount`, mientras
+  `listIncomePaginated`/`getPaymentTotals` suman `payments.amount_usd`. `consultation_extra_items`
+  propaga a las dos (`base + Σ extras` → `consultations.amount` → Step 5b sincroniza `payments`);
+  `payment_items` movería solo la segunda y **el especialista vería dos totales distintos para el
+  mismo mes**. Consecuencia: la venta de un producto **necesita una consulta**; una venta de
+  mostrador suelta todavía no tiene camino.
+
+- **ADR-053 (2026-09-01):** **El precio del producto se guarda en su moneda; la conversión ocurre al
+  vender y queda congelada.** El catálogo persiste `sale_price_amount` + `sale_price_currency`
+  (`USD` | `VES`) **sin convertir**: guardarlo ya pasado a dólares fosiliza la tasa del día de la
+  carga y en tres semanas el precio en bolívares es ficción. Cada venta escribe en
+  `inventory_movements` su `unit_price_usd`, `rate_used` y `rate_source`. **Nunca se recalcula un
+  movimiento viejo con la tasa de hoy** — eso reescribe la historia financiera todas las mañanas.
+  Un precio en VES sin tasa disponible es **error de dominio** (`MissingExchangeRateError`), nunca
+  un monto que cae a dólares por omisión: el defecto original cobraba 1.500 Bs como US$ 1.500.
+  `rate_source` no existía en ninguna tabla de operaciones; este módulo es el primero.
+
+- **ADR-054 (2026-09-01):** **El stock se revierte y se vuelve a asentar en cada aprobación, dentro
+  de la misma transacción.** `approveWithExtras` tiene semántica **replace-all**: borra e inserta
+  todos los extras cada vez (por eso `base_amount` se congela en la primera aprobación). Si el
+  descuento de stock se hiciera al insertar la línea, reaprobar descontaría dos veces **sin un solo
+  error**. El lock de la fila de `consultations` es **la primera consulta de la transacción**: sin
+  él, dos primeras aprobaciones simultáneas (doble clic, reintento de red) leen ambas "no hay
+  movimientos previos", se saltean el revert y descuentan dos veces.
+  El reflejo del mismo problema vive en la UI: `extra_items` expone `product_id`, `quantity` y
+  `unit_price_usd` para que el modal **reconstruya** las líneas de producto al reabrirlo. Sin eso el
+  backend revierte el stock y no lo vuelve a descontar — la plata queda bien y **el inventario queda
+  inflado, en silencio**. La reconstrucción corre también cuando el catálogo no carga (incluido el
+  500, que resuelve la promesa en vez de rechazarla).
+
+- **ADR-055 (2026-09-01):** **Chatwoot arranca por el canal humano; Vertex AI deja de bloquear.**
+  El plan del 18/08 (`12-plan-whatsapp-ventas.md`) tenía una Etapa 0 bloqueante —mover Gemini a
+  Vertex— porque el nivel gratuito entrena con lo que recibe. El pedido del dueño (2026-09-01) es
+  **que los vendedores hablen con especialistas potenciales**: humano contra humano, sin IA en el
+  medio y sin PII yendo a Gemini. **La Etapa 0 bloquea al bot, no al canal**, así que se invierte el
+  orden. ⚠️ Cuando se agregue el bot comercial, Vertex vuelve a ser bloqueante: es una decisión
+  postergada junto con lo que la motivaba, no anulada.
+
+- **ADR-056 (2026-09-01):** **Si la bajada con guardas falla, el PDF sale sin logo. No hay
+  fallback a la URL cruda.** `imageUrlToDataUri` baja logo y firma con tiempo límite, verificación
+  de `Content-Type` y tope de tamaño. Pasarle la URL cruda a `@react-pdf` cuando eso falla **no es
+  un respaldo**: la librería la vuelve a bajar del lado del servidor **sin ninguna de las tres
+  guardas**. Y `logo_url` se guarda tal cual la manda el especialista, así que se podía apuntar a
+  una dirección interna de la infraestructura y hacer que el propio servidor la consultara (SSRF
+  autenticado). El fallback pasa a `null` en **las dos** rutas de PDF —cotizaciones y documentos
+  compartidos, esta última ya viva en producción con el defecto—. ⚠️ **Un logo faltante es el
+  comportamiento correcto, no un bug a "arreglar" reponiendo la URL.** Además, la ruta pública del
+  PDF **nunca devuelve el error crudo**: es alcanzable sin credenciales y el mensaje puede traer
+  direcciones internas (`ECONNREFUSED 10.x.x.x`).
+
+- **ADR-057 (2026-09-02):** **La forma de un documento la decide UN solo constructor.**
+  `buildDocumentPages` define qué hojas salen por tipo, y `buildRestBlocks` arma los bloques de
+  reposo. **Nadie los espeja ni los copia.** El QA reportó que el formato del PDF se perdía al
+  compartir: el modal le pasaba `restBlocks` (con formato) y la ruta de compartir no, cayendo a un
+  string plano. `TemplatePdfPreview` era peor: mantenía **a mano** su propia versión de la decisión
+  por tipo, incluido el corte del récipe en dos hojas. ⚠️ **Un camino nuevo que arme un PDF llama a
+  estas funciones; no reimplementa la decisión.** Corolario descubierto al unificar: la muestra de
+  paraclínicos usaba la clave `exams` y mostraba **dos** bloques cuando el documento real emite
+  **uno** — la vista previa mentía sobre lo que el especialista iba a descargar, y nadie podía
+  notarlo porque eran dos códigos distintos.
+
+- **ADR-058 (2026-09-02):** **Las comisiones pasan por `pending → approved → paid`.** El admin
+  revisa y habilita; **solo lo aprobado se puede pagar**. La guarda vive **dentro del `UPDATE` y de
+  la transacción**, no en el use case: con la guarda en la capa de aplicación, dos clics simultáneos
+  pasaban los dos. ⚠️ **"Pendiente" para el vendedor NO es `status = 'pending'`**: es todo lo que no
+  cobró, o sea `!== 'paid'`. Filtrar por `'pending'` a secas hacía **desaparecer** de su lista y de
+  su total adeudado cada comisión que el admin aprobaba, y subestimaba lo que se le debe al darse de
+  baja. Los estados nuevos que se meten en el medio de un flujo rompen a todo el que partía el
+  mundo en dos.

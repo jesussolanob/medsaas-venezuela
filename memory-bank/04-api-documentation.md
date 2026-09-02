@@ -1124,3 +1124,70 @@ Body: { reason?: string | null }
 El `sellerId` sale de `CurrentUser().sub`: uno solo puede darse de baja a sí mismo. **Nunca se
 bloquea** por tener comisiones pendientes — se le siguen debiendo (ADR-050). El pendiente que
 devuelve es informativo; el aviso que importa está en la pantalla **antes** de confirmar.
+
+## Inventario (2026-09-01)
+
+Todos con `AppAuthGuard`; el `doctorId` sale de `user.sub` (anti-IDOR). Envelope `{success, data}`.
+Un producto ajeno y un id inexistente devuelven **el mismo** error (impide enumerar).
+
+| Método | Ruta                                                          | Notas                                                                                              |
+| ------ | ------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| GET    | `/api/doctor/inventory/products?search=&active=&page=&limit=` | `limit` acotado a 100. `photo_path` se devuelve firmado                                            |
+| POST   | `/api/doctor/inventory/products`                              | valida que `photo_path` empiece con `product/<userId>/`                                            |
+| GET    | `/api/doctor/inventory/products/:id`                          |                                                                                                    |
+| PUT    | `/api/doctor/inventory/products/:id`                          | misma validación de `photo_path`                                                                   |
+| DELETE | `/api/doctor/inventory/products/:id`                          | baja lógica (`is_active=false`); nunca borra                                                       |
+| GET    | `/api/doctor/inventory/products/:id/movements`                |                                                                                                    |
+| POST   | `/api/doctor/inventory/products/:id/movements`                | solo `purchase`/`adjustment`/`loss`: **`sale` no se acepta**, las ventas nacen de aprobar el cobro |
+
+## Comisiones: aprobación y ficha del especialista (2026-09-02)
+
+| Método | Ruta                                    | Notas                                                                          |
+| ------ | --------------------------------------- | ------------------------------------------------------------------------------ |
+| POST   | `/api/admin/seller-commissions/approve` | `{seller_id, commission_ids[]}` → `{approved: n}`. `super_admin`. Máx. 500     |
+| PATCH  | `/api/seller/specialists/:id`           | `{phone?, seller_notes?}`. Rol `seller`. `.strict()` y anti-IDOR por `sold_by` |
+
+**Aprobar no paga.** Habilita: `POST /payments` ahora **rechaza** cualquier comisión que no esté en
+`approved` (ver ADR-058). El filtro por estado vive dentro del `UPDATE` y de la transacción.
+
+**Cambios de contrato:**
+
+- `GET /api/admin/seller-commissions/pending` devuelve ahora lo **no pagado** (pendiente +
+  aprobado), no solo lo pendiente, y suma `approvedCount` y `totalApprovedUsd` por vendedor. Cada
+  comisión trae `status`. ⚠️ Si filtrara solo por `pending`, aprobar una la haría **desaparecer**
+  del panel y del total adeudado sin que nadie la haya cobrado.
+- `GET /api/seller/specialists/:id` suma `sellerNotes`.
+
+## Cotizaciones (2026-09-01)
+
+Todos con `AppAuthGuard`; el `doctorId` sale de `user.sub` (anti-IDOR). Envelope `{success, data}`.
+Una cotización ajena y un id inexistente devuelven **el mismo** 404.
+
+| Método | Ruta                                                                     | Notas                                                                  |
+| ------ | ------------------------------------------------------------------------ | ---------------------------------------------------------------------- |
+| GET    | `/api/doctor/quotes?status=&patient_name=&product_name=&supplier=&page=` | `patient_name` resuelve a ids; sin coincidencias devuelve página vacía |
+| POST   | `/api/doctor/quotes`                                                     | items **copian** nombre, descripción y precio del catálogo/inventario  |
+| GET    | `/api/doctor/quotes/:id`                                                 | agrega `share_token` y `share_url` (ver abajo)                         |
+| PUT    | `/api/doctor/quotes/:id`                                                 | filtra por estado **dentro** de la transacción                         |
+| DELETE | `/api/doctor/quotes/:id`                                                 |                                                                        |
+| POST   | `/api/doctor/quotes/:id/send`                                            | congela tasa BCV y monto en Bs; genera el enlace                       |
+| PUT    | `/api/doctor/quotes/:id/status`                                          | máquina de estados con guardia: no se acepta sin haber enviado         |
+
+**`share_url` lo arma el backend**, no el cliente. Sale de `APP_BASE_URL` (o `FRONTEND_URL`) más
+`/quotes/<token>`, y es `null` cuando no hay token. El frontend **solo muestra el botón de copiar
+si viene**: armarlo a mano daba un enlace que en un borrador apunta a un 404.
+
+**Ruta pública** — `GET /api/quotes/:token`, **sin guard y sin sesión**. Devuelve el branding del
+especialista con las imágenes re-firmadas y **no expone cédula, teléfono ni datos clínicos**. Un
+token inexistente, uno vencido y uno revocado son indistinguibles.
+
+**BFF del PDF público** — `GET /api/quotes/:token/pdf` (Next.js). Es **solo para el enlace público**:
+el PDF del especialista se arma en el navegador con `pdf().toBlob()`, para que un borrador sin
+enviar también se pueda descargar. ⚠️ Esta ruta es alcanzable sin credenciales, así que **devuelve
+un mensaje genérico**: el error crudo puede traer direcciones internas de red.
+
+**Cambio en un endpoint existente:** `PATCH /api/consultations/:id/approve-payment` acepta
+`product_extras: [{ product_id, quantity }]`. **El precio y el monto los resuelve el backend** — el
+esquema es `.strict()`, así que mandar un `unit_price_usd` hace fallar la petición con 422.
+Y `extra_items` de la respuesta de consulta ahora incluye `product_id`, `quantity` y
+`unit_price_usd` (ver ADR-054: sin ellos la UI pierde el producto y el stock se infla al reaprobar).

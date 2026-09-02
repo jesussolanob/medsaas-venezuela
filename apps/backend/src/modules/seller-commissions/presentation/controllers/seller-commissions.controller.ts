@@ -11,6 +11,7 @@ import {
 import { GetSellerCommissionsUseCase } from '../../application/use-cases/get-seller-commissions.use-case';
 import { GetPendingCommissionsBySellerUseCase } from '../../application/use-cases/get-pending-commissions-by-seller.use-case';
 import { RegisterSellerPaymentUseCase } from '../../application/use-cases/register-seller-payment.use-case';
+import { ApproveCommissionsUseCase } from '../../application/use-cases/approve-commissions.use-case';
 import { GetSellerPaymentsUseCase } from '../../application/use-cases/get-seller-payments.use-case';
 import { AssignSpecialistToSellerUseCase } from '../../application/use-cases/assign-specialist-to-seller.use-case';
 import { GetAdminSellerPaymentReceiptUrlUseCase } from '../../application/use-cases/get-admin-seller-payment-receipt-url.use-case';
@@ -68,6 +69,24 @@ export const RegisterPaymentBodySchema = z
 type RegisterPaymentBody = z.infer<typeof RegisterPaymentBodySchema>;
 
 /**
+ * POST /api/admin/seller-commissions/approve
+ *
+ * Habilita comisiones para pago. No mueve plata: solo destraba el pago posterior.
+ * Mismo techo de 500 que el pago, por la misma razón (un IN (...) gigante).
+ */
+export const ApproveCommissionsBodySchema = z
+  .object({
+    seller_id: z.string().uuid('seller_id must be a UUID'),
+    commission_ids: z
+      .array(z.string().uuid())
+      .min(1, 'Seleccioná al menos una comisión para aprobar.')
+      .max(500, 'No se pueden aprobar más de 500 comisiones a la vez.'),
+  })
+  .strict();
+
+type ApproveCommissionsBody = z.infer<typeof ApproveCommissionsBodySchema>;
+
+/**
  * POST /api/admin/seller-commissions/assign
  *
  * Re-assigns a specialist to a seller. Admin action; overwrites existing sold_by.
@@ -116,6 +135,8 @@ function toPendingBySellerDto(p: PendingBySeller) {
     sellerName: p.sellerName,
     totalPendingUsd: p.totalPendingUsd,
     pendingCount: p.pendingCount,
+    approvedCount: p.approvedCount,
+    totalApprovedUsd: p.totalApprovedUsd,
     commissions: p.commissions.map((c) => ({
       commissionId: c.commissionId,
       specialistId: c.specialistId,
@@ -124,6 +145,7 @@ function toPendingBySellerDto(p: PendingBySeller) {
       amountUsd: c.amountUsd,
       planKey: c.planKey,
       earnedAt: c.earnedAt,
+      status: c.status,
     })),
   };
 }
@@ -185,6 +207,7 @@ function toPaymentDto(p: SellerPayment) {
 export class SellerCommissionsAdminController {
   constructor(
     private readonly getPending: GetPendingCommissionsBySellerUseCase,
+    private readonly approveCommissions: ApproveCommissionsUseCase,
     private readonly registerPayment: RegisterSellerPaymentUseCase,
     private readonly getPayments: GetSellerPaymentsUseCase,
     private readonly assignSpecialist: AssignSpecialistToSellerUseCase,
@@ -219,6 +242,22 @@ export class SellerCommissionsAdminController {
       bcvRate: result.bcvRate,
       sellers: result.sellers.map(toPendingBySellerDto),
     });
+  }
+
+  /**
+   * POST /api/admin/seller-commissions/approve
+   * Habilita comisiones pendientes para su pago. No registra ningún pago.
+   */
+  @Post('approve')
+  async approveCommissionsEndpoint(
+    @CurrentUser() user: CurrentUserPayload,
+    @Body(new ZodValidationPipe(ApproveCommissionsBodySchema)) body: ApproveCommissionsBody,
+  ): Promise<SuccessResponse<{ approved: number }>> {
+    const result = await this.approveCommissions.execute(
+      { sellerId: body.seller_id, commissionIds: body.commission_ids },
+      user.sub,
+    );
+    return ok(result);
   }
 
   /**

@@ -918,3 +918,61 @@ especialista editen sus datos de cobro con **un solo componente**. Respeta la re
 ⚠️ Al extraerlo, la pantalla de configuración del especialista —que está en producción— quedó
 un rato sin compilar. Si se vuelve a tocar, correr `tsc` sobre **todo** el proyecto, no filtrado
 por los archivos propios: así es como un error de sintaxis pasa desapercibido.
+
+## `inventory` — catálogo de productos del especialista (2026-09-01)
+
+Módulo nuevo `apps/backend/src/modules/inventory/` (DDD de 4 capas) + pantalla `/doctor/inventory`.
+**Plan: solo `delta_plus`** (y su espejo `free_trial`). Spec completo en `docs/specs/inventario.md`.
+
+- **`products`**: `doctor_id`, `name`, `description`, `supplier` (texto libre), `photo_path`,
+  `sale_price_amount` + `sale_price_currency` (`USD`|`VES`), `stock_qty`, `low_stock_threshold`,
+  `is_active`. **Decisión del dueño: solo precio de venta, sin costo de proveedor** — el módulo no
+  calcula margen ni valoriza el stock.
+- **`inventory_movements`**: libro mayor con signo (`purchase`, `sale`, `adjustment`, `loss`),
+  `unit_price_usd`, `rate_used`, `rate_source`, `consultation_id`. Ver ADR-053.
+- **`consultation_extra_items`** ganó `product_id`, `quantity`, `unit_price_usd`: por ahí se cobra
+  la venta (ADR-052) y por ahí la UI reconstruye las líneas al reaprobar (ADR-054).
+- Endpoints bajo `/api/doctor/inventory` (ver `04-api-documentation.md`). La foto se guarda como
+  **path de GCS** y se firma en cada lectura; `kind: 'product'` es privado, así que el anti-IDOR del
+  path (`product/<userId>/`) sale gratis. **Se valida en alta y edición**: sin esa validación un
+  especialista podía guardar la ruta de un documento de OTRO y recibir una URL firmada válida.
+- **Stock en cero: se avisa, no se bloquea** (decisión del dueño). Puede quedar negativo.
+
+⚠️ **Sin probar en navegador y la migración no se aplicó a ninguna base.** Los tests usan Sequelize
+simulado: verifican qué SQL se emite, no que Postgres lo acepte.
+
+⚠️ **El gating "solo Plus" se cumple únicamente en el frontend.** No es de este módulo: **ningún
+módulo del repo tiene gating de plan en el backend** (`CapabilitiesGuard` existe con cero usos; el
+único caso server-side es el ad-hoc de booking). Deuda del sistema, no de acá.
+
+## `quotes` — cotizaciones con enlace público (2026-09-01)
+
+Módulo `apps/backend/src/modules/quotes/` (DDD de 4 capas) + pantallas `/doctor/quotes`,
+`/doctor/quotes/[id]` y la vista pública `/quotes/[token]`. **Plan: solo `delta_plus`** (y su
+espejo `free_trial`). Spec en `docs/specs/`. Commits `f8cf4997` (backend) y `95e6ecbf` (frontend).
+
+- **`quotes`**: para un paciente existente **o** un cliente potencial (`lead_id`). Máquina de
+  estados con guardia: sin ella se podía pasar de borrador a aceptada sin haber enviado nunca,
+  dejando una cotización aceptada con la tasa en nulo. `markAsSent` y `update` filtran por estado
+  **dentro** de la transacción — la guardia vivía en el use case y dos clics simultáneos generaban
+  dos enlaces activos y dos correos al mismo cliente.
+- **`quote_items`**: **copian** nombre, descripción y precio; `source_id` va **sin clave foránea
+  dura**. Una cotización emitida no cambia porque alguien tocó el catálogo o dio de baja un
+  producto.
+- **`quote_share_links`**: token por cotización. La tasa BCV y el monto en Bs **se congelan al
+  enviar, no al mirar**.
+- **`leads`** ganó `email` y `last_name`: crear un paciente exige cédula, y relajar eso rompería
+  el dedupe y la identidad global. Un prospecto se registra como `'lead'` en `email_send_log`.
+
+**Frontend.** El PDF del especialista se arma **en el navegador** con `pdf().toBlob()`; la ruta del
+servidor es solo para el enlace público, y como exige token, un borrador sin enviar no se podía
+descargar. El botón de copiar el enlace lee `share_url` del backend y **solo aparece si viene**.
+
+⚠️ **Ver ADR-056 antes de tocar el logo del PDF**: si la bajada con guardas falla, sale sin logo.
+Reponer la URL cruda reabre un SSRF.
+
+⚠️ **CRM entró al sidebar con este lote.** `/doctor/crm` existía solo como prefijo gateado, sin
+entrada de navegación: la pantalla estaba construida y era inalcanzable. Cuarto caso del patrón.
+
+⚠️ **Sin probar en navegador y la migración no se aplicó a ninguna base.** Mismo gating de frontend
+solamente que inventario — ningún módulo del repo lo tiene en el backend.

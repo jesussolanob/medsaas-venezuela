@@ -300,6 +300,10 @@ export class ConsultationsController {
       consultationId: id,
       doctorId: user.sub,
       extras: dto.extras.map((e) => ({ description: e.description, amountUsd: e.amount_usd })),
+      productExtras: (dto.product_extras ?? []).map((p) => ({
+        productId: p.product_id,
+        quantity: p.quantity,
+      })),
       paymentMethod: dto.method ?? null,
     });
     return { success: true, data: toConsultationResponse(consultation) };
