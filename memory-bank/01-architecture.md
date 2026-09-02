@@ -870,3 +870,23 @@ status='active'` con `QueryTypes.UPDATE` (devuelve `[undefined, affectedCount]`;
   comportamiento correcto, no un bug a "arreglar" reponiendo la URL.** Además, la ruta pública del
   PDF **nunca devuelve el error crudo**: es alcanzable sin credenciales y el mensaje puede traer
   direcciones internas (`ECONNREFUSED 10.x.x.x`).
+
+- **ADR-057 (2026-09-02):** **La forma de un documento la decide UN solo constructor.**
+  `buildDocumentPages` define qué hojas salen por tipo, y `buildRestBlocks` arma los bloques de
+  reposo. **Nadie los espeja ni los copia.** El QA reportó que el formato del PDF se perdía al
+  compartir: el modal le pasaba `restBlocks` (con formato) y la ruta de compartir no, cayendo a un
+  string plano. `TemplatePdfPreview` era peor: mantenía **a mano** su propia versión de la decisión
+  por tipo, incluido el corte del récipe en dos hojas. ⚠️ **Un camino nuevo que arme un PDF llama a
+  estas funciones; no reimplementa la decisión.** Corolario descubierto al unificar: la muestra de
+  paraclínicos usaba la clave `exams` y mostraba **dos** bloques cuando el documento real emite
+  **uno** — la vista previa mentía sobre lo que el especialista iba a descargar, y nadie podía
+  notarlo porque eran dos códigos distintos.
+
+- **ADR-058 (2026-09-02):** **Las comisiones pasan por `pending → approved → paid`.** El admin
+  revisa y habilita; **solo lo aprobado se puede pagar**. La guarda vive **dentro del `UPDATE` y de
+  la transacción**, no en el use case: con la guarda en la capa de aplicación, dos clics simultáneos
+  pasaban los dos. ⚠️ **"Pendiente" para el vendedor NO es `status = 'pending'`**: es todo lo que no
+  cobró, o sea `!== 'paid'`. Filtrar por `'pending'` a secas hacía **desaparecer** de su lista y de
+  su total adeudado cada comisión que el admin aprobaba, y subestimaba lo que se le debe al darse de
+  baja. Los estados nuevos que se meten en el medio de un flujo rompen a todo el que partía el
+  mundo en dos.

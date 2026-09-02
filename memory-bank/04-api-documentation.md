@@ -1140,6 +1140,24 @@ Un producto ajeno y un id inexistente devuelven **el mismo** error (impide enume
 | GET    | `/api/doctor/inventory/products/:id/movements`                |                                                                                                    |
 | POST   | `/api/doctor/inventory/products/:id/movements`                | solo `purchase`/`adjustment`/`loss`: **`sale` no se acepta**, las ventas nacen de aprobar el cobro |
 
+## Comisiones: aprobación y ficha del especialista (2026-09-02)
+
+| Método | Ruta                                    | Notas                                                                          |
+| ------ | --------------------------------------- | ------------------------------------------------------------------------------ |
+| POST   | `/api/admin/seller-commissions/approve` | `{seller_id, commission_ids[]}` → `{approved: n}`. `super_admin`. Máx. 500     |
+| PATCH  | `/api/seller/specialists/:id`           | `{phone?, seller_notes?}`. Rol `seller`. `.strict()` y anti-IDOR por `sold_by` |
+
+**Aprobar no paga.** Habilita: `POST /payments` ahora **rechaza** cualquier comisión que no esté en
+`approved` (ver ADR-058). El filtro por estado vive dentro del `UPDATE` y de la transacción.
+
+**Cambios de contrato:**
+
+- `GET /api/admin/seller-commissions/pending` devuelve ahora lo **no pagado** (pendiente +
+  aprobado), no solo lo pendiente, y suma `approvedCount` y `totalApprovedUsd` por vendedor. Cada
+  comisión trae `status`. ⚠️ Si filtrara solo por `pending`, aprobar una la haría **desaparecer**
+  del panel y del total adeudado sin que nadie la haya cobrado.
+- `GET /api/seller/specialists/:id` suma `sellerNotes`.
+
 ## Cotizaciones (2026-09-01)
 
 Todos con `AppAuthGuard`; el `doctorId` sale de `user.sub` (anti-IDOR). Envelope `{success, data}`.

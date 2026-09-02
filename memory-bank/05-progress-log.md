@@ -4,6 +4,77 @@
 > ⚠️ Orden: **la entrada más nueva va ARRIBA**. La del 2026-08-11 quedó al final
 > del archivo por error; no se movió para no ensuciar el diff.
 
+## 2026-09-02 — Seis observaciones del QA: un solo generador de PDF y comisiones aprobadas
+
+> Commit `6a62fad1`, rama `feature/cotizaciones`. **Dos migraciones sin aplicar a ninguna base.**
+> ADR-057 (generador único) y ADR-058 (estado `approved`).
+
+### 1. El formato se perdía al compartir (lo que pidió el dueño: un solo generador)
+
+El diagnóstico del QA era correcto pero el código estaba a mitad de camino: **no había tres
+generadores paralelos, y tampoco uno**. El modal y la ruta de compartir **ya** compartían
+`buildDocumentPages` — se le entraba distinto. El modal pasaba `restBlocks` (bloques con formato);
+la ruta de compartir **no pasaba ese argumento** y caía a `restContent`, un string plano.
+
+`TemplatePdfPreview` sí era un tercer generador de verdad: **espejaba a mano** la decisión de qué
+hojas salen por tipo, incluido el corte del récipe en dos. Su propio comentario lo admitía.
+
+Se extrajo `buildRestBlocks` como constructor único y los tres caminos lo usan. La ruta de
+compartir lee el reposo de `blocks_snapshot` con `readRestFromSnapshot`.
+
+**Lo que destapó unificar:** la muestra de paraclínicos usaba la clave `exams` y el generador real
+busca `paraclinical` — delegando tal cual, **la vista previa salía en blanco**. Y mostraba **dos**
+bloques cuando el documento real emite **uno**. La vista previa venía mintiendo sobre el resultado,
+y era imposible notarlo mientras fueran dos códigos distintos. `tsc` no vio nada de esto.
+
+### 2. Comisiones: el estado `approved` y el balde que se vacía solo
+
+`pending → approved → paid` (ADR-058). Al agregarlo apareció un defecto **serio** en la pantalla
+del vendedor: partía las comisiones en `'pending'` y `'paid'`, así que una **aprobada no caía en
+ninguna de las dos** y **desaparecía de su lista y de su total adeudado**. El vendedor veía su plata
+evaporarse. Además `!pendiente` decía **"Liquidada"** sobre una aprobada que nadie pagó, y el
+resumen de baja de cuenta habría **subestimado lo que se le debe**.
+
+Regla que queda: **un estado nuevo en el medio de un flujo rompe a todo el que partía el mundo en
+dos.** Buscar `=== 'pending'` y `=== 'paid'` en TODO el repo, no solo en el módulo tocado.
+
+### 3. Métodos de pago y datos del vendedor
+
+`PAYMENT_METHODS` era una constante fija con todos los métodos del sistema: el admin podía elegir
+uno para el que el vendedor no había dejado ningún dato. Ahora salen de sus datos de cobro
+(`activeMethodsOf`) y **se muestran los datos** para poder transferir. `methodLabel` se movió a
+`lib/payment-details` y tolera las dos formas guardadas —los pagos viejos guardaron el rótulo
+("Zelle") y los nuevos la clave ("zelle")—.
+
+### 4. Precios de planes
+
+`step={0.01}` (100 clics para subir un dólar) y `parseFloat(...) || 0`, que **impedía vaciar el
+campo**: `NaN` caía en `0` y el cero no se podía borrar. El vacío pasa a ser un estado de edición
+válido y guardar **avisa** si falta un precio en vez de publicar el plan en cero.
+
+### 5. Ficha del especialista editable
+
+Era de **solo lectura**, así que un especialista **asignado por el admin** llegaba sin teléfono y no
+había forma de cargarlo. Teléfono y notas editables; `profiles.seller_notes` es columna nueva. El
+`PATCH` acepta **solo esos dos campos** y es `.strict()`: un `plan` o un `role` en el cuerpo falla
+en vez de ignorarse en silencio.
+
+### La regla de los mocks, cobrada dos veces en un día
+
+Agregar **un** método a `ISellerCommissionRepository` rompió **10 suites**; agregar otro a
+`ISellerRepository` rompió **11 más**. `tsc` no las ve porque excluye los `.spec`. 21 en total.
+
+### Verificación
+
+**447 suites / 4193 tests**, `tsc` de frontend y backend, `build` de ambos sin caché — **los cinco
+con exit 0 real**. Lint sin hallazgos nuevos (los 2 avisos de `PlansAdminClient` son preexistentes,
+medidos contra HEAD con un stash).
+
+### Qué falta
+
+- **Aplicar las dos migraciones** — ninguna se corrió.
+- **Abrir todo en un navegador.** Nada de esto se vio funcionando.
+
 ## 2026-09-01 — Cotizaciones: frontend, vista pública y SSRF en las dos rutas de PDF
 
 > Commit `95e6ecbf` sobre `f8cf4997` (backend), rama `feature/cotizaciones`.
