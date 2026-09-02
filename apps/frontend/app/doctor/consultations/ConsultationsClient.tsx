@@ -1636,6 +1636,40 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
     // `prescripciones` más abajo, para que los exámenes guardados NO se pierdan al reabrir.
     let paraclinicalHydration: Prescripcion[] = [];
 
+    /**
+     * Reposo rehidratado desde blocks_snapshot['reposo'].
+     *
+     * Se autoguardaba cada 1,5 s y NADIE lo volvía a leer: al reabrir la consulta
+     * los días volvían a 0, así que "Reposo médico" salía deshabilitado con el
+     * cartel "Sin reposo médico indicado" y el especialista NO podía generar ni
+     * compartir un reposo cargado antes — tenía que retipearlo entero. El propio
+     * panel prometía lo contrario ("quedan disponibles aunque cierres y vuelvas").
+     *
+     * null = esta consulta no tiene reposo guardado.
+     */
+    let reposoHydration: {
+      diagnosis: string;
+      days: number;
+      from: string;
+      to: string;
+      comments: string;
+    } | null = null;
+
+    /** Lee el bloque 'reposo' del JSONB. Devuelve null si no está o no tiene forma. */
+    const parseReposo = (raw: unknown): typeof reposoHydration => {
+      if (!raw || typeof raw !== 'object') return null;
+      const r = raw as Record<string, unknown>;
+      const days = typeof r.days === 'number' ? r.days : Number(r.days);
+      if (!Number.isFinite(days) || days <= 0) return null;
+      return {
+        diagnosis: typeof r.diagnosis === 'string' ? r.diagnosis : '',
+        days,
+        from: typeof r.from === 'string' ? r.from : '',
+        to: typeof r.to === 'string' ? r.to : '',
+        comments: typeof r.comments === 'string' ? r.comments : '',
+      };
+    };
+
     // Fetch fresh data from backend → GET /api/consultations/:id
     try {
       const fresh_raw = await getConsultation(c.id);
@@ -1689,6 +1723,7 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
         const bd = (fresh.blocks_data || {}) as Record<string, unknown>;
         // Rehidratar exámenes paraclínicos desde el bloque persistido.
         paraclinicalHydration = parseParaclinical(bd['paraclinical']);
+        reposoHydration = parseReposo(bd['reposo']);
         const freshDiagnosis =
           typeof bd.diagnosis === 'string' ? bd.diagnosis : (fresh.diagnosis ?? '');
         setReport({
@@ -1719,6 +1754,9 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
         paraclinicalHydration = parseParaclinical(
           (c.blocks_data as Record<string, unknown> | null)?.['paraclinical'],
         );
+        reposoHydration = parseReposo(
+          (c.blocks_data as Record<string, unknown> | null)?.['reposo'],
+        );
         setReport({
           chief_complaint: c.chief_complaint ?? '',
           notes: c.notes ?? '',
@@ -1740,6 +1778,7 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
       paraclinicalHydration = parseParaclinical(
         (c.blocks_data as Record<string, unknown> | null)?.['paraclinical'],
       );
+      reposoHydration = parseReposo((c.blocks_data as Record<string, unknown> | null)?.['reposo']);
       setReport({
         chief_complaint: c.chief_complaint ?? '',
         notes: c.notes ?? '',
@@ -1806,15 +1845,27 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
         /* patient detail is optional — view still opens */
       });
 
-    // Reposo: pre-poblar diagnóstico con el diagnóstico de la consulta si está disponible.
-    // Fecha desde: default = HOY. Comentarios: reset.
-    // NOTA: NO reseteamos reposoDiagnosis aquí — ya se prefilla más arriba con el diagnóstico
-    // de la consulta (freshDiagnosis / cachedDiagnosis). Resetear aquí lo borraba.
-    setReposoDays(0);
-    // Fecha "desde" por defecto = hoy (formato YYYY-MM-DD)
-    setReposoFrom(new Date().toISOString().split('T')[0]);
-    setReposoTo('');
-    setReposoComments('');
+    // Reposo. Si la consulta YA tiene uno guardado, se rehidrata tal cual: es un
+    // documento que el especialista emitió y tiene que poder volver a generarlo o
+    // compartirlo sin recargarlo a mano.
+    //
+    // Si NO hay reposo guardado, recién ahí se arranca en blanco y el diagnóstico
+    // se pre-puebla con el de la consulta (ya seteado más arriba) como comodidad.
+    if (reposoHydration) {
+      setReposoDiagnosis(reposoHydration.diagnosis);
+      setReposoDays(reposoHydration.days);
+      setReposoFrom(reposoHydration.from || new Date().toISOString().split('T')[0]);
+      setReposoTo(reposoHydration.to);
+      setReposoComments(reposoHydration.comments);
+    } else {
+      // NOTA: NO reseteamos reposoDiagnosis aquí — ya se prefilla más arriba con el
+      // diagnóstico de la consulta (freshDiagnosis / cachedDiagnosis).
+      setReposoDays(0);
+      // Fecha "desde" por defecto = hoy (formato YYYY-MM-DD)
+      setReposoFrom(new Date().toISOString().split('T')[0]);
+      setReposoTo('');
+      setReposoComments('');
+    }
 
     // El paraclínico (exámenes) es un bloque estructurado que vive en
     // blocks_snapshot['paraclinical']; se rehidrata desde ahí (no desde prescriptions).
@@ -4432,12 +4483,17 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                         <label className="flex items-center gap-2 text-sm font-medium text-slate-700 mb-1.5">
                           <FileText className="w-3.5 h-3.5 text-slate-400" /> Diagnóstico
                         </label>
-                        <input
-                          type="text"
-                          placeholder="Diagnóstico para el reposo"
+                        {/* Editor enriquecido, NO un input de texto plano.
+                            Este campo se precarga con el diagnóstico de la consulta, que
+                            viene del editor y por lo tanto es HTML: en un input plano el
+                            especialista veía "<p><strong>…" literal. Y no se puede
+                            resolver pasándolo a texto plano, porque buildRestBlocks parsea
+                            este valor para conservar negritas y viñetas en el PDF del
+                            reposo — aplanarlo acá las borraría del documento. */}
+                        <RichTextEditor
                           value={reposoDiagnosis}
-                          onChange={(e) => setReposoDiagnosis(e.target.value)}
-                          className={fi}
+                          onChange={setReposoDiagnosis}
+                          placeholder="Diagnóstico para el reposo"
                         />
                       </div>
                       <div>

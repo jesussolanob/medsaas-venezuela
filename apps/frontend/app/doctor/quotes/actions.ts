@@ -65,6 +65,12 @@ interface BackendQuote {
   share_token: string | null;
   /** Full public URL (already assembled by backend). null until the quote is sent. */
   share_url: string | null;
+  /**
+   * Nombre del destinatario ya resuelto por el backend: el del paciente (que está
+   * cifrado y solo su repositorio sabe descifrar) o el del prospecto en `leads`.
+   * null si se borró después de emitir la cotización.
+   */
+  recipient_name: string | null;
 }
 
 interface BackendQuoteItem {
@@ -105,6 +111,11 @@ export interface QuoteRow {
   share_token: string | null;
   /** Full public URL. null until the quote is sent. */
   share_url: string | null;
+  /**
+   * Nombre del destinatario resuelto por el backend (paciente o prospecto).
+   * null si se borró después de emitir la cotización. Es PII: no loguear.
+   */
+  recipient_name: string | null;
 }
 
 export interface QuoteItemRow {
@@ -166,6 +177,7 @@ function toQuoteRow(q: BackendQuote): QuoteRow {
     items: (q.items ?? []).map(toQuoteItemRow),
     share_token: q.share_token ?? null,
     share_url: q.share_url ?? null,
+    recipient_name: q.recipient_name ?? null,
   };
 }
 
