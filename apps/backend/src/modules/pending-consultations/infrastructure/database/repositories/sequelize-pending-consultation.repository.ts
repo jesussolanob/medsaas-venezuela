@@ -139,10 +139,14 @@ export class SequelizePendingConsultationRepository implements IPendingConsultat
 
   async bulkExpire(ids: string[]): Promise<void> {
     if (ids.length === 0) return;
+    // IN (:ids), NO "= ANY(:ids)": con `replacements` Sequelize sustituye el
+    // arreglo por literales entrecomillados y Postgres intenta leerlos como un
+    // arreglo → "malformed array literal". Este UPDATE es el que marca vencidas
+    // las preconsultas: con ANY fallaba entero y ninguna vencía nunca.
     await this.model.sequelize?.query(
       `UPDATE pending_consultations
        SET status = 'expired', updated_at = NOW()
-       WHERE id = ANY(:ids) AND status = 'pending_scheduling'`,
+       WHERE id IN (:ids) AND status = 'pending_scheduling'`,
       {
         replacements: { ids },
         type: QueryTypes.UPDATE,

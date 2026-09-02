@@ -203,9 +203,15 @@ export class SequelizeQuoteRepository implements IQuoteRepository {
       .map((it) => it.sourceId as string);
 
     if (productIds.length > 0) {
+      // IN (:ids), NO "= ANY(:ids)": con `replacements` Sequelize sustituye el
+      // arreglo por una lista de literales entrecomillados, y ANY() espera un
+      // arreglo de Postgres. Con `= ANY` la consulta moría con
+      // "malformed array literal" y CUALQUIER cotización con un ítem del
+      // catálogo devolvía 500. Los tests no lo veían: usan un Sequelize
+      // simulado que verifica el SQL emitido, no que Postgres lo acepte.
       const found = await this.sequelize.query<{ id: string }>(
         `SELECT id FROM products
-         WHERE id = ANY(:ids)
+         WHERE id IN (:ids)
            AND doctor_id = :doctorId
            AND is_active = true`,
         { replacements: { ids: productIds, doctorId }, type: QueryTypes.SELECT },
@@ -220,8 +226,9 @@ export class SequelizeQuoteRepository implements IQuoteRepository {
 
     if (serviceIds.length > 0) {
       const found = await this.sequelize.query<{ id: string }>(
+        // Mismo motivo que arriba: IN (:ids), nunca "= ANY(:ids)".
         `SELECT id FROM pricing_plans
-         WHERE id = ANY(:ids)
+         WHERE id IN (:ids)
            AND doctor_id = :doctorId
            AND is_active = true`,
         { replacements: { ids: serviceIds, doctorId }, type: QueryTypes.SELECT },
