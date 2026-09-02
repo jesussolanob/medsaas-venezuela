@@ -59,70 +59,95 @@ export interface MovementRow {
   created_at: string;
 }
 
+/**
+ * Forma REAL del wire, verificada contra la respuesta del endpoint y contra
+ * `Product` en apps/backend/.../domain/entities/product.entity.ts.
+ *
+ * ⚠️ El controlador de inventario devuelve la ENTIDAD tal cual (`data: product`),
+ * sin ningún mapeador a snake_case. Por eso viaja en **camelCase**.
+ *
+ * Esto estaba declarado en snake_case y nada lo delataba: TypeScript da por buena
+ * la anotación escrita a mano, así que `Number(p.sale_price_amount)` era
+ * `Number(undefined)` = NaN y el catálogo mostraba "$NaN" en precio y stock. Los
+ * tests, el typecheck y el build pasaban en verde.
+ *
+ * Si algún día se agrega un mapeador en el backend, este tipo se cambia con él.
+ */
 interface BackendProduct {
   id: string;
-  doctor_id: string;
+  doctorId: string;
   name: string;
   description: string;
   supplier: string | null;
-  photo_url: string | null;
-  photo_path: string | null;
-  sale_price_amount: number | string;
-  sale_price_currency: string;
-  stock_qty: number | string;
-  low_stock_threshold: number | string | null;
-  is_active: boolean;
-  created_at: string;
-  updated_at: string;
+  /** URL firmada que arma el backend al leer. Para guardar se manda photoPath. */
+  photoUrl: string | null;
+  photoPath: string | null;
+  salePriceAmount: number | string;
+  salePriceCurrency: string;
+  stockQty: number | string;
+  lowStockThreshold: number | string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
 }
 
 interface BackendMovement {
   id: string;
-  doctor_id: string;
-  product_id: string;
+  doctorId: string;
+  productId: string;
   kind: string;
   qty: number | string;
-  unit_price_usd: number | string | null;
-  rate_used: number | string | null;
-  rate_source: string | null;
-  consultation_id: string | null;
+  unitPriceUsd: number | string | null;
+  rateUsed: number | string | null;
+  rateSource: string | null;
+  consultationId: string | null;
   note: string | null;
-  created_at: string;
+  createdAt: string;
 }
 
-/** Coerce numeric strings from Sequelize/Postgres NUMERIC columns to JS numbers. */
+/**
+ * Traduce camelCase del wire a snake_case del frontend y fuerza los numéricos.
+ *
+ * `Number(undefined)` es NaN y NO explota: se pinta como "NaN" en pantalla. Por eso
+ * un desajuste de nombres acá no rompe nada visible en tests ni en el build —
+ * solo en la pantalla. Al cambiar un nombre, verificar contra la respuesta real.
+ */
 function toProductRow(p: BackendProduct): ProductRow {
   return {
     id: p.id,
-    doctor_id: p.doctor_id,
+    doctor_id: p.doctorId,
     name: p.name,
     description: p.description ?? '',
     supplier: p.supplier ?? null,
-    photo_url: p.photo_url ?? null,
-    photo_path: p.photo_path ?? null,
-    sale_price_amount: Number(p.sale_price_amount),
-    sale_price_currency: (p.sale_price_currency as PriceCurrency) ?? 'USD',
-    stock_qty: Number(p.stock_qty),
-    low_stock_threshold: p.low_stock_threshold !== null ? Number(p.low_stock_threshold) : null,
-    is_active: Boolean(p.is_active),
-    created_at: p.created_at,
-    updated_at: p.updated_at,
+    photo_url: p.photoUrl ?? null,
+    photo_path: p.photoPath ?? null,
+    sale_price_amount: Number(p.salePriceAmount),
+    sale_price_currency: (p.salePriceCurrency as PriceCurrency) ?? 'USD',
+    stock_qty: Number(p.stockQty),
+    low_stock_threshold:
+      p.lowStockThreshold !== null && p.lowStockThreshold !== undefined
+        ? Number(p.lowStockThreshold)
+        : null,
+    is_active: Boolean(p.isActive),
+    created_at: p.createdAt,
+    updated_at: p.updatedAt,
   };
 }
 
 function toMovementRow(m: BackendMovement): MovementRow {
   return {
     id: m.id,
-    doctor_id: m.doctor_id,
-    product_id: m.product_id,
+    doctor_id: m.doctorId,
+    product_id: m.productId,
     kind: m.kind as MovementKind,
     qty: Number(m.qty),
-    unit_price_usd: m.unit_price_usd !== null ? Number(m.unit_price_usd) : null,
-    rate_used: m.rate_used !== null ? Number(m.rate_used) : null,
-    rate_source: m.rate_source ?? null,
-    consultation_id: m.consultation_id ?? null,
+    unit_price_usd:
+      m.unitPriceUsd !== null && m.unitPriceUsd !== undefined ? Number(m.unitPriceUsd) : null,
+    rate_used: m.rateUsed !== null && m.rateUsed !== undefined ? Number(m.rateUsed) : null,
+    rate_source: m.rateSource ?? null,
+    consultation_id: m.consultationId ?? null,
     note: m.note ?? null,
-    created_at: m.created_at,
+    created_at: m.createdAt,
   };
 }
 
@@ -180,6 +205,18 @@ export async function getProduct(id: string): Promise<ProductRow | null> {
 // Create / Update / Deactivate
 // ---------------------------------------------------------------------------
 
+/**
+ * ⚠️ ASIMETRÍA DEL MÓDULO, a propósito: se ESCRIBE en snake_case y se LEE en
+ * camelCase.
+ *
+ * La entrada la valida un esquema Zod de `@delta/shared-types` que declara
+ * `sale_price_amount` / `photo_path` y es `.strict()`: mandarlo en camelCase hace
+ * fallar la petición. La salida, en cambio, es la entidad serializada tal cual,
+ * en camelCase (ver BackendProduct arriba).
+ *
+ * NO "emparejar" los dos lados sin tocar el backend: cambiar estos nombres a
+ * camelCase rompe el alta y la edición.
+ */
 export interface CreateProductInput {
   name: string;
   description?: string;
