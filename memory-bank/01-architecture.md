@@ -267,7 +267,9 @@ consultations}` (+ Consultorios/Plantillas sin moduleKey); deshabilitados agenda
 - **ADR-025 (2026-07-23):** **Preconsultas / "Consultas por agendar" — módulo `pending-consultations`.** Un servicio
   (`pricing_plans`) con `sessions_count>1` gana `validity_days` (días de validez). Al comprar (booking público o
   especialista) se paga TODO por adelantado (precio **UNITARIO × nº consultas** — decisión del usuario; el booking ya
-  sumaba así, NO se tocó) y se agenda la 1ª; las restantes se agendan de una (citas adicionales, mismo pago, `planPrice=0`
+  sumaba así, NO se tocó) ⚠️ **REVERTIDO por ADR-025 rev.2 (2026-09-03): hoy `price_usd` es el TOTAL del paquete y no
+  se multiplica.** Se conserva el texto porque explica cómo quedaron los datos anteriores a la migración —
+  y se agenda la 1ª; las restantes se agendan de una (citas adicionales, mismo pago, `planPrice=0`
   - consulta best-effort ADR-021) **o** quedan como **preconsultas** (`pending_consultations`). Diseño clave: las
     preconsultas son **AUTOSUFICIENTES** — NO se acoplan al contador de `patient_packages`; llevan `payment_id` (mismo pago
     o distintos), `expires_at` (= compra + validity_days, calculado en backend), `session_number`, `status`
@@ -722,3 +724,24 @@ status='active'` con `QueryTypes.UPDATE` (devuelve `[undefined, affectedCount]`;
   2026-08-18 y costó una sesión entera de diagnóstico. `AdminSessionWatchdog` consulta
   `GET /api/session` al montar, al recuperar el foco y cada 60s, y bloquea con un mensaje que
   nombra la causa. Los 403 de rutas de admin dicen lo mismo en vez de "no tenés permisos" a secas.
+
+- **ADR-025 rev.2 (2026-09-03):** **El precio del paquete es el TOTAL; no se multiplica.**
+  `pricing_plans.price_usd` pasa de significar precio de UNA sesión a precio de TODO el paquete.
+  Un paquete de 4 consultas guarda **120**, no 30.
+
+  El motivo es de negocio: cargar un unitario y ver al lado un total calculado **confundía al
+  especialista y al paciente** — en la misma pantalla convivían el número escrito y otro número.
+  Ahora lo que se escribe es lo que se cobra.
+
+  ⚠️ **La migración `20260903000001-package-price-is-total` es OBLIGATORIA y viaja con el código.**
+  Las filas viejas tienen el unitario: si el código deja de multiplicar y los datos no se
+  convierten, un paquete de 4 a 30 pasa de cobrar 120 a cobrar **30**, en silencio y a favor del
+  paciente. La migración multiplica los existentes, así que **cada servicio sigue cobrando
+  exactamente lo mismo que ayer**.
+
+  NO se tocan `appointments.plan_price` ni `patient_packages`: ahí el precio quedó congelado al
+  reservar y es historia, no catálogo.
+
+  La regla vive en **un solo lugar** del booking (`planTotal()`), que ahora devuelve `price_usd`
+  tal cual. Se conservó la función en vez de reemplazar sus 9 llamadas: si el precio volviera a
+  componerse de partes, se cambia ahí y en ningún otro lado.

@@ -94,11 +94,23 @@ type DoctorOffice = {
   modality: OfficeModality;
 };
 
-/** Total price for a plan: price_usd is per-session, multiply by sessions_count */
+/**
+ * Precio total de un plan.
+ *
+ * ⚠️ CAMBIO DE SIGNIFICADO (2026-09-03, ADR-025 rev.2): `price_usd` es el precio
+ * de TODO el paquete, no el de una sesión. Ya no se multiplica por
+ * `sessions_count`: un paquete de 4 consultas guarda 120, no 30.
+ *
+ * El motivo es de negocio, no técnico: cargar un unitario y ver el total
+ * calculado confundía al especialista y al paciente. Ahora lo que se escribe es
+ * lo que se cobra.
+ *
+ * La función se conserva —en vez de reemplazar las 9 llamadas por `price_usd`—
+ * porque es el único punto donde vive esta regla. Si el precio del paquete
+ * volviera a componerse de partes, se cambia acá y nada más.
+ */
 function planTotal(plan: PricingPlan): number {
-  return (
-    plan.price_usd * (plan.sessions_count && plan.sessions_count > 1 ? plan.sessions_count : 1)
-  );
+  return plan.price_usd;
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
