@@ -938,8 +938,13 @@ Módulo nuevo `apps/backend/src/modules/inventory/` (DDD de 4 capas) + pantalla 
   especialista podía guardar la ruta de un documento de OTRO y recibir una URL firmada válida.
 - **Stock en cero: se avisa, no se bloquea** (decisión del dueño). Puede quedar negativo.
 
-⚠️ **Sin probar en navegador y la migración no se aplicó a ninguna base.** Los tests usan Sequelize
-simulado: verifican qué SQL se emite, no que Postgres lo acepte.
+✅ **Migrado y probado en navegador el 2026-09-02** (staging). Ahí salió que el catálogo mostraba
+**`$NaN` en precio y stock**: `BackendProduct` estaba en snake_case y la API serializa camelCase.
+⚠️ El módulo es **asimétrico a propósito**: se **escribe** en snake_case (el DTO de Zod es
+`.strict()` y lo exige) y se **lee** en camelCase. Emparejar los dos lados rompe el alta.
+
+⚠️ Los tests usan Sequelize simulado: verifican qué SQL se emite, no que Postgres lo acepte — no
+vieron el NaN ni lo habrían visto. **Falta probar la venta al cobrar y la REAPROBACIÓN** (ADR-054).
 
 ⚠️ **El gating "solo Plus" se cumple únicamente en el frontend.** No es de este módulo: **ningún
 módulo del repo tiene gating de plan en el backend** (`CapabilitiesGuard` existe con cero usos; el
@@ -974,5 +979,11 @@ Reponer la URL cruda reabre un SSRF.
 ⚠️ **CRM entró al sidebar con este lote.** `/doctor/crm` existía solo como prefijo gateado, sin
 entrada de navegación: la pantalla estaba construida y era inalcanzable. Cuarto caso del patrón.
 
-⚠️ **Sin probar en navegador y la migración no se aplicó a ninguna base.** Mismo gating de frontend
-solamente que inventario — ningún módulo del repo lo tiene en el backend.
+✅ **Migrado y probado en navegador el 2026-09-02** (staging): crear, PDF del borrador, y el
+detalle. Ahí salieron tres defectos: `= ANY(:ids)` daba **500** en toda cotización con ítem del
+catálogo (ADR-059), el destinatario mostraba la categoría en vez del nombre (ADR-061) y el PDF del
+especialista salía sin marca (ADR-062).
+
+⚠️ **Falta probar el ENVÍO de punta a punta**: congelado de la tasa, correo y vista pública por
+token. Mismo gating de frontend solamente que inventario — ningún módulo del repo lo tiene en el
+backend.

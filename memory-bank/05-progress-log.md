@@ -4,6 +4,70 @@
 > ⚠️ Orden: **la entrada más nueva va ARRIBA**. La del 2026-08-11 quedó al final
 > del archivo por error; no se movió para no ensuciar el diff.
 
+## 2026-09-02/03 — Primer QA en navegador del lote: **siete defectos que la suite no podía ver**
+
+> Commits `3143ea24`, `59af5afd`, `c8f8b454`. Todo en `staging` y **verificado ahí en pantalla**.
+> **Nada en `main`.** ADR-059 a ADR-062.
+
+Primera vez que inventario, cotizaciones y las seis correcciones se abren en un navegador. Las
+cuatro migraciones aplicaron limpias (era el riesgo #1: una rota bloquea TODOS los despliegues).
+
+### Lo que se confirmó funcionando
+
+Los seis puntos del dueño, verificados uno por uno: el PDF compartido **ya sale igual** que el
+generado (era el reclamo original), los métodos de pago salen del vendedor con sus datos, el ciclo
+`pending → approved → paid` completo, el paso del precio de a un dólar y el campo vaciable con su
+guarda, y la ficha del vendedor editable. La seguridad de lo nuevo también: editar un especialista
+ajeno da **422** y mandar `role: super_admin` en el cuerpo **se descarta**.
+
+### Los siete defectos, y por qué ninguno era visible
+
+**1. Inventario mostraba `$NaN` en precio y stock — el módulo entero inservible.** `BackendProduct`
+estaba escrito a mano en snake_case y el controlador devuelve la ENTIDAD tal cual, en camelCase.
+`Number(undefined)` = NaN, y **NaN no explota: se pinta**. Contagiaba al selector de cotizaciones.
+
+**2 y 3. `= ANY(:ids)` con `replacements` rompía dos consultas** (ADR-059). Cualquier cotización con
+un ítem del catálogo daba **500**; y `bulkExpire` de preconsultas —**ya en producción**— fallaba
+entero, así que **ninguna preconsulta venció nunca**. El segundo salió barriendo el repo por el
+mismo patrón después de arreglar el primero.
+
+**4. El reposo guardado nunca se releía** (ADR-060). Autoguardado cada 1,5 s, nadie lo leía de
+vuelta: al reabrir, "Sin reposo médico indicado" con el dato intacto en la base. El panel prometía
+lo contrario.
+
+**5. El diagnóstico del reposo mostraba `<p><strong>` literal**: input de texto plano precargado con
+HTML del editor. ⚠️ No se resuelve aplanándolo — `buildRestBlocks` parsea ese valor para el formato
+del PDF. Pasó a ser el `RichTextEditor` que ya existía.
+
+**6. La cotización no decía a QUIÉN iba dirigida** (ADR-061): mostraba la categoría.
+
+**7. El PDF del especialista salía sin marca** (ADR-062): `doctor` vacío y `templateConfig: null`
+escritos a mano. Sin nombre, especialidad, matrícula, logo ni firma. **La ruta pública sí los
+mandaba**: el documento del destinatario y el del especialista NO eran el mismo.
+
+### La lección de método
+
+**Los tests no podían ver NADA de esto y siguen sin poder.** Usan un Sequelize simulado que verifica
+**qué SQL se emite**, no que Postgres lo acepte. 447 suites en verde antes y después de los tres
+arreglos de fondo. `tsc` tampoco: da por buena una anotación escrita a mano.
+
+Patrón repetido en 4 de los 7: **algo escrito a mano que miente** — un tipo, un nombre de campo, una
+categoría, un `null`. Y en 3 de los 7 la asimetría **"un camino lo hace bien y el otro no"**
+(compartir vs generar, público vs especialista).
+
+### Infraestructura
+
+**CORS del bucket ampliado a staging** (`staging.deltasalud.app` + su Cloud Run). Los tres orígenes
+de producción se conservaron: ⚠️ `gcloud storage buckets update --cors-file` **REEMPLAZA**, no
+agrega. Sin esto el QA de PDFs en staging miente (salen sin logo y en prod sí aparece).
+
+### Qué falta probar
+
+- **Vender un producto al cobrar y REAPROBAR** — el par simétrico del stock (ADR-054), silencioso
+  en los dos sentidos.
+- **Enviar una cotización de punta a punta**: tasa congelada, correo, vista pública por token.
+- Gating por plan con una cuenta `delta_base` / `delta_free`.
+
 ## 2026-09-02 — Seis observaciones del QA: un solo generador de PDF y comisiones aprobadas
 
 > Commit `6a62fad1`, rama `feature/cotizaciones`. **Dos migraciones sin aplicar a ninguna base.**

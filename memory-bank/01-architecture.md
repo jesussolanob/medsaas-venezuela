@@ -890,3 +890,36 @@ status='active'` con `QueryTypes.UPDATE` (devuelve `[undefined, affectedCount]`;
   su total adeudado cada comisión que el admin aprobaba, y subestimaba lo que se le debe al darse de
   baja. Los estados nuevos que se meten en el medio de un flujo rompen a todo el que partía el
   mundo en dos.
+
+- **ADR-059 (2026-09-02):** **Con `replacements` va `IN (:ids)`, NUNCA `= ANY(:ids)`.**
+  Sequelize sustituye un arreglo por una lista de literales entrecomillados; `ANY()` espera un
+  arreglo de Postgres, así que recibe una cadena e intenta leerla como arreglo →
+  `malformed array literal`. Rompió dos consultas: la validación de ítems de cotizaciones (**500**
+  en cualquier presupuesto con un ítem del catálogo) y `bulkExpire` de preconsultas —**esta ya en
+  producción**, así que **ninguna preconsulta venció nunca**. ⚠️ **Los tests no lo ven y no pueden
+  verlo:** usan un Sequelize simulado que verifica **qué SQL se emite**, no que Postgres lo acepte.
+  Si hace falta `= ANY`, va con `bind`, no con `replacements`.
+
+- **ADR-060 (2026-09-02):** **Lo que se autoguarda se REHIDRATA al reabrir.** El reposo se escribía
+  en `blocks_snapshot['reposo']` cada 1,5 s y nadie lo leía de vuelta: al reabrir la consulta los
+  días volvían a 0 y el especialista **no podía emitir un reposo cargado antes**. Regla: por cada
+  bloque que se persiste hay que poder señalar **dónde se lee**; si no existe ese punto, el dato
+  está muerto. Y ⚠️ **el cartel que promete persistencia no es evidencia** — acá el panel decía
+  "quedan disponibles aunque cierres y vuelvas" mientras hacía lo contrario (ver
+  [[textos-fijos-que-mienten]] en la memoria del proyecto).
+
+- **ADR-061 (2026-09-02):** **El nombre del destinatario de una cotización lo resuelve el backend.**
+  `quotes` guarda solo `patient_id` / `lead_id`, y el nombre del paciente está cifrado
+  (AES-256-GCM): solo el repositorio de pacientes sabe descifrarlo, y el del prospecto vive en
+  `leads`. `GetQuoteUseCase` lo resuelve —ambas búsquedas **scoped por doctorId**— y viaja como
+  `recipient_name`. Antes la pantalla y el PDF pintaban la **categoría** ("Paciente"/"Prospecto"),
+  así que un presupuesto no decía a quién iba dirigido. Es **best-effort**: si la búsqueda falla, la
+  cotización se devuelve igual sin nombre — resolver una etiqueta no puede tumbar el detalle.
+
+- **ADR-062 (2026-09-02):** **La marca del especialista se PIDE, no se pasa vacía.** El PDF que
+  descargaba el especialista tenía `doctor` vacío y `templateConfig: null` **escritos a mano**: sin
+  nombre, especialidad, matrícula, logo ni firma. La ruta pública **sí** los mandaba, así que el
+  documento que veía el destinatario y el que descargaba el especialista **no eran el mismo**.
+  Ambos caminos usan ahora la misma cascada: plantilla del tipo → perfil del especialista → vacío.
+  ⚠️ Un `null` escrito a mano en un parámetro de marca es un defecto silencioso: no rompe nada,
+  solo produce un documento pelado que nadie mira hasta que lo recibe un paciente.
