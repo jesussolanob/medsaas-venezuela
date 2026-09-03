@@ -1140,6 +1140,17 @@ Un producto ajeno y un id inexistente devuelven **el mismo** error (impide enume
 | GET    | `/api/doctor/inventory/products/:id/movements`                |                                                                                                    |
 | POST   | `/api/doctor/inventory/products/:id/movements`                | solo `purchase`/`adjustment`/`loss`: **`sale` no se acepta**, las ventas nacen de aprobar el cobro |
 
+## Cambio de contrato: `recipient_name` en el detalle de cotización (2026-09-02)
+
+`GET /api/doctor/quotes/:id` suma **`recipient_name`**: el nombre ya resuelto del paciente o del
+prospecto (ver ADR-061). `null` si el destinatario se borró después de emitir la cotización.
+
+⚠️ Es **PII** — este endpoint es del especialista dueño; no loguear la respuesta.
+
+Por qué no viajaba antes: la entidad guarda solo `patient_id` / `lead_id`, y el nombre del paciente
+está cifrado. La pantalla y el PDF pintaban la **categoría**, así que un presupuesto no decía a
+quién iba dirigido.
+
 ## Comisiones: aprobación y ficha del especialista (2026-09-02)
 
 | Método | Ruta                                    | Notas                                                                          |
