@@ -57,6 +57,12 @@ export interface MovementRow {
   consultation_id: string | null;
   note: string | null;
   created_at: string;
+  /**
+   * Non-null when this movement is a reversal counter-entry.
+   * Points to the original movement that was reversed.
+   * Use this to distinguish reversals from normal movements.
+   */
+  reverses_movement_id: string | null;
 }
 
 /**
@@ -103,6 +109,11 @@ interface BackendMovement {
   consultationId: string | null;
   note: string | null;
   createdAt: string;
+  /**
+   * Non-null when this movement is a reversal counter-entry.
+   * Points to the original movement being reversed.
+   */
+  reversesMovementId: string | null;
 }
 
 /**
@@ -148,6 +159,7 @@ function toMovementRow(m: BackendMovement): MovementRow {
     consultation_id: m.consultationId ?? null,
     note: m.note ?? null,
     created_at: m.createdAt,
+    reverses_movement_id: m.reversesMovementId ?? null,
   };
 }
 
@@ -326,4 +338,70 @@ export async function registerMovement(
   );
   if (!result.ok) return { error: result.error.message };
   return { movement: toMovementRow(result.value) };
+}
+
+// ---------------------------------------------------------------------------
+// Reverse a movement
+// ---------------------------------------------------------------------------
+
+export interface ReverseMovementResult {
+  error?: string;
+  /** The counter-entry movement created by the reversal. */
+  movement?: MovementRow;
+}
+
+/**
+ * Reverses a manual movement by creating a counter-entry.
+ *
+ * Consultation-linked movements cannot be reversed here — the backend returns a
+ * 422 with a Spanish message explaining how to correct them via billing.
+ *
+ * Route: POST /api/doctor/inventory/movements/:id/reverse (no body)
+ */
+export async function reverseMovement(movementId: string): Promise<ReverseMovementResult> {
+  const result = await backendPost<BackendMovement>(
+    `/api/doctor/inventory/movements/${movementId}/reverse`,
+    {},
+  );
+  if (!result.ok) return { error: result.error.message };
+  return { movement: toMovementRow(result.value) };
+}
+
+// ---------------------------------------------------------------------------
+// Bulk stock load
+// ---------------------------------------------------------------------------
+
+export interface BulkStockItem {
+  product_id: string;
+  /** Positive qty. Maximum 200 items per batch. */
+  qty: number;
+  unit_price_usd?: number;
+}
+
+export interface BulkStockInput {
+  items: BulkStockItem[];
+  note?: string;
+}
+
+export interface BulkStockResult {
+  error?: string;
+  /** Number of purchase movements created. */
+  count?: number;
+}
+
+/**
+ * Creates one purchase movement per item in a single atomic transaction.
+ * If any item fails, the whole batch rolls back.
+ *
+ * Route: POST /api/doctor/inventory/movements/bulk
+ * Body: { items: [{ product_id, qty, unit_price_usd? }], note? }
+ */
+export async function bulkLoadStock(input: BulkStockInput): Promise<BulkStockResult> {
+  const result = await backendPost<BackendMovement[]>(
+    '/api/doctor/inventory/movements/bulk',
+    input,
+  );
+  if (!result.ok) return { error: result.error.message };
+  const count = Array.isArray(result.value) ? result.value.length : 0;
+  return { count };
 }
