@@ -190,19 +190,27 @@ export default function ApprovePaymentModal({
               ? (raw as { products: unknown[] }).products
               : [];
 
-          // Issue #2: coerce NUMERIC columns that Sequelize returns as strings.
+          // ⚠️ El wire de /api/doctor/inventory/products es **camelCase**: el
+          // controlador devuelve la entidad tal cual (salePriceAmount, stockQty).
+          // Acá se leía en snake_case y, como el fallback era `?? 0`, TODOS los
+          // productos aparecían con "stock: 0" y precio 0 — un dato que parece
+          // legítimo ("no hay stock") en vez de un error visible. Peor que el NaN
+          // que dio el mismo desajuste en el catálogo, porque no se nota.
+          // Se aceptan las dos formas por si algún consumidor viejo manda snake_case.
+          const num = (camel: unknown, snake: unknown): number => Number(camel ?? snake ?? 0);
+
           const products: InventoryProduct[] = rawList.map((item) => {
             const p = item as Record<string, unknown>;
+            const umbral = p.lowStockThreshold ?? p.low_stock_threshold;
             return {
               id: String(p.id ?? ''),
               name: String(p.name ?? ''),
-              sale_price_amount: Number(p.sale_price_amount ?? 0),
-              sale_price_currency: (p.sale_price_currency ?? 'USD') as 'USD' | 'VES',
-              stock_qty: Number(p.stock_qty ?? 0),
-              low_stock_threshold:
-                p.low_stock_threshold !== null && p.low_stock_threshold !== undefined
-                  ? Number(p.low_stock_threshold)
-                  : null,
+              sale_price_amount: num(p.salePriceAmount, p.sale_price_amount),
+              sale_price_currency: (p.salePriceCurrency ?? p.sale_price_currency ?? 'USD') as
+                | 'USD'
+                | 'VES',
+              stock_qty: num(p.stockQty, p.stock_qty),
+              low_stock_threshold: umbral !== null && umbral !== undefined ? Number(umbral) : null,
             };
           });
 
