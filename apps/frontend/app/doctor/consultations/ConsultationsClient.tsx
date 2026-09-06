@@ -5468,16 +5468,44 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                             // 2. Si el estado es "Aprobado", persistir la aprobación
                             //    (status + extras confirmados + método) en la BD.
                             if (isApproving) {
-                              const extras = (selected.extra_items || []).map((e) => ({
-                                description: e.description,
-                                amount_usd: e.amount_usd,
-                              }));
+                              // ⚠️ approve-payment es REEMPLAZAR TODO (ADR-054): el backend
+                              // revierte el stock de la aprobación anterior y vuelve a
+                              // aplicar lo que llegue AHORA. Por eso hay que reenviar los
+                              // productos: acá se mandaban solo description/amount_usd y se
+                              // perdían product_id y quantity, así que al reguardar un cobro
+                              // ya aprobado el producto VOLVÍA al stock, el movimiento de
+                              // venta desaparecía y al paciente se le seguía cobrando. El
+                              // inventario quedaba inflado y no había ningún síntoma.
+                              const items = selected.extra_items || [];
+
+                              // Los que NO son productos viajan como extras de texto.
+                              const extras = items
+                                .filter((e) => !e.product_id)
+                                .map((e) => ({
+                                  description: e.description,
+                                  amount_usd: e.amount_usd,
+                                }));
+
+                              // Los productos viajan aparte: el backend resuelve el precio
+                              // y descuenta el stock. Mandar unit_price_usd haría fallar la
+                              // petición — el esquema es .strict().
+                              const productExtras = items
+                                .filter((e) => e.product_id)
+                                .map((e) => ({
+                                  product_id: e.product_id as string,
+                                  quantity: Number(e.quantity ?? 1),
+                                }));
+
                               const res = await fetch(
                                 `/api/doctor/consultations/${selected.id}/approve-payment`,
                                 {
                                   method: 'PATCH',
                                   headers: { 'Content-Type': 'application/json' },
-                                  body: JSON.stringify({ extras, method: pagoMethod }),
+                                  body: JSON.stringify({
+                                    extras,
+                                    product_extras: productExtras,
+                                    method: pagoMethod,
+                                  }),
                                 },
                               );
                               const json = (await res.json()) as {
@@ -6201,16 +6229,26 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
               // Antes se llamaba updatePagoStatus('approved') que abría ApprovePaymentModal
               // → el pago quedaba PENDIENTE con solo el método guardado (bug #2).
               try {
-                const extras = (selected.extra_items || []).map((e) => ({
-                  description: e.description,
-                  amount_usd: e.amount_usd,
-                }));
+                // Mismo motivo que el otro camino de aprobación: approve-payment es
+                // REEMPLAZAR TODO (ADR-054). Sin reenviar los productos, el stock de la
+                // aprobación anterior se revierte y no se vuelve a aplicar.
+                const items = selected.extra_items || [];
+                const extras = items
+                  .filter((e) => !e.product_id)
+                  .map((e) => ({ description: e.description, amount_usd: e.amount_usd }));
+                const productExtras = items
+                  .filter((e) => e.product_id)
+                  .map((e) => ({
+                    product_id: e.product_id as string,
+                    quantity: Number(e.quantity ?? 1),
+                  }));
+
                 const res = await fetch(
                   `/api/doctor/consultations/${selected.id}/approve-payment`,
                   {
                     method: 'PATCH',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ extras, method }),
+                    body: JSON.stringify({ extras, product_extras: productExtras, method }),
                   },
                 );
                 const json = (await res.json()) as { success?: boolean; error?: string };
