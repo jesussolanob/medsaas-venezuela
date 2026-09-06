@@ -19,6 +19,10 @@ function makeRepo(throws = false): jest.Mocked<IProductRepository> {
     applyMovement: jest.fn(),
     findSalesByConsultation: jest.fn(),
     revertSalesByConsultation: jest.fn(),
+    findMovementByIdForDoctor: jest.fn(),
+    reverseMovement: jest.fn(),
+    findProductsByIdsForDoctor: jest.fn(),
+    applyBulkMovements: jest.fn(),
   };
 }
 

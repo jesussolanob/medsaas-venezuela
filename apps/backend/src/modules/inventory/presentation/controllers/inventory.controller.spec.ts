@@ -7,10 +7,13 @@ import { UpdateProductUseCase } from '../../application/use-cases/update-product
 import { DeactivateProductUseCase } from '../../application/use-cases/deactivate-product.use-case';
 import { RegisterMovementUseCase } from '../../application/use-cases/register-movement.use-case';
 import { ListMovementsUseCase } from '../../application/use-cases/list-movements.use-case';
+import { ReverseMovementUseCase } from '../../application/use-cases/reverse-movement.use-case';
+import { BulkPurchaseUseCase } from '../../application/use-cases/bulk-purchase.use-case';
 import { AppAuthGuard } from '../../../../infrastructure/auth/app-auth.guard';
 
 const DOCTOR_ID = 'dddddddd-0000-0000-0000-000000000001';
 const PRODUCT_ID = 'pppppppp-0000-0000-0000-000000000001';
+const MOVEMENT_ID = 'mmmmmmmm-0000-0000-0000-000000000001';
 
 const mockUser = { sub: DOCTOR_ID, role: 'doctor' };
 
@@ -40,6 +43,8 @@ describe('InventoryController', () => {
   let deactivateProductUC: jest.Mocked<DeactivateProductUseCase>;
   let registerMovementUC: jest.Mocked<RegisterMovementUseCase>;
   let listMovementsUC: jest.Mocked<ListMovementsUseCase>;
+  let reverseMovementUC: jest.Mocked<ReverseMovementUseCase>;
+  let bulkPurchaseUC: jest.Mocked<BulkPurchaseUseCase>;
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -52,6 +57,8 @@ describe('InventoryController', () => {
         { provide: DeactivateProductUseCase, useValue: { execute: jest.fn() } },
         { provide: RegisterMovementUseCase, useValue: { execute: jest.fn() } },
         { provide: ListMovementsUseCase, useValue: { execute: jest.fn() } },
+        { provide: ReverseMovementUseCase, useValue: { execute: jest.fn() } },
+        { provide: BulkPurchaseUseCase, useValue: { execute: jest.fn() } },
       ],
     })
       .overrideGuard(AppAuthGuard)
@@ -66,6 +73,8 @@ describe('InventoryController', () => {
     deactivateProductUC = module.get(DeactivateProductUseCase);
     registerMovementUC = module.get(RegisterMovementUseCase);
     listMovementsUC = module.get(ListMovementsUseCase);
+    reverseMovementUC = module.get(ReverseMovementUseCase);
+    bulkPurchaseUC = module.get(BulkPurchaseUseCase);
   });
 
   it('index returns paginated products wrapped in success envelope', async () => {
@@ -143,5 +152,54 @@ describe('InventoryController', () => {
     const result = await controller.getMovements(PRODUCT_ID, '1', '20', mockUser as never);
     expect(result.success).toBe(true);
     expect(listMovementsUC.execute).toHaveBeenCalledWith(PRODUCT_ID, DOCTOR_ID, 1, 20);
+  });
+
+  it('reverseMovementById delegates to ReverseMovementUseCase with authenticated doctorId', async () => {
+    const reversal = {
+      id: 'rev-id',
+      doctorId: DOCTOR_ID,
+      productId: PRODUCT_ID,
+      kind: 'adjustment',
+      qty: -5,
+      unitPriceUsd: null,
+      rateUsed: null,
+      rateSource: null,
+      consultationId: null,
+      note: `Anulación del movimiento ${MOVEMENT_ID}`,
+      reversesMovementId: MOVEMENT_ID,
+      createdAt: new Date(),
+      isSale: () => false,
+    };
+    (reverseMovementUC.execute as jest.Mock).mockResolvedValue(reversal);
+    const result = await controller.reverseMovementById(MOVEMENT_ID, mockUser as never);
+    expect(result.success).toBe(true);
+    expect(reverseMovementUC.execute).toHaveBeenCalledWith(MOVEMENT_ID, DOCTOR_ID);
+    expect(result.data).toBe(reversal);
+  });
+
+  it('bulkPurchaseMovements delegates to BulkPurchaseUseCase with authenticated doctorId', async () => {
+    const movements = [
+      {
+        id: 'mvmt-1',
+        doctorId: DOCTOR_ID,
+        productId: PRODUCT_ID,
+        kind: 'purchase',
+        qty: 5,
+        unitPriceUsd: null,
+        rateUsed: null,
+        rateSource: null,
+        consultationId: null,
+        note: null,
+        reversesMovementId: null,
+        createdAt: new Date(),
+        isSale: () => false,
+      },
+    ];
+    (bulkPurchaseUC.execute as jest.Mock).mockResolvedValue(movements);
+    const dto = { items: [{ product_id: PRODUCT_ID, qty: 5 }] };
+    const result = await controller.bulkPurchaseMovements(dto as never, mockUser as never);
+    expect(result.success).toBe(true);
+    expect(bulkPurchaseUC.execute).toHaveBeenCalledWith(DOCTOR_ID, dto);
+    expect(result.data).toBe(movements);
   });
 });

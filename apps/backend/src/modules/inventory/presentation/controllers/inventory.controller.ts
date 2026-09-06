@@ -23,10 +23,12 @@ import {
   UpdateProductDtoSchema,
   ListProductsQuerySchema,
   RegisterMovementDtoSchema,
+  BulkPurchaseDtoSchema,
   type CreateProductDto,
   type UpdateProductDto,
   type ListProductsQuery,
   type RegisterMovementDto,
+  type BulkPurchaseDto,
 } from '@delta/shared-types';
 
 import {
@@ -40,6 +42,8 @@ import { UpdateProductUseCase } from '../../application/use-cases/update-product
 import { DeactivateProductUseCase } from '../../application/use-cases/deactivate-product.use-case';
 import { RegisterMovementUseCase } from '../../application/use-cases/register-movement.use-case';
 import { ListMovementsUseCase } from '../../application/use-cases/list-movements.use-case';
+import { ReverseMovementUseCase } from '../../application/use-cases/reverse-movement.use-case';
+import { BulkPurchaseUseCase } from '../../application/use-cases/bulk-purchase.use-case';
 import type { InventoryMovement } from '../../domain/entities/inventory-movement.entity';
 import type { MovementListResult } from '../../domain/repositories/iproduct.repository';
 
@@ -75,6 +79,8 @@ export class InventoryController {
     private readonly deactivateProduct: DeactivateProductUseCase,
     private readonly registerMovement: RegisterMovementUseCase,
     private readonly listMovements: ListMovementsUseCase,
+    private readonly reverseMovement: ReverseMovementUseCase,
+    private readonly bulkPurchase: BulkPurchaseUseCase,
   ) {}
 
   /**
@@ -183,6 +189,43 @@ export class InventoryController {
     @CurrentUser() user: CurrentUserPayload,
   ): Promise<SuccessResponse<InventoryMovement>> {
     const movement = await this.registerMovement.execute(productId, user.sub, dto);
+    return { success: true, data: movement };
+  }
+
+  /**
+   * POST /api/doctor/inventory/movements/bulk
+   * Creates one purchase movement per item in a single atomic transaction.
+   *
+   * SECURITY:
+   *   - doctorId comes from the session, never from the body.
+   *   - All product_ids are validated against the authenticated doctor before writing.
+   */
+  @Post('movements/bulk')
+  async bulkPurchaseMovements(
+    @Body(new ZodValidationPipe(BulkPurchaseDtoSchema)) dto: BulkPurchaseDto,
+    @CurrentUser() user: CurrentUserPayload,
+  ): Promise<SuccessResponse<InventoryMovement[]>> {
+    const movements = await this.bulkPurchase.execute(user.sub, dto);
+    return { success: true, data: movements };
+  }
+
+  /**
+   * POST /api/doctor/inventory/movements/:id/reverse
+   * Reverses a manual movement by creating a counter-entry.
+   *
+   * Consultation-linked movements (sale kind) cannot be reversed here — they must
+   * be corrected by re-approving the consultation (ADR-054).
+   *
+   * SECURITY:
+   *   - doctorId comes from the session.
+   *   - Missing and foreign movements return the same 404 (anti-IDOR).
+   */
+  @Post('movements/:id/reverse')
+  async reverseMovementById(
+    @Param('id', ParseUUIDPipe) movementId: string,
+    @CurrentUser() user: CurrentUserPayload,
+  ): Promise<SuccessResponse<InventoryMovement>> {
+    const movement = await this.reverseMovement.execute(movementId, user.sub);
     return { success: true, data: movement };
   }
 }

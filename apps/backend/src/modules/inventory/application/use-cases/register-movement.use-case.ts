@@ -66,6 +66,7 @@ export class RegisterMovementUseCase {
       consultationId: null,
       note: dto.note ?? null,
       createdAt: new Date(),
+      reversesMovementId: null,
     });
 
     return this.repo.applyMovement(movement);

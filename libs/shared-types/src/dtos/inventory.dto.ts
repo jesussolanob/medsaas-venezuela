@@ -104,6 +104,36 @@ export const RegisterMovementDtoSchema = z
 export type RegisterMovementDto = z.infer<typeof RegisterMovementDtoSchema>;
 
 // ---------------------------------------------------------------------------
+// Bulk purchase (multi-product stock entry)
+// ---------------------------------------------------------------------------
+
+export const BulkPurchaseItemSchema = z
+  .object({
+    product_id: z.string().uuid('product_id debe ser un UUID válido'),
+    qty: z
+      .number()
+      .positive('La cantidad debe ser positiva')
+      .max(MAX_QTY, `La cantidad no puede superar ${MAX_QTY}`)
+      .finite(),
+    unit_price_usd: z.number().nonnegative().finite().max(MAX_PRICE).optional(),
+  })
+  .strict();
+
+export type BulkPurchaseItem = z.infer<typeof BulkPurchaseItemSchema>;
+
+export const BulkPurchaseDtoSchema = z
+  .object({
+    items: z
+      .array(BulkPurchaseItemSchema)
+      .min(1, 'Debe incluir al menos un ítem')
+      .max(200, 'El lote no puede superar 200 ítems'),
+    note: z.string().max(500).optional(),
+  })
+  .strict();
+
+export type BulkPurchaseDto = z.infer<typeof BulkPurchaseDtoSchema>;
+
+// ---------------------------------------------------------------------------
 // Product extras for consultation payment approval (inventory-linked)
 // ---------------------------------------------------------------------------
 
