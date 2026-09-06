@@ -17,6 +17,8 @@ import { UpdateProductUseCase } from './application/use-cases/update-product.use
 import { DeactivateProductUseCase } from './application/use-cases/deactivate-product.use-case';
 import { RegisterMovementUseCase } from './application/use-cases/register-movement.use-case';
 import { ListMovementsUseCase } from './application/use-cases/list-movements.use-case';
+import { ReverseMovementUseCase } from './application/use-cases/reverse-movement.use-case';
+import { BulkPurchaseUseCase } from './application/use-cases/bulk-purchase.use-case';
 
 // Controller
 import { InventoryController } from './presentation/controllers/inventory.controller';
@@ -52,6 +54,8 @@ import { StorageModule } from '../storage/storage.module';
     DeactivateProductUseCase,
     RegisterMovementUseCase,
     ListMovementsUseCase,
+    ReverseMovementUseCase,
+    BulkPurchaseUseCase,
   ],
   exports: [PRODUCT_REPOSITORY],
 })

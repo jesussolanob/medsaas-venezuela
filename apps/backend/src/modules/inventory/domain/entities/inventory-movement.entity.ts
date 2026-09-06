@@ -29,6 +29,12 @@ export interface InventoryMovementCreateParams {
   consultationId: string | null;
   note: string | null;
   createdAt: Date;
+  /**
+   * ID of the movement this entry reverses. Non-null only for counter-entries
+   * created by the reversal flow. The unique partial index in the DB ensures
+   * a movement can only be reversed once.
+   */
+  reversesMovementId: string | null;
 }
 
 export class InventoryMovement {
@@ -43,6 +49,7 @@ export class InventoryMovement {
   readonly consultationId: string | null;
   readonly note: string | null;
   readonly createdAt: Date;
+  readonly reversesMovementId: string | null;
 
   constructor(params: InventoryMovementCreateParams) {
     this.id = params.id;
@@ -56,6 +63,7 @@ export class InventoryMovement {
     this.consultationId = params.consultationId;
     this.note = params.note;
     this.createdAt = params.createdAt;
+    this.reversesMovementId = params.reversesMovementId;
   }
 
   /** Returns true when this movement is a consultation sale. */

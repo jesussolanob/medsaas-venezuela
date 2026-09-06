@@ -53,6 +53,14 @@ export class InventoryMovementModel extends Model {
   @Column({ type: DataType.TEXT, allowNull: true })
   declare note: string | null;
 
+  /**
+   * When non-null, this movement is a counter-entry that reverses the referenced one.
+   * A unique partial index (WHERE reverses_movement_id IS NOT NULL) in the DB ensures
+   * each movement can be reversed at most once.
+   */
+  @Column({ type: DataType.UUID, allowNull: true, field: 'reverses_movement_id' })
+  declare reversesMovementId: string | null;
+
   @CreatedAt
   @Column({ field: 'created_at' })
   declare createdAt: Date;

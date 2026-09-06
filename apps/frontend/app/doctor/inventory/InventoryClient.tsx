@@ -23,22 +23,29 @@ import {
   ArrowDownToLine,
   ArrowUpFromLine,
   ImageIcon,
+  Download,
+  XCircle,
+  PackagePlus,
 } from 'lucide-react';
 import { showToast } from '@/components/ui/Toaster';
+import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import { useBcvRate, BsLabel } from '@/lib/useBcvRate';
 import {
   getProducts,
+  getProduct,
   createProduct,
   updateProduct,
   deactivateProduct,
   getMovements,
   registerMovement,
+  reverseMovement,
   type ProductRow,
   type MovementRow,
   type PriceCurrency,
   type MovementKind,
 } from './actions';
 import ProductPhotoUploader from './ProductPhotoUploader';
+import BulkStockModal from './BulkStockModal';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -210,6 +217,13 @@ export default function InventoryClient({ initialProducts }: Props) {
   // Deactivate confirm
   const [confirmDeactivate, setConfirmDeactivate] = useState<ProductRow | null>(null);
 
+  // Reversal confirm
+  const [confirmReverse, setConfirmReverse] = useState<MovementRow | null>(null);
+  const [reversingId, setReversingId] = useState<string | null>(null);
+
+  // Bulk stock modal
+  const [bulkModalOpen, setBulkModalOpen] = useState(false);
+
   const { rate: bcvRate } = useBcvRate();
 
   // ---------------------------------------------------------------------------
@@ -239,6 +253,102 @@ export default function InventoryClient({ initialProducts }: Props) {
     loadProducts(search, showInactive);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search, showInactive]);
+
+  // ---------------------------------------------------------------------------
+  // CSV export (client-side, no backend call needed)
+  // ---------------------------------------------------------------------------
+
+  function exportCsv(prods: ProductRow[]) {
+    const BOM = '﻿'; // UTF-8 BOM — makes Excel open the file correctly
+    const SEP = ';'; // Semicolon separator for Spanish Excel (comma decimal)
+
+    function escapeText(v: string): string {
+      return `"${v.replace(/"/g, '""')}"`;
+    }
+
+    function fmtNumber(n: number): string {
+      // es-VE uses comma as decimal separator; useGrouping:false removes the
+      // thousands-separator dot that would trip up CSV numeric recognition.
+      return n.toLocaleString('es-VE', { useGrouping: false, maximumFractionDigits: 4 });
+    }
+
+    const headers = [
+      'Nombre',
+      'Descripción',
+      'Proveedor',
+      'Precio',
+      'Moneda',
+      'Stock',
+      'Umbral stock bajo',
+      'Activo',
+    ];
+
+    const rows = prods.map((p) =>
+      [
+        escapeText(p.name),
+        escapeText(p.description ?? ''),
+        escapeText(p.supplier ?? ''),
+        fmtNumber(p.sale_price_amount),
+        escapeText(p.sale_price_currency),
+        fmtNumber(p.stock_qty),
+        p.low_stock_threshold !== null ? fmtNumber(p.low_stock_threshold) : '',
+        escapeText(p.is_active ? 'Sí' : 'No'),
+      ].join(SEP),
+    );
+
+    const csv = [headers.map(escapeText).join(SEP), ...rows].join('\r\n');
+    const blob = new Blob([BOM + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    const today = new Date().toISOString().slice(0, 10);
+    link.href = url;
+    link.download = `inventario-${today}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Reversal — confirm → call backend → reload movements + product
+  // ---------------------------------------------------------------------------
+
+  async function handleReverseMovement() {
+    if (!confirmReverse || !movementsProduct) return;
+
+    const targetId = confirmReverse.id;
+    const productId = movementsProduct.id;
+    setReversingId(targetId);
+
+    try {
+      const result = await reverseMovement(targetId);
+      if (result.error) {
+        showToast({ type: 'error', message: result.error });
+        return;
+      }
+
+      // Reload movements to get accurate reversal flags (reversesMovementId).
+      const movResult = await getMovements(productId, { limit: 50 });
+      if (!movResult.error) {
+        setMovements(movResult.movements);
+      }
+
+      // Reload the product to reflect updated stock_qty.
+      const updatedProduct = await getProduct(productId);
+      if (updatedProduct) {
+        setMovementsProduct(updatedProduct);
+        setProducts((prev) => prev.map((p) => (p.id === productId ? updatedProduct : p)));
+      }
+
+      showToast({
+        type: 'success',
+        message: 'Movimiento anulado. El contra-asiento quedó registrado en el historial.',
+      });
+    } finally {
+      setReversingId(null);
+      setConfirmReverse(null);
+    }
+  }
 
   // ---------------------------------------------------------------------------
   // Product modal helpers
@@ -437,15 +547,35 @@ export default function InventoryClient({ initialProducts }: Props) {
           <h1 className="text-2xl font-bold text-slate-800">Inventario</h1>
           <p className="text-sm text-slate-500 mt-0.5">Gestiona tus productos y existencias</p>
         </div>
-        <button
-          type="button"
-          onClick={openCreateModal}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold text-white transition-opacity hover:opacity-90"
-          style={{ background: 'linear-gradient(135deg,#00C4CC 0%,#0891b2 100%)' }}
-        >
-          <Plus className="w-4 h-4" />
-          Nuevo producto
-        </button>
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            type="button"
+            onClick={() => exportCsv(products)}
+            disabled={products.length === 0}
+            title="Exportar catálogo a CSV"
+            className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl text-sm font-semibold text-slate-600 border border-slate-200 hover:bg-slate-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            <Download className="w-4 h-4" />
+            Exportar
+          </button>
+          <button
+            type="button"
+            onClick={() => setBulkModalOpen(true)}
+            className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl text-sm font-semibold text-slate-600 border border-slate-200 hover:bg-slate-50 transition-colors"
+          >
+            <PackagePlus className="w-4 h-4" />
+            Cargar stock
+          </button>
+          <button
+            type="button"
+            onClick={openCreateModal}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold text-white transition-opacity hover:opacity-90"
+            style={{ background: 'linear-gradient(135deg,#00C4CC 0%,#0891b2 100%)' }}
+          >
+            <Plus className="w-4 h-4" />
+            Nuevo producto
+          </button>
+        </div>
       </div>
 
       {/* ── Low-stock alert banner ───────────────────────────────────────── */}
@@ -884,6 +1014,30 @@ export default function InventoryClient({ initialProducts }: Props) {
         </div>
       )}
 
+      {/* ── Reversal confirm dialog ──────────────────────────────────────── */}
+      <ConfirmDialog
+        open={confirmReverse !== null}
+        title="Anular movimiento"
+        message="Se creará un contra-asiento que cancela este movimiento. Ambos registros quedarán en el historial — no se borra nada."
+        confirmLabel="Anular"
+        cancelLabel="Cancelar"
+        variant="danger"
+        loading={reversingId !== null}
+        onConfirm={() => void handleReverseMovement()}
+        onCancel={() => {
+          if (reversingId === null) setConfirmReverse(null);
+        }}
+      />
+
+      {/* ── Bulk stock modal ─────────────────────────────────────────────── */}
+      {bulkModalOpen && (
+        <BulkStockModal
+          products={products.filter((p) => p.is_active)}
+          onClose={() => setBulkModalOpen(false)}
+          onSuccess={() => loadProducts(search, showInactive)}
+        />
+      )}
+
       {/* ── Movements Modal ──────────────────────────────────────────────── */}
       {movementsProduct && (
         <div
@@ -1005,44 +1159,90 @@ export default function InventoryClient({ initialProducts }: Props) {
                   Sin movimientos registrados
                 </p>
               ) : (
-                movements.map((m) => (
-                  <div
-                    key={m.id}
-                    className="flex items-start gap-3 rounded-lg border border-slate-100 px-3 py-2.5 bg-slate-50"
-                  >
-                    <div className="shrink-0 mt-0.5">
-                      {m.qty > 0 ? (
-                        <ArrowDownToLine className="w-4 h-4 text-emerald-500" />
-                      ) : (
-                        <ArrowUpFromLine className="w-4 h-4 text-rose-500" />
-                      )}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span
-                          className={`text-[11px] font-semibold px-1.5 py-0.5 rounded-full ${KIND_COLORS[m.kind]}`}
-                        >
-                          {KIND_UI_LABELS[m.kind]}
-                        </span>
-                        <span className="text-sm font-bold text-slate-800">
-                          {m.qty > 0 ? '+' : ''}
-                          {m.qty.toLocaleString('es-VE')}
-                        </span>
+                (() => {
+                  // Compute the set of movement IDs that have been reversed by a counter-entry.
+                  // A movement with reverses_movement_id != null is the counter-entry itself;
+                  // its target (reverses_movement_id) is the original "anulado" movement.
+                  const reversedIds = new Set(
+                    movements
+                      .filter((m) => m.reverses_movement_id !== null)
+                      .map((m) => m.reverses_movement_id!),
+                  );
+
+                  return movements.map((m) => {
+                    const isReversal = m.reverses_movement_id !== null;
+                    const isReversed = reversedIds.has(m.id);
+                    const canReverse = !isReversal && !isReversed;
+
+                    return (
+                      <div
+                        key={m.id}
+                        className={`flex items-start gap-3 rounded-lg border px-3 py-2.5 transition-colors ${
+                          isReversed
+                            ? 'bg-slate-50 border-slate-100 opacity-50'
+                            : isReversal
+                              ? 'bg-amber-50 border-amber-100'
+                              : 'bg-slate-50 border-slate-100'
+                        }`}
+                      >
+                        <div className="shrink-0 mt-0.5">
+                          {m.qty > 0 ? (
+                            <ArrowDownToLine className="w-4 h-4 text-emerald-500" />
+                          ) : (
+                            <ArrowUpFromLine className="w-4 h-4 text-rose-500" />
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span
+                              className={`text-[11px] font-semibold px-1.5 py-0.5 rounded-full ${KIND_COLORS[m.kind]}`}
+                            >
+                              {KIND_UI_LABELS[m.kind]}
+                            </span>
+                            {isReversal && (
+                              <span className="text-[11px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700">
+                                Anulación
+                              </span>
+                            )}
+                            {isReversed && (
+                              <span className="text-[11px] font-semibold px-1.5 py-0.5 rounded-full bg-slate-200 text-slate-500">
+                                Anulado
+                              </span>
+                            )}
+                            <span className="text-sm font-bold text-slate-800">
+                              {m.qty > 0 ? '+' : ''}
+                              {m.qty.toLocaleString('es-VE')}
+                            </span>
+                          </div>
+                          {m.note && <p className="text-xs text-slate-500 mt-0.5">{m.note}</p>}
+                          {m.consultation_id && (
+                            <p className="text-[10px] text-slate-400 mt-0.5">Venta de consulta</p>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className="text-[10px] text-slate-400">
+                            {new Intl.DateTimeFormat('es-VE', {
+                              day: '2-digit',
+                              month: 'short',
+                              year: 'numeric',
+                            }).format(new Date(m.created_at))}
+                          </span>
+                          {canReverse && (
+                            <button
+                              type="button"
+                              onClick={() => setConfirmReverse(m)}
+                              disabled={reversingId !== null}
+                              title="Anular movimiento"
+                              className="p-1 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors disabled:opacity-40"
+                            >
+                              <XCircle className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
                       </div>
-                      {m.note && <p className="text-xs text-slate-500 mt-0.5">{m.note}</p>}
-                      {m.consultation_id && (
-                        <p className="text-[10px] text-slate-400 mt-0.5">Venta de consulta</p>
-                      )}
-                    </div>
-                    <span className="text-[10px] text-slate-400 shrink-0">
-                      {new Intl.DateTimeFormat('es-VE', {
-                        day: '2-digit',
-                        month: 'short',
-                        year: 'numeric',
-                      }).format(new Date(m.created_at))}
-                    </span>
-                  </div>
-                ))
+                    );
+                  });
+                })()
               )}
             </div>
           </div>

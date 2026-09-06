@@ -110,4 +110,49 @@ export interface IProductRepository {
    * Atomically restores stock_qty for each affected product (stock += abs(qty)).
    */
   revertSalesByConsultation(consultationId: string, doctorId: string): Promise<void>;
+
+  // --------------------------------------------------------------------------
+  // Movement reversal
+  // --------------------------------------------------------------------------
+
+  /**
+   * Finds a movement by ID scoped to doctorId.
+   * Returns null when the movement does not exist or belongs to another doctor.
+   * The same null is returned for both cases to prevent resource enumeration (anti-IDOR).
+   */
+  findMovementByIdForDoctor(id: string, doctorId: string): Promise<InventoryMovement | null>;
+
+  /**
+   * Creates a counter-entry movement that reverses the original and atomically
+   * updates stock_qty in the same transaction.
+   *
+   * The implementation checks whether the original has already been reversed and
+   * throws MovementAlreadyReversedError before writing. The unique partial index
+   * (WHERE reverses_movement_id IS NOT NULL) in the DB is the authoritative guard.
+   */
+  reverseMovement(
+    originalId: string,
+    doctorId: string,
+    reversalId: string,
+  ): Promise<InventoryMovement>;
+
+  // --------------------------------------------------------------------------
+  // Bulk purchase
+  // --------------------------------------------------------------------------
+
+  /**
+   * Returns only the products from the given IDs that belong to the doctor.
+   * Any ID that is not owned or does not exist is silently excluded from the result.
+   * The caller compares result.length === ids.length to detect missing/foreign IDs.
+   *
+   * Uses IN (:ids) — never ANY(:ids) — per ADR-059.
+   */
+  findProductsByIdsForDoctor(ids: string[], doctorId: string): Promise<Product[]>;
+
+  /**
+   * Persists all movements in a single transaction and atomically increments
+   * stock_qty for each product. If any write fails, the entire transaction is
+   * rolled back and no partial state is applied.
+   */
+  applyBulkMovements(movements: InventoryMovement[]): Promise<InventoryMovement[]>;
 }

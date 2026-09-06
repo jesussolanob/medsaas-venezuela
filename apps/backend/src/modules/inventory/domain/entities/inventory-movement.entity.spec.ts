@@ -17,6 +17,7 @@ function makeMovement(
     consultationId: 'cccccccc-0000-0000-0000-000000000001',
     note: null,
     createdAt: now,
+    reversesMovementId: null,
     ...overrides,
   });
 }
@@ -36,5 +37,15 @@ describe('InventoryMovement entity', () => {
     const m = makeMovement({ rateUsed: 40.25, rateSource: 'bcv' });
     expect(m.rateUsed).toBe(40.25);
     expect(m.rateSource).toBe('bcv');
+  });
+
+  it('defaults reversesMovementId to null for regular movements', () => {
+    expect(makeMovement().reversesMovementId).toBeNull();
+  });
+
+  it('stores reversesMovementId for counter-entry movements', () => {
+    const originalId = 'aaaaaaaa-0000-0000-0000-000000000001';
+    const m = makeMovement({ reversesMovementId: originalId });
+    expect(m.reversesMovementId).toBe(originalId);
   });
 });

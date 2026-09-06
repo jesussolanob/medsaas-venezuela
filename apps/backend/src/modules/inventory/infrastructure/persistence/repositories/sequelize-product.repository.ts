@@ -8,6 +8,8 @@ import {
   type MovementKind,
 } from '../../../domain/entities/inventory-movement.entity';
 import { ProductNotFoundError } from '../../../domain/errors/product-not-found.error';
+import { MovementNotFoundError } from '../../../domain/errors/movement-not-found.error';
+import { MovementAlreadyReversedError } from '../../../domain/errors/movement-already-reversed.error';
 import type {
   IProductRepository,
   ProductListFilters,
@@ -245,6 +247,130 @@ export class SequelizeProductRepository implements IProductRepository {
     });
   }
 
+  async findMovementByIdForDoctor(id: string, doctorId: string): Promise<InventoryMovement | null> {
+    const row = await this.movementModel.findOne({
+      where: { id, doctorId } as WhereOptions,
+    });
+    return row ? this.toMovementDomain(row) : null;
+  }
+
+  async reverseMovement(
+    originalId: string,
+    doctorId: string,
+    reversalId: string,
+  ): Promise<InventoryMovement> {
+    return this.sequelize.transaction(async (t) => {
+      // Friendly check before hitting the unique partial index constraint.
+      const alreadyReversed = await this.movementModel.findOne({
+        where: { reversesMovementId: originalId } as WhereOptions,
+        transaction: t,
+      });
+      if (alreadyReversed) {
+        throw new MovementAlreadyReversedError();
+      }
+
+      // Re-read original inside the transaction for a consistent snapshot.
+      const original = await this.movementModel.findOne({
+        where: { id: originalId, doctorId } as WhereOptions,
+        transaction: t,
+      });
+      if (!original) {
+        throw new MovementNotFoundError();
+      }
+
+      const reversalQty = -Number(original.qty);
+      const note = `Anulación del movimiento ${originalId}`;
+
+      const row = await this.movementModel.create(
+        {
+          id: reversalId,
+          doctorId: original.doctorId,
+          productId: original.productId,
+          kind: 'adjustment',
+          qty: reversalQty,
+          unitPriceUsd: null,
+          rateUsed: null,
+          rateSource: null,
+          consultationId: null,
+          note,
+          reversesMovementId: originalId,
+        },
+        { transaction: t },
+      );
+
+      await this.sequelize.query(
+        `UPDATE products SET stock_qty = stock_qty + :qty, updated_at = NOW()
+         WHERE id = :productId AND doctor_id = :doctorId`,
+        {
+          replacements: {
+            qty: reversalQty,
+            productId: original.productId,
+            doctorId: original.doctorId,
+          },
+          type: QueryTypes.UPDATE,
+          transaction: t,
+        },
+      );
+
+      return this.toMovementDomain(row);
+    });
+  }
+
+  async findProductsByIdsForDoctor(ids: string[], doctorId: string): Promise<Product[]> {
+    if (ids.length === 0) return [];
+    // Use Op.in (generates IN (...)) — never = ANY(:ids) per ADR-059.
+    const rows = await this.productModel.findAll({
+      where: { id: { [Op.in]: ids }, doctorId } as WhereOptions,
+    });
+    return rows.map((r) => this.toDomain(r));
+  }
+
+  async applyBulkMovements(movements: InventoryMovement[]): Promise<InventoryMovement[]> {
+    return this.sequelize.transaction(async (t) => {
+      const savedRows = await Promise.all(
+        movements.map((movement) =>
+          this.movementModel.create(
+            {
+              id: movement.id,
+              doctorId: movement.doctorId,
+              productId: movement.productId,
+              kind: movement.kind,
+              qty: movement.qty,
+              unitPriceUsd: movement.unitPriceUsd,
+              rateUsed: movement.rateUsed,
+              rateSource: movement.rateSource,
+              consultationId: movement.consultationId,
+              note: movement.note,
+              reversesMovementId: null,
+            },
+            { transaction: t },
+          ),
+        ),
+      );
+
+      // Atomically update stock for each product. Positive qty = stock entry.
+      await Promise.all(
+        movements.map((movement) =>
+          this.sequelize.query(
+            `UPDATE products SET stock_qty = stock_qty + :qty, updated_at = NOW()
+             WHERE id = :productId AND doctor_id = :doctorId`,
+            {
+              replacements: {
+                qty: movement.qty,
+                productId: movement.productId,
+                doctorId: movement.doctorId,
+              },
+              type: QueryTypes.UPDATE,
+              transaction: t,
+            },
+          ),
+        ),
+      );
+
+      return savedRows.map((r) => this.toMovementDomain(r));
+    });
+  }
+
   // --------------------------------------------------------------------------
   // Private helpers
   // --------------------------------------------------------------------------
@@ -280,6 +406,7 @@ export class SequelizeProductRepository implements IProductRepository {
       consultationId: row.consultationId ?? null,
       note: row.note ?? null,
       createdAt: row.createdAt,
+      reversesMovementId: row.reversesMovementId ?? null,
     });
   }
 }
