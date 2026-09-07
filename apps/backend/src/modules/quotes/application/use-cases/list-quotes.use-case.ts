@@ -10,6 +10,12 @@ import {
   PATIENT_REPOSITORY,
   type IPatientRepository,
 } from '../../../patients/domain/repositories/patient.repository';
+import type { Patient } from '../../../patients/domain/entities/patient.entity';
+import {
+  LEAD_REPOSITORY,
+  type ILeadRepository,
+} from '../../../leads/domain/repositories/lead.repository';
+import type { Quote } from '../../domain/entities/quote.entity';
 
 /**
  * Returns a paginated list of quotes for the authenticated doctor.
@@ -31,14 +37,17 @@ export class ListQuotesUseCase {
     private readonly quoteRepo: IQuoteRepository,
     @Inject(PATIENT_REPOSITORY)
     private readonly patientRepo: IPatientRepository,
+    @Inject(LEAD_REPOSITORY)
+    private readonly leadRepo: ILeadRepository,
   ) {}
 
   async execute(doctorId: string, query: ListQuotesQuery): Promise<QuoteListResult> {
     // Patient name filter — two-phase lookup (decrypt in-memory, then SQL by IDs)
     let patientIds: string[] | undefined;
+    let allPatients: Patient[] | null = null;
     if (query.patient_name) {
       const needle = normalizeForSearch(query.patient_name.trim());
-      const allPatients = await this.patientRepo.findAllByDoctor(doctorId);
+      allPatients = await this.patientRepo.findAllByDoctor(doctorId);
       patientIds = allPatients
         .filter((p) => normalizeForSearch(p.fullName).includes(needle))
         .map((p) => p.id);
@@ -46,7 +55,7 @@ export class ListQuotesUseCase {
       // repository will short-circuit and return an empty page.
     }
 
-    return this.quoteRepo.list({
+    const result = await this.quoteRepo.list({
       doctorId,
       status: query.status,
       productName: query.product_name,
@@ -54,6 +63,50 @@ export class ListQuotesUseCase {
       patientIds,
       page: query.page,
       limit: query.limit,
+    });
+
+    return { ...result, items: await this.withRecipientNames(doctorId, result.items, allPatients) };
+  }
+
+  /**
+   * Resolves the display name of each quote's recipient.
+   *
+   * The list showed only the tag "Paciente"/"Prospecto", so every row looked
+   * identical and there was no way to tell whose quote was whose.
+   *
+   * Both lookups are done ONCE per page, not per row: an N+1 over 20 quotes
+   * would mean 20 round-trips, and patient names are AES-256-GCM encrypted so
+   * they cannot be resolved with a SQL join anyway. When the patient_name filter
+   * already loaded the patients, that list is reused instead of re-fetching.
+   */
+  private async withRecipientNames(
+    doctorId: string,
+    quotes: Quote[],
+    alreadyLoadedPatients: Patient[] | null,
+  ): Promise<Quote[]> {
+    const needsPatient = quotes.some((q) => q.patientId !== null);
+    const needsLead = quotes.some((q) => q.leadId !== null);
+    if (!needsPatient && !needsLead) return quotes;
+
+    const nameById = new Map<string, string>();
+
+    if (needsPatient) {
+      const patients = alreadyLoadedPatients ?? (await this.patientRepo.findAllByDoctor(doctorId));
+      patients.forEach((p) => nameById.set(p.id, p.fullName));
+    }
+
+    if (needsLead) {
+      // Leads are prospects, not patients: their names are NOT encrypted.
+      const leads = await this.leadRepo.list({ doctorId });
+      leads.forEach((l) =>
+        nameById.set(l.id, [l.name, l.lastName].filter(Boolean).join(' ').trim()),
+      );
+    }
+
+    return quotes.map((q) => {
+      const key = q.patientId ?? q.leadId;
+      // Null when the patient/lead was deleted — the UI falls back to the tag.
+      return q.withRecipientName((key !== null ? nameById.get(key) : undefined) ?? null);
     });
   }
 }

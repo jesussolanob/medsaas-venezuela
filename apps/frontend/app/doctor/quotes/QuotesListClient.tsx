@@ -281,16 +281,38 @@ export default function QuotesListClient({ initialQuotes, initialTotal, fetchErr
                         {q.quote_number}
                       </span>
                     </td>
+                    {/*
+                      Destinatario: primero A QUIÉN va dirigida, después de qué
+                      tipo es. Antes solo se pintaba la etiqueta, así que todas
+                      las filas decían "Paciente" y no se distinguía ninguna.
+                      El nombre puede faltar si borraron al paciente/prospecto:
+                      en ese caso queda solo la etiqueta, como antes.
+                    */}
                     <td className="px-4 py-3">
-                      <span
-                        className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold ${
-                          q.patient_id
-                            ? 'bg-violet-50 text-violet-700'
-                            : 'bg-amber-50 text-amber-700'
-                        }`}
-                      >
-                        {recipientTag(q)}
-                      </span>
+                      {q.recipient_name ? (
+                        <div className="flex flex-col gap-0.5 min-w-0">
+                          <span className="font-medium text-slate-800 text-[13px] truncate">
+                            {q.recipient_name}
+                          </span>
+                          <span
+                            className={`text-[10px] font-semibold uppercase tracking-wide ${
+                              q.patient_id ? 'text-violet-600' : 'text-amber-600'
+                            }`}
+                          >
+                            {recipientTag(q)}
+                          </span>
+                        </div>
+                      ) : (
+                        <span
+                          className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold ${
+                            q.patient_id
+                              ? 'bg-violet-50 text-violet-700'
+                              : 'bg-amber-50 text-amber-700'
+                          }`}
+                        >
+                          {recipientTag(q)}
+                        </span>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-slate-500 text-[13px] hidden sm:table-cell">
                       {formatDate(q.created_at)}

@@ -41,6 +41,15 @@ export interface QuoteCreateParams {
    * Never included in the public endpoint response.
    */
   shareToken?: string | null;
+  /**
+   * Display name of whoever the quote is addressed to — the patient's decrypted
+   * full name, or the prospect's name when the quote points at a lead.
+   *
+   * Read-model field, like `shareToken`: it does not live in the `quotes` table
+   * and is resolved by the use case for list/detail views. Null when it was not
+   * resolved (write paths) or when the referenced patient/lead no longer exists.
+   */
+  recipientName?: string | null;
 }
 
 export class Quote {
@@ -63,6 +72,8 @@ export class Quote {
   readonly items: QuoteItem[];
   /** Active share token — null for drafts or revoked links. Doctor-side only. */
   readonly shareToken: string | null;
+  /** Patient/prospect display name. Read-model — see QuoteCreateParams. */
+  readonly recipientName: string | null;
 
   constructor(params: QuoteCreateParams) {
     this.id = params.id;
@@ -83,6 +94,16 @@ export class Quote {
     this.updatedAt = params.updatedAt;
     this.items = params.items ?? [];
     this.shareToken = params.shareToken ?? null;
+    this.recipientName = params.recipientName ?? null;
+  }
+
+  /**
+   * Returns a copy carrying the resolved recipient name. Used by the list/detail
+   * use cases, which resolve the name after the repository has already built the
+   * entity. Immutable — never mutates the original.
+   */
+  withRecipientName(recipientName: string | null): Quote {
+    return new Quote({ ...this, recipientName });
   }
 
   /** Anti-IDOR: returns false for foreign doctor IDs. */

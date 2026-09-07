@@ -7,6 +7,8 @@ import type {
 import type { IPatientRepository } from '../../../patients/domain/repositories/patient.repository';
 import { Quote } from '../../domain/entities/quote.entity';
 import type { Patient } from '../../../patients/domain/entities/patient.entity';
+import type { ILeadRepository } from '../../../leads/domain/repositories/lead.repository';
+import type { Lead } from '../../../leads/domain/entities/lead.entity';
 
 const DOCTOR_ID = 'dddddddd-0000-0000-0000-000000000001';
 const OTHER_DOCTOR_ID = 'dddddddd-0000-0000-0000-000000000002';
@@ -39,6 +41,11 @@ function makeQuote(overrides: Partial<Parameters<typeof Quote.create>[0]> = {}):
 
 function makeEmptyResult(page = 1, limit = 20): QuoteListResult {
   return { items: [], total: 0, page, limit };
+}
+
+/** Wraps quotes in the paginated envelope the repository returns. */
+function makeResult(items: Quote[], page = 1, limit = 20): QuoteListResult {
+  return { items, total: items.length, page, limit };
 }
 
 function makeQuoteRepo(
@@ -76,13 +83,30 @@ function makePatientRepo(patients: Patient[] = []): jest.Mocked<IPatientReposito
   } as unknown as jest.Mocked<IPatientRepository>;
 }
 
+/** Creates a minimal Lead-like stub. The use case only reads .id/.name/.lastName. */
+function makeLead(id: string, name: string, lastName: string | null = null): Lead {
+  return { id, name, lastName } as unknown as Lead;
+}
+
+function makeLeadRepo(leads: Lead[] = []): jest.Mocked<ILeadRepository> {
+  return {
+    list: jest.fn().mockResolvedValue(leads),
+    findByIdForDoctor: jest.fn(),
+    create: jest.fn(),
+    save: jest.fn(),
+    delete: jest.fn(),
+  } as unknown as jest.Mocked<ILeadRepository>;
+}
+
 function makeUseCase(
   quoteRepo: jest.Mocked<IQuoteRepository>,
   patientRepo: jest.Mocked<IPatientRepository>,
+  leadRepo: jest.Mocked<ILeadRepository> = makeLeadRepo(),
 ): ListQuotesUseCase {
   const uc = new ListQuotesUseCase(
     quoteRepo as unknown as IQuoteRepository,
     patientRepo as unknown as IPatientRepository,
+    leadRepo as unknown as ILeadRepository,
   );
   return uc;
 }
@@ -244,6 +268,103 @@ describe('ListQuotesUseCase', () => {
       expect(quoteRepo.list).toHaveBeenCalledWith(
         expect.objectContaining({ productName: 'Crema' }),
       );
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // recipient name
+  //
+  // La columna "Destinatario" mostraba la CATEGORÍA ("Paciente"/"Prospecto") en
+  // vez de a quién: todas las filas se veían iguales y no se distinguía ninguna.
+  // ---------------------------------------------------------------------------
+
+  describe('recipientName', () => {
+    it('resuelve el nombre del paciente en las cotizaciones dirigidas a un paciente', async () => {
+      const quoteRepo = makeQuoteRepo(
+        makeResult([makeQuote({ patientId: PATIENT_ID, leadId: null })]),
+      );
+      const patientRepo = makePatientRepo([makePatient(PATIENT_ID, 'María Rodríguez')]);
+      const uc = makeUseCase(quoteRepo, patientRepo);
+
+      const result = await uc.execute(DOCTOR_ID, makeQuery());
+
+      expect(result.items[0]!.recipientName).toBe('María Rodríguez');
+    });
+
+    it('resuelve nombre y apellido del prospecto cuando la cotización apunta a un lead', async () => {
+      const LEAD_ID = 'llllllll-0000-0000-0000-000000000001';
+      const quoteRepo = makeQuoteRepo(
+        makeResult([makeQuote({ patientId: null, leadId: LEAD_ID })]),
+      );
+      const leadRepo = makeLeadRepo([makeLead(LEAD_ID, 'Carlos', 'Pérez')]);
+      const uc = makeUseCase(quoteRepo, makePatientRepo(), leadRepo);
+
+      const result = await uc.execute(DOCTOR_ID, makeQuery());
+
+      expect(result.items[0]!.recipientName).toBe('Carlos Pérez');
+    });
+
+    it('deja el nombre en null si el paciente ya no existe, sin romper la lista', async () => {
+      const quoteRepo = makeQuoteRepo(
+        makeResult([makeQuote({ patientId: PATIENT_ID, leadId: null })]),
+      );
+      // El repo no devuelve al paciente: fue borrado después de emitir la cotización.
+      const uc = makeUseCase(quoteRepo, makePatientRepo([]));
+
+      const result = await uc.execute(DOCTOR_ID, makeQuery());
+
+      expect(result.items).toHaveLength(1);
+      expect(result.items[0]!.recipientName).toBeNull();
+    });
+
+    it('no consulta pacientes ni leads cuando la página viene vacía', async () => {
+      const quoteRepo = makeQuoteRepo(makeResult([]));
+      const patientRepo = makePatientRepo();
+      const leadRepo = makeLeadRepo();
+      const uc = makeUseCase(quoteRepo, patientRepo, leadRepo);
+
+      await uc.execute(DOCTOR_ID, makeQuery());
+
+      expect(patientRepo.findAllByDoctor).not.toHaveBeenCalled();
+      expect(leadRepo.list).not.toHaveBeenCalled();
+    });
+
+    it('resuelve los nombres en UNA sola consulta, no una por fila (evita N+1)', async () => {
+      const OTHER_PATIENT = 'pppppppp-0000-0000-0000-000000000002';
+      const quoteRepo = makeQuoteRepo(
+        makeResult([
+          makeQuote({ id: QUOTE_ID, patientId: PATIENT_ID, leadId: null }),
+          makeQuote({ id: 'qqqqqqqq-0000-0000-0000-000000000002', patientId: OTHER_PATIENT }),
+          makeQuote({ id: 'qqqqqqqq-0000-0000-0000-000000000003', patientId: PATIENT_ID }),
+        ]),
+      );
+      const patientRepo = makePatientRepo([
+        makePatient(PATIENT_ID, 'María Rodríguez'),
+        makePatient(OTHER_PATIENT, 'Ana Solano'),
+      ]);
+      const uc = makeUseCase(quoteRepo, patientRepo);
+
+      const result = await uc.execute(DOCTOR_ID, makeQuery());
+
+      expect(patientRepo.findAllByDoctor).toHaveBeenCalledTimes(1);
+      expect(result.items.map((q) => q.recipientName)).toEqual([
+        'María Rodríguez',
+        'Ana Solano',
+        'María Rodríguez',
+      ]);
+    });
+
+    it('reutiliza los pacientes ya cargados por el filtro por nombre, sin volver a pedirlos', async () => {
+      const quoteRepo = makeQuoteRepo(
+        makeResult([makeQuote({ patientId: PATIENT_ID, leadId: null })]),
+      );
+      const patientRepo = makePatientRepo([makePatient(PATIENT_ID, 'María Rodríguez')]);
+      const uc = makeUseCase(quoteRepo, patientRepo);
+
+      const result = await uc.execute(DOCTOR_ID, makeQuery({ patient_name: 'María' }));
+
+      expect(patientRepo.findAllByDoctor).toHaveBeenCalledTimes(1);
+      expect(result.items[0]!.recipientName).toBe('María Rodríguez');
     });
   });
 });

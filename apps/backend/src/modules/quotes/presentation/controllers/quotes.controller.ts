@@ -102,11 +102,16 @@ export class QuotesController {
   async index(
     @Query(new ZodValidationPipe(ListQuotesQuerySchema)) query: ListQuotesQuery,
     @CurrentUser() user: CurrentUserPayload,
-  ): Promise<SuccessListResponse<Quote>> {
+  ): Promise<SuccessListResponse<QuoteDetailData>> {
     const result: QuoteListResult = await this.listQuotes.execute(user.sub, query);
     return {
       success: true,
-      data: result.items,
+      // La lista devolvía la entidad cruda, sin recipient_name: la columna
+      // "Destinatario" mostraba la CATEGORÍA ("Paciente"/"Prospecto") y todas
+      // las filas se veían iguales. El use case ya resolvió el nombre; acá se
+      // serializa con la misma forma snake_case que el detalle, que es la que
+      // el frontend ya venía leyendo.
+      data: result.items.map((q) => this.withShareData(q, q.recipientName)),
       meta: { total: result.total, page: result.page, limit: result.limit },
     };
   }
