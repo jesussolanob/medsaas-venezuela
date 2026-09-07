@@ -141,6 +141,7 @@ type Consultation = {
   /** Combo de varias sesiones: "Consulta 2 de 3". Null cuando la consulta es suelta. */
   session_number?: number | null;
   package_total_sessions?: number | null;
+  package_charge_usd?: number | null;
   payment_status: 'pending' | 'approved'; // Quitamos 'cancelled' — los pagos no se cancelan
   payment_method?: string | null;
   payment_reference?: string | null;
@@ -252,6 +253,7 @@ function normalizePaymentStatus(s: string | null | undefined): 'pending' | 'appr
 function sessionLabel(c: {
   session_number?: number | null;
   package_total_sessions?: number | null;
+  package_charge_usd?: number | null;
 }): string | null {
   const total = c.package_total_sessions;
   if (!total || total < 2) return null;
@@ -265,18 +267,36 @@ function sessionLabel(c: {
 }
 
 /**
- * Indica si la consulta cobra el precio de TODO un paquete.
+ * Indica si la consulta forma parte de un paquete de varias sesiones.
  *
- * Solo la primera sesión lleva el importe (las siguientes se guardan en 0), así que
- * es la única que debe aclarar que ese monto cubre N consultas. Sin esta aclaración
- * un paquete de $150 por 3 sesiones se leía como una consulta de $150.
+ * Vale para TODAS las sesiones, no solo la primera: la 1, la 2 y la 3 de un paquete
+ * de 3 son todas "parte del paquete" y las tres deben mostrar el mismo importe.
  */
-function isPackageCharge(c: {
-  session_number?: number | null;
-  package_total_sessions?: number | null;
-}): boolean {
+function isPackageSession(c: { package_total_sessions?: number | null }): boolean {
   const total = c.package_total_sessions;
-  return !!total && total > 1 && !c.session_number;
+  return !!total && total > 1;
+}
+
+/**
+ * Importe a mostrar en "Total cobrado" para una consulta de paquete.
+ *
+ * Es el precio del PAQUETE COMPLETO, idéntico en las N sesiones — no se divide ni se
+ * multiplica. Un paquete de 3 consultas por $120 muestra $120 en las tres.
+ *
+ * Hace falta porque solo la primera sesión guarda el importe: las siguientes se
+ * persisten en 0 (el paquete se cobra por adelantado), y sin esto la consulta 2 de 3
+ * mostraba "$0" como si hubiera sido gratis.
+ *
+ * ⚠️ Es SOLO para mostrar. Los ingresos se siguen sumando desde `amount`, así que un
+ * paquete de $120 aporta $120 una vez y no $360.
+ */
+function packageAmount(c: {
+  package_total_sessions?: number | null;
+  package_charge_usd?: number | null;
+  amount?: number | null;
+}): number | null {
+  if (!isPackageSession(c)) return null;
+  return c.package_charge_usd ?? c.amount ?? null;
 }
 
 /**
@@ -1236,6 +1256,7 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
             appointment_status: c.appointment_status ?? null,
             session_number: c.session_number ?? null,
             package_total_sessions: c.package_total_sessions ?? null,
+            package_charge_usd: c.package_charge_usd ?? null,
             payment_status: c.payment_status,
             appointment_id: c.appointment_id,
             patient_id: c.patient_id,
@@ -1285,6 +1306,7 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
             appointment_status: c.appointment_status ?? null,
             session_number: c.session_number ?? null,
             package_total_sessions: c.package_total_sessions ?? null,
+            package_charge_usd: c.package_charge_usd ?? null,
             payment_status: c.payment_status,
             appointment_id: c.appointment_id,
             patient_id: c.patient_id,
@@ -2875,6 +2897,7 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
             appointment_status: c.appointment_status ?? null,
             session_number: c.session_number ?? null,
             package_total_sessions: c.package_total_sessions ?? null,
+            package_charge_usd: c.package_charge_usd ?? null,
             payment_status: c.payment_status,
             appointment_id: c.appointment_id,
             patient_id: c.patient_id,
@@ -5122,6 +5145,22 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                               {toBs(Number(pagoAmount))}
                             </p>
                           )}
+                          {/*
+                            El aviso de paquete tiene que estar ACÁ, junto al monto, y no solo
+                            en el bloque "Total cobrado": ese bloque se muestra únicamente
+                            cuando el pago ya está aprobado, así que una consulta de paquete
+                            PENDIENTE mostraba el importe sin ninguna señal de que cubre varias
+                            consultas — que es justo el momento en que el especialista decide
+                            cuánto cobrar.
+                          */}
+                          {isPackageSession(selected) && (
+                            <p className="mt-1 text-[10px] font-semibold text-teal-600 leading-snug">
+                              Pago de paquete — {sessionLabel(selected)?.toLowerCase()}. El paquete
+                              completo son{' '}
+                              {format(Number(packageAmount(selected) ?? selected.amount ?? 0))} por{' '}
+                              {selected.package_total_sessions} consultas, y se cobra una sola vez.
+                            </p>
+                          )}
                         </div>
 
                         {/* Referencia */}
@@ -5276,24 +5315,34 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                         )}
                       </div>
 
-                      {/* Total cobrado (visible cuando el pago está aprobado) */}
-                      {selected.payment_status === 'approved' && selected.amount != null && (
+                      {/*
+                        Total cobrado.
+
+                        En una consulta suelta se muestra al aprobar el pago. En una
+                        consulta de PAQUETE se muestra siempre: las sesiones 2..N se
+                        guardan en 0 (el paquete se cobra entero en la primera), así
+                        que esperar a "aprobado" las dejaba sin ningún importe a la
+                        vista, como si hubieran sido gratis.
+                      */}
+                      {((selected.payment_status === 'approved' && selected.amount != null) ||
+                        packageAmount(selected) != null) && (
                         <div className="rounded-xl bg-emerald-50 border border-emerald-200 px-3 py-2.5 space-y-1">
                           <p className="text-[10px] font-semibold text-emerald-700 uppercase tracking-wider">
                             Total cobrado
                           </p>
+                          {/*
+                            En un paquete se muestra el importe del PAQUETE COMPLETO, el
+                            mismo en las N sesiones: 3 consultas por $120 muestran $120 en
+                            las tres. No se divide ni se multiplica.
+                          */}
                           <p className="text-sm font-extrabold text-emerald-700">
-                            {format(Number(selected.amount))}
+                            {format(Number(packageAmount(selected) ?? selected.amount))}
                           </p>
-                          {/* El monto de la primera sesión de un paquete cubre TODAS las
-                              consultas: sin decirlo, un paquete de 3 por $150 se leía como
-                              una consulta suelta de $150, y las otras dos (que van en $0)
-                              parecían gratis. */}
-                          {isPackageCharge(selected) && (
+                          {isPackageSession(selected) && (
                             <p className="text-[10px] text-emerald-600 leading-snug">
-                              Precio del paquete completo — cubre las{' '}
-                              {selected.package_total_sessions} consultas. Las siguientes no se
-                              vuelven a cobrar.
+                              Pago de paquete — {sessionLabel(selected)?.toLowerCase()}. Este monto
+                              cubre las {selected.package_total_sessions} consultas y se cobra una
+                              sola vez.
                             </p>
                           )}
                           {selected.extra_items && selected.extra_items.length > 0 && (
@@ -5301,7 +5350,7 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                               {selected.base_amount != null && (
                                 <div className="flex justify-between text-[10px] text-emerald-600">
                                   <span>
-                                    {isPackageCharge(selected)
+                                    {isPackageSession(selected)
                                       ? `Paquete (${selected.package_total_sessions} consultas)`
                                       : 'Consulta base'}
                                   </span>

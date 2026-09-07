@@ -85,6 +85,11 @@ export type Consultation = {
   /** Combo de varias sesiones: "la 2 de 3". Null cuando la consulta es suelta. */
   session_number?: number | null;
   package_total_sessions?: number | null;
+  /**
+   * Importe cobrado por el paquete completo. Es el MISMO en las N sesiones: el
+   * paquete se paga una sola vez, en la primera. No se divide ni se multiplica.
+   */
+  package_charge_usd?: number | null;
 };
 
 export type ConsultationActionResult = { success: true } | { success: false; error: string };
