@@ -15,6 +15,7 @@
 import { useMemo, useState } from 'react';
 import { Users, Loader2, UserPlus, AlertCircle, X, Share2, Search } from 'lucide-react';
 import { showToast } from '@/components/ui/Toaster';
+import { normalizePhoneIntl } from '@/lib/phone-utils';
 import {
   useSellerData,
   estadoSeguimiento,
@@ -53,6 +54,9 @@ export default function SellerEspecialistasPage() {
   const [editNotes, setEditNotes] = useState('');
   const [guardandoFicha, setGuardandoFicha] = useState(false);
   const [fichaGuardarError, setFichaGuardarError] = useState('');
+
+  /** Teléfono en E.164 sin '+' para wa.me. Vacío si el número no es válido. */
+  const waPhone = normalizePhoneIntl(ficha?.phone);
 
   function empezarEdicion() {
     setEditPhone(ficha?.phone ?? '');
@@ -455,18 +459,29 @@ export default function SellerEspecialistasPage() {
                   )}
                 </div>
 
+                {/*
+                  wa.me exige E.164 SIN el cero inicial: '584129998877'. El campo de
+                  arriba pide el formato local ('04141234567' es su propio placeholder),
+                  así que pasar ficha.phone crudo armaba 'wa.me/04129998877' y WhatsApp
+                  respondía "número inválido" — el botón no abría ningún chat. El resto
+                  del repo ya normaliza con este helper; esta pantalla era la única que no.
+                */}
                 <a
-                  href={ficha.phone ? `https://wa.me/${ficha.phone}` : undefined}
+                  href={waPhone ? `https://wa.me/${waPhone}` : undefined}
                   target="_blank"
                   rel="noopener noreferrer"
                   className={`mt-5 w-full inline-flex items-center justify-center gap-2 rounded-lg py-2.5 text-sm font-semibold transition-colors ${
-                    ficha.phone
+                    waPhone
                       ? 'bg-teal-500 hover:bg-teal-600 text-white'
                       : 'bg-slate-100 text-slate-400 pointer-events-none'
                   }`}
                 >
                   <Share2 className="w-4 h-4" />
-                  {ficha.phone ? 'Escribirle por WhatsApp' : 'Sin teléfono cargado'}
+                  {ficha.phone
+                    ? waPhone
+                      ? 'Escribirle por WhatsApp'
+                      : 'Teléfono con formato inválido'
+                    : 'Sin teléfono cargado'}
                 </a>
               </>
             )}
