@@ -77,6 +77,13 @@ Cuando busques, buscá **esto**:
 4. **Se escribe en un lado y se lee de otro** — o no se lee nunca.
 5. **Textos fijos que afirman lo que el sistema no cumple.** Un cartel que promete persistencia no
    es evidencia de que persista.
+6. **Repetir la acción rompe lo que la primera vez salió bien.** Guardar dos veces, reaprobar,
+   reenviar, volver a subir. Varios endpoints son **reemplazar-todo**: revierten el efecto anterior
+   y aplican solo lo que les llega **ahora**. Si la pantalla no reenvía todo, la segunda vez
+   **deshace** sin avisar. *Ej. real: reguardar un cobro ya aprobado devolvía el producto al stock,
+   borraba el movimiento de venta y al paciente se le seguía cobrando.*
+   👉 **Todo flujo que escriba algo, probalo DOS VECES seguidas** y compará la base entre una y
+   otra. Después una tercera: tampoco debe descontar de más.
 
 ## Cómo verificar contra la base
 

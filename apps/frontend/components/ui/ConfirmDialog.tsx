@@ -1,21 +1,21 @@
-'use client'
+'use client';
 
 // AUDIT FIX 2026-04-28 (C-10): reemplazo branded de confirm() nativo.
 // Diseño Tailwind alineado con el resto de la app (turquesa + slate).
 
-import { AlertTriangle, X } from 'lucide-react'
+import { AlertTriangle, X } from 'lucide-react';
 
 export type ConfirmDialogProps = {
-  open: boolean
-  title?: string
-  message: string
-  confirmLabel?: string
-  cancelLabel?: string
-  variant?: 'default' | 'danger'
-  loading?: boolean
-  onConfirm: () => void
-  onCancel: () => void
-}
+  open: boolean;
+  title?: string;
+  message: string;
+  confirmLabel?: string;
+  cancelLabel?: string;
+  variant?: 'default' | 'danger';
+  loading?: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+};
 
 export default function ConfirmDialog({
   open,
@@ -28,16 +28,19 @@ export default function ConfirmDialog({
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
-  if (!open) return null
+  if (!open) return null;
 
   const confirmClasses =
-    variant === 'danger'
-      ? 'bg-red-500 hover:bg-red-600 text-white'
-      : 'g-bg text-white'
+    variant === 'danger' ? 'bg-red-500 hover:bg-red-600 text-white' : 'g-bg text-white';
 
   return (
+    // z-[60], por encima del z-50 que usan los demas modales. Una confirmacion
+    // casi siempre se abre DESDE otro modal; con el mismo z-index gana el que va
+    // despues en el DOM y la confirmacion queda pintada detras: invisible y sin
+    // recibir el clic. Al usuario le parece que el boton no hace nada. Paso en
+    // "Anular movimiento" del inventario.
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm"
+      className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm"
       onClick={loading ? undefined : onCancel}
       role="dialog"
       aria-modal="true"
@@ -58,10 +61,7 @@ export default function ConfirmDialog({
             />
           </div>
           <div className="flex-1 min-w-0">
-            <p
-              id="confirm-dialog-title"
-              className="text-sm font-bold text-slate-800"
-            >
+            <p id="confirm-dialog-title" className="text-sm font-bold text-slate-800">
               {title}
             </p>
             <p className="text-sm text-slate-600 mt-1">{message}</p>
@@ -93,5 +93,5 @@ export default function ConfirmDialog({
         </div>
       </div>
     </div>
-  )
+  );
 }
