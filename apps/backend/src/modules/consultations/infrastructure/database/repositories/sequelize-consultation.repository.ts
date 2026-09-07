@@ -64,6 +64,11 @@ interface ConsultationEnrichedRow {
    * nombre duplicaría la consulta si el especialista repite el nombre del servicio.
    */
   package_total_sessions: number | null;
+  /**
+   * Importe cobrado por el paquete completo, tomado de la primera sesión.
+   * NUMERIC de Postgres llega como string. Null en consultas sueltas.
+   */
+  package_charge_usd: string | null;
 }
 
 /** Raw row returned by queries against consultation_extra_items. */
@@ -143,7 +148,38 @@ export class SequelizeConsultationRepository implements IConsultationRepository 
                AND pp.name      = a.plan_name
              ORDER BY pp.is_active DESC, pp.created_at DESC
              LIMIT 1)
-         ) AS package_total_sessions
+         ) AS package_total_sessions,
+         /*
+          * Importe cobrado por el PAQUETE completo.
+          *
+          * Solo la primera sesión lleva el importe: las sesiones 2..N se guardan en 0
+          * porque el paquete se paga entero por adelantado. Sin este dato, la consulta
+          * 2 de 3 mostraba "$0" y parecía regalada, y la 1 de 3 mostraba el total sin
+          * decir que cubría las tres.
+          *
+          * Se toma de la PRIMERA sesión del mismo paquete (session_number IS NULL, que
+          * es como el backend guarda la sesión 1) del mismo paciente y servicio — es
+          * decir, lo que REALMENTE se cobró, no el precio de lista del catálogo, que
+          * pudo cambiar después. Para la propia sesión 1 devuelve su mismo importe.
+          *
+          * Se une por (doctor, paciente, plan_name) porque en los datos reales
+          * appointments.package_id viene NULL y patient_packages está vacía.
+          *
+          * LIMITACIÓN CONOCIDA: si el MISMO paciente compra DOS VECES el mismo
+          * paquete y el precio cambió entre una compra y otra, las sesiones de la
+          * segunda compra muestran el precio de la primera. Hoy no ocurre en los
+          * datos (no hay ningún paciente con el mismo paquete repetido). Se resuelve
+          * cuando appointments.package_id se empiece a poblar: ahí el vínculo deja
+          * de ser por nombre y pasa a ser por identidad del paquete.
+          */
+         (SELECT a1.plan_price
+            FROM appointments a1
+           WHERE a1.doctor_id      = c.doctor_id
+             AND a1.patient_id     = c.patient_id
+             AND a1.plan_name      = a.plan_name
+             AND a1.session_number IS NULL
+           ORDER BY a1.scheduled_at ASC
+           LIMIT 1) AS package_charge_usd
        FROM consultations c
        LEFT JOIN patients         p   ON p.id  = c.patient_id
        LEFT JOIN appointments     a   ON a.id  = c.appointment_id
@@ -575,7 +611,38 @@ export class SequelizeConsultationRepository implements IConsultationRepository 
                AND pp.name      = a.plan_name
              ORDER BY pp.is_active DESC, pp.created_at DESC
              LIMIT 1)
-         ) AS package_total_sessions
+         ) AS package_total_sessions,
+         /*
+          * Importe cobrado por el PAQUETE completo.
+          *
+          * Solo la primera sesión lleva el importe: las sesiones 2..N se guardan en 0
+          * porque el paquete se paga entero por adelantado. Sin este dato, la consulta
+          * 2 de 3 mostraba "$0" y parecía regalada, y la 1 de 3 mostraba el total sin
+          * decir que cubría las tres.
+          *
+          * Se toma de la PRIMERA sesión del mismo paquete (session_number IS NULL, que
+          * es como el backend guarda la sesión 1) del mismo paciente y servicio — es
+          * decir, lo que REALMENTE se cobró, no el precio de lista del catálogo, que
+          * pudo cambiar después. Para la propia sesión 1 devuelve su mismo importe.
+          *
+          * Se une por (doctor, paciente, plan_name) porque en los datos reales
+          * appointments.package_id viene NULL y patient_packages está vacía.
+          *
+          * LIMITACIÓN CONOCIDA: si el MISMO paciente compra DOS VECES el mismo
+          * paquete y el precio cambió entre una compra y otra, las sesiones de la
+          * segunda compra muestran el precio de la primera. Hoy no ocurre en los
+          * datos (no hay ningún paciente con el mismo paquete repetido). Se resuelve
+          * cuando appointments.package_id se empiece a poblar: ahí el vínculo deja
+          * de ser por nombre y pasa a ser por identidad del paquete.
+          */
+         (SELECT a1.plan_price
+            FROM appointments a1
+           WHERE a1.doctor_id      = c.doctor_id
+             AND a1.patient_id     = c.patient_id
+             AND a1.plan_name      = a.plan_name
+             AND a1.session_number IS NULL
+           ORDER BY a1.scheduled_at ASC
+           LIMIT 1) AS package_charge_usd
        FROM consultations c
        LEFT JOIN patients         p   ON p.id  = c.patient_id
        LEFT JOIN appointments     a   ON a.id  = c.appointment_id
@@ -1029,7 +1096,38 @@ export class SequelizeConsultationRepository implements IConsultationRepository 
                  AND pp.name      = a.plan_name
                ORDER BY pp.is_active DESC, pp.created_at DESC
                LIMIT 1)
-           ) AS package_total_sessions
+           ) AS package_total_sessions,
+         /*
+          * Importe cobrado por el PAQUETE completo.
+          *
+          * Solo la primera sesión lleva el importe: las sesiones 2..N se guardan en 0
+          * porque el paquete se paga entero por adelantado. Sin este dato, la consulta
+          * 2 de 3 mostraba "$0" y parecía regalada, y la 1 de 3 mostraba el total sin
+          * decir que cubría las tres.
+          *
+          * Se toma de la PRIMERA sesión del mismo paquete (session_number IS NULL, que
+          * es como el backend guarda la sesión 1) del mismo paciente y servicio — es
+          * decir, lo que REALMENTE se cobró, no el precio de lista del catálogo, que
+          * pudo cambiar después. Para la propia sesión 1 devuelve su mismo importe.
+          *
+          * Se une por (doctor, paciente, plan_name) porque en los datos reales
+          * appointments.package_id viene NULL y patient_packages está vacía.
+          *
+          * LIMITACIÓN CONOCIDA: si el MISMO paciente compra DOS VECES el mismo
+          * paquete y el precio cambió entre una compra y otra, las sesiones de la
+          * segunda compra muestran el precio de la primera. Hoy no ocurre en los
+          * datos (no hay ningún paciente con el mismo paquete repetido). Se resuelve
+          * cuando appointments.package_id se empiece a poblar: ahí el vínculo deja
+          * de ser por nombre y pasa a ser por identidad del paquete.
+          */
+         (SELECT a1.plan_price
+            FROM appointments a1
+           WHERE a1.doctor_id      = c.doctor_id
+             AND a1.patient_id     = c.patient_id
+             AND a1.plan_name      = a.plan_name
+             AND a1.session_number IS NULL
+           ORDER BY a1.scheduled_at ASC
+           LIMIT 1) AS package_charge_usd
          FROM consultations c
          LEFT JOIN patients         p   ON p.id  = c.patient_id
          LEFT JOIN appointments     a   ON a.id  = c.appointment_id
@@ -1257,6 +1355,12 @@ export class SequelizeConsultationRepository implements IConsultationRepository 
       appointmentStatus: row.appointment_status ?? null,
       sessionNumber: row.session_number ?? null,
       packageTotalSessions: row.package_total_sessions ?? null,
+      // NUMERIC llega como string desde pg; parseFloat de un null daría NaN, y NaN
+      // no explota: se pinta. Por eso el null se conserva explícitamente.
+      packageChargeUsd:
+        row.package_charge_usd !== null && row.package_charge_usd !== undefined
+          ? parseFloat(row.package_charge_usd)
+          : null,
       extraItems: extras,
     });
   }

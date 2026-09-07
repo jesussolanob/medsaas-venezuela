@@ -61,6 +61,12 @@ export interface ConsultationCreateParams {
   /** Total de sesiones del paquete de la cita; null si no hay paquete. */
   packageTotalSessions?: number | null;
   /**
+   * Importe cobrado por el paquete completo (lo que se pagó en la primera sesión).
+   * Igual en TODAS las sesiones del paquete: no se divide ni se multiplica.
+   * Null en consultas sueltas. Read-model: no vive en la tabla.
+   */
+  packageChargeUsd?: number | null;
+  /**
    * Extra service items linked to this consultation.
    * Populated by findById (not by list queries — too expensive).
    * Empty array when there are no extras or when not loaded.
@@ -113,6 +119,8 @@ export class Consultation {
    */
   readonly sessionNumber: number | null;
   readonly packageTotalSessions: number | null;
+  /** Importe del paquete completo — ver PackageChargeUsd en los params. */
+  readonly packageChargeUsd: number | null;
   /** Extra service items — populated by findById. Empty array when not loaded. */
   readonly extraItems: ConsultationExtraItem[];
 
@@ -142,6 +150,7 @@ export class Consultation {
     this.appointmentStatus = params.appointmentStatus ?? null;
     this.sessionNumber = params.sessionNumber ?? null;
     this.packageTotalSessions = params.packageTotalSessions ?? null;
+    this.packageChargeUsd = params.packageChargeUsd ?? null;
     this.extraItems = params.extraItems ?? [];
   }
 

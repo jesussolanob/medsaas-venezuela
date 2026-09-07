@@ -45,6 +45,10 @@ export function toConsultationResponse(consultation: Consultation): Record<strin
      */
     session_number: consultation.sessionNumber,
     package_total_sessions: consultation.packageTotalSessions,
+    // Importe del paquete completo, idéntico en las N sesiones. La UI lo muestra
+    // en "Total cobrado" de cada consulta del paquete, aclarando que se cobró una
+    // sola vez. NO se usa para sumar ingresos — eso sigue saliendo de `amount`.
+    package_charge_usd: consultation.packageChargeUsd,
     /**
      * Extra service items. Populated by GET /consultations/:id (for modal pre-load).
      * Empty array in list endpoints (not loaded for performance — N+1 avoidance).
