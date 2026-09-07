@@ -195,7 +195,12 @@ function ConsultationCard({
               <p className="text-[10px] font-bold uppercase tracking-wider text-teal-600 mb-0.5">
                 Diagnóstico
               </p>
-              <p className="text-xs text-slate-800 leading-relaxed">{consultation.diagnosis}</p>
+              {/* El editor guarda HTML; pintarlo como texto mostraba los <p> y <br>
+                  crudos al paciente. RichTextView sanitiza con DOMPurify. */}
+              <RichTextView
+                value={consultation.diagnosis}
+                className="text-xs text-slate-800 leading-relaxed"
+              />
             </div>
           )}
 
@@ -271,9 +276,15 @@ function ConsultationCard({
                     >
                       {label}
                     </p>
-                    <p className="text-xs text-slate-700 leading-relaxed whitespace-pre-line">
-                      {value}
-                    </p>
+                    {/* Este era el camino roto que se veía en el historial: los campos
+                        legacy (motivo, diagnóstico, tratamiento, notas) se pintaban como
+                        texto plano, así que una consulta escrita con el editor mostraba
+                        "<p>Motivo de...</p><br>" tal cual. RichTextView renderiza el HTML
+                        sanitizado y deja el texto plano intacto (respeta los saltos). */}
+                    <RichTextView
+                      value={value}
+                      className="text-xs text-slate-700 leading-relaxed"
+                    />
                   </div>
                 );
               })}

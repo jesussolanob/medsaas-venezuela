@@ -1873,8 +1873,8 @@ function SettingsPageInner() {
             <div className="bg-teal-50 border border-teal-200 rounded-xl p-4 flex items-start gap-3">
               <Shield className="w-4 h-4 text-teal-500 shrink-0 mt-0.5" />
               <p className="text-sm text-teal-700">
-                Conecta herramientas externas para sincronizar tu agenda y enviar mensajes
-                automáticos.
+                Conecta herramientas externas para llevar tu agenda de Delta a tu calendario y
+                enviar mensajes automáticos.
               </p>
             </div>
 
@@ -1886,8 +1886,14 @@ function SettingsPageInner() {
                   </div>
                   <div>
                     <p className="font-semibold text-slate-900">Google Calendar</p>
+                    {/* La sincronización es de UNA sola vía: el servicio solo crea, mueve
+                        y cancela eventos en Google (no hay events.list ni freeBusy). El
+                        texto anterior —"Sincroniza todas tus citas"— se leía como ida y
+                        vuelta, y una especialista reportó que "no podía sincronizar el
+                        calendario" porque sus compromisos de Google no aparecían acá. */}
                     <p className="text-xs text-slate-500">
-                      Sincroniza todas tus citas y genera los links de Meet
+                      Tus citas de Delta se crean en tu Google Calendar y se generan los links de
+                      Meet.
                     </p>
                   </div>
                 </div>

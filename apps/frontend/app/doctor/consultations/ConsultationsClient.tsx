@@ -255,10 +255,30 @@ function sessionLabel(c: {
   session_number?: number | null;
   package_total_sessions?: number | null;
 }): string | null {
-  const n = c.session_number;
   const total = c.package_total_sessions;
-  if (!n || !total || total < 2) return null;
+  if (!total || total < 2) return null;
+  // La PRIMERA sesión de un paquete se guarda con session_number NULL: el backend
+  // numera solo las sesiones extra (2..N). Exigir session_number dejaba justamente
+  // a la primera —la que carga el precio de TODO el paquete— sin rótulo, y el
+  // especialista veía un monto de paquete presentado como si fuera de una consulta
+  // suelta. NULL equivale a la sesión 1.
+  const n = c.session_number ?? 1;
   return `Consulta ${n} de ${total}`;
+}
+
+/**
+ * Indica si la consulta cobra el precio de TODO un paquete.
+ *
+ * Solo la primera sesión lleva el importe (las siguientes se guardan en 0), así que
+ * es la única que debe aclarar que ese monto cubre N consultas. Sin esta aclaración
+ * un paquete de $150 por 3 sesiones se leía como una consulta de $150.
+ */
+function isPackageCharge(c: {
+  session_number?: number | null;
+  package_total_sessions?: number | null;
+}): boolean {
+  const total = c.package_total_sessions;
+  return !!total && total > 1 && !c.session_number;
 }
 
 /**
@@ -5390,11 +5410,26 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                           <p className="text-sm font-extrabold text-emerald-700">
                             {format(Number(selected.amount))}
                           </p>
+                          {/* El monto de la primera sesión de un paquete cubre TODAS las
+                              consultas: sin decirlo, un paquete de 3 por $150 se leía como
+                              una consulta suelta de $150, y las otras dos (que van en $0)
+                              parecían gratis. */}
+                          {isPackageCharge(selected) && (
+                            <p className="text-[10px] text-emerald-600 leading-snug">
+                              Precio del paquete completo — cubre las{' '}
+                              {selected.package_total_sessions} consultas. Las siguientes no se
+                              vuelven a cobrar.
+                            </p>
+                          )}
                           {selected.extra_items && selected.extra_items.length > 0 && (
                             <div className="pt-1 space-y-0.5">
                               {selected.base_amount != null && (
                                 <div className="flex justify-between text-[10px] text-emerald-600">
-                                  <span>Consulta base</span>
+                                  <span>
+                                    {isPackageCharge(selected)
+                                      ? `Paquete (${selected.package_total_sessions} consultas)`
+                                      : 'Consulta base'}
+                                  </span>
                                   <span>{format(Number(selected.base_amount))}</span>
                                 </div>
                               )}
