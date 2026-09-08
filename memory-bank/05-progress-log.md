@@ -4,6 +4,76 @@
 > ⚠️ Orden: **la entrada más nueva va ARRIBA**. La del 2026-08-11 quedó al final
 > del archivo por error; no se movió para no ensuciar el diff.
 
+## 2026-09-08 — Presupuestos: cierre del backlog del dueño y **un estado inalcanzable**
+
+> Rama `feature/presupuestos-cron-vencimiento` (commits `9a87ec68`, `9690ad18`, `42f3846e`) sobre
+> `develop`, más lo ya mergeado a `staging` ese día. **Nada en `main`.**
+
+### El hallazgo del día: el estado "vencido" no lo ponía nadie
+
+`expired` estaba en el enum `QuoteStatus`, en el CHECK de la tabla, en el filtro del listado y en la
+pantalla — y **ningún código lo alcanzaba**. Un presupuesto con `valid_until` de ayer seguía
+figurando como "enviado" para siempre, y el filtro "Vencidos" salía vacío siempre. Es el mismo
+patrón que ya nos costó caro tres veces: código completo, construido y visible, que nadie llama.
+
+Peor: el campo "Válido hasta" era un calendario **opcional que arrancaba vacío**. Aunque el barrido
+hubiera existido, sin fecha no vence nada — el estado y el recordatorio no se habrían disparado
+jamás para nadie que no eligiera una fecha a mano.
+
+### Punto 8 del backlog — el cron
+
+Dos tareas dentro del cron que YA existe (`appointment-reminders`), **sin Cloud Scheduler nuevo**:
+no tenemos cómo darlo de alta y quedaría, otra vez, código que nadie llama. Mismo camino que ya
+usaron los recordatorios de preconsultas. **No** se eligió el cron diario de inactividad como
+anfitrión: ese ya estuvo pausado semanas sin que nadie se enterara.
+
+1. Barrido `sent` + `valid_until` pasado → `expired`, reusando la guarda optimista de
+   `updateStatus(expectedStatus='sent')`.
+2. Aviso a 3 días o menos: un correo al destinatario con el enlace y otro al especialista.
+   `expiry_reminder_sent_at` se sella **aunque el envío falle**, para no reintentar todos los días.
+
+Ventana de 3 días y no día exacto: si el cron falla un día, un "exactamente 3 días antes" perdería
+el aviso para siempre; la ventana lo recupera al día siguiente y la columna evita el duplicado.
+
+⚠️ **Limitación conocida:** el correo del destinatario se resuelve de la ficha *en el momento del
+aviso*. Si el especialista escribió otra dirección a mano al enviar, esa no se persiste hoy.
+Guardarla sería dejar una copia **sin cifrar** de un correo que hoy está cifrado.
+
+### La vigencia pasó a pedirse en días (decisión del dueño)
+
+"Vence en `[30]` días" en alta y edición, contados desde hoy; borrable = no vence. Tres defectos
+salieron al implementarlo, ninguno visible en tests:
+
+- **Tecleando 400 días se guardaba "no vence nunca"**: la conversión devolvía `null` para lo
+  inválido, y `null` significa sin vencimiento. Lo contrario de lo pedido.
+- **Editar un borrador con fecha ya pasada le quitaba el vencimiento en silencio**: el control
+  cuenta días hacia adelante y no puede representar una fecha vieja, así que arrancaba vacío.
+- El mínimo del calendario se calculaba en **UTC**: después de las 20:00 en Caracas no dejaba
+  elegir hoy.
+
+La conversión vive en `quote-validity.ts`, no duplicada en las dos pantallas: acá un día de
+diferencia cambia cuándo vence y cuándo sale el aviso. Ni `toISOString()` (da UTC) ni `setMonth()`
+(se desborda: 31 de enero + 1 mes = 3 de marzo).
+
+### La ventana de envío pedía un correo que el sistema ya conocía
+
+Mostraba dos campos vacíos para nombre y correo. El backend **ya** resolvía la dirección de la ficha
+—dejarlos en blanco funcionaba— pero el especialista no tenía cómo saberlo. Ahora dice a quién se le
+va a mandar. `GET /api/doctor/quotes/:id` suma `recipient_email`; el **listado no lo manda** y el
+tipo del frontend quedó opcional, porque declararlo obligatorio era un tipo que miente sobre la API.
+
+### Verificación
+
+453 suites / 4325 tests **exit 0** (capturado antes del pipe), build 0, tsc 0. Se **inyectaron dos
+regresiones** —borrar el sello de idempotencia y dejar que el barrido toque un presupuesto
+aceptado— y ambas ponen los tests en rojo con nombre propio.
+
+⚠️ Tres corridas seguidas reportaron **"116 passed"** con una suite que **ni compilaba**: el exit
+code es lo único que lo delata.
+
+Las columnas de la migración se contrastaron contra el **DDL real** de `email_templates` (9 columnas,
+`name` UNIQUE) porque la credencial de `gcloud` venció (`invalid_rapt`) y no se pudo consultar la BD.
+
 ## 2026-09-02/03 — Primer QA en navegador del lote: **siete defectos que la suite no podía ver**
 
 > Commits `3143ea24`, `59af5afd`, `c8f8b454`. Todo en `staging` y **verificado ahí en pantalla**.
