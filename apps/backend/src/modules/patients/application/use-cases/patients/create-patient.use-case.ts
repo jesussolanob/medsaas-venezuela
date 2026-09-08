@@ -1,5 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { randomUUID } from 'crypto';
+import { cedulaSearchVariants } from '@delta/shared-crypto';
 import { Patient, type PatientSource } from '../../../domain/entities/patient.entity';
 import { DuplicatePatientError } from '../../../domain/errors/duplicate-patient.error';
 import { PatientEmailIsDoctorError } from '../../../domain/errors/patient-email-is-doctor.error';
@@ -48,12 +49,22 @@ export class CreatePatientUseCase {
   ) {}
 
   async execute(input: CreatePatientInput): Promise<Patient> {
-    // Guard: prevent duplicate cédula per doctor
+    // Guard: prevent duplicate cédula per doctor.
+    //
+    // Checks two hashes, not one. Writes now hash the CANONICAL form of the
+    // cédula (see SequelizePatientRepository), but patients created before
+    // this change still carry the OLD hash — computed straight from whatever
+    // was typed, separators and all — until a separate rehash script runs.
+    // Checking only the canonical hash would go blind to every pre-existing
+    // patient and create a duplicate for each one; checking only the raw hash
+    // would miss "V-12345678" matching a patient stored as "V12345678".
     if (input.cedula) {
-      const cedulaHash = this.crypto.hashForSearch(input.cedula);
-      const existing = await this.patientRepo.findByCedulaHash(cedulaHash, input.doctorId);
-      if (existing) {
-        throw new DuplicatePatientError('cedula', input.cedula);
+      for (const variant of cedulaSearchVariants(input.cedula)) {
+        const cedulaHash = this.crypto.hashForSearch(variant);
+        const existing = await this.patientRepo.findByCedulaHash(cedulaHash, input.doctorId);
+        if (existing) {
+          throw new DuplicatePatientError('cedula', input.cedula);
+        }
       }
     }
 

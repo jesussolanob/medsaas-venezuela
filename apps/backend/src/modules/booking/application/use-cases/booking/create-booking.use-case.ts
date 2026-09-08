@@ -57,6 +57,7 @@ import {
   toCaracasOfficeDay,
 } from '../../../../../domain/caracas-time';
 import { SessionOutsideOfficeHoursError } from '../../../domain/errors/session-outside-office-hours.error';
+import { cedulaSearchVariants } from '@delta/shared-crypto';
 
 export interface CreateBookingResult {
   appointment: Appointment;
@@ -788,9 +789,26 @@ export class CreateBookingUseCase {
     // 1. Try cedula hash lookup first — cédula is the stable identifier for Venezuelan
     //    patients and must be the primary deduplication key. Email may change; cedula does not.
     if (dto.patient_cedula) {
-      const cedulaHash = this.crypto.hashForSearch(dto.patient_cedula);
-      const byCedula = await this.patientRepo.findByCedulaHash(cedulaHash, dto.doctor_id);
-      if (byCedula) return byCedula;
+      // Se prueban el texto TAL CUAL se tipeó y la forma CANÓNICA — `cedulaSearchVariants`
+      // (@delta/shared-crypto), la misma que usa el guard de duplicados de
+      // CreatePatientUseCase y la resolución de destinatarios de presupuestos.
+      //
+      // El hash de búsqueda de un paciente se guarda sobre la cédula canónica
+      // (mayúsculas, sin guiones ni puntos), pero acá se buscaba solo con el texto
+      // tal cual lo tipea el paciente en el booking público. Con esa sola forma,
+      // alguien que escribiera "V-12345678" no se encontraba a sí mismo y el
+      // booking le creaba un paciente NUEVO en cada reserva — sin ningún error
+      // visible, en el camino de mayor tráfico de la app y sin nadie mirando.
+      //
+      // La variante cruda se conserva porque los pacientes que todavía no fueron
+      // rehasheados tienen la huella vieja: así funciona con datos viejos y nuevos.
+      for (const candidato of cedulaSearchVariants(dto.patient_cedula)) {
+        const byCedula = await this.patientRepo.findByCedulaHash(
+          this.crypto.hashForSearch(candidato),
+          dto.doctor_id,
+        );
+        if (byCedula) return byCedula;
+      }
     }
 
     // 2. Try email hash lookup as fallback when no cedula match was found

@@ -86,6 +86,63 @@ export function normalizeForSearch(value: string): string {
 }
 
 /**
+ * Normalizes a Venezuelan cédula for deterministic search hashing.
+ *
+ * Steps:
+ *   1. Trim leading/trailing whitespace.
+ *   2. Convert to uppercase.
+ *   3. Strip everything that is not a letter or digit — hyphens, dots, spaces.
+ *
+ * The nationality prefix (V/E/P), when present, is PRESERVED — never stripped
+ * and never invented. "V-12345678" (venezolano) and "E-12345678" (extranjero)
+ * identify DIFFERENT people; collapsing both to "12345678" would merge two
+ * patients into one. A cédula stored with no prefix stays without one — adding
+ * "V-" would fabricate a nationality nobody typed.
+ *
+ * This exists because `normalizeForSearch` unifies spacing/accents/case but
+ * deliberately leaves separators alone (it's shared with names, where a
+ * hyphen can be meaningful). Cédulas need their own canonical form so
+ * "V-12345678", "v12345678" and "V-12.345.678" all hash to the same value.
+ *
+ * Examples: "V-12345678" -> "V12345678" · "v-12.345.678" -> "V12345678" ·
+ * "12345678" -> "12345678".
+ *
+ * @param value - raw cédula input string
+ */
+export function normalizeCedulaForSearch(value: string): string {
+  return value
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, '');
+}
+
+/**
+ * Cédula strings to try, in order, when looking up a patient by cédula hash
+ * during the migration window between the OLD and CANONICAL hashing schemes.
+ *
+ * Patient records written going forward hash `normalizeCedulaForSearch(cedula)`
+ * (see patients module). Records written before that change still carry a hash
+ * computed straight from whatever was typed — separators and all — until a
+ * separate, out-of-band script rehashes them. A lookup that only tries the
+ * canonical hash goes blind to every pre-existing patient; one that only tries
+ * the raw hash misses "V-12345678" matching a patient stored as "V12345678".
+ *
+ * Returns [asTyped, canonical], deduplicated when they're already identical
+ * (a cédula with no separators/casing to normalize needs only one lookup).
+ * Callers hash each entry with hashForSearch and try them in order, stopping
+ * at the first match — this only decides WHAT to hash, not how.
+ *
+ * Shared by every "find this patient by cédula, tolerating the old format"
+ * call site (patient creation's duplicate guard, the public booking flow,
+ * and — via its own superset of variants — quote recipient resolution).
+ *
+ * @param cedula - raw cédula input string
+ */
+export function cedulaSearchVariants(cedula: string): string[] {
+  return [...new Set([cedula, normalizeCedulaForSearch(cedula)])];
+}
+
+/**
  * Computes a deterministic HMAC-SHA256 hex string for equality-based lookups.
  *
  * Always normalizes input before hashing so equivalent strings produce the same

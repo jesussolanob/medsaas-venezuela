@@ -1,5 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import type { QuoteNewRecipient } from '@delta/shared-types';
+import { cedulaSearchVariants, normalizeCedulaForSearch } from '@delta/shared-crypto';
 import {
   PATIENT_REPOSITORY,
   type IPatientRepository,
@@ -40,10 +41,19 @@ export class ResolveQuoteRecipientPatientUseCase {
   /**
    * Formas en que la MISMA cédula pudo haberse guardado.
    *
-   * La huella de búsqueda se calcula sobre el texto tal cual: `normalizeForSearch`
-   * unifica espacios, acentos y mayúsculas, pero NO guiones ni puntos. Y el alta de
-   * pacientes acepta la cédula como texto libre (`create-patient.dto.ts`: min 4, sin
-   * formato), mientras que este formulario EXIGE `V/E/P-<valor>`.
+   * Las primeras dos variantes vienen de `cedulaSearchVariants` (@delta/shared-crypto,
+   * compartida con el guard de duplicados de CreatePatientUseCase y con el booking
+   * público): el texto TAL CUAL se tipeó — porque los pacientes guardados antes de
+   * este cambio siguen con el hash VIEJO hasta que corra el rehasheo, y sin esa
+   * variante dejarían de encontrarse TODOS — y la forma CANÓNICA que usa la
+   * escritura desde ahora (SequelizePatientRepository, CreatePatientUseCase).
+   *
+   * La tercera variante (sin prefijo) es una heurística deliberada SOLO para este
+   * flujo, no forma parte del helper compartido: cubre los pacientes guardados
+   * como solo dígitos antes de que el alta de presupuestos exigiera `V/E/P-<valor>`
+   * (el alta normal de pacientes acepta la cédula como texto libre, sin formato).
+   * NO se usa al escribir — nunca se inventa ni se quita el prefijo al guardar
+   * (V y E son personas distintas).
    *
    * Resultado sin esto: un paciente guardado como "12345678" no se encuentra al
    * buscar "V-12345678", y se le crea un SEGUNDO registro con la historia clínica
@@ -57,11 +67,10 @@ export class ResolveQuoteRecipientPatientUseCase {
    * Devuelve las variantes sin repetir y en orden de probabilidad.
    */
   private cedulaLookupVariants(cedula: string): string[] {
-    const raw = cedula.trim();
-    const sinSeparadores = raw.replace(/[^A-Za-z0-9]/g, ''); // "V-12.345.678" → "V12345678"
-    const sinPrefijo = sinSeparadores.replace(/^[VEPvep]/, ''); // "V12345678" → "12345678"
+    const canonica = normalizeCedulaForSearch(cedula);
+    const sinPrefijo = canonica.replace(/^[VEP]/, ''); // "V12345678" → "12345678"
 
-    return [...new Set([raw, sinSeparadores, sinPrefijo].filter((v) => v.length > 0))];
+    return [...new Set([...cedulaSearchVariants(cedula), sinPrefijo].filter((v) => v.length > 0))];
   }
 
   async execute(doctorId: string, recipient: QuoteNewRecipient): Promise<string> {

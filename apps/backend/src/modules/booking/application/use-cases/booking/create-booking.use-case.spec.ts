@@ -1699,4 +1699,33 @@ describe('CreateBookingUseCase', () => {
       ).resolves.toBeDefined();
     });
   });
+  /**
+   * El hash de búsqueda de un paciente se guarda sobre la cédula CANÓNICA
+   * (mayúsculas, sin guiones ni puntos), pero acá se buscaba con el texto tal cual
+   * lo tipea el paciente. Con esa sola forma, alguien que escribiera "V-12345678"
+   * no se encontraba a sí mismo y el booking le creaba un paciente NUEVO en cada
+   * reserva, sin ningún error visible y en el camino de mayor tráfico de la app.
+   */
+  describe('búsqueda de paciente por cédula — tolera el formato', () => {
+    it('encuentra al paciente cuya huella se guardó en forma canónica', async () => {
+      // hashForSearch devuelve algo distinto según la forma que reciba.
+      mockCrypto.hashForSearch.mockImplementation((v: string) =>
+        v === 'V12345678' ? 'hash-canonico' : 'hash-crudo',
+      );
+      // Solo existe con la huella CANÓNICA: buscar por la cruda no lo encuentra.
+      mockPatientRepo.findByCedulaHash.mockImplementation((hash: string) =>
+        Promise.resolve(hash === 'hash-canonico' ? ({ id: 'paciente-existente' } as never) : null),
+      );
+
+      await expect(
+        (
+          useCase as unknown as {
+            findOrCreatePatient: (d: unknown) => Promise<{ id: string }>;
+          }
+        ).findOrCreatePatient({ patient_cedula: 'V-12345678', doctor_id: 'doc-1' }),
+      ).resolves.toMatchObject({ id: 'paciente-existente' });
+
+      expect(mockCrypto.hashForSearch).toHaveBeenCalledWith('V12345678');
+    });
+  });
 });

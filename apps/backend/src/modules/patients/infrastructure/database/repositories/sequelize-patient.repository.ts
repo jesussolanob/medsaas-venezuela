@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/sequelize';
 import type { WhereOptions } from 'sequelize';
+import { normalizeCedulaForSearch } from '@delta/shared-crypto';
 import { Patient } from '../../../domain/entities/patient.entity';
 import { DuplicatePatientError } from '../../../domain/errors/duplicate-patient.error';
 import { PatientNotFoundError } from '../../../domain/errors/patient-not-found.error';
@@ -190,7 +191,11 @@ export class SequelizePatientRepository implements IPatientRepository {
     }
     if (fields.cedula !== undefined) {
       updateData.cedula = fields.cedula ? this.crypto.encrypt(fields.cedula) : null;
-      updateData.cedulaSearchHash = fields.cedula ? this.crypto.hashForSearch(fields.cedula) : null;
+      // Search hash is computed on the CANONICAL form (see encryptFields below) so
+      // "V-12345678", "v12345678" and "V-12.345.678" all resolve to the same patient.
+      updateData.cedulaSearchHash = fields.cedula
+        ? this.crypto.hashForSearch(normalizeCedulaForSearch(fields.cedula))
+        : null;
     }
     if (fields.phone !== undefined) {
       updateData.phone = fields.phone ? this.crypto.encrypt(fields.phone) : null;
@@ -222,8 +227,19 @@ export class SequelizePatientRepository implements IPatientRepository {
       }
     }
 
-    // Scope update to doctorId — prevents cross-doctor mutation even if IDs are guessed.
-    await this.patientModel.update(updateData, { where: { id, doctorId } as WhereOptions });
+    try {
+      // Scope update to doctorId — prevents cross-doctor mutation even if IDs are guessed.
+      await this.patientModel.update(updateData, { where: { id, doctorId } as WhereOptions });
+    } catch (err: unknown) {
+      if (isSequelizeUniqueConstraintError(err)) {
+        // Only the (doctor_id, cedula_search_hash) unique index can fire here — the
+        // equivalent email index was dropped in 20260716000002. Never log PII: no
+        // field values in the error or log output.
+        throw new DuplicatePatientError('cedula', fields.cedula ?? undefined);
+      }
+      throw err;
+    }
+
     // Re-fetch scoped to the same doctorId to confirm the row still exists and belongs to this doctor.
     const updated = await this.patientModel.findOne({ where: { id, doctorId } as WhereOptions });
     if (!updated) {
@@ -265,8 +281,14 @@ export class SequelizePatientRepository implements IPatientRepository {
     return {
       fullName: this.crypto.encrypt(patient.fullName),
       fullNameSearchHash: this.crypto.hashForSearch(patient.fullName),
+      // The displayable value keeps whatever the specialist typed, unchanged and
+      // encrypted as-is. Only the search hash moves to the canonical form —
+      // see normalizeCedulaForSearch (preserves the V/E/P prefix, strips
+      // separators only) so lookups aren't fooled by "V-123" vs "V.1.2.3".
       cedula: patient.cedula ? this.crypto.encrypt(patient.cedula) : null,
-      cedulaSearchHash: patient.cedula ? this.crypto.hashForSearch(patient.cedula) : null,
+      cedulaSearchHash: patient.cedula
+        ? this.crypto.hashForSearch(normalizeCedulaForSearch(patient.cedula))
+        : null,
       phone: patient.phone ? this.crypto.encrypt(patient.phone) : null,
       email: patient.email ? this.crypto.encrypt(patient.email) : null,
       emailSearchHash: patient.email ? this.crypto.hashForSearch(patient.email) : null,

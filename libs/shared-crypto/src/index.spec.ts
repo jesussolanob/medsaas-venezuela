@@ -1,4 +1,12 @@
-import { encrypt, decrypt, hashForSearch, hexKeyToBuffer, normalizeForSearch } from './index';
+import {
+  encrypt,
+  decrypt,
+  hashForSearch,
+  hexKeyToBuffer,
+  normalizeForSearch,
+  normalizeCedulaForSearch,
+  cedulaSearchVariants,
+} from './index';
 
 // 64 hex chars = 32 bytes for AES-256
 const TEST_KEY_HEX = '0000000000000000000000000000000000000000000000000000000000000000';
@@ -146,5 +154,85 @@ describe('normalizeForSearch', () => {
     const a = hashForSearch('  Ana   SWEENEY ', TEST_HMAC_HEX);
     const b = hashForSearch(normalizeForSearch('  Ana   SWEENEY '), TEST_HMAC_HEX);
     expect(a).toBe(b);
+  });
+});
+
+describe('normalizeCedulaForSearch', () => {
+  it('strips a hyphen between the prefix and the digits', () => {
+    expect(normalizeCedulaForSearch('V-12345678')).toBe('V12345678');
+  });
+
+  it('strips dots used as thousands separators', () => {
+    expect(normalizeCedulaForSearch('V-12.345.678')).toBe('V12345678');
+  });
+
+  it('uppercases a lowercase prefix', () => {
+    expect(normalizeCedulaForSearch('v-12345678')).toBe('V12345678');
+  });
+
+  it('leaves a cédula with no prefix as digits only', () => {
+    expect(normalizeCedulaForSearch('12345678')).toBe('12345678');
+  });
+
+  it('trims surrounding whitespace', () => {
+    expect(normalizeCedulaForSearch('  V-12345678  ')).toBe('V12345678');
+  });
+
+  it('collapses internal spaces same as dashes and dots', () => {
+    expect(normalizeCedulaForSearch('V 12 345 678')).toBe('V12345678');
+  });
+
+  it('produces the same result regardless of separator style', () => {
+    const variants = ['V-12345678', 'V12345678', 'V.12.345.678', 'v - 12345678'];
+    const normalized = variants.map(normalizeCedulaForSearch);
+    expect(new Set(normalized).size).toBe(1);
+    expect(normalized[0]).toBe('V12345678');
+  });
+
+  it('does NOT strip the nationality prefix — never merges V and E', () => {
+    expect(normalizeCedulaForSearch('V-12345678')).toBe('V12345678');
+    expect(normalizeCedulaForSearch('E-12345678')).toBe('E12345678');
+    expect(normalizeCedulaForSearch('V-12345678')).not.toBe(normalizeCedulaForSearch('E-12345678'));
+  });
+
+  it('does NOT invent a prefix for a digits-only cédula', () => {
+    expect(normalizeCedulaForSearch('12345678')).not.toBe('V12345678');
+    expect(normalizeCedulaForSearch('12345678')).not.toBe('E12345678');
+  });
+
+  it('feeds into hashForSearch deterministically — same cédula, any format, same hash', () => {
+    const a = hashForSearch(normalizeCedulaForSearch('V-12345678'), TEST_HMAC_HEX);
+    const b = hashForSearch(normalizeCedulaForSearch('v12345678'), TEST_HMAC_HEX);
+    const c = hashForSearch(normalizeCedulaForSearch('V-12.345.678'), TEST_HMAC_HEX);
+    expect(a).toBe(b);
+    expect(b).toBe(c);
+  });
+
+  it('V and E hash to different values through hashForSearch too', () => {
+    const vHash = hashForSearch(normalizeCedulaForSearch('V-12345678'), TEST_HMAC_HEX);
+    const eHash = hashForSearch(normalizeCedulaForSearch('E-12345678'), TEST_HMAC_HEX);
+    expect(vHash).not.toBe(eHash);
+  });
+});
+
+describe('cedulaSearchVariants', () => {
+  it('returns the as-typed value and the canonical form when they differ', () => {
+    expect(cedulaSearchVariants('V-12345678')).toEqual(['V-12345678', 'V12345678']);
+  });
+
+  it('returns a single entry when the raw value is already canonical', () => {
+    expect(cedulaSearchVariants('12345678')).toEqual(['12345678']);
+  });
+
+  it('as-typed comes first — callers stop at the first match, and the raw hash is more likely for old data', () => {
+    const variants = cedulaSearchVariants('v-12.345.678');
+    expect(variants[0]).toBe('v-12.345.678');
+    expect(variants[1]).toBe('V12345678');
+  });
+
+  it('keeps V and E as separate variant sets — never merges them', () => {
+    expect(cedulaSearchVariants('V-12345678')).not.toEqual(
+      expect.arrayContaining(cedulaSearchVariants('E-12345678')),
+    );
   });
 });

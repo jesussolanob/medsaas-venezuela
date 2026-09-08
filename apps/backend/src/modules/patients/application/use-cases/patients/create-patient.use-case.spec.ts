@@ -179,6 +179,46 @@ describe('CreatePatientUseCase', () => {
     expect((error as DuplicatePatientError).httpStatus).toBe(409);
   });
 
+  // ---------------------------------------------------------------------------
+  // Cédula normalization — hash variants (legacy + canonical)
+  //
+  // Writes now hash the CANONICAL form of the cédula (normalizeCedulaForSearch:
+  // uppercase, strips separators, keeps the V/E/P prefix). Patients created
+  // before this change still carry the OLD hash — computed straight from
+  // whatever was typed — until a separate rehash script runs. The duplicate
+  // guard must find a match under EITHER hash, or it goes blind to every
+  // pre-existing patient and creates a duplicate for each one.
+  // ---------------------------------------------------------------------------
+
+  it('checks the canonical hash too, and finds a patient stored under a different separator style', async () => {
+    // Simulates a patient whose OLD hash was computed on "V12345678" (separators
+    // already stripped when it was typed) — the raw-hash check on "V-12345678"
+    // misses it, but the canonical-hash check ("V12345678", same value here) finds it.
+    repo.findByCedulaHash.mockResolvedValueOnce(null); // hash:V-12345678 (raw)
+    repo.findByCedulaHash.mockResolvedValueOnce(makePatient()); // hash:V12345678 (canonical)
+
+    const error = await useCase
+      .execute({ doctorId: DOCTOR_ID, fullName: 'Otro', cedula: 'V-12345678' })
+      .catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(DuplicatePatientError);
+    expect(repo.findByCedulaHash).toHaveBeenCalledWith('hash:V-12345678', DOCTOR_ID);
+    expect(repo.findByCedulaHash).toHaveBeenCalledWith('hash:V12345678', DOCTOR_ID);
+    expect(repo.findByCedulaHash).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not repeat the lookup when the raw and canonical forms are identical', async () => {
+    repo.findByCedulaHash.mockResolvedValue(null);
+    const saved = makePatient({ cedula: '12345678' });
+    repo.save.mockResolvedValue(saved);
+
+    await useCase.execute({ doctorId: DOCTOR_ID, fullName: 'Juan', cedula: '12345678' });
+
+    // "12345678" has no separators/prefix to canonicalize — one variant, one call.
+    expect(repo.findByCedulaHash).toHaveBeenCalledTimes(1);
+    expect(repo.findByCedulaHash).toHaveBeenCalledWith('hash:12345678', DOCTOR_ID);
+  });
+
   it('does NOT throw when a DIFFERENT doctor has a patient with the same cédula (scoped per doctor)', async () => {
     // findByCedulaHash is scoped to doctorId — a different doctor's patient won't be found.
     repo.findByCedulaHash.mockResolvedValue(null);
