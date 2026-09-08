@@ -25,6 +25,18 @@ export interface QuoteWithRecipient {
    * cotización, que ya lo ve en su propia ficha. NUNCA se loguea.
    */
   recipientName: string | null;
+  /**
+   * Correo del destinatario ya resuelto, para que la pantalla de envío pueda
+   * MOSTRAR a quién se le va a mandar en vez de pedirlo de nuevo.
+   *
+   * El especialista veía dos campos vacíos y no tenía forma de saber que podía
+   * dejarlos en blanco: el backend ya resolvía el correo de la ficha, pero la
+   * pantalla lo pedía igual.
+   *
+   * SECURITY: es PII, pero de un paciente del propio especialista, que ya lo ve
+   * en su ficha. Endpoint autenticado. NUNCA loguearlo.
+   */
+  recipientEmail: string | null;
 }
 
 /**
@@ -60,7 +72,8 @@ export class GetQuoteUseCase {
       throw new QuoteNotFoundError();
     }
 
-    return { quote, recipientName: await this.resolveRecipientName(quote, doctorId) };
+    const { name, email } = await this.resolveRecipient(quote, doctorId);
+    return { quote, recipientName: name, recipientEmail: email };
   }
 
   /**
@@ -70,23 +83,32 @@ export class GetQuoteUseCase {
    * Best-effort: si la búsqueda falla, la cotización se devuelve igual sin
    * nombre. Un fallo resolviendo una etiqueta no puede tumbar el detalle.
    */
-  private async resolveRecipientName(quote: Quote, doctorId: string): Promise<string | null> {
+  private async resolveRecipient(
+    quote: Quote,
+    doctorId: string,
+  ): Promise<{ name: string | null; email: string | null }> {
     try {
       if (quote.patientId) {
         const patient = await this.patientRepo.findById(quote.patientId, doctorId);
-        return patient?.fullName?.trim() || null;
+        return {
+          name: patient?.fullName?.trim() || null,
+          email: patient?.email?.trim() || null,
+        };
       }
 
       if (quote.leadId) {
         const lead = await this.leadRepo.findByIdForDoctor(quote.leadId, doctorId);
-        if (!lead) return null;
-        return [lead.name, lead.lastName].filter(Boolean).join(' ').trim() || null;
+        if (!lead) return { name: null, email: null };
+        return {
+          name: [lead.name, lead.lastName].filter(Boolean).join(' ').trim() || null,
+          email: lead.email?.trim() || null,
+        };
       }
     } catch {
-      // Sin log: el mensaje podría arrastrar el nombre, que es PII.
-      return null;
+      // Sin log: el mensaje podría arrastrar el nombre o el correo, que son PII.
+      return { name: null, email: null };
     }
 
-    return null;
+    return { name: null, email: null };
   }
 }
