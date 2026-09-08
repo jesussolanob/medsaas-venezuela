@@ -146,10 +146,14 @@ export class DispatchQuoteExpiryNoticesUseCase {
     // Defense in depth: never trust the repository's WHERE clause alone —
     // same reasoning as isOwnedBy() re-checking ownership after a lookup.
     if (quote.status !== 'sent') return 'skipped';
-    if (quote.validUntil === null) return 'skipped';
+    // expiresAt() y NO validUntil: el campo es una cadena en tiempo de ejecución
+    // (columna DATEONLY) aunque el tipo diga Date, y compararla contra un Date da
+    // SIEMPRE false. Ver el comentario de Quote.expiresAt().
+    const corte = quote.expiresAt();
+    if (corte === null) return 'skipped';
 
     // A. Overdue → expire. No email (owner only asked for the pre-expiry notice).
-    if (quote.validUntil < now) {
+    if (corte < now) {
       try {
         await this.quoteRepo.updateStatus(quote.id, quote.doctorId, 'expired', 'sent');
         return 'expired';
@@ -183,7 +187,7 @@ export class DispatchQuoteExpiryNoticesUseCase {
     const doctorProfile = await this.doctorProfileRepo.findByDoctorId(quote.doctorId);
     const doctorName = doctorProfile?.fullName ?? 'Su especialista';
     // validUntil is guaranteed non-null here — processOne() already checked it.
-    const validUntilLabel = this.formatCaracas(quote.validUntil as Date);
+    const validUntilLabel = this.formatFechaVencimiento(quote.validUntil as Date | string);
     const totalUsdLabel = quote.totalUsd.toFixed(2);
 
     const recipient = await this.resolveRecipient(quote);
@@ -297,9 +301,27 @@ export class DispatchQuoteExpiryNoticesUseCase {
     return `${appUrl}/quotes/${quote.shareToken}`;
   }
 
-  private formatCaracas(date: Date): string {
-    return date.toLocaleDateString('es-VE', {
-      timeZone: 'America/Caracas',
+  /**
+   * "08 de octubre de 2026" a partir de `valid_until`, que es un DÍA CALENDARIO.
+   *
+   * Se formatea en UTC y NO en 'America/Caracas', que es lo contrario de lo que
+   * uno esperaría en una app venezolana. El motivo: el valor guardado no es un
+   * instante, es una fecha sin hora. Convertirla a hora de Caracas (UTC-4) la
+   * corre al día ANTERIOR, y el correo le habría dicho al paciente "07 de
+   * octubre" para un presupuesto que vence el 8 y que en todas las demás
+   * pantallas del producto se ve como 8.
+   *
+   * Acepta `string` además de `Date` porque eso es lo que hay de verdad en
+   * memoria: la columna es DATEONLY. Ver el comentario de Quote.expiresAt().
+   */
+  private formatFechaVencimiento(validUntil: Date | string): string {
+    const iso = typeof validUntil === 'string' ? validUntil : validUntil.toISOString();
+    const partes = iso.slice(0, 10).split('-').map(Number);
+    const anio = partes[0] ?? 0;
+    const mes = partes[1] ?? 1;
+    const dia = partes[2] ?? 1;
+    return new Date(Date.UTC(anio, mes - 1, dia)).toLocaleDateString('es-VE', {
+      timeZone: 'UTC',
       day: '2-digit',
       month: 'long',
       year: 'numeric',

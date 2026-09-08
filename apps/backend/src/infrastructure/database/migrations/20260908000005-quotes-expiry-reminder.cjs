@@ -10,8 +10,8 @@
  *      quote, so DispatchQuoteExpiryNoticesUseCase never retries the same
  *      quote forever.
  *   2. Partial index on the exact query shape the cron uses every 15 minutes:
- *      status = 'sent' AND valid_until IS NOT NULL AND expiry_reminder_sent_at
- *      IS NULL.
+ *      status = 'sent' AND valid_until IS NOT NULL. (Sin el sello del aviso —
+ *      ver el comentario largo junto al CREATE INDEX.)
  *   3. Two new `email_templates` rows: `quote_expiring_recipient` (to the
  *      patient/lead, with the public link) and `quote_expiring_doctor` (to
  *      the specialist, no link — just a nudge that a quote they sent is
@@ -145,12 +145,22 @@ module.exports = {
     `);
 
     // ── Part 2: partial index matching the cron's exact WHERE clause ────────
+    //
+    // El predicado NO incluye `expiry_reminder_sent_at IS NULL`, aunque sea la
+    // columna que agrega esta misma migración. Postgres solo puede usar un
+    // índice parcial si el WHERE de la consulta implica el del índice, y la
+    // consulta del cron (findQuotesNearingExpiry) deliberadamente NO filtra por
+    // ese campo: un presupuesto que YA recibió su aviso igual tiene que poder
+    // vencer cuando le llegue la fecha. Filtrarlo dejaría a esos presupuestos
+    // colgados en 'sent' para siempre.
+    //
+    // Con el sello adentro, el índice quedaba inutilizable justo para la única
+    // consulta que lo motivó.
     await q.query(`
       CREATE INDEX IF NOT EXISTS idx_quotes_expiry_reminder_pending
         ON quotes (valid_until)
         WHERE status = 'sent'
           AND valid_until IS NOT NULL
-          AND expiry_reminder_sent_at IS NULL
     `);
 
     // ── Part 3: seed the two templates ───────────────────────────────────────

@@ -161,10 +161,47 @@ export class Quote {
    */
   isDueForExpiryReminder(now: Date, windowDays: number): boolean {
     if (this.status !== 'sent') return false;
-    if (this.validUntil === null) return false;
     if (this.expiryReminderSentAt !== null) return false;
+    const corte = this.expiresAt();
+    if (corte === null) return false;
+    // El fin de la ventana también se lleva al FIN de su día: si no, un
+    // presupuesto que vence el último día de la ventana quedaba afuera por unas
+    // horas (su corte son las 23:59 de ese día; `now + 3 días` es la hora en que
+    // corrió el cron). La regla se piensa en días calendario de las dos puntas.
     const windowEnd = new Date(now.getTime() + windowDays * 24 * 60 * 60 * 1000);
-    return this.validUntil >= now && this.validUntil <= windowEnd;
+    windowEnd.setUTCHours(23, 59, 59, 999);
+    return corte >= now && corte <= windowEnd;
+  }
+
+  /**
+   * Instante EXACTO en que este presupuesto deja de valer, o null si no vence.
+   *
+   * ⚠️ NUNCA compares `validUntil` directamente contra un `Date`. El campo está
+   * declarado `Date | null`, pero en tiempo de ejecución es una CADENA
+   * 'YYYY-MM-DD': la columna es `DataType.DATEONLY` y Sequelize 6 la sanea con
+   * `moment(value).format('YYYY-MM-DD')` (`data-types.js`, `DATEONLY._sanitize`).
+   * El repositorio la pasa tal cual a la entidad, así que TypeScript da por buena
+   * una anotación que no se corresponde con lo que hay en memoria.
+   *
+   * Comparar esa cadena con un `Date` no da un resultado "casi bien": da SIEMPRE
+   * `false`. La comparación relacional convierte ambos lados a número y
+   * `Number('2026-10-08')` es `NaN`, y toda comparación contra `NaN` es falsa.
+   * Con la comparación cruda, nada vencía nunca y ningún aviso salía jamás — y
+   * los tests no lo veían porque construyen la entidad con `Date` de verdad.
+   *
+   * El corte es el FIN del día (23:59:59.999 UTC), no su medianoche: es la misma
+   * convención que ya usaba `SendQuoteUseCase.computeExpiresAt()` para el enlace
+   * público, y la que se le promete al paciente cuando la pantalla dice "vence el
+   * 8 de octubre" — vale todo ese día. Con la medianoche, el estado se habría
+   * vencido casi un día antes que el enlace, y el paciente habría visto un
+   * presupuesto vigente que el backend le rechazaba al aceptarlo.
+   */
+  expiresAt(): Date | null {
+    if (this.validUntil === null) return null;
+    const d = new Date(this.validUntil as Date | string);
+    if (Number.isNaN(d.getTime())) return null;
+    d.setUTCHours(23, 59, 59, 999);
+    return d;
   }
 
   /**

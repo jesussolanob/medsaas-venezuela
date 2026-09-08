@@ -287,3 +287,65 @@ describe('QuoteShareLink', () => {
     expect(link.isValid(now)).toBe(false);
   });
 });
+
+// ─── El tipo de validUntil MIENTE: en memoria es una cadena ──────────────────
+//
+// La columna es DataType.DATEONLY y Sequelize 6 la sanea con
+// moment(v).format('YYYY-MM-DD') — devuelve un STRING, no un Date, aunque el
+// modelo y la entidad lo declaren `Date | null`.
+//
+// Todos los demás tests de este archivo construyen la entidad con `new Date()`,
+// así que ninguno reproduce lo que llega de la base. Estos sí: pasan la cadena
+// CRUDA, tal cual sale del driver.
+//
+// Sin esto, el cron de vencimiento era un no-op silencioso en producción con la
+// suite entera en verde: comparar 'YYYY-MM-DD' contra un Date convierte ambos
+// lados a número, Number('2026-10-08') es NaN, y toda comparación contra NaN es
+// falsa. No vencía nada y no salía ningún aviso.
+describe('Quote con validUntil tal como lo devuelve Sequelize (cadena DATEONLY)', () => {
+  const DAY = 24 * 60 * 60 * 1000;
+  /** Formatea como lo hace DATEONLY._sanitize: 'YYYY-MM-DD'. */
+  function comoDateonly(d: Date): string {
+    return d.toISOString().slice(0, 10);
+  }
+  /** El cast reproduce la mentira del tipo: en runtime acá llega una cadena. */
+  function quoteConCadena(fecha: string, extra = {}): Quote {
+    return makeQuote({ validUntil: fecha as unknown as Date, status: 'sent', ...extra });
+  }
+
+  it('expiresAt() interpreta la cadena y devuelve el FIN del día, no su medianoche', () => {
+    const q = quoteConCadena('2026-10-08');
+    const corte = q.expiresAt();
+    expect(corte).not.toBeNull();
+    expect(corte?.toISOString()).toBe('2026-10-08T23:59:59.999Z');
+  });
+
+  it('detecta como vencida una cadena de ayer (antes daba SIEMPRE false)', () => {
+    const ayer = comoDateonly(new Date(now.getTime() - DAY));
+    const corte = quoteConCadena(ayer).expiresAt();
+    expect(corte).not.toBeNull();
+    expect((corte as Date) < now).toBe(true);
+  });
+
+  it('sigue vigente todo el día que promete la pantalla', () => {
+    // Vence hoy: a cualquier hora de hoy TODAVÍA vale — es lo que se le dijo al
+    // paciente ("vence el 8 de octubre") y lo que ya hacía el enlace público.
+    const hoy = comoDateonly(now);
+    const corte = quoteConCadena(hoy).expiresAt();
+    expect((corte as Date) < now).toBe(false);
+  });
+
+  it('dispara el aviso cuando faltan 2 días, con la fecha como cadena', () => {
+    const en2dias = comoDateonly(new Date(now.getTime() + 2 * DAY));
+    expect(quoteConCadena(en2dias).isDueForExpiryReminder(now, 3)).toBe(true);
+  });
+
+  it('no dispara el aviso cuando faltan 10 días', () => {
+    const en10dias = comoDateonly(new Date(now.getTime() + 10 * DAY));
+    expect(quoteConCadena(en10dias).isDueForExpiryReminder(now, 3)).toBe(false);
+  });
+
+  it('expiresAt() devuelve null ante una fecha impresentable, sin explotar', () => {
+    expect(quoteConCadena('no-es-una-fecha').expiresAt()).toBeNull();
+  });
+});
