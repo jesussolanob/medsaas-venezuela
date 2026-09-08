@@ -94,6 +94,12 @@ export type AppointmentFlowState = {
   setPatientQuery: (q: string) => void;
   patientResults: PatientLookup[];
   selectedPatient: PatientLookup | null;
+  /**
+   * Sesiones de paquete que el paciente elegido tiene esperando ser agendadas.
+   * 0 cuando no hay paciente o no tiene ninguna. Solo alimenta un aviso: no
+   * bloquea la creación de la cita.
+   */
+  pendingToSchedule: number;
   selectPatient: (p: PatientLookup) => void;
   searchingPatients: boolean;
   showInlineCreator: boolean;
@@ -180,6 +186,8 @@ export function useAppointmentFlow(
   const [patientQuery, setPatientQuery] = useState('');
   const [patientResults, setPatientResults] = useState<PatientLookup[]>([]);
   const [selectedPatient, setSelectedPatient] = useState<PatientLookup | null>(null);
+  /** Sesiones de paquete que el paciente tiene esperando ser agendadas. */
+  const [pendingToSchedule, setPendingToSchedule] = useState(0);
   const [searchingPatients, setSearchingPatients] = useState(false);
   const [showInlineCreator, setShowInlineCreator] = useState(false);
   const [newPatient, setNewPatient] = useState<NewPatientForm>({
@@ -429,6 +437,31 @@ export function useAppointmentFlow(
         setPackages(all.filter((p) => p.used_sessions < p.total_sessions));
       })
       .catch(() => setPackages([]));
+  }, [selectedPatient, open]);
+
+  // ── Consultas por agendar del paciente ──────────────────────────────────
+  //
+  // Un paciente que compró un paquete queda con sus sesiones restantes
+  // esperando en "Consultas por agendar". Si el especialista le arma una cita
+  // nueva desde cero, esas sesiones quedan sin usar y la consulta se cobra
+  // aparte — que es como el paquete de un paciente terminó facturado a precio
+  // de consulta suelta.
+  //
+  // NO se bloquea la creación: el especialista puede querer venderle otro
+  // servicio distinto, y eso es legítimo (decisión del dueño, 2026-09-07).
+  // Solo se avisa.
+  useEffect(() => {
+    if (!selectedPatient || !open) {
+      setPendingToSchedule(0);
+      return;
+    }
+    fetch('/api/doctor/pending-consultations?status=pending_scheduling')
+      .then((r) => (r.ok ? r.json() : { data: [] }))
+      .then((json) => {
+        const items = (json.data || []) as Array<{ patient_id?: string }>;
+        setPendingToSchedule(items.filter((i) => i.patient_id === selectedPatient.id).length);
+      })
+      .catch(() => setPendingToSchedule(0));
   }, [selectedPatient, open]);
 
   // ── Búsqueda de pacientes (debounced) ───────────────────────────────────
@@ -784,6 +817,7 @@ export function useAppointmentFlow(
     !submitting;
 
   return {
+    pendingToSchedule,
     currentStep,
     setCurrentStep,
     doctorId,
