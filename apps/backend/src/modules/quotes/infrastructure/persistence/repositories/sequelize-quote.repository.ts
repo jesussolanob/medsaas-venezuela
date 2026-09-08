@@ -268,10 +268,14 @@ export class SequelizeQuoteRepository implements IQuoteRepository {
         transaction: t,
       });
 
+      // Se saca CUALQUIER prefijo de 4 caracteres, no solo 'COT-'. El módulo se
+      // renombró a Presupuestos y los números pasaron de COT- a PRE-; buscar
+      // literalmente 'COT-' habría devuelto NaN sobre un número ya migrado y el
+      // siguiente presupuesto habría chocado con el constraint (doctor, número).
       const nextSeq = maxRow?.quoteNumber
-        ? parseInt(maxRow.quoteNumber.replace('COT-', ''), 10) + 1
+        ? parseInt(maxRow.quoteNumber.replace(/^[A-Z]{3}-/, ''), 10) + 1
         : 1;
-      const quoteNumber = `COT-${String(nextSeq).padStart(4, '0')}`;
+      const quoteNumber = `PRE-${String(nextSeq).padStart(4, '0')}`;
 
       // Build items with amountUsd and compute totals via domain entity
       const itemsWithAmounts = this.buildItemsWithAmounts(params.items);

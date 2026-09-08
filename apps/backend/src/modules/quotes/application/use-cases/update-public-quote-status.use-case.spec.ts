@@ -21,7 +21,7 @@ function makeQuote(overrides: Partial<Parameters<typeof Quote.create>[0]> = {}):
   return Quote.create({
     id: QUOTE_ID,
     doctorId: DOCTOR_ID,
-    quoteNumber: 'COT-0001',
+    quoteNumber: 'PRE-0001',
     patientId: PATIENT_ID,
     leadId: null,
     status: 'sent',
@@ -213,7 +213,7 @@ describe('UpdatePublicQuoteStatusUseCase', () => {
         'quote_accepted_doctor',
         'doctor@example.com',
         expect.objectContaining({
-          quoteNumber: 'COT-0001',
+          quoteNumber: 'PRE-0001',
           recipientName: 'Juana Pérez',
           totalUsd: '100.00',
         }),

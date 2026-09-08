@@ -20,7 +20,7 @@ function makeQuote(overrides: Partial<Parameters<typeof Quote.create>[0]> = {}):
   return Quote.create({
     id: QUOTE_ID,
     doctorId: DOCTOR_ID,
-    quoteNumber: 'COT-0001',
+    quoteNumber: 'PRE-0001',
     patientId: PATIENT_ID,
     leadId: null,
     status: 'sent',
@@ -144,7 +144,7 @@ describe('GetPublicQuoteUseCase', () => {
 
       const result = await uc.execute('validtoken123');
       expect(result.quote.id).toBe(QUOTE_ID);
-      expect(result.quote.quoteNumber).toBe('COT-0001');
+      expect(result.quote.quoteNumber).toBe('PRE-0001');
       expect(result.doctor).toBeDefined();
       expect(result.doctor.fullName).toBe('Dr./Dra.'); // fallback when profile is null
       expect(result.templateConfig).toBeNull();

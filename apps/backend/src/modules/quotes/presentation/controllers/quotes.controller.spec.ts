@@ -33,7 +33,7 @@ function makeQuote(status: 'draft' | 'sent' = 'draft'): Quote {
   return Quote.create({
     id: QUOTE_ID,
     doctorId: DOCTOR_ID,
-    quoteNumber: 'COT-0001',
+    quoteNumber: 'PRE-0001',
     patientId: PATIENT_ID,
     leadId: null,
     status,
@@ -163,7 +163,7 @@ describe('QuotesController', () => {
 
       expect(getUC.execute).toHaveBeenCalledWith(QUOTE_ID, DOCTOR_ID);
       expect(result.success).toBe(true);
-      expect(result.data.quoteNumber).toBe('COT-0001');
+      expect(result.data.quoteNumber).toBe('PRE-0001');
     });
 
     it('exposes the recipient name so the screen and the PDF can show who it is for', async () => {

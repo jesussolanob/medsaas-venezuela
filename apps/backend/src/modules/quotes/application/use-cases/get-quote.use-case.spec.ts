@@ -17,7 +17,7 @@ function makeQuote(): Quote {
   return Quote.create({
     id: QUOTE_ID,
     doctorId: DOCTOR_ID,
-    quoteNumber: 'COT-0001',
+    quoteNumber: 'PRE-0001',
     patientId: PATIENT_ID,
     leadId: null,
     status: 'draft',
@@ -70,7 +70,7 @@ describe('GetQuoteUseCase', () => {
     const uc = new GetQuoteUseCase(makeRepo(makeQuote()), makePatientRepo(), makeLeadRepo());
     const { quote } = await uc.execute(QUOTE_ID, DOCTOR_ID);
     expect(quote.id).toBe(QUOTE_ID);
-    expect(quote.quoteNumber).toBe('COT-0001');
+    expect(quote.quoteNumber).toBe('PRE-0001');
   });
 
   it('throws QuoteNotFoundError when quote does not exist', async () => {

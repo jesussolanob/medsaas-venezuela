@@ -11,7 +11,7 @@ function makeQuote(overrides: Partial<Parameters<typeof Quote.create>[0]> = {}):
   return Quote.create({
     id: 'qqqqqqqq-0000-0000-0000-000000000001',
     doctorId: DOCTOR_ID,
-    quoteNumber: 'COT-0001',
+    quoteNumber: 'PRE-0001',
     patientId: PATIENT_ID,
     leadId: null,
     status: 'draft',

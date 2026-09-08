@@ -41,7 +41,7 @@ function makeQuote(overrides: Partial<Parameters<typeof Quote.create>[0]> = {}):
   return Quote.create({
     id: 'qqqqqqqq-0000-0000-0000-000000000001',
     doctorId: DOCTOR_ID,
-    quoteNumber: 'COT-0001',
+    quoteNumber: 'PRE-0001',
     patientId: PATIENT_ID,
     leadId: null,
     status: 'draft',
@@ -143,7 +143,7 @@ describe('CreateQuoteUseCase — §9-1 recipient XOR', () => {
       items: [validItemInput],
     };
     const result = await uc.execute(dto, DOCTOR_ID);
-    expect(result.quoteNumber).toBe('COT-0001');
+    expect(result.quoteNumber).toBe('PRE-0001');
     expect(repo.create).toHaveBeenCalledTimes(1);
   });
 
@@ -271,7 +271,7 @@ describe('CreateQuoteUseCase — §9-3 atomic quote_number', () => {
   it('§9-3 delegates quote_number generation to the repository (atomic, not use-case)', async () => {
     const repo = makeRepo();
     let callIndex = 0;
-    const numbers = ['COT-0001', 'COT-0002'];
+    const numbers = ['PRE-0001', 'PRE-0002'];
     (repo.create as jest.Mock).mockImplementation(async () =>
       makeQuote({ quoteNumber: numbers[callIndex++] }),
     );
@@ -291,8 +291,8 @@ describe('CreateQuoteUseCase — §9-3 atomic quote_number', () => {
 
     // Each call produces a distinct quote_number (assigned by the repo, not computed here)
     expect(q1.quoteNumber).not.toBe(q2.quoteNumber);
-    expect(q1.quoteNumber).toBe('COT-0001');
-    expect(q2.quoteNumber).toBe('COT-0002');
+    expect(q1.quoteNumber).toBe('PRE-0001');
+    expect(q2.quoteNumber).toBe('PRE-0002');
     // repo.create was called twice — each call goes through the atomic lock
     expect(repo.create).toHaveBeenCalledTimes(2);
   });

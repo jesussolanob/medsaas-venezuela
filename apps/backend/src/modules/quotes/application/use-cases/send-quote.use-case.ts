@@ -81,7 +81,7 @@ export interface SendQuoteResult {
  *
  * SECURITY:
  *   - Token is 48 bytes of CSPRNG encoded as base64url.
- *   - The name in the filename is COT-XXXX, never PII.
+ *   - The name in the filename is PRE-XXXX, never PII.
  *   - Never log the resolved recipient email or name — only IDs.
  */
 @Injectable()
