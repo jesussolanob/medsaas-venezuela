@@ -61,7 +61,14 @@ export class ResendEmailAdapter implements IEmailPort {
       this.logger.warn(
         `[email:resend] delivery failed — code=${error.name} status=${error.statusCode ?? 'unknown'}`,
       );
-      throw new EmailSendError(error.message);
+      // El `message` lleva solo código y estado, porque los llamadores lo
+      // interpolan en sus logs; el texto crudo del proveedor —que puede traer
+      // la dirección del paciente adentro— viaja aparte, en `detail`, y de ahí
+      // solo va a `email_send_log`.
+      throw new EmailSendError(
+        `${error.name} (${error.statusCode ?? 'sin estado'})`,
+        error.message,
+      );
     }
 
     this.logger.debug(`[email:resend] sent id=${data?.id ?? 'unknown'}`);
