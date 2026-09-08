@@ -157,7 +157,11 @@ describe('QuotesController', () => {
     it('delegates to GetQuoteUseCase with id and doctorId', async () => {
       const { controller, getUC } = makeController();
       const quote = makeQuote();
-      getUC.execute.mockResolvedValue({ quote, recipientName: 'Ana Pérez' });
+      getUC.execute.mockResolvedValue({
+        quote,
+        recipientName: 'Ana Pérez',
+        recipientEmail: 'ana@example.com',
+      });
 
       const result = await controller.show(QUOTE_ID, makeUser());
 
@@ -169,7 +173,11 @@ describe('QuotesController', () => {
     it('exposes the recipient name so the screen and the PDF can show who it is for', async () => {
       // Antes solo viajaban patient_id / lead_id y la UI pintaba la CATEGORÍA.
       const { controller, getUC } = makeController();
-      getUC.execute.mockResolvedValue({ quote: makeQuote(), recipientName: 'Ana Pérez' });
+      getUC.execute.mockResolvedValue({
+        quote: makeQuote(),
+        recipientName: 'Ana Pérez',
+        recipientEmail: 'ana@example.com',
+      });
 
       const result = await controller.show(QUOTE_ID, makeUser());
 
@@ -181,6 +189,7 @@ describe('QuotesController', () => {
       getUC.execute.mockResolvedValue({
         quote: Quote.create({ ...makeQuote('sent'), shareToken: SHARE_TOKEN }),
         recipientName: 'Ana Pérez',
+        recipientEmail: 'ana@example.com',
       });
 
       const result = await controller.show(QUOTE_ID, makeUser());
@@ -193,7 +202,11 @@ describe('QuotesController', () => {
       // The frontend hides the "Copy link" button on null; returning a
       // token-less URL here would surface a link that 404s.
       const { controller, getUC } = makeController();
-      getUC.execute.mockResolvedValue({ quote: makeQuote(), recipientName: null });
+      getUC.execute.mockResolvedValue({
+        quote: makeQuote(),
+        recipientName: null,
+        recipientEmail: null,
+      });
 
       const result = await controller.show(QUOTE_ID, makeUser());
 

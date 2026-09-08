@@ -80,6 +80,8 @@ interface BackendQuote {
    * null si se borró después de emitir la cotización.
    */
   recipient_name: string | null;
+  /** Correo ya resuelto del destinatario, para mostrarlo al enviar. */
+  recipient_email: string | null;
 }
 
 interface BackendQuoteItem {
@@ -129,6 +131,8 @@ export interface QuoteRow {
    * null si se borró después de emitir la cotización. Es PII: no loguear.
    */
   recipient_name: string | null;
+  /** Correo ya resuelto del destinatario, para mostrarlo al enviar. */
+  recipient_email: string | null;
 }
 
 export interface QuoteItemRow {
@@ -193,6 +197,7 @@ function toQuoteRow(q: BackendQuote): QuoteRow {
     share_token: q.share_token ?? null,
     share_url: q.share_url ?? null,
     recipient_name: q.recipient_name ?? null,
+    recipient_email: q.recipient_email ?? null,
   };
 }
 

@@ -71,6 +71,14 @@ interface QuoteDetailData extends Quote {
    * SECURITY: PII — este endpoint es del especialista dueño. No loguear.
    */
   recipient_name: string | null;
+  /**
+   * Correo del destinatario ya resuelto, para que la pantalla de envío muestre a
+   * quién se va a mandar en vez de pedirlo otra vez.
+   *
+   * SECURITY: PII de un paciente del propio especialista. Endpoint autenticado,
+   * nunca se loguea.
+   */
+  recipient_email: string | null;
 }
 
 /** Response of POST /:id/send — QuoteDetailData plus email delivery outcome. */
@@ -150,8 +158,8 @@ export class QuotesController {
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: CurrentUserPayload,
   ): Promise<SuccessResponse<QuoteDetailData>> {
-    const { quote, recipientName } = await this.getQuote.execute(id, user.sub);
-    return { success: true, data: this.withShareData(quote, recipientName) };
+    const { quote, recipientName, recipientEmail } = await this.getQuote.execute(id, user.sub);
+    return { success: true, data: this.withShareData(quote, recipientName, recipientEmail) };
   }
 
   /**
@@ -243,7 +251,11 @@ export class QuotesController {
    * share_url is the ready-to-paste public URL the frontend uses for the
    * "Copy link" button — the frontend should not have to know the URL structure.
    */
-  private withShareData(quote: Quote, recipientName: string | null = null): QuoteDetailData {
+  private withShareData(
+    quote: Quote,
+    recipientName: string | null = null,
+    recipientEmail: string | null = null,
+  ): QuoteDetailData {
     const appUrl = (
       this.config.get<string>('APP_BASE_URL') ??
       this.config.get<string>('FRONTEND_URL') ??
@@ -260,6 +272,7 @@ export class QuotesController {
       // CATEGORÍA ("Paciente"/"Prospecto") en vez de a quién.
       // SECURITY: es PII — nunca loguear esta respuesta.
       recipient_name: recipientName,
+      recipient_email: recipientEmail,
     }) as QuoteDetailData;
   }
 }
