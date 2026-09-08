@@ -105,7 +105,7 @@ export class PublicQuotesController {
       data: {
         quoteNumber: quote.quoteNumber,
         status: quote.status,
-        validUntil: quote.validUntil?.toISOString().split('T')[0] ?? null,
+        validUntil: quote.validUntilAsDateString(),
         notes: quote.notes,
         subtotalUsd: quote.subtotalUsd,
         discountType: quote.discountType,

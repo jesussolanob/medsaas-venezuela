@@ -173,7 +173,9 @@ export class SendQuoteUseCase {
   // Private helpers
   // ---------------------------------------------------------------------------
 
-  private computeExpiresAt(validUntil: Date | null): Date {
+  // `Date | string` porque al leer de la base esto es una cadena 'YYYY-MM-DD'
+  // (columna DATEONLY). `new Date(...)` de abajo ya acepta las dos formas.
+  private computeExpiresAt(validUntil: Date | string | null): Date {
     if (validUntil) {
       // validUntil is date-only — expire at end of that day (23:59:59 UTC)
       const d = new Date(validUntil);

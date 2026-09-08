@@ -349,3 +349,24 @@ describe('Quote con validUntil tal como lo devuelve Sequelize (cadena DATEONLY)'
     expect(quoteConCadena('no-es-una-fecha').expiresAt()).toBeNull();
   });
 });
+
+// ─── validUntilAsDateString: el 500 de la pagina publica ─────────────────────
+describe('Quote.validUntilAsDateString', () => {
+  it('serializa la CADENA que devuelve la base sin lanzar', () => {
+    // Antes, el controlador publico hacia `validUntil?.toISOString()`. El `?.`
+    // solo cubre null, y una cadena NO tiene toISOString: la pagina publica del
+    // presupuesto y su PDF —lo que abre el paciente desde el correo— devolvian
+    // 500 para cualquier presupuesto CON fecha de validez.
+    const q = makeQuote({ validUntil: '2026-10-08' as unknown as Date });
+    expect(q.validUntilAsDateString()).toBe('2026-10-08');
+  });
+
+  it('tambien acepta un Date, que es lo que llega al escribir', () => {
+    const q = makeQuote({ validUntil: new Date('2026-10-08T00:00:00.000Z') });
+    expect(q.validUntilAsDateString()).toBe('2026-10-08');
+  });
+
+  it('devuelve null cuando el presupuesto no vence', () => {
+    expect(makeQuote({ validUntil: null }).validUntilAsDateString()).toBeNull();
+  });
+});

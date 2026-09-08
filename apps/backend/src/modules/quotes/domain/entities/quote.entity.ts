@@ -32,7 +32,13 @@ export interface QuoteCreateParams {
   patientId: string | null;
   leadId: string | null;
   status: QuoteStatus;
-  validUntil: Date | null;
+  /**
+   * ⚠️ `Date | string` a propósito, y no `Date`: al LEER de la base esto es una
+   * cadena 'YYYY-MM-DD' (columna DATEONLY), al ESCRIBIR llega un Date desde el
+   * DTO. Declararlo solo `Date` es lo que hizo que el cron de vencimiento no
+   * venciera nada. Para comparar, usá {@link Quote.expiresAt}.
+   */
+  validUntil: Date | string | null;
   notes: string;
   subtotalUsd: number;
   /** What the specialist typed — 30 = $30 for 'amount', 30 = 30% for 'percent'. */
@@ -79,7 +85,8 @@ export class Quote {
   readonly patientId: string | null;
   readonly leadId: string | null;
   readonly status: QuoteStatus;
-  readonly validUntil: Date | null;
+  /** Ver la nota de `QuoteProps.validUntil`: al leer es una cadena. */
+  readonly validUntil: Date | string | null;
   readonly notes: string;
   readonly subtotalUsd: number;
   readonly discountType: QuoteDiscountType;
@@ -196,6 +203,23 @@ export class Quote {
    * vencido casi un día antes que el enlace, y el paciente habría visto un
    * presupuesto vigente que el backend le rechazaba al aceptarlo.
    */
+  /**
+   * `valid_until` como día calendario 'YYYY-MM-DD', listo para serializar.
+   *
+   * Existe porque el controlador público hacía `validUntil?.toISOString()` y eso
+   * LANZA: `?.` solo cubre null/undefined, y una cadena no tiene `toISOString`.
+   * La página pública del presupuesto y su PDF —lo que abre el paciente desde el
+   * correo— habrían dado 500 para cualquier presupuesto CON fecha de validez.
+   *
+   * No explotaba solo porque el campo "Válido hasta" arrancaba vacío y casi nadie
+   * lo llenaba; al prellenarlo con 30 días, habría fallado en todos los nuevos.
+   */
+  validUntilAsDateString(): string | null {
+    if (this.validUntil === null) return null;
+    if (typeof this.validUntil === 'string') return this.validUntil.slice(0, 10);
+    return this.validUntil.toISOString().slice(0, 10);
+  }
+
   expiresAt(): Date | null {
     if (this.validUntil === null) return null;
     const d = new Date(this.validUntil as Date | string);

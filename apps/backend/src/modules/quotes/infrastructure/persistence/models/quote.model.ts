@@ -57,7 +57,7 @@ export class QuoteModel extends Model {
   declare status: string;
 
   @Column({ type: DataType.DATEONLY, allowNull: true, field: 'valid_until' })
-  declare validUntil: Date | null;
+  declare validUntil: Date | string | null;
 
   @Default('')
   @Column({ type: DataType.TEXT, allowNull: false })
