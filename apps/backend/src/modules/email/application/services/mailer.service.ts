@@ -13,6 +13,7 @@ import { EMAIL_PORT } from '../ports/email.port';
 import type { IEmailPort, EmailSendResult } from '../ports/email.port';
 import { EmailTemplateNotFoundError } from '../../domain/errors/email-template-not-found.error';
 import { EmailSendLog, type EmailRecipientRef } from '../../domain/entities/email-send-log.entity';
+import { EmailSendError } from '../../domain/errors/email.error';
 
 export type { EmailRecipientRef };
 
@@ -142,7 +143,15 @@ export class MailerService {
           recipientId,
           templateName: name,
           provider,
-          errorDetail: sendError instanceof Error ? sendError.message : String(sendError),
+          // El detalle CRUDO del proveedor viaja en `detail` y no en `message`,
+          // justamente para que no termine en los logs de aplicación. Acá sí se
+          // guarda entero: esta tabla tiene el control de acceso de la base.
+          errorDetail:
+            sendError instanceof EmailSendError && sendError.detail !== null
+              ? sendError.detail
+              : sendError instanceof Error
+                ? sendError.message
+                : String(sendError),
           createdAt: new Date(),
         }),
       );

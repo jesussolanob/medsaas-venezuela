@@ -19,6 +19,16 @@ import { QuoteItem } from './quote-item.entity';
 export type QuoteStatus = 'draft' | 'sent' | 'accepted' | 'rejected' | 'expired';
 
 /**
+ * Desfase horario de Venezuela respecto de UTC, en horas.
+ *
+ * Es un número fijo y no una conversión de zona a propósito: Venezuela no aplica
+ * horario de verano —está en UTC-4 sin excepciones desde mayo de 2016—, así que
+ * el desfase no cambia con la fecha. Se usa para llevar un día calendario
+ * (`valid_until`, sin hora) a su instante real de corte.
+ */
+export const VENEZUELA_UTC_OFFSET_HOURS = 4;
+
+/**
  * 'amount'  → discountValue is a flat USD amount (e.g. 30 = $30).
  * 'percent' → discountValue is a percentage of the subtotal (e.g. 30 = 30%),
  *             clamped to 0..100 by computeDiscount().
@@ -32,7 +42,13 @@ export interface QuoteCreateParams {
   patientId: string | null;
   leadId: string | null;
   status: QuoteStatus;
-  validUntil: Date | null;
+  /**
+   * ⚠️ `Date | string` a propósito, y no `Date`: al LEER de la base esto es una
+   * cadena 'YYYY-MM-DD' (columna DATEONLY), al ESCRIBIR llega un Date desde el
+   * DTO. Declararlo solo `Date` es lo que hizo que el cron de vencimiento no
+   * venciera nada. Para comparar, usá {@link Quote.expiresAt}.
+   */
+  validUntil: Date | string | null;
   notes: string;
   subtotalUsd: number;
   /** What the specialist typed — 30 = $30 for 'amount', 30 = 30% for 'percent'. */
@@ -46,6 +62,13 @@ export interface QuoteCreateParams {
   sentAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
+  /**
+   * Timestamp when the "about to expire" reminder was sent (or attempted —
+   * see DispatchQuoteExpiryNoticesUseCase). Null means it has not been
+   * dispatched yet. Stamped even when the recipient has no email on file, so
+   * the sweep never retries the same quote forever.
+   */
+  expiryReminderSentAt?: Date | null;
   items?: QuoteItem[];
   /**
    * Active (non-revoked) share link token for this quote.
@@ -72,7 +95,8 @@ export class Quote {
   readonly patientId: string | null;
   readonly leadId: string | null;
   readonly status: QuoteStatus;
-  readonly validUntil: Date | null;
+  /** Ver la nota de `QuoteProps.validUntil`: al leer es una cadena. */
+  readonly validUntil: Date | string | null;
   readonly notes: string;
   readonly subtotalUsd: number;
   readonly discountType: QuoteDiscountType;
@@ -84,6 +108,8 @@ export class Quote {
   readonly sentAt: Date | null;
   readonly createdAt: Date;
   readonly updatedAt: Date;
+  /** See QuoteCreateParams.expiryReminderSentAt. */
+  readonly expiryReminderSentAt: Date | null;
   readonly items: QuoteItem[];
   /** Active share token — null for drafts or revoked links. Doctor-side only. */
   readonly shareToken: string | null;
@@ -109,6 +135,7 @@ export class Quote {
     this.sentAt = params.sentAt;
     this.createdAt = params.createdAt;
     this.updatedAt = params.updatedAt;
+    this.expiryReminderSentAt = params.expiryReminderSentAt ?? null;
     this.items = params.items ?? [];
     this.shareToken = params.shareToken ?? null;
     this.recipientName = params.recipientName ?? null;
@@ -136,6 +163,82 @@ export class Quote {
   /** Only draft quotes can be sent. */
   canBeSent(): boolean {
     return this.status === 'draft';
+  }
+
+  /**
+   * True when this quote is a candidate for the "about to expire" reminder:
+   * still 'sent' (never accepted/rejected/expired), has a validUntil date,
+   * that date falls within [now, now + windowDays] inclusive, and the
+   * reminder has not already been dispatched.
+   *
+   * Kept as a domain predicate (not buried in repository SQL or use-case
+   * date arithmetic) so DispatchQuoteExpiryNoticesUseCase can defensively
+   * re-check every candidate the repository returns, the same way
+   * isOwnedBy() double-checks ownership instead of trusting the caller.
+   */
+  isDueForExpiryReminder(now: Date, windowDays: number): boolean {
+    if (this.status !== 'sent') return false;
+    if (this.expiryReminderSentAt !== null) return false;
+    const corte = this.expiresAt();
+    if (corte === null) return false;
+    // El fin de la ventana también se lleva al FIN de su día venezolano, igual
+    // que el corte: si no, un presupuesto que vence el último día de la ventana
+    // quedaba afuera por unas horas (su corte es el final de ese día; `now + 3
+    // días` es la hora en que corrió el cron). La regla se piensa en días
+    // calendario de las dos puntas, y las dos puntas tienen que medir igual.
+    const windowEnd = new Date(now.getTime() + windowDays * 24 * 60 * 60 * 1000);
+    windowEnd.setUTCHours(23 + VENEZUELA_UTC_OFFSET_HOURS, 59, 59, 999);
+    return corte >= now && corte <= windowEnd;
+  }
+
+  /**
+   * Instante EXACTO en que este presupuesto deja de valer, o null si no vence.
+   *
+   * ⚠️ NUNCA compares `validUntil` directamente contra un `Date`. El campo está
+   * declarado `Date | null`, pero en tiempo de ejecución es una CADENA
+   * 'YYYY-MM-DD': la columna es `DataType.DATEONLY` y Sequelize 6 la sanea con
+   * `moment(value).format('YYYY-MM-DD')` (`data-types.js`, `DATEONLY._sanitize`).
+   * El repositorio la pasa tal cual a la entidad, así que TypeScript da por buena
+   * una anotación que no se corresponde con lo que hay en memoria.
+   *
+   * Comparar esa cadena con un `Date` no da un resultado "casi bien": da SIEMPRE
+   * `false`. La comparación relacional convierte ambos lados a número y
+   * `Number('2026-10-08')` es `NaN`, y toda comparación contra `NaN` es falsa.
+   * Con la comparación cruda, nada vencía nunca y ningún aviso salía jamás — y
+   * los tests no lo veían porque construyen la entidad con `Date` de verdad.
+   *
+   * El corte es el FIN del día **en hora de Venezuela**, no su medianoche UTC.
+   * Con la medianoche, el estado se habría vencido casi un día antes que el
+   * enlace público, y el paciente habría visto un presupuesto vigente que el
+   * backend le rechazaba al aceptarlo.
+   */
+  /**
+   * `valid_until` como día calendario 'YYYY-MM-DD', listo para serializar.
+   *
+   * Existe porque el controlador público hacía `validUntil?.toISOString()` y eso
+   * LANZA: `?.` solo cubre null/undefined, y una cadena no tiene `toISOString`.
+   * La página pública del presupuesto y su PDF —lo que abre el paciente desde el
+   * correo— habrían dado 500 para cualquier presupuesto CON fecha de validez.
+   *
+   * No explotaba solo porque el campo "Válido hasta" arrancaba vacío y casi nadie
+   * lo llenaba; al prellenarlo con 30 días, habría fallado en todos los nuevos.
+   */
+  validUntilAsDateString(): string | null {
+    if (this.validUntil === null) return null;
+    if (typeof this.validUntil === 'string') return this.validUntil.slice(0, 10);
+    return this.validUntil.toISOString().slice(0, 10);
+  }
+
+  expiresAt(): Date | null {
+    if (this.validUntil === null) return null;
+    const d = new Date(this.validUntil as Date | string);
+    if (Number.isNaN(d.getTime())) return null;
+    // Fin del día EN CARACAS, no en UTC. Venezuela es UTC-4, así que el final
+    // del 8 de octubre allá son las 03:59:59.999 UTC del 9. Cortando en las
+    // 23:59:59 UTC, el presupuesto moría a las 19:59 de Caracas y el paciente
+    // perdía las últimas cuatro horas del día que la pantalla le prometió.
+    d.setUTCHours(23 + VENEZUELA_UTC_OFFSET_HOURS, 59, 59, 999);
+    return d;
   }
 
   /**

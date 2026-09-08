@@ -164,6 +164,59 @@ describe('Quote domain invariants', () => {
   });
 });
 
+// ─── Quote.isDueForExpiryReminder ───────────────────────────────────────────
+
+describe('Quote.isDueForExpiryReminder', () => {
+  const DAY = 24 * 60 * 60 * 1000;
+
+  it('returns false when status is not sent', () => {
+    const q = makeQuote({ status: 'draft', validUntil: new Date(now.getTime() + DAY) });
+    expect(q.isDueForExpiryReminder(now, 3)).toBe(false);
+  });
+
+  it('returns false for accepted quotes even with an overdue validUntil', () => {
+    const q = makeQuote({ status: 'accepted', validUntil: new Date(now.getTime() - DAY) });
+    expect(q.isDueForExpiryReminder(now, 3)).toBe(false);
+  });
+
+  it('returns false when validUntil is null', () => {
+    const q = makeQuote({ status: 'sent', validUntil: null });
+    expect(q.isDueForExpiryReminder(now, 3)).toBe(false);
+  });
+
+  it('returns false when expiryReminderSentAt is already set (idempotency)', () => {
+    const q = makeQuote({
+      status: 'sent',
+      validUntil: new Date(now.getTime() + 2 * DAY),
+      expiryReminderSentAt: now,
+    });
+    expect(q.isDueForExpiryReminder(now, 3)).toBe(false);
+  });
+
+  it('returns true when validUntil falls within the window (inclusive lower bound)', () => {
+    const q = makeQuote({ status: 'sent', validUntil: now });
+    expect(q.isDueForExpiryReminder(now, 3)).toBe(true);
+  });
+
+  it('returns true when validUntil falls within the window (inclusive upper bound)', () => {
+    const q = makeQuote({ status: 'sent', validUntil: new Date(now.getTime() + 3 * DAY) });
+    expect(q.isDueForExpiryReminder(now, 3)).toBe(true);
+  });
+
+  it('returns false when validUntil is more than windowDays away', () => {
+    const q = makeQuote({ status: 'sent', validUntil: new Date(now.getTime() + 10 * DAY) });
+    expect(q.isDueForExpiryReminder(now, 3)).toBe(false);
+  });
+
+  it('returns false when validUntil is already in the past (handled by the expiry sweep instead)', () => {
+    // -2 días y no -1: `now` es medianoche UTC, o sea las 20:00 del día ANTERIOR
+    // en Caracas, así que un presupuesto de "ayer" todavía está vigente cuatro
+    // horas más. Ver el describe del corte en hora de Caracas, más abajo.
+    const q = makeQuote({ status: 'sent', validUntil: new Date(now.getTime() - 2 * DAY) });
+    expect(q.isDueForExpiryReminder(now, 3)).toBe(false);
+  });
+});
+
 // ─── QuoteItem entity ────────────────────────────────────────────────────────
 
 describe('QuoteItem.create', () => {
@@ -235,5 +288,111 @@ describe('QuoteShareLink', () => {
     const future = new Date(now.getTime() + 86_400_000);
     const link = makeLink(future, new Date());
     expect(link.isValid(now)).toBe(false);
+  });
+});
+
+// ─── El tipo de validUntil MIENTE: en memoria es una cadena ──────────────────
+//
+// La columna es DataType.DATEONLY y Sequelize 6 la sanea con
+// moment(v).format('YYYY-MM-DD') — devuelve un STRING, no un Date, aunque el
+// modelo y la entidad lo declaren `Date | null`.
+//
+// Todos los demás tests de este archivo construyen la entidad con `new Date()`,
+// así que ninguno reproduce lo que llega de la base. Estos sí: pasan la cadena
+// CRUDA, tal cual sale del driver.
+//
+// Sin esto, el cron de vencimiento era un no-op silencioso en producción con la
+// suite entera en verde: comparar 'YYYY-MM-DD' contra un Date convierte ambos
+// lados a número, Number('2026-10-08') es NaN, y toda comparación contra NaN es
+// falsa. No vencía nada y no salía ningún aviso.
+describe('Quote con validUntil tal como lo devuelve Sequelize (cadena DATEONLY)', () => {
+  const DAY = 24 * 60 * 60 * 1000;
+  /** Formatea como lo hace DATEONLY._sanitize: 'YYYY-MM-DD'. */
+  function comoDateonly(d: Date): string {
+    return d.toISOString().slice(0, 10);
+  }
+  /** El cast reproduce la mentira del tipo: en runtime acá llega una cadena. */
+  function quoteConCadena(fecha: string, extra = {}): Quote {
+    return makeQuote({ validUntil: fecha as unknown as Date, status: 'sent', ...extra });
+  }
+
+  it('expiresAt() interpreta la cadena y devuelve el FIN del día, no su medianoche', () => {
+    const q = quoteConCadena('2026-10-08');
+    const corte = q.expiresAt();
+    expect(corte).not.toBeNull();
+    // 03:59:59.999 UTC del 9 = 23:59:59.999 del 8 en Caracas (UTC-4).
+    expect(corte?.toISOString()).toBe('2026-10-09T03:59:59.999Z');
+  });
+
+  it('detecta como vencida una cadena de anteayer (antes daba SIEMPRE false)', () => {
+    // Anteayer y no ayer: con `now` a medianoche UTC (20:00 en Caracas del día
+    // previo), el día de "ayer" todavía no terminó allá.
+    const anteayer = comoDateonly(new Date(now.getTime() - 2 * DAY));
+    const corte = quoteConCadena(anteayer).expiresAt();
+    expect(corte).not.toBeNull();
+    expect((corte as Date) < now).toBe(true);
+  });
+
+  it('sigue vigente todo el día que promete la pantalla', () => {
+    // Vence hoy: a cualquier hora de hoy TODAVÍA vale — es lo que se le dijo al
+    // paciente ("vence el 8 de octubre") y lo que ya hacía el enlace público.
+    const hoy = comoDateonly(now);
+    const corte = quoteConCadena(hoy).expiresAt();
+    expect((corte as Date) < now).toBe(false);
+  });
+
+  it('dispara el aviso cuando faltan 2 días, con la fecha como cadena', () => {
+    const en2dias = comoDateonly(new Date(now.getTime() + 2 * DAY));
+    expect(quoteConCadena(en2dias).isDueForExpiryReminder(now, 3)).toBe(true);
+  });
+
+  it('no dispara el aviso cuando faltan 10 días', () => {
+    const en10dias = comoDateonly(new Date(now.getTime() + 10 * DAY));
+    expect(quoteConCadena(en10dias).isDueForExpiryReminder(now, 3)).toBe(false);
+  });
+
+  it('expiresAt() devuelve null ante una fecha impresentable, sin explotar', () => {
+    expect(quoteConCadena('no-es-una-fecha').expiresAt()).toBeNull();
+  });
+});
+
+// ─── validUntilAsDateString: el 500 de la pagina publica ─────────────────────
+describe('Quote.validUntilAsDateString', () => {
+  it('serializa la CADENA que devuelve la base sin lanzar', () => {
+    // Antes, el controlador publico hacia `validUntil?.toISOString()`. El `?.`
+    // solo cubre null, y una cadena NO tiene toISOString: la pagina publica del
+    // presupuesto y su PDF —lo que abre el paciente desde el correo— devolvian
+    // 500 para cualquier presupuesto CON fecha de validez.
+    const q = makeQuote({ validUntil: '2026-10-08' as unknown as Date });
+    expect(q.validUntilAsDateString()).toBe('2026-10-08');
+  });
+
+  it('tambien acepta un Date, que es lo que llega al escribir', () => {
+    const q = makeQuote({ validUntil: new Date('2026-10-08T00:00:00.000Z') });
+    expect(q.validUntilAsDateString()).toBe('2026-10-08');
+  });
+
+  it('devuelve null cuando el presupuesto no vence', () => {
+    expect(makeQuote({ validUntil: null }).validUntilAsDateString()).toBeNull();
+  });
+});
+
+// ─── El corte va en hora de Caracas, no en UTC ───────────────────────────────
+describe('Quote.expiresAt — el dia que se promete es el dia venezolano', () => {
+  it('sigue vigente a las 21:00 de Caracas del dia que vence', () => {
+    // 21:00 en Caracas del 8 de octubre = 01:00 UTC del 9.
+    const nocheDelOcho = new Date('2026-10-09T01:00:00.000Z');
+    const q = makeQuote({ status: 'sent', validUntil: '2026-10-08' as unknown as Date });
+    const corte = q.expiresAt() as Date;
+
+    // Con el corte en 23:59:59 UTC, esto habria dado `true` —vencido— y el
+    // paciente perdia las ultimas cuatro horas de "su" 8 de octubre.
+    expect(corte < nocheDelOcho).toBe(false);
+  });
+
+  it('ya vencio a las 00:30 de Caracas del dia siguiente', () => {
+    const madrugadaDelNueve = new Date('2026-10-09T04:30:00.000Z');
+    const q = makeQuote({ status: 'sent', validUntil: '2026-10-08' as unknown as Date });
+    expect((q.expiresAt() as Date) < madrugadaDelNueve).toBe(true);
   });
 });

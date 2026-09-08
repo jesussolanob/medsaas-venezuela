@@ -17,6 +17,7 @@ import { DispatchPendingConsultationRemindersUseCase } from '../../../pending-co
 import type { DispatchPendingRemindersResult } from '../../../pending-consultations/application/use-cases/dispatch-pending-consultation-reminders.use-case';
 import { ApplyScheduledDeactivationsUseCase } from '../../../doctor-settings/application/use-cases/doctor-settings/apply-scheduled-deactivations.use-case';
 import { ExpireDuePendingConsultationsUseCase } from '../../../pending-consultations/application/use-cases/expire-due-pending-consultations.use-case';
+import { DispatchQuoteExpiryNoticesUseCase } from '../../../quotes/application/use-cases/dispatch-quote-expiry-notices.use-case';
 
 interface CronRunResult extends DispatchDueRemindersResult {
   /** Pending consultation reminder emails sent in this run. */
@@ -29,6 +30,12 @@ interface CronRunResult extends DispatchDueRemindersResult {
   pendingExpired: number;
   /** Cuentas con baja programada que vencieron y pasaron a plan gratuito. */
   scheduledDeactivationsApplied: number;
+  /** Presupuestos vencidos (status sent → expired) en esta corrida. */
+  quotesExpired: number;
+  /** Avisos de "presupuesto por vencer" enviados en esta corrida. */
+  quoteExpiryRemindersSent: number;
+  /** Avisos de "presupuesto por vencer" que fallaron en esta corrida. */
+  quoteExpiryRemindersFailed: number;
 }
 
 interface SuccessResponse<T> {
@@ -48,11 +55,11 @@ interface SuccessResponse<T> {
  *     If CRON_SECRET is not configured the guard rejects all requests (fail-closed).
  *   - Never exposes patient PII in the response; only aggregate counts.
  *
- * Pending consultation sub-tasks run after appointment reminders.
- * They are wrapped in individual try/catch so that a failure in either
- * pending sub-task does NOT abort the appointment-reminder flow.
- * Both sub-tasks are @Optional() so the controller remains testable and
- * backwards-compatible if PendingConsultationsModule is not imported.
+ * Pending consultation sub-tasks (and the quote-expiry sub-task, step 5) run
+ * after appointment reminders. Each is wrapped in its own try/catch so that a
+ * failure in any of them does NOT abort the appointment-reminder flow.
+ * Every sub-task is @Optional() so the controller remains testable and
+ * backwards-compatible if its owning module is not imported.
  *
  * POST /api/cron/doctor-inactivity is a SEPARATE endpoint (not folded into
  * `run()` above) because it runs once a day, while appointment-reminders
@@ -74,6 +81,9 @@ export class CronRemindersController {
     @Optional()
     @Inject(ApplyScheduledDeactivationsUseCase)
     private readonly applyScheduledDeactivations: ApplyScheduledDeactivationsUseCase | null,
+    @Optional()
+    @Inject(DispatchQuoteExpiryNoticesUseCase)
+    private readonly dispatchQuoteExpiryNotices: DispatchQuoteExpiryNoticesUseCase | null,
   ) {}
 
   @Post('appointment-reminders')
@@ -124,6 +134,27 @@ export class CronRemindersController {
       }
     }
 
+    // 5. Quote expiry sweep + "about to expire" notice (best-effort). Va acá
+    //    y no en un cron nuevo: no hay forma de dar de alta un Cloud Scheduler
+    //    nuevo, y este endpoint ya corre cada 15 minutos sin haber sido nunca
+    //    pausado (a diferencia de doctor-inactivity).
+    let quotesExpired = 0;
+    let quoteExpiryRemindersSent = 0;
+    let quoteExpiryRemindersFailed = 0;
+    if (this.dispatchQuoteExpiryNotices) {
+      try {
+        const result = await this.dispatchQuoteExpiryNotices.execute();
+        quotesExpired = result.quotesExpired;
+        quoteExpiryRemindersSent = result.quoteExpiryRemindersSent;
+        quoteExpiryRemindersFailed = result.quoteExpiryRemindersFailed;
+      } catch (err: unknown) {
+        this.logger.warn(
+          '[cron] dispatchQuoteExpiryNotices failed — appointment reminders unaffected: ' +
+            (err instanceof Error ? err.message : String(err)),
+        );
+      }
+    }
+
     return {
       success: true,
       data: {
@@ -133,6 +164,9 @@ export class CronRemindersController {
         pendingRemindersSkipped: pendingRemindersResult.skipped,
         pendingRemindersFailed: pendingRemindersResult.failed,
         pendingExpired,
+        quotesExpired,
+        quoteExpiryRemindersSent,
+        quoteExpiryRemindersFailed,
       },
     };
   }

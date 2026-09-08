@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/sequelize';
-import { QueryTypes, type WhereOptions } from 'sequelize';
+import { Op, QueryTypes, type WhereOptions } from 'sequelize';
 import { Sequelize } from 'sequelize-typescript';
 import { randomUUID } from 'crypto';
 import {
@@ -545,6 +545,50 @@ export class SequelizeQuoteRepository implements IQuoteRepository {
   }
 
   // --------------------------------------------------------------------------
+  // Expiry sweep + reminder (cron)
+  // --------------------------------------------------------------------------
+
+  async findQuotesNearingExpiry(windowEnd: Date, cap: number): Promise<Quote[]> {
+    const rows = await this.quoteModel.findAll({
+      where: {
+        status: 'sent',
+        validUntil: { [Op.ne]: null, [Op.lte]: windowEnd },
+      } as WhereOptions,
+      include: [{ model: QuoteItemModel, as: 'items' }],
+      order: [['validUntil', 'ASC']],
+      limit: cap,
+    });
+    if (rows.length === 0) return [];
+
+    // Batch-fetch active share links for these quotes — one query, not N.
+    const links = await this.linkModel.findAll({
+      where: {
+        quoteId: rows.map((r) => r.id),
+        revokedAt: null,
+      } as WhereOptions,
+      order: [['createdAt', 'DESC']],
+      attributes: ['quoteId', 'token'],
+    });
+    // Rows are ordered DESC so the first occurrence per quoteId is the most
+    // recent active link (there should only ever be one, but be defensive).
+    const tokenByQuoteId = new Map<string, string>();
+    for (const link of links) {
+      if (!tokenByQuoteId.has(link.quoteId)) {
+        tokenByQuoteId.set(link.quoteId, link.token);
+      }
+    }
+
+    return rows.map((r) => this.toDomain(r, tokenByQuoteId.get(r.id) ?? null));
+  }
+
+  async markExpiryReminderSent(id: string, sentAt: Date): Promise<void> {
+    await this.quoteModel.update(
+      { expiryReminderSentAt: sentAt },
+      { where: { id } as WhereOptions },
+    );
+  }
+
+  // --------------------------------------------------------------------------
   // Private helpers
   // --------------------------------------------------------------------------
 
@@ -589,6 +633,7 @@ export class SequelizeQuoteRepository implements IQuoteRepository {
       sentAt: row.sentAt,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
+      expiryReminderSentAt: row.expiryReminderSentAt,
       items: itemRows.map((i) => this.itemToDomain(i)),
       shareToken,
     });

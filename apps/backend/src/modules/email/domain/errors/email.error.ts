@@ -11,7 +11,19 @@ export class EmailSendError extends DomainError {
   readonly code = 'EMAIL_SEND_FAILED';
   override readonly httpStatus = 502;
 
-  constructor(cause?: string) {
+  /**
+   * Texto CRUDO del proveedor. Se guarda en `email_send_log.error_detail`, que
+   * tiene el mismo control de acceso que el resto de la base — y NUNCA se pone
+   * en `message`, que los llamadores interpolan en sus logs.
+   *
+   * Existe porque Resend devuelve la dirección rechazada dentro del mensaje de
+   * error ("The <dirección> address is not verified"). Metido en `message`, el
+   * correo de un paciente terminaba en Cloud Logging, que no está cifrado.
+   */
+  readonly detail: string | null;
+
+  constructor(cause?: string, detail?: string) {
     super(cause ? `No se pudo enviar el correo: ${cause}` : 'No se pudo enviar el correo');
+    this.detail = detail ?? null;
   }
 }

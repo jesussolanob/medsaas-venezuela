@@ -32,4 +32,23 @@ describe('EmailSendError', () => {
     const error = new EmailSendError();
     expect(error.name).toBe('EmailSendError');
   });
+
+  it('leaves detail null when none is provided', () => {
+    expect(new EmailSendError('invalid_api_key').detail).toBeNull();
+  });
+
+  it('keeps the raw provider text OUT of the message and only in detail', () => {
+    // Arrange: Resend mete la dirección rechazada adentro del texto del error.
+    const crudo = 'The paciente@ejemplo.com address is not verified';
+
+    // Act
+    const error = new EmailSendError('validation_error (403)', crudo);
+
+    // Assert: `message` es lo que los llamadores interpolan en sus logs, así que
+    // la dirección NO puede estar ahí; el texto completo queda en `detail`, que
+    // solo se guarda en email_send_log.
+    expect(error.message).not.toContain('paciente@ejemplo.com');
+    expect(error.message).toBe('No se pudo enviar el correo: validation_error (403)');
+    expect(error.detail).toBe(crudo);
+  });
 });

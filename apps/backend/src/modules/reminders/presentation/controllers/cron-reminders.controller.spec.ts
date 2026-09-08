@@ -4,6 +4,7 @@ import { DispatchDueRemindersUseCase } from '../../application/use-cases/reminde
 import { DispatchDoctorInactivityNoticesUseCase } from '../../application/use-cases/reminders/dispatch-doctor-inactivity-notices.use-case';
 import { DispatchPendingConsultationRemindersUseCase } from '../../../pending-consultations/application/use-cases/dispatch-pending-consultation-reminders.use-case';
 import { ExpireDuePendingConsultationsUseCase } from '../../../pending-consultations/application/use-cases/expire-due-pending-consultations.use-case';
+import { DispatchQuoteExpiryNoticesUseCase } from '../../../quotes/application/use-cases/dispatch-quote-expiry-notices.use-case';
 import { CronSecretGuard } from '../../../../infrastructure/guards/cron-secret.guard';
 
 describe('CronRemindersController', () => {
@@ -12,6 +13,7 @@ describe('CronRemindersController', () => {
   let mockDispatchDoctorInactivityNotices: { execute: jest.Mock };
   let mockDispatchPendingReminders: { execute: jest.Mock };
   let mockExpirePending: { execute: jest.Mock };
+  let mockDispatchQuoteExpiryNotices: { execute: jest.Mock };
 
   beforeEach(async () => {
     mockDispatchDueReminders = {
@@ -25,6 +27,11 @@ describe('CronRemindersController', () => {
     };
     mockExpirePending = {
       execute: jest.fn().mockResolvedValue(0),
+    };
+    mockDispatchQuoteExpiryNotices = {
+      execute: jest
+        .fn()
+        .mockResolvedValue({ quotesExpired: 0, quoteExpiryRemindersSent: 0, quoteExpiryRemindersFailed: 0 }),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -40,6 +47,7 @@ describe('CronRemindersController', () => {
           useValue: mockDispatchPendingReminders,
         },
         { provide: ExpireDuePendingConsultationsUseCase, useValue: mockExpirePending },
+        { provide: DispatchQuoteExpiryNoticesUseCase, useValue: mockDispatchQuoteExpiryNotices },
       ],
     })
       .overrideGuard(CronSecretGuard)
@@ -58,6 +66,42 @@ describe('CronRemindersController', () => {
         expect.objectContaining({ sent24h: 0, failed24h: 0, sent1h: 0, failed1h: 0 }),
       );
       expect(mockDispatchDoctorInactivityNotices.execute).not.toHaveBeenCalled();
+    });
+
+    it('includes the quote-expiry counters from DispatchQuoteExpiryNoticesUseCase', async () => {
+      mockDispatchQuoteExpiryNotices.execute.mockResolvedValue({
+        quotesExpired: 2,
+        quoteExpiryRemindersSent: 3,
+        quoteExpiryRemindersFailed: 1,
+      });
+
+      const result = await controller.run();
+
+      expect(result.data).toEqual(
+        expect.objectContaining({
+          quotesExpired: 2,
+          quoteExpiryRemindersSent: 3,
+          quoteExpiryRemindersFailed: 1,
+        }),
+      );
+    });
+
+    it('still returns a normal response when DispatchQuoteExpiryNoticesUseCase throws', async () => {
+      mockDispatchQuoteExpiryNotices.execute.mockRejectedValue(new Error('db down'));
+
+      const result = await controller.run();
+
+      expect(result.success).toBe(true);
+      expect(result.data).toEqual(
+        expect.objectContaining({ sent24h: 0, failed24h: 0, sent1h: 0, failed1h: 0 }),
+      );
+      expect(result.data).toEqual(
+        expect.objectContaining({
+          quotesExpired: 0,
+          quoteExpiryRemindersSent: 0,
+          quoteExpiryRemindersFailed: 0,
+        }),
+      );
     });
   });
 

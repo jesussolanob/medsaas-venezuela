@@ -21,6 +21,7 @@ import { SendQuoteUseCase } from './application/use-cases/send-quote.use-case';
 import { UpdateQuoteStatusUseCase } from './application/use-cases/update-quote-status.use-case';
 import { GetPublicQuoteUseCase } from './application/use-cases/get-public-quote.use-case';
 import { UpdatePublicQuoteStatusUseCase } from './application/use-cases/update-public-quote-status.use-case';
+import { DispatchQuoteExpiryNoticesUseCase } from './application/use-cases/dispatch-quote-expiry-notices.use-case';
 
 // Controllers
 import { QuotesController } from './presentation/controllers/quotes.controller';
@@ -54,6 +55,11 @@ import { LeadsModule } from '../leads/leads.module';
  *
  * IMPORTANT: Sequelize is NOT in providers[] — already registered globally by
  * SequelizeModule.forRootAsync in AppModule. Adding it here causes a boot crash.
+ *
+ * DispatchQuoteExpiryNoticesUseCase is exported so RemindersModule can inject
+ * it (best-effort, @Optional) into the existing appointment-reminders cron —
+ * there is no separate Cloud Scheduler job for quote expiry. No import cycle:
+ * RemindersModule does not appear anywhere in this module's import graph.
  */
 @Module({
   imports: [
@@ -82,6 +88,8 @@ import { LeadsModule } from '../leads/leads.module';
     UpdateQuoteStatusUseCase,
     GetPublicQuoteUseCase,
     UpdatePublicQuoteStatusUseCase,
+    DispatchQuoteExpiryNoticesUseCase,
   ],
+  exports: [DispatchQuoteExpiryNoticesUseCase],
 })
 export class QuotesModule {}
