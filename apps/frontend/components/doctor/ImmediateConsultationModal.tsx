@@ -99,6 +99,15 @@ export default function ImmediateConsultationModal({
 
   const [window_, setWindow] = useState<Window | null>(null);
   const [saving, setSaving] = useState(false);
+  /**
+   * La consulta YA se creó y se está abriendo su detalle.
+   *
+   * El modal se cerraba apenas respondía el backend y la navegación de Next
+   * tardaba: el especialista quedaba mirando el inicio, sin saber si el sistema
+   * estaba trabajando o se había colgado. Ahora el modal se queda puesto con
+   * este aviso y desaparece solo cuando la pantalla nueva ya está montada.
+   */
+  const [redirecting, setRedirecting] = useState(false);
   const [error, setError] = useState('');
 
   const selectedService = services.find((s) => s.id === serviceId) ?? null;
@@ -282,6 +291,9 @@ export default function ImmediateConsultationModal({
       }
 
       showToast({ type: 'success', message: 'Consulta registrada' });
+      // No se apaga `saving` ni se cierra: la navegación la dispara el padre y
+      // el modal debe seguir a la vista hasta que la consulta esté abierta.
+      setRedirecting(true);
       onCreated(json.data?.consultationId ?? null, json.data?.appointmentId ?? '');
     } catch {
       setError('No se pudo registrar la consulta.');
@@ -313,14 +325,29 @@ export default function ImmediateConsultationModal({
   const noRoom = !!window_ && !fits && !canShorten;
 
   return (
-    <div
-      className="fixed inset-0 bg-black/50 flex items-center justify-center z-[70] p-4"
-      onClick={() => !saving && onClose()}
-    >
-      <div
-        className="bg-white rounded-2xl shadow-2xl max-w-lg w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto"
-        onClick={(e) => e.stopPropagation()}
-      >
+    // El clic en el fondo NO cierra: se pierde todo lo cargado (paciente,
+    // servicio, duración) de un manotazo accidental mientras el paciente está
+    // enfrente. La única salida es "Cancelar" o la X (pedido del dueño).
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[70] p-4">
+      <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto relative">
+        {/*
+          Capa de "ya está creada, te estoy llevando". Cubre el formulario en vez
+          de cerrarlo: así el especialista ve que el sistema está trabajando en
+          lugar de quedar frente al inicio sin saber qué pasó.
+        */}
+        {redirecting && (
+          <div
+            className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 rounded-2xl bg-white/95"
+            role="status"
+            aria-live="polite"
+          >
+            <Loader2 className="h-7 w-7 animate-spin text-teal-500" />
+            <div className="text-center">
+              <p className="text-sm font-bold text-slate-800">Consulta registrada</p>
+              <p className="mt-0.5 text-xs text-slate-500">Abriendo la consulta…</p>
+            </div>
+          </div>
+        )}
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-600 flex items-center justify-center shrink-0">
@@ -333,7 +360,7 @@ export default function ImmediateConsultationModal({
           </div>
           <button
             onClick={onClose}
-            disabled={saving}
+            disabled={saving || redirecting}
             className="text-slate-400 hover:text-slate-600 disabled:opacity-50"
             aria-label="Cerrar"
           >
@@ -618,7 +645,7 @@ export default function ImmediateConsultationModal({
             <div className="flex gap-2 pt-1">
               <button
                 onClick={onClose}
-                disabled={saving}
+                disabled={saving || redirecting}
                 className="flex-1 py-2.5 border border-slate-200 rounded-lg text-sm font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50"
               >
                 Cancelar
@@ -628,7 +655,7 @@ export default function ImmediateConsultationModal({
                 // acortar se envía sin force y el backend la recorta hasta la
                 // próxima cita, en vez de pisarla a duración completa.
                 onClick={() => void submit(noRoom)}
-                disabled={saving || (!pendingId && !serviceId)}
+                disabled={saving || redirecting || (!pendingId && !serviceId)}
                 className="flex-1 py-2.5 bg-teal-500 text-white rounded-lg text-sm font-semibold hover:bg-teal-600 disabled:opacity-40 inline-flex items-center justify-center gap-2"
               >
                 {saving && <Loader2 className="w-4 h-4 animate-spin" />}

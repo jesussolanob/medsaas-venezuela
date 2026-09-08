@@ -452,7 +452,15 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
   const { rate: bcvRate, toBs, format, currencyCode } = useBcvRate();
   const { features: planFeatures, loading: planLoading } = useDoctorFeatures();
 
-  const [view, setView] = useState<ViewMode>('list');
+  /**
+   * Con `?open=<id>` se arranca YA en la vista de consulta, no en el listado.
+   *
+   * Antes siempre empezaba en 'list' y recién cambiaba cuando resolvía el fetch:
+   * quien llegaba desde una consulta inmediata veía pasar el listado completo
+   * antes de aterrizar donde iba. Si el fetch falla, los caminos de error de más
+   * abajo devuelven la vista al listado, así que no queda encerrada.
+   */
+  const [view, setView] = useState<ViewMode>(openId ? 'consultation' : 'list');
   const [selected, setSelected] = useState<Consultation | null>(null);
   // Si el Server Component pasó datos iniciales, úsalos para evitar el spinner.
   // El cliente puede refrescar/paginar y actualizar este estado normalmente.
@@ -3245,6 +3253,32 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
 
   const upcoming = consultations.filter((c) => new Date(c.consultation_date) > now).length;
   const todayCount = consultations.filter((c) => c.consultation_date.startsWith(today)).length;
+
+  /*
+   * Se llegó con ?open=<id> y la consulta todavía viaja.
+   *
+   * Sin esta rama, `selected` en null hacía caer el render al LISTADO: quien
+   * venía de una consulta inmediata veía pasar la lista entera antes de
+   * aterrizar en su consulta. Se muestra el estado de carga de la consulta,
+   * que es a donde va, y no el de otra pantalla.
+   */
+  // Se condiciona a `openId` y NO a `loading`: la página pasa consultas iniciales
+  // desde el servidor, así que `loading` ya viene en false y la lista se colaba
+  // igual. Mientras haya ?open= sin consulta resuelta, estamos yendo hacia ella.
+  // Si el id no existe, el efecto de carga borra el parámetro y la vista vuelve
+  // al listado sola, así que esto no se queda girando para siempre.
+  if (view === 'consultation' && !selected && openId) {
+    return (
+      <div
+        className="min-h-[60vh] flex flex-col items-center justify-center gap-3"
+        role="status"
+        aria-live="polite"
+      >
+        <Loader2 className="w-7 h-7 animate-spin text-teal-500" />
+        <p className="text-sm font-semibold text-slate-500">Abriendo la consulta…</p>
+      </div>
+    );
+  }
 
   if (view === 'consultation' && selected) {
     const ps = PAYMENT_STATUS[report.payment_status];
