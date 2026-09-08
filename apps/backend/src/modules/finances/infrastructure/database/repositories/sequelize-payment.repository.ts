@@ -77,23 +77,9 @@ export class SequelizePaymentRepository implements IPaymentRepository {
       replacements['status'] = filters.status;
     }
 
-    // Al pedir los COBRADOS, la cita también tiene que estar en estado resuelto
-    // (confirmed, completed o no_show): un pago aprobado de una cita que sigue
-    // "por confirmar" todavía no es ingreso. Sin esto la tarjeta "Total ingresos"
-    // contradecía a la pestaña Ingresos, que ya aplica la misma regla.
-    // 'no_show' se incluye: si el pago estaba aprobado ya es un ingreso cobrado
-    // (el portal no emite devoluciones).
-    // EXISTS y no JOIN: un pago puede cubrir varias citas de un combo.
-    if (filters.status === 'approved') {
-      conditions.push(`(
-        NOT EXISTS (SELECT 1 FROM appointments ap WHERE ap.payment_id = p.id)
-        OR EXISTS (
-          SELECT 1 FROM appointments ap
-           WHERE ap.payment_id = p.id
-             AND ap.status IN ('confirmed', 'completed', 'no_show')
-        )
-      )`);
-    }
+    // Un pago aprobado es un ingreso, sin mirar el estado de la cita (regla del
+    // dueño, 2026-09-07). Antes se exigía además que la cita estuviera resuelta,
+    // y eso escondía plata cobrada sobre citas todavía agendadas.
     if (filters.fromDate) {
       conditions.push('p.created_at >= :fromDate::timestamptz');
       replacements['fromDate'] = filters.fromDate;
@@ -217,27 +203,15 @@ export class SequelizePaymentRepository implements IPaymentRepository {
 
     const where = conditions.join(' AND ');
 
-    // Misma regla que la lista y que el resumen: cobrado = aprobado Y con la cita
-    // en estado resuelto (confirmed, completed o no_show). Lo aprobado que espera
-    // confirmación suma en pendiente, para que los tres lugares digan lo mismo y la
-    // plata no se pierda de vista.
-    // 'no_show' se incluye porque es un estado terminal: si el pago está aprobado
-    // ya es un ingreso (el portal no emite devoluciones).
-    const citaConfirmada = `(
-      NOT EXISTS (SELECT 1 FROM appointments ap WHERE ap.payment_id = payments.id)
-      OR EXISTS (
-        SELECT 1 FROM appointments ap
-         WHERE ap.payment_id = payments.id
-           AND ap.status IN ('confirmed', 'completed', 'no_show')
-      )
-    )`;
+    // Misma regla que la lista y que el resumen: cobrado = pago APROBADO. El estado
+    // de la cita no entra en el cálculo (regla del dueño, 2026-09-07).
 
     const rows = await this.sequelize.query<TotalsRow>(
       `SELECT
-         COALESCE(SUM(CASE WHEN status = 'approved' AND ${citaConfirmada} THEN amount_usd ELSE 0 END), 0) AS approved_usd,
-         COALESCE(SUM(CASE WHEN status = 'pending' OR (status = 'approved' AND NOT ${citaConfirmada}) THEN amount_usd ELSE 0 END), 0) AS pending_usd,
-         COUNT(CASE WHEN status = 'approved' AND ${citaConfirmada} THEN 1 ELSE NULL END)::text AS approved_count,
-         COUNT(CASE WHEN status = 'pending' OR (status = 'approved' AND NOT ${citaConfirmada}) THEN 1 ELSE NULL END)::text AS pending_count
+         COALESCE(SUM(CASE WHEN status = 'approved' THEN amount_usd ELSE 0 END), 0) AS approved_usd,
+         COALESCE(SUM(CASE WHEN status = 'pending' THEN amount_usd ELSE 0 END), 0) AS pending_usd,
+         COUNT(CASE WHEN status = 'approved' THEN 1 ELSE NULL END)::text AS approved_count,
+         COUNT(CASE WHEN status = 'pending' THEN 1 ELSE NULL END)::text AS pending_count
        FROM payments
        WHERE ${where}`,
       { replacements, type: QueryTypes.SELECT },
