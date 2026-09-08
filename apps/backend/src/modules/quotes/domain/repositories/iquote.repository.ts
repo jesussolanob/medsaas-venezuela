@@ -201,4 +201,34 @@ export interface IQuoteRepository {
 
   /** Returns all items for a quote. */
   findItemsByQuoteId(quoteId: string): Promise<QuoteItem[]>;
+
+  // --------------------------------------------------------------------------
+  // Expiry sweep + reminder (cron — see DispatchQuoteExpiryNoticesUseCase)
+  // --------------------------------------------------------------------------
+
+  /**
+   * Candidates for BOTH the expiry sweep and the "about to expire" reminder:
+   * status='sent', valid_until IS NOT NULL, valid_until <= windowEnd. No
+   * lower bound — a quote that has been overdue for months and never got
+   * swept (e.g. the cron was down) must still be caught, not just ones that
+   * became overdue recently.
+   *
+   * The use case decides, per quote, which of the two actions applies:
+   *   - validUntil < now                              → expire it
+   *   - Quote.isDueForExpiryReminder(now, windowDays)  → notify
+   *   - neither                                        → skip
+   * It never trusts the SQL filter alone (same defense-in-depth as
+   * isOwnedBy()) — a status other than 'sent' is re-checked in memory too.
+   *
+   * Returned quotes include the active (non-revoked) share link token,
+   * needed to build the recipient's public quote link for the reminder path.
+   */
+  findQuotesNearingExpiry(windowEnd: Date, cap: number): Promise<Quote[]>;
+
+  /**
+   * Stamps expiry_reminder_sent_at so the sweep does not retry the same
+   * quote forever. Called even when the recipient email could not be sent —
+   * only the attempt matters for idempotency, not its outcome.
+   */
+  markExpiryReminderSent(id: string, sentAt: Date): Promise<void>;
 }

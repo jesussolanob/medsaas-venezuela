@@ -164,6 +164,56 @@ describe('Quote domain invariants', () => {
   });
 });
 
+// ─── Quote.isDueForExpiryReminder ───────────────────────────────────────────
+
+describe('Quote.isDueForExpiryReminder', () => {
+  const DAY = 24 * 60 * 60 * 1000;
+
+  it('returns false when status is not sent', () => {
+    const q = makeQuote({ status: 'draft', validUntil: new Date(now.getTime() + DAY) });
+    expect(q.isDueForExpiryReminder(now, 3)).toBe(false);
+  });
+
+  it('returns false for accepted quotes even with an overdue validUntil', () => {
+    const q = makeQuote({ status: 'accepted', validUntil: new Date(now.getTime() - DAY) });
+    expect(q.isDueForExpiryReminder(now, 3)).toBe(false);
+  });
+
+  it('returns false when validUntil is null', () => {
+    const q = makeQuote({ status: 'sent', validUntil: null });
+    expect(q.isDueForExpiryReminder(now, 3)).toBe(false);
+  });
+
+  it('returns false when expiryReminderSentAt is already set (idempotency)', () => {
+    const q = makeQuote({
+      status: 'sent',
+      validUntil: new Date(now.getTime() + 2 * DAY),
+      expiryReminderSentAt: now,
+    });
+    expect(q.isDueForExpiryReminder(now, 3)).toBe(false);
+  });
+
+  it('returns true when validUntil falls within the window (inclusive lower bound)', () => {
+    const q = makeQuote({ status: 'sent', validUntil: now });
+    expect(q.isDueForExpiryReminder(now, 3)).toBe(true);
+  });
+
+  it('returns true when validUntil falls within the window (inclusive upper bound)', () => {
+    const q = makeQuote({ status: 'sent', validUntil: new Date(now.getTime() + 3 * DAY) });
+    expect(q.isDueForExpiryReminder(now, 3)).toBe(true);
+  });
+
+  it('returns false when validUntil is more than windowDays away', () => {
+    const q = makeQuote({ status: 'sent', validUntil: new Date(now.getTime() + 10 * DAY) });
+    expect(q.isDueForExpiryReminder(now, 3)).toBe(false);
+  });
+
+  it('returns false when validUntil is already in the past (handled by the expiry sweep instead)', () => {
+    const q = makeQuote({ status: 'sent', validUntil: new Date(now.getTime() - DAY) });
+    expect(q.isDueForExpiryReminder(now, 3)).toBe(false);
+  });
+});
+
 // ─── QuoteItem entity ────────────────────────────────────────────────────────
 
 describe('QuoteItem.create', () => {

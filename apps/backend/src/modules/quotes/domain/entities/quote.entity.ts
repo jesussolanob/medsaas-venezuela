@@ -46,6 +46,13 @@ export interface QuoteCreateParams {
   sentAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
+  /**
+   * Timestamp when the "about to expire" reminder was sent (or attempted —
+   * see DispatchQuoteExpiryNoticesUseCase). Null means it has not been
+   * dispatched yet. Stamped even when the recipient has no email on file, so
+   * the sweep never retries the same quote forever.
+   */
+  expiryReminderSentAt?: Date | null;
   items?: QuoteItem[];
   /**
    * Active (non-revoked) share link token for this quote.
@@ -84,6 +91,8 @@ export class Quote {
   readonly sentAt: Date | null;
   readonly createdAt: Date;
   readonly updatedAt: Date;
+  /** See QuoteCreateParams.expiryReminderSentAt. */
+  readonly expiryReminderSentAt: Date | null;
   readonly items: QuoteItem[];
   /** Active share token — null for drafts or revoked links. Doctor-side only. */
   readonly shareToken: string | null;
@@ -109,6 +118,7 @@ export class Quote {
     this.sentAt = params.sentAt;
     this.createdAt = params.createdAt;
     this.updatedAt = params.updatedAt;
+    this.expiryReminderSentAt = params.expiryReminderSentAt ?? null;
     this.items = params.items ?? [];
     this.shareToken = params.shareToken ?? null;
     this.recipientName = params.recipientName ?? null;
@@ -136,6 +146,25 @@ export class Quote {
   /** Only draft quotes can be sent. */
   canBeSent(): boolean {
     return this.status === 'draft';
+  }
+
+  /**
+   * True when this quote is a candidate for the "about to expire" reminder:
+   * still 'sent' (never accepted/rejected/expired), has a validUntil date,
+   * that date falls within [now, now + windowDays] inclusive, and the
+   * reminder has not already been dispatched.
+   *
+   * Kept as a domain predicate (not buried in repository SQL or use-case
+   * date arithmetic) so DispatchQuoteExpiryNoticesUseCase can defensively
+   * re-check every candidate the repository returns, the same way
+   * isOwnedBy() double-checks ownership instead of trusting the caller.
+   */
+  isDueForExpiryReminder(now: Date, windowDays: number): boolean {
+    if (this.status !== 'sent') return false;
+    if (this.validUntil === null) return false;
+    if (this.expiryReminderSentAt !== null) return false;
+    const windowEnd = new Date(now.getTime() + windowDays * 24 * 60 * 60 * 1000);
+    return this.validUntil >= now && this.validUntil <= windowEnd;
   }
 
   /**

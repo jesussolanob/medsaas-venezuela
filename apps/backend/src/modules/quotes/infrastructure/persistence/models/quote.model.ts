@@ -25,6 +25,9 @@ import { QuoteItemModel } from './quote-item.model';
  *
  * Migration 20260908000001 adds:
  *   - discount_type CHECK IN (amount, percent)
+ *
+ * Migration 20260908000005 adds:
+ *   - expiry_reminder_sent_at (nullable timestamp)
  */
 @Table({
   tableName: 'quotes',
@@ -91,6 +94,13 @@ export class QuoteModel extends Model {
 
   @Column({ type: DataType.DATE, allowNull: true, field: 'sent_at' })
   declare sentAt: Date | null;
+
+  /**
+   * Set once the "about to expire" reminder is dispatched (or attempted) —
+   * see migration 20260908000005. Null means it has not run yet.
+   */
+  @Column({ type: DataType.DATE, allowNull: true, field: 'expiry_reminder_sent_at' })
+  declare expiryReminderSentAt: Date | null;
 
   @CreatedAt
   @Column({ field: 'created_at' })
