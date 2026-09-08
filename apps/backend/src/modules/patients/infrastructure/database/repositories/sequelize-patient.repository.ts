@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/sequelize';
 import type { WhereOptions } from 'sequelize';
 import { normalizeCedulaForSearch } from '@delta/shared-crypto';
+import { toCanonicalCedula } from '@delta/shared-types';
 import { Patient } from '../../../domain/entities/patient.entity';
 import { DuplicatePatientError } from '../../../domain/errors/duplicate-patient.error';
 import { PatientNotFoundError } from '../../../domain/errors/patient-not-found.error';
@@ -190,7 +191,10 @@ export class SequelizePatientRepository implements IPatientRepository {
       updateData.fullNameSearchHash = this.crypto.hashForSearch(fields.fullName);
     }
     if (fields.cedula !== undefined) {
-      updateData.cedula = fields.cedula ? this.crypto.encrypt(fields.cedula) : null;
+      // Forma canónica también al editar — ver encryptFields más abajo.
+      updateData.cedula = fields.cedula
+        ? this.crypto.encrypt(toCanonicalCedula(fields.cedula))
+        : null;
       // Search hash is computed on the CANONICAL form (see encryptFields below) so
       // "V-12345678", "v12345678" and "V-12.345.678" all resolve to the same patient.
       updateData.cedulaSearchHash = fields.cedula
@@ -281,11 +285,15 @@ export class SequelizePatientRepository implements IPatientRepository {
     return {
       fullName: this.crypto.encrypt(patient.fullName),
       fullNameSearchHash: this.crypto.hashForSearch(patient.fullName),
-      // The displayable value keeps whatever the specialist typed, unchanged and
-      // encrypted as-is. Only the search hash moves to the canonical form —
-      // see normalizeCedulaForSearch (preserves the V/E/P prefix, strips
-      // separators only) so lookups aren't fooled by "V-123" vs "V.1.2.3".
-      cedula: patient.cedula ? this.crypto.encrypt(patient.cedula) : null,
+      // La cédula se guarda SIEMPRE en su forma canónica `V-12345678`, sin
+      // importar si se tipeó con puntos, espacios o en minúscula. Antes se
+      // guardaba tal cual se escribió, así que la misma persona podía quedar
+      // registrada de tres formas distintas según quién la cargó.
+      //
+      // Se normaliza acá, en el repositorio, porque es el ÚNICO punto por el que
+      // pasan todas las escrituras de pacientes (alta y edición). Hacerlo en cada
+      // pantalla es garantizar que tarde o temprano una se olvide.
+      cedula: patient.cedula ? this.crypto.encrypt(toCanonicalCedula(patient.cedula)) : null,
       cedulaSearchHash: patient.cedula
         ? this.crypto.hashForSearch(normalizeCedulaForSearch(patient.cedula))
         : null,

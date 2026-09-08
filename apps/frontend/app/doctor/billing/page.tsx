@@ -24,7 +24,7 @@ import {
   getBillingStats,
 } from '@/app/doctor/billing/actions';
 import { useBcvRate } from '@/lib/useBcvRate';
-import { getProfessionalTitle } from '@/lib/professional-title';
+import { formatProfessionalName } from '@/lib/professional-title';
 import { reportError } from '@/lib/report-error';
 
 type LineItem = { id: string; description: string; qty: number; unit_price: number };
@@ -505,11 +505,10 @@ export default function BillingPage() {
                     )}
                     <div>
                       <div style={{ fontSize: 18, fontWeight: 800, color: '#00C4CC' }}>
-                        {getProfessionalTitle(
+                        {formatProfessionalName(
                           doctorProfile?.professional_title,
-                          doctorProfile?.specialty,
-                        )}{' '}
-                        {doctorProfile?.full_name || 'Médico'}
+                          doctorProfile?.full_name,
+                        ) || 'Especialista'}
                       </div>
                       <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>
                         {doctorProfile?.specialty || 'Consulta'}
@@ -590,11 +589,10 @@ export default function BillingPage() {
                       Médico (Emisor)
                     </div>
                     <div style={{ fontSize: 14, fontWeight: 700, color: '#1e293b' }}>
-                      {getProfessionalTitle(
+                      {formatProfessionalName(
                         doctorProfile?.professional_title,
-                        doctorProfile?.specialty,
-                      )}{' '}
-                      {doctorProfile?.full_name || '—'}
+                        doctorProfile?.full_name,
+                      ) || '—'}
                     </div>
                     <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>
                       {doctorProfile?.specialty}

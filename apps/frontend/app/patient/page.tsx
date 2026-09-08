@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { Calendar, FileText, ArrowRight, Zap } from 'lucide-react';
 import { getPatientDashboard, getPatientProfile } from './actions';
 import { reportError } from '@/lib/report-error';
-import { getProfessionalTitle } from '@/lib/professional-title';
+import { formatProfessionalName } from '@/lib/professional-title';
 
 const styles = `
   .card-hover {
@@ -342,13 +342,10 @@ export default function PatientHome() {
                         {pkg.doctor_name && (
                           <p className="text-xs text-slate-500">
                             {/* Decia "Dr." escrito a mano: a la paciente de una
-                                psicologa la app le mostraba "Dr. <nombre>".
-                                getProfessionalTitle usa el titulo que cargo el
-                                especialista y, si no hay, lo deriva de la
-                                especialidad — el mismo helper que el booking
-                                publico y el inicio del especialista. */}
-                            {getProfessionalTitle(pkg.doctor_title, pkg.doctor_specialty)}{' '}
-                            {pkg.doctor_name}
+                                psicologa la app le mostraba "Dr. <nombre>". Ahora
+                                se usa el titulo que el especialista CARGO, y si no
+                                cargo ninguno no se inventa: va solo el nombre. */}
+                            {formatProfessionalName(pkg.doctor_title, pkg.doctor_name)}
                             {pkg.doctor_specialty && (
                               <span className="text-slate-400"> · {pkg.doctor_specialty}</span>
                             )}
