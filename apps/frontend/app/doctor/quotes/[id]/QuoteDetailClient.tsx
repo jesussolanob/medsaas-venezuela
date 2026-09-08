@@ -162,6 +162,9 @@ interface Props {
 
 interface SendModalProps {
   quoteId: string;
+  /** Correo ya resuelto del destinatario. Null si no tiene ninguno cargado. */
+  recipientEmail: string | null;
+  recipientName: string | null;
   onClose: () => void;
   onSent: (
     updated: QuoteRow,
@@ -170,9 +173,11 @@ interface SendModalProps {
   ) => void;
 }
 
-function SendModal({ quoteId, onClose, onSent }: SendModalProps) {
+function SendModal({ quoteId, recipientEmail, recipientName, onClose, onSent }: SendModalProps) {
   const [email, setEmail] = useState('');
   const [name, setName] = useState('');
+  /** El especialista pidió mandarlo a un correo distinto del registrado. */
+  const [overrideRecipient, setOverrideRecipient] = useState(false);
   const [saving, setSaving] = useState(false);
 
   async function handleSend(e: React.FormEvent) {
@@ -217,35 +222,69 @@ function SendModal({ quoteId, onClose, onSent }: SendModalProps) {
     >
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6" role="dialog">
         <h2 className="text-sm font-bold text-slate-800 mb-4">Enviar presupuesto</h2>
-        <p className="text-xs text-slate-500 mb-4">
-          Podés especificar el correo del destinatario. El sistema generará un enlace de acceso con
-          el que podrá ver y descargar el presupuesto.
-        </p>
+        {/*
+          Antes esta ventana mostraba dos campos VACÍOS pidiendo nombre y correo.
+          El backend ya resolvía el correo de la ficha del destinatario —dejarlos
+          en blanco funcionaba— pero el especialista no tenía forma de saberlo:
+          veía dos casillas vacías y parecía que sin llenarlas no se mandaba.
+          Ahora se muestra a quién se le va a enviar y solo se piden los datos
+          cuando de verdad hacen falta.
+        */}
+        {recipientEmail && !overrideRecipient ? (
+          <div className="mb-4 space-y-2">
+            <div className="rounded-xl border border-teal-200 bg-teal-50 px-3 py-2.5">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-teal-700">
+                Se enviará a
+              </p>
+              <p className="mt-0.5 text-sm font-semibold text-slate-800 break-all">
+                {recipientEmail}
+              </p>
+              {recipientName && <p className="text-xs text-slate-500">{recipientName}</p>}
+            </div>
+            <button
+              type="button"
+              onClick={() => setOverrideRecipient(true)}
+              className="text-xs font-semibold text-teal-600 hover:text-teal-700 underline underline-offset-2"
+            >
+              Enviar a otro correo
+            </button>
+          </div>
+        ) : (
+          <p className="text-xs text-slate-500 mb-4">
+            {recipientEmail
+              ? 'Se enviará al correo que escribas acá en lugar del registrado.'
+              : 'Este destinatario no tiene un correo cargado. Escribí uno para enviárselo, o dejalo vacío y compartí el enlace a mano.'}
+          </p>
+        )}
         <form onSubmit={handleSend} className="space-y-3">
-          <div>
-            <label className="block text-xs font-semibold text-slate-600 mb-1">
-              Nombre del destinatario
-            </label>
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Nombre (opcional)"
-              className="w-full text-sm border border-slate-200 rounded-xl py-2.5 px-3 outline-none focus:border-teal-400 bg-white placeholder:text-slate-300"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-semibold text-slate-600 mb-1">
-              Correo electrónico
-            </label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="correo@ejemplo.com (opcional)"
-              className="w-full text-sm border border-slate-200 rounded-xl py-2.5 px-3 outline-none focus:border-teal-400 bg-white placeholder:text-slate-300"
-            />
-          </div>
+          {(!recipientEmail || overrideRecipient) && (
+            <>
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">
+                  Nombre del destinatario
+                </label>
+                <input
+                  type="text"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="Nombre (opcional)"
+                  className="w-full text-sm border border-slate-200 rounded-xl py-2.5 px-3 outline-none focus:border-teal-400 bg-white placeholder:text-slate-300"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">
+                  Correo electrónico
+                </label>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="correo@ejemplo.com"
+                  className="w-full text-sm border border-slate-200 rounded-xl py-2.5 px-3 outline-none focus:border-teal-400 bg-white placeholder:text-slate-300"
+                />
+              </div>
+            </>
+          )}
           <div className="flex gap-2 pt-2">
             <button
               type="button"
@@ -1102,6 +1141,8 @@ export default function QuoteDetailClient({ initialQuote }: Props) {
       {showSendModal && (
         <SendModal
           quoteId={quote.id}
+          recipientEmail={quote.recipient_email ?? null}
+          recipientName={quote.recipient_name ?? null}
           onClose={() => setShowSendModal(false)}
           onSent={(updated, emailSent, emailSkipReason) => {
             setQuote(updated);
