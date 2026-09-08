@@ -19,6 +19,16 @@ import { QuoteItem } from './quote-item.entity';
 export type QuoteStatus = 'draft' | 'sent' | 'accepted' | 'rejected' | 'expired';
 
 /**
+ * Desfase horario de Venezuela respecto de UTC, en horas.
+ *
+ * Es un número fijo y no una conversión de zona a propósito: Venezuela no aplica
+ * horario de verano —está en UTC-4 sin excepciones desde mayo de 2016—, así que
+ * el desfase no cambia con la fecha. Se usa para llevar un día calendario
+ * (`valid_until`, sin hora) a su instante real de corte.
+ */
+export const VENEZUELA_UTC_OFFSET_HOURS = 4;
+
+/**
  * 'amount'  → discountValue is a flat USD amount (e.g. 30 = $30).
  * 'percent' → discountValue is a percentage of the subtotal (e.g. 30 = 30%),
  *             clamped to 0..100 by computeDiscount().
@@ -171,12 +181,13 @@ export class Quote {
     if (this.expiryReminderSentAt !== null) return false;
     const corte = this.expiresAt();
     if (corte === null) return false;
-    // El fin de la ventana también se lleva al FIN de su día: si no, un
-    // presupuesto que vence el último día de la ventana quedaba afuera por unas
-    // horas (su corte son las 23:59 de ese día; `now + 3 días` es la hora en que
-    // corrió el cron). La regla se piensa en días calendario de las dos puntas.
+    // El fin de la ventana también se lleva al FIN de su día venezolano, igual
+    // que el corte: si no, un presupuesto que vence el último día de la ventana
+    // quedaba afuera por unas horas (su corte es el final de ese día; `now + 3
+    // días` es la hora en que corrió el cron). La regla se piensa en días
+    // calendario de las dos puntas, y las dos puntas tienen que medir igual.
     const windowEnd = new Date(now.getTime() + windowDays * 24 * 60 * 60 * 1000);
-    windowEnd.setUTCHours(23, 59, 59, 999);
+    windowEnd.setUTCHours(23 + VENEZUELA_UTC_OFFSET_HOURS, 59, 59, 999);
     return corte >= now && corte <= windowEnd;
   }
 
@@ -196,12 +207,10 @@ export class Quote {
    * Con la comparación cruda, nada vencía nunca y ningún aviso salía jamás — y
    * los tests no lo veían porque construyen la entidad con `Date` de verdad.
    *
-   * El corte es el FIN del día (23:59:59.999 UTC), no su medianoche: es la misma
-   * convención que ya usaba `SendQuoteUseCase.computeExpiresAt()` para el enlace
-   * público, y la que se le promete al paciente cuando la pantalla dice "vence el
-   * 8 de octubre" — vale todo ese día. Con la medianoche, el estado se habría
-   * vencido casi un día antes que el enlace, y el paciente habría visto un
-   * presupuesto vigente que el backend le rechazaba al aceptarlo.
+   * El corte es el FIN del día **en hora de Venezuela**, no su medianoche UTC.
+   * Con la medianoche, el estado se habría vencido casi un día antes que el
+   * enlace público, y el paciente habría visto un presupuesto vigente que el
+   * backend le rechazaba al aceptarlo.
    */
   /**
    * `valid_until` como día calendario 'YYYY-MM-DD', listo para serializar.
@@ -224,7 +233,11 @@ export class Quote {
     if (this.validUntil === null) return null;
     const d = new Date(this.validUntil as Date | string);
     if (Number.isNaN(d.getTime())) return null;
-    d.setUTCHours(23, 59, 59, 999);
+    // Fin del día EN CARACAS, no en UTC. Venezuela es UTC-4, así que el final
+    // del 8 de octubre allá son las 03:59:59.999 UTC del 9. Cortando en las
+    // 23:59:59 UTC, el presupuesto moría a las 19:59 de Caracas y el paciente
+    // perdía las últimas cuatro horas del día que la pantalla le prometió.
+    d.setUTCHours(23 + VENEZUELA_UTC_OFFSET_HOURS, 59, 59, 999);
     return d;
   }
 

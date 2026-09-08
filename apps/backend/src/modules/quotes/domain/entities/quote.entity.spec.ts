@@ -209,7 +209,10 @@ describe('Quote.isDueForExpiryReminder', () => {
   });
 
   it('returns false when validUntil is already in the past (handled by the expiry sweep instead)', () => {
-    const q = makeQuote({ status: 'sent', validUntil: new Date(now.getTime() - DAY) });
+    // -2 días y no -1: `now` es medianoche UTC, o sea las 20:00 del día ANTERIOR
+    // en Caracas, así que un presupuesto de "ayer" todavía está vigente cuatro
+    // horas más. Ver el describe del corte en hora de Caracas, más abajo.
+    const q = makeQuote({ status: 'sent', validUntil: new Date(now.getTime() - 2 * DAY) });
     expect(q.isDueForExpiryReminder(now, 3)).toBe(false);
   });
 });
@@ -317,12 +320,15 @@ describe('Quote con validUntil tal como lo devuelve Sequelize (cadena DATEONLY)'
     const q = quoteConCadena('2026-10-08');
     const corte = q.expiresAt();
     expect(corte).not.toBeNull();
-    expect(corte?.toISOString()).toBe('2026-10-08T23:59:59.999Z');
+    // 03:59:59.999 UTC del 9 = 23:59:59.999 del 8 en Caracas (UTC-4).
+    expect(corte?.toISOString()).toBe('2026-10-09T03:59:59.999Z');
   });
 
-  it('detecta como vencida una cadena de ayer (antes daba SIEMPRE false)', () => {
-    const ayer = comoDateonly(new Date(now.getTime() - DAY));
-    const corte = quoteConCadena(ayer).expiresAt();
+  it('detecta como vencida una cadena de anteayer (antes daba SIEMPRE false)', () => {
+    // Anteayer y no ayer: con `now` a medianoche UTC (20:00 en Caracas del día
+    // previo), el día de "ayer" todavía no terminó allá.
+    const anteayer = comoDateonly(new Date(now.getTime() - 2 * DAY));
+    const corte = quoteConCadena(anteayer).expiresAt();
     expect(corte).not.toBeNull();
     expect((corte as Date) < now).toBe(true);
   });
@@ -368,5 +374,25 @@ describe('Quote.validUntilAsDateString', () => {
 
   it('devuelve null cuando el presupuesto no vence', () => {
     expect(makeQuote({ validUntil: null }).validUntilAsDateString()).toBeNull();
+  });
+});
+
+// ─── El corte va en hora de Caracas, no en UTC ───────────────────────────────
+describe('Quote.expiresAt — el dia que se promete es el dia venezolano', () => {
+  it('sigue vigente a las 21:00 de Caracas del dia que vence', () => {
+    // 21:00 en Caracas del 8 de octubre = 01:00 UTC del 9.
+    const nocheDelOcho = new Date('2026-10-09T01:00:00.000Z');
+    const q = makeQuote({ status: 'sent', validUntil: '2026-10-08' as unknown as Date });
+    const corte = q.expiresAt() as Date;
+
+    // Con el corte en 23:59:59 UTC, esto habria dado `true` —vencido— y el
+    // paciente perdia las ultimas cuatro horas de "su" 8 de octubre.
+    expect(corte < nocheDelOcho).toBe(false);
+  });
+
+  it('ya vencio a las 00:30 de Caracas del dia siguiente', () => {
+    const madrugadaDelNueve = new Date('2026-10-09T04:30:00.000Z');
+    const q = makeQuote({ status: 'sent', validUntil: '2026-10-08' as unknown as Date });
+    expect((q.expiresAt() as Date) < madrugadaDelNueve).toBe(true);
   });
 });
