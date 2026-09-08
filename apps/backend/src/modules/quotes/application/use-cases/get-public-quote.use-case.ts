@@ -35,6 +35,15 @@ export interface PublicDoctorProfile {
    */
   id: string;
   fullName: string;
+  /**
+   * Moneda en la que trabaja el especialista: 'usd_bcv' | 'eur_bcv' | 'custom'.
+   *
+   * La vista pública mostraba SIEMPRE "$". Dos especialistas de producción
+   * trabajan en euros, así que a sus pacientes se les presentaba el presupuesto
+   * en una moneda que no era la suya. El booking público ya respetaba esta
+   * preferencia; la del presupuesto no.
+   */
+  currencyMode: string | null;
   professionalTitle: string | null;
   specialty: string | null;
   licenseNumber: string | null;
@@ -151,6 +160,7 @@ export class GetPublicQuoteUseCase {
     const doctor: PublicDoctorProfile = {
       id: quote.doctorId,
       fullName: doctorProfile?.fullName ?? 'Dr./Dra.',
+      currencyMode: doctorProfile?.currencyMode ?? null,
       professionalTitle: doctorProfile?.professionalTitle ?? null,
       specialty: doctorProfile?.specialty ?? null,
       licenseNumber: doctorProfile?.licenseNumber ?? null,

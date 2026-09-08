@@ -48,6 +48,13 @@ export interface QuoteDoctorPdf {
 }
 
 export interface QuotePdfProps {
+  /**
+   * Moneda del especialista: 'usd_bcv' | 'eur_bcv' | 'custom'. Define el símbolo.
+   * Sin esto el PDF mostraba siempre "$", incluso para especialistas que
+   * trabajan en euros — y el paciente veía una moneda en pantalla y otra en el
+   * documento que se descarga.
+   */
+  currencyMode?: string | null;
   quoteNumber: string;
   status: string;
   validUntil: string | null;
@@ -72,8 +79,12 @@ export interface QuotePdfProps {
 
 const DEFAULT_COLOR = '#0891b2';
 
-function usdFmt(amount: number): string {
-  return `$${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+function currencyOf(mode: string | null | undefined): { symbol: string; code: string } {
+  return mode === 'eur_bcv' ? { symbol: '€', code: 'EUR' } : { symbol: '$', code: 'USD' };
+}
+
+function moneyFmt(amount: number, symbol: string): string {
+  return `${symbol}${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 function bsFmt(amount: number): string {
@@ -344,6 +355,7 @@ function buildStyles(primaryColor: string) {
 // ---------------------------------------------------------------------------
 
 export default function QuotePdf({
+  currencyMode,
   quoteNumber,
   status,
   validUntil,
@@ -359,6 +371,10 @@ export default function QuotePdf({
   recipientName,
   templateConfig,
 }: QuotePdfProps) {
+  // Símbolo y código según la moneda del especialista.
+  const currency = currencyOf(currencyMode);
+  const money = (n: number) => moneyFmt(n, currency.symbol);
+
   const color = templateConfig?.primary_color ?? DEFAULT_COLOR;
   const styles = buildStyles(color);
   const headerText = templateConfig?.header_text ?? doctor.fullName;
@@ -447,10 +463,10 @@ export default function QuotePdf({
                   {item.quantity.toLocaleString('en-US', { maximumFractionDigits: 2 })}
                 </Text>
                 <Text style={[styles.cell, styles.colUnit, styles.cellRight]}>
-                  {usdFmt(item.unit_price_usd)}
+                  {money(item.unit_price_usd)}
                 </Text>
                 <Text style={[styles.cellBold, styles.colAmount, styles.cellRight]}>
-                  {usdFmt(item.amount_usd)}
+                  {money(item.amount_usd)}
                 </Text>
               </View>
             );
@@ -461,28 +477,33 @@ export default function QuotePdf({
         <View style={styles.totalsContainer}>
           <View style={styles.totalsRow}>
             <Text style={styles.totalsLabel}>Subtotal</Text>
-            <Text style={styles.totalsValue}>{usdFmt(subtotal_usd)}</Text>
+            <Text style={styles.totalsValue}>{money(subtotal_usd)}</Text>
           </View>
           {hasDiscount && (
             <View style={styles.totalsRow}>
               <Text style={styles.totalsLabel}>Descuento</Text>
-              <Text style={[styles.totalsValue, { color: '#ef4444' }]}>
-                -{usdFmt(discount_usd)}
-              </Text>
+              <Text style={[styles.totalsValue, { color: '#ef4444' }]}>-{money(discount_usd)}</Text>
             </View>
           )}
           <View style={styles.totalsFinalRow}>
             <Text style={styles.totalsFinalLabel}>Total</Text>
-            <Text style={styles.totalsFinalValue}>{usdFmt(total_usd)}</Text>
+            <Text style={styles.totalsFinalValue}>{money(total_usd)}</Text>
           </View>
           {total_bs !== null && bcv_rate !== null && (
-            <View style={styles.totalsBsRow}>
+            <>
+              <View style={styles.totalsBsRow}>
+                <Text style={styles.totalsBsLabel}>Referencia en bolívares</Text>
+                <Text style={styles.totalsBsValue}>{bsFmt(total_bs)}</Text>
+              </View>
+              {/* Lo fijo es el monto en divisa; los bolívares se indexan a la
+                  tasa del día, que es como funciona el negocio en Venezuela. */}
               <Text style={styles.totalsBsLabel}>
-                Equivalente Bs. (tasa{' '}
-                {bcv_rate.toLocaleString('es-VE', { minimumFractionDigits: 2 })})
+                Indexado a la tasa oficial del BCV del día: Bs.{' '}
+                {bcv_rate.toLocaleString('es-VE', { minimumFractionDigits: 2 })} por {currency.code}
+                . El precio acordado es en {currency.code}; el equivalente en bolívares se actualiza
+                con la tasa vigente al momento del pago.
               </Text>
-              <Text style={styles.totalsBsValue}>{bsFmt(total_bs)}</Text>
-            </View>
+            </>
           )}
         </View>
 

@@ -47,6 +47,7 @@ import {
   type SendQuoteEmailSkipReason,
 } from '../actions';
 import { computeSubtotal, computeDiscountUsd, computeTotal } from '../quote-math';
+import { useBcvRate } from '@/lib/useBcvRate';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -276,6 +277,10 @@ function SendModal({ quoteId, onClose, onSent }: SendModalProps) {
 
 export default function QuoteDetailClient({ initialQuote }: Props) {
   const router = useRouter();
+  // Moneda del especialista. El PDF que descarga acá tiene que salir en la misma
+  // moneda que ve el paciente en el enlace público; si no, el mismo presupuesto
+  // dice "$" en un lado y "€" en el otro.
+  const { mode: currencyMode } = useBcvRate();
   const [quote, setQuote] = useState<QuoteRow>(initialQuote);
 
   // Edit mode state
@@ -462,6 +467,7 @@ export default function QuoteDetailClient({ initialQuote }: Props) {
 
       const React = (await import('react')).default;
       const element = React.createElement(QuotePdf, {
+        currencyMode,
         quoteNumber: quote.quote_number,
         status: quote.status,
         validUntil: quote.valid_until,

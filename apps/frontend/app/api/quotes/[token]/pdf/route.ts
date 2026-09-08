@@ -54,6 +54,8 @@ interface BackendPublicQuote {
     fullName: string;
     professionalTitle: string | null;
     specialty: string | null;
+    /** 'usd_bcv' | 'eur_bcv' | 'custom'. Define el símbolo del PDF. */
+    currencyMode?: string | null;
     logoUrl?: string | null;
     signatureUrl?: string | null;
   };
@@ -159,6 +161,34 @@ export async function GET(
     show_signature: tc?.showSignature ?? true,
   };
 
+  /*
+   * Tasa VIVA del BCV, no la congelada al emitir.
+   *
+   * En Venezuela lo que queda fijo es el monto en divisa; los bolívares son una
+   * conversión referencial que cambia todos los días. El PDF tiene que decir lo
+   * mismo que la pantalla: si uno mostrara la tasa de emisión y el otro la del
+   * día, el paciente vería dos montos distintos para el mismo presupuesto.
+   *
+   * Best-effort: si la tasa no se puede obtener se cae a la congelada, que es
+   * mejor que no mostrar ningún equivalente en bolívares.
+   */
+  let bcvRate = quoteData.bcvRate !== null ? Number(quoteData.bcvRate) : null;
+  let totalBsVivo = quoteData.totalBs !== null ? Number(quoteData.totalBs) : null;
+  try {
+    const rateRes = await fetch(new URL('/api/admin/bcv-rate', _req.url).toString(), {
+      cache: 'no-store',
+    });
+    if (rateRes.ok) {
+      const rateJson = (await rateRes.json()) as { rate?: number };
+      if (rateJson.rate && rateJson.rate > 0) {
+        bcvRate = rateJson.rate;
+        totalBsVivo = Math.round(Number(quoteData.totalUsd) * rateJson.rate * 100) / 100;
+      }
+    }
+  } catch {
+    /* se conserva la tasa de emisión */
+  }
+
   // 4. Render PDF server-side
   try {
     const { renderToBuffer } = await import('@react-pdf/renderer');
@@ -166,6 +196,8 @@ export async function GET(
     const QuotePdf = QuotePdfModule.default;
 
     const element = React.createElement(QuotePdf, {
+      // Moneda del especialista: sin esto el PDF salía siempre en "$".
+      currencyMode: quoteData.doctor?.currencyMode ?? null,
       quoteNumber: quoteData.quoteNumber,
       status: quoteData.status,
       validUntil: quoteData.validUntil,
@@ -173,8 +205,8 @@ export async function GET(
       subtotal_usd: Number(quoteData.subtotalUsd),
       discount_usd: Number(quoteData.discountUsd),
       total_usd: Number(quoteData.totalUsd),
-      bcv_rate: quoteData.bcvRate !== null ? Number(quoteData.bcvRate) : null,
-      total_bs: quoteData.totalBs !== null ? Number(quoteData.totalBs) : null,
+      bcv_rate: bcvRate,
+      total_bs: totalBsVivo,
       created_at: quoteData.sentAt ?? new Date().toISOString(),
       recipientName: quoteData.recipient_name ?? '',
       items: quoteData.items.map((it) => ({

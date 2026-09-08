@@ -41,6 +41,8 @@ interface PublicQuoteDoctor {
    */
   id: string;
   fullName: string;
+  /** 'usd_bcv' | 'eur_bcv' | 'custom'. Define el símbolo que ve el paciente. */
+  currencyMode: string | null;
   professionalTitle: string | null;
   specialty: string | null;
 }

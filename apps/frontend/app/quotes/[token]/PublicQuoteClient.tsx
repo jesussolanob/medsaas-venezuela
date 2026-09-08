@@ -12,6 +12,7 @@ import { useState } from 'react';
 import { Download, CheckCircle, XCircle, Clock, Calendar } from 'lucide-react';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import type { PublicQuoteData } from './page';
+import { useBcvRate } from '@/lib/useBcvRate';
 
 type QuoteStatus = PublicQuoteData['status'];
 
@@ -47,8 +48,19 @@ function formatDate(iso: string | null | undefined): string {
   }).format(new Date(year, month - 1, day));
 }
 
-function usdFmt(n: number): string {
-  return `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+/**
+ * Símbolo y código de la moneda en la que trabaja el especialista.
+ *
+ * La vista pública mostraba SIEMPRE "$". Hay especialistas que trabajan en euros
+ * y a sus pacientes se les presentaba el presupuesto en una moneda ajena. El
+ * booking público ya respetaba esta preferencia; esta pantalla no.
+ */
+function currencyOf(mode: string | null | undefined): { symbol: string; code: string } {
+  return mode === 'eur_bcv' ? { symbol: '€', code: 'EUR' } : { symbol: '$', code: 'USD' };
+}
+
+function moneyFmt(n: number, symbol: string): string {
+  return `${symbol}${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 const KIND_BADGE: Record<'service' | 'product' | 'manual', { label: string; className: string }> = {
@@ -88,8 +100,29 @@ export default function PublicQuoteClient({ token, quote: initialQuote }: Props)
   const subtotalUsd = Number(quote.subtotalUsd);
   const discountUsd = Number(quote.discountUsd);
   const totalUsd = Number(quote.totalUsd);
-  const bcvRate = quote.bcvRate != null ? Number(quote.bcvRate) : null;
-  const totalBs = quote.totalBs != null ? Number(quote.totalBs) : null;
+  // Moneda del especialista: sin esto la pantalla mostraba siempre "$", incluso
+  // a los pacientes de un especialista que trabaja en euros.
+  const currency = currencyOf(quote.doctor.currencyMode);
+  const moneyFmt2 = (n: number) => moneyFmt(n, currency.symbol);
+
+  /*
+   * Los bolívares se recalculan con la tasa VIVA del BCV, no con la que quedó
+   * congelada al emitir el presupuesto.
+   *
+   * Así funciona el negocio en Venezuela: lo que se pacta y queda fijo es el
+   * monto en divisa; los bolívares son una conversión referencial que cambia
+   * todos los días. Mostrar la tasa del día de emisión hacía que un presupuesto
+   * de hace dos semanas exhibiera un monto en Bs que ya no existe, y el paciente
+   * se presentaba a pagar con la cifra equivocada.
+   *
+   * `quote.bcvRate` y `quote.totalBs` se conservan en la base como registro
+   * histórico de la emisión, pero NO se muestran.
+   */
+  const { rate: liveRate } = useBcvRate({
+    mode: quote.doctor.currencyMode ?? undefined,
+  });
+  const bcvRate = liveRate;
+  const totalBs = liveRate != null ? Math.round(totalUsd * liveRate * 100) / 100 : null;
 
   function downloadPdf() {
     window.location.href = `/api/quotes/${token}/pdf`;
@@ -293,10 +326,10 @@ export default function PublicQuoteClient({ token, quote: initialQuote }: Props)
                         {Number(it.quantity)}
                       </td>
                       <td className="px-4 py-3 text-right text-slate-600 tabular-nums">
-                        {usdFmt(Number(it.unitPriceUsd))}
+                        {moneyFmt2(Number(it.unitPriceUsd))}
                       </td>
                       <td className="px-4 py-3 text-right font-semibold text-slate-800 tabular-nums">
-                        {usdFmt(Number(it.amountUsd))}
+                        {moneyFmt2(Number(it.amountUsd))}
                       </td>
                     </tr>
                   ))}
@@ -310,13 +343,13 @@ export default function PublicQuoteClient({ token, quote: initialQuote }: Props)
               <div className="flex items-center justify-between gap-8 text-sm text-slate-500">
                 <span>Subtotal</span>
                 <span className="font-semibold text-slate-700 tabular-nums">
-                  {usdFmt(subtotalUsd)}
+                  {moneyFmt2(subtotalUsd)}
                 </span>
               </div>
               {discountUsd > 0 && (
                 <div className="flex items-center justify-between gap-8 text-sm text-slate-500">
                   <span>Descuento</span>
-                  <span className="text-red-500 tabular-nums">-{usdFmt(discountUsd)}</span>
+                  <span className="text-red-500 tabular-nums">-{moneyFmt2(discountUsd)}</span>
                 </div>
               )}
               <div
@@ -324,19 +357,35 @@ export default function PublicQuoteClient({ token, quote: initialQuote }: Props)
                 style={{ color: primaryColor }}
               >
                 <span>Total</span>
-                <span className="tabular-nums">{usdFmt(totalUsd)}</span>
+                <span className="tabular-nums">{moneyFmt2(totalUsd)}</span>
               </div>
               {totalBs && bcvRate && (
-                <div className="flex items-center justify-between gap-8 text-xs text-slate-400">
-                  <span>En bolívares (tasa {bcvRate.toFixed(2)})</span>
-                  <span className="tabular-nums">
-                    Bs.{' '}
-                    {totalBs.toLocaleString('es-VE', {
-                      minimumFractionDigits: 2,
-                      maximumFractionDigits: 2,
-                    })}
-                  </span>
-                </div>
+                <>
+                  <div className="flex items-center justify-between gap-8 text-xs text-slate-500">
+                    <span>Referencia en bolívares</span>
+                    <span className="tabular-nums">
+                      Bs.{' '}
+                      {totalBs.toLocaleString('es-VE', {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}
+                    </span>
+                  </div>
+                  {/*
+                    La tasa y el monto en bolívares se CONGELAN al emitir el
+                    presupuesto (send-quote.use-case.ts) y no se recalculan después.
+                    Decir "a la tasa del día" sería mentir: un presupuesto de hace
+                    dos semanas mostraría una tasa vieja y el paciente creería que
+                    ese es el monto que va a pagar hoy. Se aclara la fecha de la
+                    tasa y que el monto puede variar al momento de pagar.
+                  */}
+                  <p className="text-[11px] leading-relaxed text-slate-400">
+                    Monto referencial indexado a la tasa oficial del BCV del día: Bs.{' '}
+                    {bcvRate.toFixed(2)} por {currency.code}. El precio acordado es en{' '}
+                    {currency.code}; el equivalente en bolívares se actualiza con la tasa vigente al
+                    momento del pago.
+                  </p>
+                </>
               )}
             </div>
           </div>
