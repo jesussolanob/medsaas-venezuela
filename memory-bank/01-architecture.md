@@ -925,6 +925,48 @@ status='active'` con `QueryTypes.UPDATE` (devuelve `[undefined, affectedCount]`;
   Ambos caminos usan ahora la misma cascada: plantilla del tipo → perfil del especialista → vacío.
   ⚠️ Un `null` escrito a mano en un parámetro de marca es un defecto silencioso: no rompe nada,
   solo produce un documento pelado que nadie mira hasta que lo recibe un paciente.
+- **ADR-063 (2026-09-08):** **Una columna `DATEONLY` devuelve una CADENA, no un `Date`.**
+  Sequelize 6 sanea `DATEONLY` con `moment(v).format('YYYY-MM-DD')` (`data-types.js`), así que al
+  LEER llega `'2026-10-08'`, y al ESCRIBIR se le pasa un `Date`. `quotes.valid_until` se declaraba
+  `Date | null` en el modelo y en la entidad, y TypeScript daba la anotación por buena.
+
+  No es un detalle de estilo: comparar esa cadena contra un `Date` **no da un resultado casi bien,
+  da SIEMPRE `false`**. La comparación relacional lleva ambos lados a número y `Number('2026-10-08')`
+  es `NaN`. El cron de vencimiento era un no-op silencioso —no vencía nada, no avisaba a nadie— con
+  la suite entera en verde. Y el controlador público hacía `validUntil?.toISOString()`, que sobre una
+  cadena **lanza**: la página que abre el paciente desde el correo daba **500** para cualquier
+  presupuesto con fecha de validez. No explotaba solo porque el campo arrancaba vacío.
+
+  Regla: **las columnas `DATEONLY` se declaran `Date | string`** y se leen por un método que
+  normaliza (`Quote.expiresAt()` para comparar, `Quote.validUntilAsDateString()` para serializar).
+  Ensanchar el tipo es lo que hace que el compilador señale los usos rotos; las otras tres columnas
+  `DATEONLY` del backend (`patients.birth_date`, `bcv_rate_history.rate_date`, `profiles.birth_date`)
+  ya se declaraban `string` y no tenían el problema.
+
+  ⚠️ Los tests no lo ven: construyen las entidades con `Date` de verdad. Un test que cubra una
+  columna `DATEONLY` tiene que pasarle **la cadena cruda**, que es lo que devuelve el driver.
+- **ADR-064 (2026-09-08):** **El día de vencimiento termina en Caracas, no en UTC.**
+  `valid_until` es un día calendario sin hora. Cortar a las 23:59:59 **UTC** hacía que un presupuesto
+  "válido hasta el 8 de octubre" muriera a las **19:59 del 8 en Caracas**: el paciente perdía las
+  últimas cuatro horas de su propio día, justo la franja en que se revisa el correo.
+
+  El corte va al fin del día venezolano (03:59:59.999 UTC del día siguiente) y se aplica en los **dos
+  lugares que tienen que coincidir**: `Quote.expiresAt()` (cuándo el ESTADO pasa a vencido) y
+  `SendQuoteUseCase.computeExpiresAt()` (cuándo muere el ENLACE). Si divergen, el paciente ve un
+  presupuesto vigente que el backend le rechaza al aceptarlo.
+
+  `VENEZUELA_UTC_OFFSET_HOURS = 4` es un número fijo y no una conversión de zona a propósito:
+  Venezuela no aplica horario de verano desde 2016, así que el desfase no depende de la fecha.
+- **ADR-065 (2026-09-08):** **El texto de error del proveedor de correo NO va en `message`.**
+  Resend devuelve la dirección rechazada dentro del mensaje ("The <dirección> address is not
+  verified"). El adapter lo relanzaba crudo y los use cases lo interpolan en sus logs: el correo de
+  un paciente terminaba en Cloud Logging, que no está cifrado ni tiene el control de acceso de la
+  base. `EmailSendError` ya advertía en su propio comentario que ese campo aparece en logs.
+
+  Ahora `message` lleva solo código y estado, y el texto crudo viaja en `detail`, que se guarda
+  únicamente en `email_send_log`. Aplica a **todo** envío, no solo al cron — pero fue el cron el que
+  lo volvió urgente: pasó de dispararse cuando alguien apretaba "enviar" a correr solo cada 15
+  minutos sobre todos los presupuestos de todos los especialistas.
 - **ADR-025 rev.2 (2026-09-03):** **El precio del paquete es el TOTAL; no se multiplica.**
   `pricing_plans.price_usd` pasa de significar precio de UNA sesión a precio de TODO el paquete.
   Un paquete de 4 consultas guarda **120**, no 30.
