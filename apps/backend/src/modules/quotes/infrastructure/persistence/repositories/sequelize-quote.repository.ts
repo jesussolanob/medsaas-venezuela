@@ -11,6 +11,7 @@ import {
 import { QuoteItem, type QuoteItemKind } from '../../../domain/entities/quote-item.entity';
 import { QuoteShareLink } from '../../../domain/entities/quote-share-link.entity';
 import { QuoteNotFoundError } from '../../../domain/errors/quote-not-found.error';
+import { QuoteInvalidStatusTransitionError } from '../../../domain/errors/quote-invalid-status-transition.error';
 import { QuoteAlreadySentError } from '../../../domain/errors/quote-already-sent.error';
 import { QuoteItemSourceNotFoundError } from '../../../domain/errors/quote-item-source-not-found.error';
 import type {
@@ -476,12 +477,39 @@ export class SequelizeQuoteRepository implements IQuoteRepository {
     });
   }
 
-  async updateStatus(id: string, doctorId: string, status: QuoteStatus): Promise<Quote> {
-    const [affected] = await this.quoteModel.update(
-      { status },
-      { where: { id, doctorId } as WhereOptions },
-    );
+  /**
+   * @param expectedStatus  Estado que el llamador leyó antes de decidir la transición.
+   *                        Se incluye en el WHERE para cerrar la carrera: si otra
+   *                        petición ya cambió el estado, este UPDATE afecta 0 filas.
+   */
+  async updateStatus(
+    id: string,
+    doctorId: string,
+    status: QuoteStatus,
+    expectedStatus?: QuoteStatus,
+  ): Promise<Quote> {
+    // La validación de la transición se hace en memoria sobre una lectura previa.
+    // Sin condicionar el UPDATE al estado esperado, dos respuestas casi simultáneas
+    // —el paciente con el enlace abierto en dos pestañas— leen ambas 'sent', pasan
+    // ambas la validación y escriben las dos: la segunda pisa a la primera sin que
+    // nadie vea un error, y el presupuesto puede quedar en un estado distinto del
+    // que el paciente cree haber elegido. Con la guarda, la segunda afecta 0 filas.
+    const where = (
+      expectedStatus !== undefined ? { id, doctorId, status: expectedStatus } : { id, doctorId }
+    ) as WhereOptions;
+
+    const [affected] = await this.quoteModel.update({ status }, { where });
     if (affected === 0) {
+      // Con expectedStatus, 0 filas puede ser "no existe" o "ya no está en ese
+      // estado". Se distingue leyendo: si la fila existe, perdió la carrera.
+      if (expectedStatus !== undefined) {
+        const actual = await this.quoteModel.findOne({
+          where: { id, doctorId } as WhereOptions,
+        });
+        if (actual) {
+          throw new QuoteInvalidStatusTransitionError(actual.status as QuoteStatus, status);
+        }
+      }
       throw new QuoteNotFoundError();
     }
     const row = await this.quoteModel.findOne({

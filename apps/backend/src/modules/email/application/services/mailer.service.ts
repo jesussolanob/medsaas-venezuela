@@ -38,6 +38,30 @@ export type { EmailRecipientRef };
  *   - If a placeholder key is absent from `data`, it is replaced with an
  *     empty string (fail-safe; never expose raw template tokens to the user).
  */
+/**
+ * Escapa las entidades HTML de un valor antes de interpolarlo en el cuerpo de un correo.
+ *
+ * Los valores que se interpolan incluyen texto que escribe CUALQUIERA sin estar
+ * autenticado: el campo "Nombre" del booking público es uno. Sin escape, alguien
+ * podía poner `<a href="https://sitio-falso/pago">Confirmá tu pago</a>` en ese
+ * campo y el especialista recibía ese enlace dentro de un correo con la marca de
+ * Delta Medical CRM — phishing mucho más creíble que uno genérico. Los clientes
+ * de correo bloquean <script>, pero renderizan <a>, <img> y estilos igual.
+ *
+ * Escapa las cinco entidades estándar. Es seguro también dentro de atributos:
+ * un "&" en una URL pasa a "&amp;", que es HTML válido y el cliente decodifica;
+ * y las comillas escapadas impiden salirse del atributo. Hay plantillas que usan
+ * variables dentro de href="{{...}}" y siguen funcionando.
+ */
+function escapeHtmlEntities(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 @Injectable()
 export class MailerService {
   private readonly logger = new Logger(MailerService.name);
@@ -96,8 +120,10 @@ export class MailerService {
       throw new EmailTemplateNotFoundError(name);
     }
 
+    // El asunto y la versión de texto plano NO se escapan: ahí un "&amp;" se
+    // leería literal. El cuerpo HTML SÍ — ver escapeHtmlEntities.
     const subject = this.render(template.subject, data);
-    const html = this.withLogoHeader(this.render(template.html, data));
+    const html = this.withLogoHeader(this.render(template.html, data, { escapeHtml: true }));
     const text = template.text !== null ? this.render(template.text, data) : undefined;
 
     this.logger.debug(
@@ -180,13 +206,18 @@ export class MailerService {
    * - Unknown keys → empty string (never expose raw tokens).
    * - Non-string values are serialised via String() (numbers, dates, etc.).
    */
-  private render(template: string, data: Record<string, unknown>): string {
+  private render(
+    template: string,
+    data: Record<string, unknown>,
+    options: { escapeHtml?: boolean } = {},
+  ): string {
     return template.replace(/\{\{(\w+)\}\}/g, (_match, key: string) => {
       const value = data[key];
       if (value === undefined || value === null) {
         return '';
       }
-      return String(value);
+      const raw = String(value);
+      return options.escapeHtml ? escapeHtmlEntities(raw) : raw;
     });
   }
 

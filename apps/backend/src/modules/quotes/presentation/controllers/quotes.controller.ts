@@ -37,7 +37,10 @@ import { GetQuoteUseCase } from '../../application/use-cases/get-quote.use-case'
 import { ListQuotesUseCase } from '../../application/use-cases/list-quotes.use-case';
 import { UpdateQuoteUseCase } from '../../application/use-cases/update-quote.use-case';
 import { DeleteQuoteUseCase } from '../../application/use-cases/delete-quote.use-case';
-import { SendQuoteUseCase } from '../../application/use-cases/send-quote.use-case';
+import {
+  SendQuoteUseCase,
+  type SendQuoteEmailSkipReason,
+} from '../../application/use-cases/send-quote.use-case';
 import { UpdateQuoteStatusUseCase } from '../../application/use-cases/update-quote-status.use-case';
 import type { Quote } from '../../domain/entities/quote.entity';
 import type { QuoteListResult } from '../../domain/repositories/iquote.repository';
@@ -68,6 +71,14 @@ interface QuoteDetailData extends Quote {
    * SECURITY: PII — este endpoint es del especialista dueño. No loguear.
    */
   recipient_name: string | null;
+}
+
+/** Response of POST /:id/send — QuoteDetailData plus email delivery outcome. */
+interface QuoteSendResponseData extends QuoteDetailData {
+  /** True when the quote_sent email was delivered without error. */
+  email_sent: boolean;
+  /** Why the email was not sent. Null when email_sent is true. */
+  email_skip_reason: SendQuoteEmailSkipReason | null;
 }
 
 /**
@@ -173,24 +184,38 @@ export class QuotesController {
   /**
    * POST /api/doctor/quotes/:id/send
    * Emits the quote: freezes rate, creates share link, sends email, status → sent.
+   *
+   * email_sent / email_skip_reason let the frontend tell the specialist when
+   * the confirmation email did NOT go out — the link is always created and
+   * usable either way, so this is informational, not an error response.
    */
   @Post(':id/send')
   async send(
     @Param('id', ParseUUIDPipe) id: string,
     @Body(new ZodValidationPipe(SendQuoteDtoSchema)) dto: SendQuoteDto,
     @CurrentUser() user: CurrentUserPayload,
-  ): Promise<SuccessResponse<QuoteDetailData>> {
+  ): Promise<SuccessResponse<QuoteSendResponseData>> {
     // doctorName is sourced from the user profile — for Phase 1 we use the user.sub
     // as a fallback; the frontend can send the display name via the DTO if needed.
     // doctorName is now resolved inside SendQuoteUseCase from profiles.full_name.
     // Never use user.email — that's the Auth0 email, not the display name.
-    const quote = await this.sendQuote.execute({
+    const { quote, emailSent, emailSkipReason } = await this.sendQuote.execute({
       quoteId: id,
       doctorId: user.sub,
       recipientEmail: dto.recipient_email ?? undefined,
       recipientName: dto.recipient_name ?? undefined,
     });
-    return { success: true, data: this.withShareData(quote) };
+    // Spread here loses the Quote prototype's methods (isOwnedBy, canBeEdited, ...)
+    // at the type level — same trust as withShareData()'s own internal cast; the
+    // response is serialised to JSON, so only the own enumerable fields matter.
+    return {
+      success: true,
+      data: {
+        ...this.withShareData(quote),
+        email_sent: emailSent,
+        email_skip_reason: emailSkipReason,
+      } as QuoteSendResponseData,
+    };
   }
 
   /**

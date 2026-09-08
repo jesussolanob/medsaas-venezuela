@@ -8,8 +8,12 @@
  * The PDF download navigates to the server PDF route.
  */
 
-import { Download, CheckCircle, Clock } from 'lucide-react';
+import { useState } from 'react';
+import { Download, CheckCircle, XCircle, Clock, Calendar } from 'lucide-react';
+import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import type { PublicQuoteData } from './page';
+
+type QuoteStatus = PublicQuoteData['status'];
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -66,7 +70,16 @@ interface Props {
 // Component
 // ---------------------------------------------------------------------------
 
-export default function PublicQuoteClient({ token, quote }: Props) {
+export default function PublicQuoteClient({ token, quote: initialQuote }: Props) {
+  // Local status override once the recipient responds — the initial fetch
+  // (page.tsx) is server-side and won't re-run, so the badge/notice/buttons
+  // must reflect the just-submitted decision without a page reload.
+  const [status, setStatus] = useState<QuoteStatus>(initialQuote.status);
+  const [pendingAction, setPendingAction] = useState<'accepted' | 'rejected' | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  const quote = initialQuote;
   const primaryColor = quote.templateConfig?.primaryColor ?? '#0891b2';
   const headerText = quote.templateConfig?.headerText ?? quote.doctor.fullName;
 
@@ -82,7 +95,38 @@ export default function PublicQuoteClient({ token, quote }: Props) {
     window.location.href = `/api/quotes/${token}/pdf`;
   }
 
-  const isExpiredOrRejected = quote.status === 'expired' || quote.status === 'rejected';
+  async function submitStatus(next: 'accepted' | 'rejected'): Promise<void> {
+    setSubmitting(true);
+    setActionError(null);
+    try {
+      const res = await fetch(`/api/quotes/${token}/status`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: next }),
+      });
+      const body = (await res.json().catch(() => null)) as
+        | { success: true; data: { status: QuoteStatus } }
+        | { error: string }
+        | null;
+      if (!res.ok || !body || !('success' in body)) {
+        const message =
+          (body && 'error' in body && body.error) ||
+          'No se pudo registrar tu respuesta. Intentá de nuevo.';
+        // Close the confirm dialog so the error is visible instead of hidden
+        // behind it — the Aceptar/Rechazar buttons stay in place to retry.
+        setPendingAction(null);
+        setActionError(message);
+        return;
+      }
+      setStatus(body.data.status);
+      setPendingAction(null);
+    } catch {
+      setPendingAction(null);
+      setActionError('No se pudo conectar con el servidor. Intentá de nuevo.');
+    } finally {
+      setSubmitting(false);
+    }
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 py-8 px-4">
@@ -105,31 +149,78 @@ export default function PublicQuoteClient({ token, quote }: Props) {
             </div>
             <div className="text-right shrink-0">
               <span
-                className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${STATUS_COLORS[quote.status]}`}
+                className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${STATUS_COLORS[status]}`}
               >
-                {STATUS_LABELS[quote.status] ?? quote.status}
+                {STATUS_LABELS[status] ?? status}
               </span>
             </div>
           </div>
         </div>
 
         {/* Status notice */}
-        {quote.status === 'accepted' && (
-          <div className="flex items-center gap-3 px-4 py-3 bg-emerald-50 border border-emerald-200 rounded-xl">
-            <CheckCircle className="w-5 h-5 text-emerald-600 shrink-0" />
-            <p className="text-sm font-semibold text-emerald-700">
-              Este presupuesto fue aceptado. Comunicate con el especialista para coordinar el pago.
+        {status === 'accepted' && (
+          <div className="flex items-start gap-3 px-4 py-3 bg-emerald-50 border border-emerald-200 rounded-xl">
+            <CheckCircle className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
+            <div className="space-y-2">
+              <p className="text-sm font-semibold text-emerald-700">
+                Aceptaste este presupuesto. Comunicate con el especialista para coordinar el pago.
+              </p>
+              <a
+                href={`/book/${quote.doctor.id}`}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-white rounded-lg transition-opacity hover:opacity-90"
+                style={{ background: `linear-gradient(135deg, ${primaryColor} 0%, #0369a1 100%)` }}
+              >
+                <Calendar className="w-3.5 h-3.5" />
+                Agendá tu cita
+              </a>
+            </div>
+          </div>
+        )}
+        {status === 'rejected' && (
+          <div className="flex items-center gap-3 px-4 py-3 bg-slate-100 border border-slate-200 rounded-xl">
+            <XCircle className="w-5 h-5 text-slate-500 shrink-0" />
+            <p className="text-sm font-semibold text-slate-600">
+              Registramos tu respuesta: rechazaste este presupuesto.
             </p>
           </div>
         )}
-        {isExpiredOrRejected && (
+        {status === 'expired' && (
           <div className="flex items-center gap-3 px-4 py-3 bg-amber-50 border border-amber-200 rounded-xl">
             <Clock className="w-5 h-5 text-amber-600 shrink-0" />
             <p className="text-sm font-semibold text-amber-700">
-              {quote.status === 'expired'
-                ? 'Este presupuesto ya venció. Solicitá un nuevo presupuesto.'
-                : 'Este presupuesto fue rechazado.'}
+              Este presupuesto ya venció. Solicitá un nuevo presupuesto.
             </p>
+          </div>
+        )}
+
+        {/* Accept / reject actions — only while the quote is still 'sent' */}
+        {status === 'sent' && (
+          <div className="bg-white border border-slate-200 rounded-xl p-5 space-y-3">
+            <p className="text-sm font-semibold text-slate-700">
+              ¿Qué querés hacer con este presupuesto?
+            </p>
+            {actionError && <p className="text-sm text-red-500">{actionError}</p>}
+            <div className="flex flex-col sm:flex-row gap-2">
+              <button
+                type="button"
+                onClick={() => setPendingAction('accepted')}
+                disabled={submitting}
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-bold text-white rounded-lg transition-opacity hover:opacity-90 disabled:opacity-60"
+                style={{ background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)' }}
+              >
+                <CheckCircle className="w-4 h-4" />
+                Aceptar presupuesto
+              </button>
+              <button
+                type="button"
+                onClick={() => setPendingAction('rejected')}
+                disabled={submitting}
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-bold text-red-600 border border-red-200 bg-red-50 rounded-lg hover:bg-red-100 transition-colors disabled:opacity-60"
+              >
+                <XCircle className="w-4 h-4" />
+                Rechazar
+              </button>
+            </div>
           </div>
         )}
 
@@ -282,6 +373,28 @@ export default function PublicQuoteClient({ token, quote }: Props) {
           </p>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={pendingAction !== null}
+        title={
+          pendingAction === 'accepted'
+            ? '¿Aceptar este presupuesto?'
+            : '¿Rechazar este presupuesto?'
+        }
+        message={
+          pendingAction === 'accepted'
+            ? 'Le avisaremos al especialista que aceptaste. Esta decisión no se puede deshacer desde acá.'
+            : 'Le avisaremos al especialista que rechazaste el presupuesto. Esta decisión no se puede deshacer desde acá.'
+        }
+        confirmLabel={pendingAction === 'accepted' ? 'Sí, aceptar' : 'Sí, rechazar'}
+        cancelLabel="Volver"
+        variant={pendingAction === 'rejected' ? 'danger' : 'default'}
+        loading={submitting}
+        onCancel={() => setPendingAction(null)}
+        onConfirm={() => {
+          if (pendingAction) void submitStatus(pendingAction);
+        }}
+      />
     </div>
   );
 }

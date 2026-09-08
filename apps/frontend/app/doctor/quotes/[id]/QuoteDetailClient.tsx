@@ -31,6 +31,7 @@ import {
   Loader2,
   Info,
   AlertTriangle,
+  X,
 } from 'lucide-react';
 import { showToast } from '@/components/ui/Toaster';
 import {
@@ -43,6 +44,7 @@ import {
   type QuoteStatus,
   type QuoteItemInput,
   type QuoteDiscountType,
+  type SendQuoteEmailSkipReason,
 } from '../actions';
 import { computeSubtotal, computeDiscountUsd, computeTotal } from '../quote-math';
 
@@ -160,7 +162,11 @@ interface Props {
 interface SendModalProps {
   quoteId: string;
   onClose: () => void;
-  onSent: (updated: QuoteRow) => void;
+  onSent: (
+    updated: QuoteRow,
+    emailSent: boolean,
+    emailSkipReason: SendQuoteEmailSkipReason,
+  ) => void;
 }
 
 function SendModal({ quoteId, onClose, onSent }: SendModalProps) {
@@ -180,8 +186,21 @@ function SendModal({ quoteId, onClose, onSent }: SendModalProps) {
         showToast({ type: 'error', message: result.error ?? 'Error al enviar el presupuesto' });
         return;
       }
-      showToast({ type: 'success', message: 'Presupuesto enviado' });
-      onSent(result.quote);
+      // The quote is always emitted and its share link is always usable —
+      // email_sent only tells us whether the confirmation mail also went out.
+      // A `false` here must not read as "sending failed". The toast is the
+      // immediate notice; the parent also keeps a persistent banner since a
+      // 4s toast is easy to miss for something the specialist needs to act on.
+      showToast({
+        type: result.email_sent === false ? 'info' : 'success',
+        message:
+          result.email_sent === false
+            ? result.email_skip_reason === 'no_recipient_email'
+              ? 'Presupuesto emitido. El destinatario no tiene correo cargado.'
+              : 'Presupuesto emitido, pero el correo no se pudo entregar.'
+            : 'Presupuesto enviado',
+      });
+      onSent(result.quote, result.email_sent ?? true, result.email_skip_reason ?? null);
     } finally {
       setSaving(false);
     }
@@ -273,6 +292,10 @@ export default function QuoteDetailClient({ initialQuote }: Props) {
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [showSendModal, setShowSendModal] = useState(false);
+  // Persistent notice for the last send attempt when the confirmation email
+  // did not go out. A toast alone (4s) is too easy to miss for something the
+  // specialist may need to act on (retry, or share the link by hand).
+  const [emailNotice, setEmailNotice] = useState<SendQuoteEmailSkipReason>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [copied, setCopied] = useState(false);
 
@@ -674,6 +697,33 @@ export default function QuoteDetailClient({ initialQuote }: Props) {
           </div>
         </div>
 
+        {/* Email delivery notice — the quote itself was always emitted and its
+            share link works either way; this only flags the confirmation mail. */}
+        {emailNotice && (
+          <div className="flex items-start gap-3 px-4 py-3 bg-amber-50 border border-amber-200 rounded-xl">
+            <Info className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-amber-800">
+                {emailNotice === 'no_recipient_email'
+                  ? 'El destinatario no tiene correo cargado.'
+                  : 'No se pudo entregar el correo de confirmación.'}
+              </p>
+              <p className="text-xs text-amber-700 mt-0.5">
+                El presupuesto se emitió y el enlace de acceso ya funciona — compartilo manualmente
+                {emailNotice === 'delivery_failed' ? ' o reintentá el envío.' : '.'}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setEmailNotice(null)}
+              aria-label="Cerrar aviso"
+              className="p-1 rounded-lg text-amber-500 hover:bg-amber-100 shrink-0"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
+
         {/* Meta card */}
         <div className="bg-white border border-slate-200 rounded-xl p-5 grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
           <div>
@@ -1047,8 +1097,9 @@ export default function QuoteDetailClient({ initialQuote }: Props) {
         <SendModal
           quoteId={quote.id}
           onClose={() => setShowSendModal(false)}
-          onSent={(updated) => {
+          onSent={(updated, emailSent, emailSkipReason) => {
             setQuote(updated);
+            setEmailNotice(emailSent ? null : emailSkipReason);
             setShowSendModal(false);
           }}
         />

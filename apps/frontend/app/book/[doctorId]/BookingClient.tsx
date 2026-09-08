@@ -2338,13 +2338,12 @@ export default function BookingClient({
                   </div>
                 </form>
               ) : (
+                // Acá vivía un aviso ámbar: "Como invitado no podrás usar paquetes
+                // prepagados ni ver tu historial". Se quitó por pedido del dueño
+                // (2026-09-08): confundía al paciente justo antes de reservar,
+                // hablándole de funciones que no pidió y que probablemente no
+                // conoce, y sembraba la duda de si su cita iba a quedar bien.
                 <div className="space-y-3">
-                  <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
-                    <p className="text-xs text-amber-700">
-                      <span className="font-semibold">Nota:</span> Como invitado no podrás usar
-                      paquetes prepagados ni ver tu historial.
-                    </p>
-                  </div>
                   <div>
                     <label className="block text-xs font-semibold text-slate-600 mb-1.5">
                       Cédula <span className="text-red-500">*</span>

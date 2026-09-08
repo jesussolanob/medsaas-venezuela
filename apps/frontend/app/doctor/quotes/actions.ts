@@ -401,10 +401,30 @@ export interface SendQuoteInput {
   recipient_name?: string | null;
 }
 
-export async function sendQuote(id: string, input: SendQuoteInput): Promise<QuoteActionResult> {
-  const result = await backendPost<BackendQuote>(`/api/doctor/quotes/${id}/send`, input);
+/** Why the confirmation email was not sent. null when it was sent. */
+export type SendQuoteEmailSkipReason = 'no_recipient_email' | 'delivery_failed' | null;
+
+interface BackendSendQuote extends BackendQuote {
+  email_sent: boolean;
+  email_skip_reason: SendQuoteEmailSkipReason;
+}
+
+export interface SendQuoteResult {
+  quote?: QuoteRow;
+  /** True only when the confirmation email was delivered. Undefined on error. */
+  email_sent?: boolean;
+  email_skip_reason?: SendQuoteEmailSkipReason;
+  error?: string;
+}
+
+export async function sendQuote(id: string, input: SendQuoteInput): Promise<SendQuoteResult> {
+  const result = await backendPost<BackendSendQuote>(`/api/doctor/quotes/${id}/send`, input);
   if (!result.ok) return { error: result.error.message };
-  return { quote: toQuoteRow(result.value) };
+  return {
+    quote: toQuoteRow(result.value),
+    email_sent: result.value.email_sent,
+    email_skip_reason: result.value.email_skip_reason,
+  };
 }
 
 // ---------------------------------------------------------------------------

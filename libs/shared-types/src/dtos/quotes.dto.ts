@@ -205,6 +205,23 @@ export const SendQuoteDtoSchema = z
 export type SendQuoteDto = z.infer<typeof SendQuoteDtoSchema>;
 
 // ---------------------------------------------------------------------------
+// Public quote status update (recipient accepts/rejects via the share link)
+// ---------------------------------------------------------------------------
+
+/**
+ * Status update submitted from the unauthenticated public quote view.
+ * Deliberately excludes 'expired' — only the specialist decides that; the
+ * recipient can only accept or reject the quote they were sent.
+ */
+export const PublicQuoteStatusDtoSchema = z
+  .object({
+    status: z.enum(['accepted', 'rejected']),
+  })
+  .strict();
+
+export type PublicQuoteStatusDto = z.infer<typeof PublicQuoteStatusDtoSchema>;
+
+// ---------------------------------------------------------------------------
 // List quotes query
 // ---------------------------------------------------------------------------
 

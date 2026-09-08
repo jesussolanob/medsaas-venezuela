@@ -179,7 +179,17 @@ export interface IQuoteRepository {
    * Updates status to accepted | rejected | expired.
    * Throws QuoteNotFoundError when not found or not owned.
    */
-  updateStatus(id: string, doctorId: string, status: QuoteStatus): Promise<Quote>;
+  /**
+   * @param expectedStatus  Opcional. Si se pasa, el UPDATE solo aplica cuando la fila
+   *                        sigue en ese estado — cierra la carrera entre dos respuestas
+   *                        simultáneas sobre el mismo presupuesto.
+   */
+  updateStatus(
+    id: string,
+    doctorId: string,
+    status: QuoteStatus,
+    expectedStatus?: QuoteStatus,
+  ): Promise<Quote>;
 
   /**
    * Deletes a quote and its items (cascade in DB).

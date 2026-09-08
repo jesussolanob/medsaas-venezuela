@@ -26,6 +26,14 @@ import {
 
 /** Doctor branding block returned to the public render page. */
 export interface PublicDoctorProfile {
+  /**
+   * Id del especialista, para armar el enlace de reserva `/book/<id>` que se le
+   * ofrece al destinatario después de aceptar el presupuesto.
+   *
+   * No es un dato sensible: ese id ya es público — vive en la URL de reserva que
+   * cada especialista comparte abiertamente. No expone nada de sus pacientes.
+   */
+  id: string;
   fullName: string;
   professionalTitle: string | null;
   specialty: string | null;
@@ -141,6 +149,7 @@ export class GetPublicQuoteUseCase {
 
     // 5. Build response
     const doctor: PublicDoctorProfile = {
+      id: quote.doctorId,
       fullName: doctorProfile?.fullName ?? 'Dr./Dra.',
       professionalTitle: doctorProfile?.professionalTitle ?? null,
       specialty: doctorProfile?.specialty ?? null,

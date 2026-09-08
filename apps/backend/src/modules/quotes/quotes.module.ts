@@ -20,6 +20,7 @@ import { DeleteQuoteUseCase } from './application/use-cases/delete-quote.use-cas
 import { SendQuoteUseCase } from './application/use-cases/send-quote.use-case';
 import { UpdateQuoteStatusUseCase } from './application/use-cases/update-quote-status.use-case';
 import { GetPublicQuoteUseCase } from './application/use-cases/get-public-quote.use-case';
+import { UpdatePublicQuoteStatusUseCase } from './application/use-cases/update-public-quote-status.use-case';
 
 // Controllers
 import { QuotesController } from './presentation/controllers/quotes.controller';
@@ -80,6 +81,7 @@ import { LeadsModule } from '../leads/leads.module';
     SendQuoteUseCase,
     UpdateQuoteStatusUseCase,
     GetPublicQuoteUseCase,
+    UpdatePublicQuoteStatusUseCase,
   ],
 })
 export class QuotesModule {}

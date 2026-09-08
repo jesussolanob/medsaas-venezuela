@@ -33,6 +33,13 @@ interface PublicQuoteItem {
 }
 
 interface PublicQuoteDoctor {
+  /**
+   * Id del especialista — público, es el mismo que ya vive en el enlace de
+   * reserva que cada especialista comparte abiertamente (/book/<id>). No
+   * expone nada de sus pacientes. Se usa para armar el CTA "Agendá tu cita"
+   * después de aceptar el presupuesto.
+   */
+  id: string;
   fullName: string;
   professionalTitle: string | null;
   specialty: string | null;

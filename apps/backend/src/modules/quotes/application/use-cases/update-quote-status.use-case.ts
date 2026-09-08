@@ -35,6 +35,7 @@ export class UpdateQuoteStatusUseCase {
       throw new QuoteInvalidStatusTransitionError(existing.status, dto.status);
     }
 
-    return this.quoteRepo.updateStatus(id, doctorId, dto.status);
+    // Mismo criterio que la ruta pública: el estado leído entra en el WHERE.
+    return this.quoteRepo.updateStatus(id, doctorId, dto.status, existing.status);
   }
 }

@@ -4,6 +4,9 @@ import {
 } from './appointment-notification.service';
 import { GoogleNotConnectedError } from '../../domain/errors/google-not-connected.error';
 import type { CreateCalendarEventUseCase } from '../use-cases/integrations/create-calendar-event.use-case';
+import type { MailerService } from '../../../email/application/services/mailer.service';
+import type { IDoctorProfileRepository } from '../../../doctor-settings/domain/repositories/doctor-profile.repository';
+import type { DoctorProfile } from '../../../doctor-settings/domain/entities/doctor-profile.entity';
 
 const makeInput = (override: Record<string, unknown> = {}) => ({
   appointmentId: 'appt-abc',
@@ -161,6 +164,105 @@ describe('AppointmentNotificationService', () => {
         expect.objectContaining({ location: 'Av. Principal 123' }),
       );
     });
+  });
+});
+
+describe('AppointmentNotificationService — doctor new-appointment notice', () => {
+  let createCalendarEvent: jest.Mocked<CreateCalendarEventUseCase>;
+  let mailer: jest.Mocked<MailerService>;
+  let doctorProfileRepo: jest.Mocked<IDoctorProfileRepository>;
+  let service: AppointmentNotificationService;
+
+  beforeEach(() => {
+    createCalendarEvent = {
+      execute: jest.fn(),
+    } as unknown as jest.Mocked<CreateCalendarEventUseCase>;
+    mailer = {
+      sendTemplate: jest.fn().mockResolvedValue({ id: 'msg-1' }),
+    } as unknown as jest.Mocked<MailerService>;
+    doctorProfileRepo = {
+      findByDoctorId: jest
+        .fn()
+        .mockResolvedValue({ fullName: 'Dr. López', email: 'doc@clinic.com' } as DoctorProfile),
+      update: jest.fn(),
+      updateExchangeRate: jest.fn(),
+      markOnboardingCompleted: jest.fn(),
+      updateBlocksLayout: jest.fn(),
+      countUpcomingAppointments: jest.fn(),
+      deactivateOwnAccount: jest.fn(),
+      findPlanSnapshot: jest.fn(),
+      scheduleOwnAccountDeactivation: jest.fn(),
+      applyExpiredScheduledDeactivations: jest.fn(),
+    } as unknown as jest.Mocked<IDoctorProfileRepository>;
+
+    service = new AppointmentNotificationService(createCalendarEvent, mailer, doctorProfileRepo);
+  });
+
+  const baseNotice = {
+    appointmentId: 'appt-1',
+    doctorId: 'doc-1',
+    patientName: 'Juan Pérez',
+    scheduledAtISO: '2026-09-08T14:00:00Z',
+    appointmentMode: 'online',
+  };
+
+  it('emails the doctor resolved from DOCTOR_PROFILE_REPOSITORY, not from the caller', async () => {
+    await service.notifyDoctorOfNewAppointment(baseNotice);
+
+    expect(doctorProfileRepo.findByDoctorId).toHaveBeenCalledWith('doc-1');
+    expect(mailer.sendTemplate).toHaveBeenCalledWith(
+      'appointment_new_doctor',
+      'doc@clinic.com',
+      expect.objectContaining({ doctor_name: 'Dr. López', patient_name: 'Juan Pérez' }),
+      { type: 'doctor', id: 'doc-1' },
+    );
+  });
+
+  it('does nothing when the doctor has no email on file', async () => {
+    doctorProfileRepo.findByDoctorId.mockResolvedValue({
+      fullName: 'Dr. Sin Correo',
+      email: '',
+    } as DoctorProfile);
+
+    await service.notifyDoctorOfNewAppointment(baseNotice);
+
+    expect(mailer.sendTemplate).not.toHaveBeenCalled();
+  });
+
+  it('does not throw when the mailer rejects (best-effort)', async () => {
+    mailer.sendTemplate.mockRejectedValueOnce(new Error('SMTP down'));
+
+    await expect(service.notifyDoctorOfNewAppointment(baseNotice)).resolves.toBeUndefined();
+  });
+
+  it('is a no-op when doctorProfileRepo was not injected (backward compat)', async () => {
+    const bareService = new AppointmentNotificationService(createCalendarEvent, mailer, null);
+
+    await expect(bareService.notifyDoctorOfNewAppointment(baseNotice)).resolves.toBeUndefined();
+    expect(mailer.sendTemplate).not.toHaveBeenCalled();
+  });
+
+  it('notify() also triggers the doctor notice for a booking-created appointment', async () => {
+    createCalendarEvent.execute.mockRejectedValue(new GoogleNotConnectedError('doc-1'));
+
+    await service.notify({
+      appointmentId: 'appt-2',
+      doctorId: 'doc-1',
+      doctorName: 'Dr. López',
+      doctorEmail: undefined,
+      patientEmail: undefined,
+      patientName: 'María Torres',
+      scheduledAtISO: '2026-09-08T14:00:00Z',
+      durationMinutes: 30,
+      appointmentMode: 'online',
+    });
+
+    expect(mailer.sendTemplate).toHaveBeenCalledWith(
+      'appointment_new_doctor',
+      'doc@clinic.com',
+      expect.objectContaining({ patient_name: 'María Torres' }),
+      { type: 'doctor', id: 'doc-1' },
+    );
   });
 });
 

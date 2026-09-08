@@ -2,6 +2,10 @@ import { SendQuoteUseCase } from './send-quote.use-case';
 import type { IQuoteRepository } from '../../domain/repositories/iquote.repository';
 import type { IDoctorProfileRepository } from '../../../doctor-settings/domain/repositories/doctor-profile.repository';
 import type { DoctorProfile } from '../../../doctor-settings/domain/entities/doctor-profile.entity';
+import type { IPatientRepository } from '../../../patients/domain/repositories/patient.repository';
+import type { Patient } from '../../../patients/domain/entities/patient.entity';
+import type { ILeadRepository } from '../../../leads/domain/repositories/lead.repository';
+import type { Lead } from '../../../leads/domain/entities/lead.entity';
 import { Quote } from '../../domain/entities/quote.entity';
 import { QuoteNotFoundError } from '../../domain/errors/quote-not-found.error';
 import { QuoteAlreadySentError } from '../../domain/errors/quote-already-sent.error';
@@ -93,14 +97,40 @@ function makeConfig(): jest.Mocked<ConfigService> {
   } as unknown as jest.Mocked<ConfigService>;
 }
 
+function makePatientRepo(patient: Patient | null = null): jest.Mocked<IPatientRepository> {
+  return {
+    findById: jest.fn().mockResolvedValue(patient),
+    findByCedulaHash: jest.fn(),
+    findByEmailHash: jest.fn(),
+    list: jest.fn(),
+    findAllByDoctor: jest.fn(),
+    save: jest.fn(),
+    update: jest.fn(),
+    softDelete: jest.fn(),
+    logReveal: jest.fn(),
+  };
+}
+
+function makeLeadRepo(lead: Lead | null = null): jest.Mocked<ILeadRepository> {
+  return {
+    list: jest.fn(),
+    findByIdForDoctor: jest.fn().mockResolvedValue(lead),
+    create: jest.fn(),
+    save: jest.fn(),
+    delete: jest.fn(),
+  };
+}
+
 function makeUseCase(
   repo = makeRepo(),
   profileRepo = makeDoctorProfileRepo(),
   rateStore = makeRateStore(),
   mailer = makeMailer(),
   config = makeConfig(),
+  patientRepo = makePatientRepo(),
+  leadRepo = makeLeadRepo(),
 ): SendQuoteUseCase {
-  return new SendQuoteUseCase(repo, rateStore, profileRepo, mailer, config);
+  return new SendQuoteUseCase(repo, rateStore, profileRepo, patientRepo, leadRepo, mailer, config);
 }
 
 describe('SendQuoteUseCase', () => {
@@ -110,7 +140,7 @@ describe('SendQuoteUseCase', () => {
 
     const result = await uc.execute({ quoteId: QUOTE_ID, doctorId: DOCTOR_ID });
 
-    expect(result.status).toBe('sent');
+    expect(result.quote.status).toBe('sent');
     expect(repo.markAsSent).toHaveBeenCalledTimes(1);
   });
 
@@ -190,7 +220,7 @@ describe('SendQuoteUseCase', () => {
     const mailer = makeMailer();
     const uc = makeUseCase(repo, makeDoctorProfileRepo('Dr. García'), makeRateStore(), mailer);
 
-    await uc.execute({
+    const result = await uc.execute({
       quoteId: QUOTE_ID,
       doctorId: DOCTOR_ID,
       recipientEmail: 'paciente@example.com',
@@ -203,20 +233,114 @@ describe('SendQuoteUseCase', () => {
       expect.objectContaining({ doctorName: 'Dr. García', quoteNumber: 'COT-0001' }),
       expect.any(Object),
     );
+    expect(result.emailSent).toBe(true);
+    expect(result.emailSkipReason).toBeNull();
   });
 
-  it('skips email and still marks as sent when no recipientEmail', async () => {
+  it('an explicit recipientEmail always wins over the one on file', async () => {
+    const repo = makeRepo();
+    const mailer = makeMailer();
+    const patientRepo = makePatientRepo({ email: 'onfile@example.com' } as Patient);
+    const uc = makeUseCase(
+      repo,
+      makeDoctorProfileRepo(),
+      makeRateStore(),
+      mailer,
+      makeConfig(),
+      patientRepo,
+    );
+
+    await uc.execute({
+      quoteId: QUOTE_ID,
+      doctorId: DOCTOR_ID,
+      recipientEmail: 'explicit@example.com',
+    });
+
+    expect(mailer.sendTemplate).toHaveBeenCalledWith(
+      'quote_sent',
+      'explicit@example.com',
+      expect.anything(),
+      expect.any(Object),
+    );
+    // Explicit email present → never even looks up the patient.
+    expect(patientRepo.findById).not.toHaveBeenCalled();
+  });
+
+  it('auto-resolves the recipient email from the patient on file when omitted', async () => {
+    const repo = makeRepo(); // default quote has patientId = PATIENT_ID, leadId = null
+    const mailer = makeMailer();
+    const patientRepo = makePatientRepo({
+      email: 'paciente-on-file@example.com',
+      fullName: 'Juana Pérez',
+    } as Patient);
+    const uc = makeUseCase(
+      repo,
+      makeDoctorProfileRepo(),
+      makeRateStore(),
+      mailer,
+      makeConfig(),
+      patientRepo,
+    );
+
+    const result = await uc.execute({ quoteId: QUOTE_ID, doctorId: DOCTOR_ID });
+
+    expect(patientRepo.findById).toHaveBeenCalledWith(PATIENT_ID, DOCTOR_ID);
+    expect(mailer.sendTemplate).toHaveBeenCalledWith(
+      'quote_sent',
+      'paciente-on-file@example.com',
+      expect.objectContaining({ recipientName: 'Juana Pérez' }),
+      expect.any(Object),
+    );
+    expect(result.emailSent).toBe(true);
+  });
+
+  it('auto-resolves the recipient email from the lead on file when the quote targets a lead', async () => {
+    const leadQuote = makeQuote({ patientId: null, leadId: 'lead-1' });
+    const repo = makeRepo(leadQuote);
+    const mailer = makeMailer();
+    const leadRepo = makeLeadRepo({
+      email: 'prospecto@example.com',
+      name: 'Carlos',
+      lastName: 'Mendoza',
+    } as Lead);
+    const uc = makeUseCase(
+      repo,
+      makeDoctorProfileRepo(),
+      makeRateStore(),
+      mailer,
+      makeConfig(),
+      makePatientRepo(),
+      leadRepo,
+    );
+
+    const result = await uc.execute({ quoteId: QUOTE_ID, doctorId: DOCTOR_ID });
+
+    expect(leadRepo.findByIdForDoctor).toHaveBeenCalledWith('lead-1', DOCTOR_ID);
+    expect(mailer.sendTemplate).toHaveBeenCalledWith(
+      'quote_sent',
+      'prospecto@example.com',
+      expect.objectContaining({ recipientName: 'Carlos Mendoza' }),
+      expect.any(Object),
+    );
+    expect(result.emailSent).toBe(true);
+  });
+
+  it('skips email, still marks as sent, and reports no_recipient_email when nobody has an address on file', async () => {
     const repo = makeRepo();
     const mailer = makeMailer();
     const uc = makeUseCase(repo, makeDoctorProfileRepo(), makeRateStore(), mailer);
 
-    await uc.execute({ quoteId: QUOTE_ID, doctorId: DOCTOR_ID });
+    const result = await uc.execute({ quoteId: QUOTE_ID, doctorId: DOCTOR_ID });
 
     expect(repo.markAsSent).toHaveBeenCalledTimes(1);
     expect(mailer.sendTemplate).not.toHaveBeenCalled();
+    expect(result.emailSent).toBe(false);
+    expect(result.emailSkipReason).toBe('no_recipient_email');
+    // The share link/quote is still returned — the doctor can share it manually.
+    expect(result.quote.status).toBe('sent');
   });
 
-  it('does not re-throw when email delivery fails', async () => {
+  it('does not re-throw when email delivery fails, and reports delivery_failed', async () => {
     const repo = makeRepo();
     const mailer = makeMailer();
     (mailer.sendTemplate as jest.Mock).mockRejectedValueOnce(new Error('SMTP error'));
@@ -229,6 +353,8 @@ describe('SendQuoteUseCase', () => {
       recipientEmail: 'x@x.com',
     });
 
-    expect(result.status).toBe('sent');
+    expect(result.quote.status).toBe('sent');
+    expect(result.emailSent).toBe(false);
+    expect(result.emailSkipReason).toBe('delivery_failed');
   });
 });

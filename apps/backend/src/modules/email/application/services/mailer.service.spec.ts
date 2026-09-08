@@ -378,4 +378,61 @@ describe('MailerService', () => {
 
     await expect(service.sendTemplate('invoice', 'doc@example.com', {})).rejects.toBe(sendError);
   });
+  /**
+   * Los valores que se interpolan incluyen texto escrito por CUALQUIERA sin estar
+   * autenticado — el campo "Nombre" del booking público es uno, y termina en un
+   * correo que recibe el especialista con la marca de Delta Medical CRM.
+   *
+   * Sin escape, ahí entraba un <a> hacia un sitio falso: phishing dirigido al
+   * médico, mucho más creíble que uno genérico. Los clientes de correo bloquean
+   * <script>, pero renderizan <a>, <img> y estilos igual.
+   */
+  describe('escape de HTML en el cuerpo del correo', () => {
+    it('neutraliza un enlace inyectado en un nombre', async () => {
+      templateRepo.findByName.mockResolvedValue(makeTemplate());
+      emailPort.send.mockResolvedValue({ id: 'msg-1' });
+
+      await service.sendTemplate('invoice', 'doc@example.com', {
+        invoiceNumber: 'FAC-001',
+        doctorName: '<a href="https://sitio-falso.test/pago">Confirmá tu pago</a>',
+        amount: 'USD 100.00',
+      });
+
+      const call = emailPort.send.mock.calls[0]![0]!;
+      // El enlace no debe existir como marcado…
+      expect(call.html).not.toContain('<a href="https://sitio-falso.test/pago">');
+      // …sino como texto visible y escapado.
+      expect(call.html).toContain('&lt;a href=&quot;https://sitio-falso.test/pago&quot;&gt;');
+    });
+
+    it('neutraliza un <img> con onerror', async () => {
+      templateRepo.findByName.mockResolvedValue(makeTemplate());
+      emailPort.send.mockResolvedValue({ id: 'msg-1' });
+
+      await service.sendTemplate('invoice', 'doc@example.com', {
+        invoiceNumber: 'FAC-001',
+        doctorName: '<img src=x onerror="alert(1)">',
+        amount: 'USD 100.00',
+      });
+
+      const call = emailPort.send.mock.calls[0]![0]!;
+      expect(call.html).not.toContain('<img');
+      expect(call.html).toContain('&lt;img');
+    });
+
+    it('NO escapa el asunto ni el texto plano — ahí se leería literal', async () => {
+      templateRepo.findByName.mockResolvedValue(makeTemplate());
+      emailPort.send.mockResolvedValue({ id: 'msg-1' });
+
+      await service.sendTemplate('invoice', 'doc@example.com', {
+        invoiceNumber: 'Pérez & Asociados',
+        doctorName: 'Dr. Pérez',
+        amount: 'USD 100.00',
+      });
+
+      const call = emailPort.send.mock.calls[0]![0]!;
+      expect(call.subject).toContain('Pérez & Asociados');
+      expect(call.subject).not.toContain('&amp;');
+    });
+  });
 });

@@ -1,11 +1,15 @@
-import { Controller, Get, Param } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post } from '@nestjs/common';
+import { PublicQuoteStatusDtoSchema, type PublicQuoteStatusDto } from '@delta/shared-types';
 import {
   GetPublicQuoteUseCase,
   type PublicDoctorProfile,
   type PublicTemplateConfig,
   type PublicQuoteRenderData,
 } from '../../application/use-cases/get-public-quote.use-case';
+import { UpdatePublicQuoteStatusUseCase } from '../../application/use-cases/update-public-quote-status.use-case';
+import { ZodValidationPipe } from '../../../../presentation/pipes/zod-validation.pipe';
 import type { QuoteItem } from '../../domain/entities/quote-item.entity';
+import type { QuoteStatus } from '../../domain/entities/quote.entity';
 
 interface PublicQuoteItemResponse {
   kind: string;
@@ -63,7 +67,10 @@ interface PublicQuoteResponse {
  */
 @Controller('quotes')
 export class PublicQuotesController {
-  constructor(private readonly getPublicQuote: GetPublicQuoteUseCase) {}
+  constructor(
+    private readonly getPublicQuote: GetPublicQuoteUseCase,
+    private readonly updatePublicQuoteStatus: UpdatePublicQuoteStatusUseCase,
+  ) {}
 
   /**
    * GET /api/quotes/:token
@@ -114,5 +121,26 @@ export class PublicQuotesController {
         recipient_name: recipientName,
       },
     };
+  }
+
+  /**
+   * POST /api/quotes/:token/status
+   *
+   * Lets the recipient accept or reject the quote from the public share-link
+   * view. No auth — the token is the sole credential, same as GET /:token.
+   *
+   * Only 'sent' → 'accepted' | 'rejected' is allowed; any other transition
+   * (already-terminal quote, still a draft) throws QuoteInvalidStatusTransitionError
+   * (422). An invalid/expired/revoked token throws QuoteLinkExpiredError (404).
+   *
+   * Does NOT create an appointment — see UpdatePublicQuoteStatusUseCase.
+   */
+  @Post(':token/status')
+  async updateStatus(
+    @Param('token') token: string,
+    @Body(new ZodValidationPipe(PublicQuoteStatusDtoSchema)) dto: PublicQuoteStatusDto,
+  ): Promise<{ success: true; data: { status: QuoteStatus } }> {
+    const quote = await this.updatePublicQuoteStatus.execute(token, dto);
+    return { success: true, data: { status: quote.status } };
   }
 }

@@ -10,6 +10,7 @@ import type { Appointment } from '../../../domain/entities/appointment.entity';
 import { Appointment as AppointmentClass } from '../../../domain/entities/appointment.entity';
 import { Office } from '../../../../offices/domain/entities/office.entity';
 import type { CreateConsultationUseCase } from '../../../../consultations/application/use-cases/consultations/create-consultation.use-case';
+import type { AppointmentNotificationService } from '../../../../integrations/application/services/appointment-notification.service';
 
 const DOCTOR_ID = 'doctor-uuid-1';
 const PATIENT_ID = 'patient-uuid-1';
@@ -574,6 +575,75 @@ describe('CreateAppointmentUseCase', () => {
       expect(appointmentRepo.updateConsultationId).toHaveBeenCalledWith(
         expect.any(String),
         CONSULTATION_ID,
+      );
+    });
+  });
+
+  describe('doctor new-appointment notice (specialist alta)', () => {
+    function makeNotificationService(): {
+      notifyDoctorOfNewAppointment: jest.Mock;
+    } {
+      return { notifyDoctorOfNewAppointment: jest.fn().mockResolvedValue(undefined) };
+    }
+
+    it('notifies the doctor after a successful save', async () => {
+      const notificationService = makeNotificationService();
+      useCase = new CreateAppointmentUseCase(
+        appointmentRepo,
+        officeRepo,
+        null,
+        notificationService as unknown as AppointmentNotificationService,
+      );
+
+      const result = await useCase.execute(baseDto, 'doctor');
+
+      expect(notificationService.notifyDoctorOfNewAppointment).toHaveBeenCalledWith(
+        expect.objectContaining({
+          appointmentId: result.id,
+          doctorId: DOCTOR_ID,
+          patientName: 'Juan P.',
+          appointmentMode: 'presencial',
+        }),
+      );
+    });
+
+    it('does not notify when notificationService is not injected (backward compat)', async () => {
+      useCase = new CreateAppointmentUseCase(appointmentRepo, officeRepo, null, null);
+
+      await expect(useCase.execute(baseDto, 'doctor')).resolves.toBeDefined();
+    });
+
+    it('does not throw and still returns the saved appointment when the notice fails', async () => {
+      const notificationService = makeNotificationService();
+      notificationService.notifyDoctorOfNewAppointment.mockRejectedValueOnce(
+        new Error('SMTP down'),
+      );
+      useCase = new CreateAppointmentUseCase(
+        appointmentRepo,
+        officeRepo,
+        null,
+        notificationService as unknown as AppointmentNotificationService,
+      );
+
+      const result = await useCase.execute(baseDto, 'doctor');
+
+      expect(result).toBeDefined();
+    });
+
+    it('passes the office name/address when the appointment has an office', async () => {
+      officeRepo.findById.mockResolvedValue(makeOffice('in_person'));
+      const notificationService = makeNotificationService();
+      useCase = new CreateAppointmentUseCase(
+        appointmentRepo,
+        officeRepo,
+        null,
+        notificationService as unknown as AppointmentNotificationService,
+      );
+
+      await useCase.execute({ ...baseDto, office_id: OFFICE_ID }, 'doctor');
+
+      expect(notificationService.notifyDoctorOfNewAppointment).toHaveBeenCalledWith(
+        expect.objectContaining({ officeName: 'Consultorio' }),
       );
     });
   });

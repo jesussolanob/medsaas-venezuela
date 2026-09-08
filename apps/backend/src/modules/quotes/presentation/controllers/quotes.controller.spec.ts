@@ -233,7 +233,11 @@ describe('QuotesController', () => {
     it('delegates to SendQuoteUseCase with doctorId from user.sub', async () => {
       const { controller, sendUC } = makeController();
       const sentQuote = makeQuote('sent');
-      sendUC.execute.mockResolvedValue(sentQuote);
+      sendUC.execute.mockResolvedValue({
+        quote: sentQuote,
+        emailSent: true,
+        emailSkipReason: null,
+      });
 
       const dto: SendQuoteDto = {
         recipient_email: 'paciente@example.com',
@@ -252,11 +256,31 @@ describe('QuotesController', () => {
       );
       expect(result.success).toBe(true);
       expect(result.data.status).toBe('sent');
+      expect(result.data.email_sent).toBe(true);
+      expect(result.data.email_skip_reason).toBeNull();
+    });
+
+    it('surfaces email_sent=false with a reason when no address is on file', async () => {
+      const { controller, sendUC } = makeController();
+      sendUC.execute.mockResolvedValue({
+        quote: makeQuote('sent'),
+        emailSent: false,
+        emailSkipReason: 'no_recipient_email',
+      });
+
+      const result = await controller.send(QUOTE_ID, {}, makeUser());
+
+      expect(result.data.email_sent).toBe(false);
+      expect(result.data.email_skip_reason).toBe('no_recipient_email');
     });
 
     it('never lets the body override doctorId — only user.sub is trusted', async () => {
       const { controller, sendUC } = makeController();
-      sendUC.execute.mockResolvedValue(makeQuote('sent'));
+      sendUC.execute.mockResolvedValue({
+        quote: makeQuote('sent'),
+        emailSent: false,
+        emailSkipReason: 'no_recipient_email',
+      });
 
       const dto: SendQuoteDto = {};
       await controller.send(QUOTE_ID, dto, makeUser('attacker-sub'));

@@ -18,6 +18,14 @@ import {
   DOCTOR_PROFILE_REPOSITORY,
   type IDoctorProfileRepository,
 } from '../../../doctor-settings/domain/repositories/doctor-profile.repository';
+import {
+  PATIENT_REPOSITORY,
+  type IPatientRepository,
+} from '../../../patients/domain/repositories/patient.repository';
+import {
+  LEAD_REPOSITORY,
+  type ILeadRepository,
+} from '../../../leads/domain/repositories/lead.repository';
 
 /** Number of days a share link is valid when validUntil is not set on the quote. */
 const DEFAULT_LINK_VALIDITY_DAYS = 30;
@@ -25,10 +33,33 @@ const DEFAULT_LINK_VALIDITY_DAYS = 30;
 export interface SendQuoteInput {
   quoteId: string;
   doctorId: string;
-  /** Email address to send the link to. If omitted the link is created but not emailed. */
+  /**
+   * Email address to send the link to. When omitted, the use case resolves it
+   * from the recipient's own record (patient.email / lead.email) — the
+   * specialist should never have to retype an address already on file.
+   * An explicit value here always wins over the resolved one.
+   */
   recipientEmail?: string;
-  /** Display name for the email greeting. Defaults to a generic greeting. */
+  /**
+   * Display name for the email greeting. When omitted, resolved from the
+   * recipient's own record, same as recipientEmail.
+   */
   recipientName?: string;
+}
+
+/**
+ * Reason the confirmation email was not sent. Null when it was sent
+ * successfully. Surfaced to the controller so the specialist is told — the
+ * share link is still created and usable either way.
+ */
+export type SendQuoteEmailSkipReason = 'no_recipient_email' | 'delivery_failed';
+
+export interface SendQuoteResult {
+  quote: Quote;
+  /** True only when sendTemplate() resolved without throwing. */
+  emailSent: boolean;
+  /** Why the email was not sent. Null when emailSent is true. */
+  emailSkipReason: SendQuoteEmailSkipReason | null;
 }
 
 /**
@@ -40,16 +71,18 @@ export interface SendQuoteInput {
  *   3. Freeze the current BCV/USDT rate and compute totalBs.
  *   4. Generate a 48-byte base64url share token with a validity window.
  *   5. Persist the share link, freeze rate fields, set status = 'sent'.
- *   6. Send the quote_sent email template to recipientEmail (if provided).
+ *   6. Resolve the recipient's email/name (explicit input wins; otherwise
+ *      read from the patient/lead record) and send the quote_sent template.
  *
- * The email is sent AFTER the DB write. If the email fails, the quote is
- * still marked as sent — the link can be resent from the UI.
+ * The email is sent AFTER the DB write. If the email fails — or there is no
+ * address to send it to — the quote is still marked as sent: the share link
+ * is always usable, and the caller learns via emailSent/emailSkipReason
+ * whether it also needs to hand the link over manually.
  *
  * SECURITY:
  *   - Token is 48 bytes of CSPRNG encoded as base64url.
  *   - The name in the filename is COT-XXXX, never PII.
- *   - Patient email is encrypted; the frontend must supply recipientEmail
- *     explicitly for patient-targeted quotes.
+ *   - Never log the resolved recipient email or name — only IDs.
  */
 @Injectable()
 export class SendQuoteUseCase {
@@ -62,11 +95,15 @@ export class SendQuoteUseCase {
     private readonly rateStore: IUsdtRateStore,
     @Inject(DOCTOR_PROFILE_REPOSITORY)
     private readonly doctorProfileRepo: IDoctorProfileRepository,
+    @Inject(PATIENT_REPOSITORY)
+    private readonly patientRepo: IPatientRepository,
+    @Inject(LEAD_REPOSITORY)
+    private readonly leadRepo: ILeadRepository,
     private readonly mailer: MailerService,
     private readonly config: ConfigService,
   ) {}
 
-  async execute(input: SendQuoteInput): Promise<Quote> {
+  async execute(input: SendQuoteInput): Promise<SendQuoteResult> {
     const { quoteId, doctorId, recipientEmail, recipientName } = input;
 
     // 1. Validate ownership and existence
@@ -107,16 +144,29 @@ export class SendQuoteUseCase {
       shareLink,
     });
 
-    // 6. Send email — non-fatal; log on failure
-    if (recipientEmail) {
-      await this.sendEmailSafely(sentQuote, shareLink, doctorName, recipientEmail, recipientName);
-    } else {
+    // 6. Resolve the effective recipient (explicit input wins) and send.
+    const resolved = await this.resolveRecipient(sentQuote, recipientEmail, recipientName);
+
+    if (!resolved.email) {
       this.logger.log(
-        `[send-quote] quote ${quoteId} sent without email — link created, no email address provided`,
+        `[send-quote] quote ${quoteId} sent without email — no address on file or provided`,
       );
+      return { quote: sentQuote, emailSent: false, emailSkipReason: 'no_recipient_email' };
     }
 
-    return sentQuote;
+    const emailSent = await this.sendEmailSafely(
+      sentQuote,
+      shareLink,
+      doctorName,
+      resolved.email,
+      resolved.name,
+    );
+
+    return {
+      quote: sentQuote,
+      emailSent,
+      emailSkipReason: emailSent ? null : 'delivery_failed',
+    };
   }
 
   // ---------------------------------------------------------------------------
@@ -135,13 +185,58 @@ export class SendQuoteUseCase {
     return d;
   }
 
+  /**
+   * Resolves the email/name to send to: an explicit value always wins over
+   * whatever is on file, so the specialist can still override a stale or
+   * missing address from the send modal.
+   *
+   * Best-effort: a lookup failure (deleted patient/lead, decrypt error) falls
+   * back to whatever was explicitly provided — never throws, since a failed
+   * name/email resolution must not block marking the quote as sent.
+   */
+  private async resolveRecipient(
+    quote: Quote,
+    explicitEmail: string | undefined,
+    explicitName: string | undefined,
+  ): Promise<{ email: string | null; name: string | undefined }> {
+    if (explicitEmail) {
+      return { email: explicitEmail, name: explicitName };
+    }
+
+    try {
+      if (quote.patientId !== null) {
+        const patient = await this.patientRepo.findById(quote.patientId, quote.doctorId);
+        return {
+          email: patient?.email ?? null,
+          name: explicitName ?? patient?.fullName?.trim() ?? undefined,
+        };
+      }
+      if (quote.leadId !== null) {
+        const lead = await this.leadRepo.findByIdForDoctor(quote.leadId, quote.doctorId);
+        return {
+          email: lead?.email ?? null,
+          name:
+            explicitName ??
+            (lead ? [lead.name, lead.lastName].filter(Boolean).join(' ').trim() : undefined) ??
+            undefined,
+        };
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.warn(`[send-quote] recipient lookup failed for quote ${quote.id}: ${msg}`);
+    }
+
+    return { email: null, name: explicitName };
+  }
+
+  /** Returns true when the email was sent without throwing. */
   private async sendEmailSafely(
     quote: Quote,
     shareLink: QuoteShareLink,
     doctorName: string,
     recipientEmail: string,
     recipientName?: string,
-  ): Promise<void> {
+  ): Promise<boolean> {
     const appUrl = (
       this.config.get<string>('APP_BASE_URL') ??
       this.config.get<string>('FRONTEND_URL') ??
@@ -176,10 +271,12 @@ export class SendQuoteUseCase {
           id: quote.leadId ?? quote.patientId ?? 'unknown',
         },
       );
+      return true;
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       this.logger.error(`[send-quote] email delivery failed for quote ${quote.id}: ${msg}`);
       // Do NOT re-throw — the quote is already persisted as sent.
+      return false;
     }
   }
 }

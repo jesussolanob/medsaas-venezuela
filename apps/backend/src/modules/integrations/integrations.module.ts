@@ -28,6 +28,10 @@ import { IntegrationsController } from './presentation/controllers/integrations.
 
 // EmailModule provides MailerService for notification delivery
 import { EmailModule } from '../email/email.module';
+// Provides DOCTOR_PROFILE_REPOSITORY, used by AppointmentNotificationService to
+// resolve the doctor's own name/email for the "new appointment" notice — no
+// circular dependency: DoctorSettingsModule does NOT import IntegrationsModule.
+import { DoctorSettingsModule } from '../doctor-settings/doctor-settings.module';
 
 /**
  * IntegrationsModule — Google Calendar/Meet opt-in integration.
@@ -43,7 +47,11 @@ import { EmailModule } from '../email/email.module';
  * AppModule. Only register the feature model here.
  */
 @Module({
-  imports: [SequelizeModule.forFeature([GoogleIntegrationModel]), EmailModule],
+  imports: [
+    SequelizeModule.forFeature([GoogleIntegrationModel]),
+    EmailModule,
+    DoctorSettingsModule,
+  ],
   controllers: [IntegrationsController],
   providers: [
     // Repository binding

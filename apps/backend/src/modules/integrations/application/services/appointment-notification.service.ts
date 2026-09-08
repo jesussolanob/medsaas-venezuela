@@ -3,6 +3,10 @@ import { CreateCalendarEventUseCase } from '../use-cases/integrations/create-cal
 import { GoogleNotConnectedError } from '../../domain/errors/google-not-connected.error';
 import { generateIcsEvent } from '../../infrastructure/ics/ics-generator';
 import { MailerService } from '../../../email/application/services/mailer.service';
+import {
+  DOCTOR_PROFILE_REPOSITORY,
+  type IDoctorProfileRepository,
+} from '../../../doctor-settings/domain/repositories/doctor-profile.repository';
 
 /**
  * Injection token for AppointmentNotificationService.
@@ -44,6 +48,27 @@ export interface AppointmentNotificationInput {
    * is silently ignored (defence in depth; the DTO already validates this).
    */
   officeMapUrl?: string;
+}
+
+/**
+ * Input for notifyDoctorOfNewAppointment — the specialist-facing "you have a
+ * new appointment" email. Deliberately separate from AppointmentNotificationInput:
+ * the doctor's own name/email are resolved internally from DOCTOR_PROFILE_REPOSITORY
+ * (by doctorId) rather than trusted from the caller, so every call site — public
+ * booking or the specialist's own alta — gets the same up-to-date profile data
+ * without having to fetch and pass it themselves.
+ */
+export interface DoctorNewAppointmentNoticeInput {
+  /** Appointment UUID — used only for log correlation, never logged with PII. */
+  appointmentId: string;
+  doctorId: string;
+  /** Patient display name — shown in the email, never logged. */
+  patientName: string;
+  scheduledAtISO: string;
+  /** 'online' | 'in_person' */
+  appointmentMode: string;
+  officeAddress?: string;
+  officeName?: string;
 }
 
 export interface AppointmentNotificationResult {
@@ -147,16 +172,89 @@ export class AppointmentNotificationService {
     @Optional()
     @Inject(MailerService)
     private readonly mailer: MailerService | null = null,
+    /**
+     * Optional for the same backward-compatibility reason as `mailer` — existing
+     * test contexts construct this service without it. When absent,
+     * notifyDoctorOfNewAppointment() is a no-op.
+     */
+    @Optional()
+    @Inject(DOCTOR_PROFILE_REPOSITORY)
+    private readonly doctorProfileRepo: IDoctorProfileRepository | null = null,
   ) {}
 
   async notify(input: AppointmentNotificationInput): Promise<AppointmentNotificationResult> {
     const endISO = this.computeEndISO(input.scheduledAtISO, input.durationMinutes);
 
-    if (input.appointmentMode === 'online') {
-      return this.handleOnline(input, endISO);
-    }
+    const result =
+      input.appointmentMode === 'online'
+        ? await this.handleOnline(input, endISO)
+        : await this.handleInPerson(input, endISO);
 
-    return this.handleInPerson(input, endISO);
+    // Doctor notice is independent of the patient one (fires even when the
+    // patient has no email on file) and must never break the booking/alta flow.
+    await this.notifyDoctorOfNewAppointment({
+      appointmentId: input.appointmentId,
+      doctorId: input.doctorId,
+      patientName: input.patientName,
+      scheduledAtISO: input.scheduledAtISO,
+      appointmentMode: input.appointmentMode,
+      officeAddress: input.officeAddress,
+      officeName: input.officeName,
+    });
+
+    return result;
+  }
+
+  /**
+   * Emails the specialist that a new appointment was booked — public booking
+   * flow AND the specialist's own alta both call this (directly, for alta;
+   * via notify() above, for booking).
+   *
+   * Best-effort: never throws. Resolves the doctor's name/email itself from
+   * DOCTOR_PROFILE_REPOSITORY by doctorId — callers only need to know the
+   * appointment, not the doctor's contact details.
+   */
+  async notifyDoctorOfNewAppointment(input: DoctorNewAppointmentNoticeInput): Promise<void> {
+    if (!this.mailer || !this.doctorProfileRepo) {
+      return;
+    }
+    try {
+      const doctorProfile = await this.doctorProfileRepo.findByDoctorId(input.doctorId);
+      if (!doctorProfile?.email) {
+        this.logger.debug(
+          `[notify] doctor ${input.doctorId} has no email — skipping new-appointment notice`,
+        );
+        return;
+      }
+
+      const modeLabel = input.appointmentMode === 'online' ? 'En línea' : 'Presencial';
+
+      await this.mailer.sendTemplate(
+        'appointment_new_doctor',
+        doctorProfile.email,
+        {
+          doctor_name: doctorProfile.fullName,
+          patient_name: input.patientName,
+          appointment_date: new Date(input.scheduledAtISO).toLocaleDateString('es-VE', {
+            timeZone: 'America/Caracas',
+          }),
+          appointment_time: new Date(input.scheduledAtISO).toLocaleTimeString('es-VE', {
+            timeZone: 'America/Caracas',
+            hour: '2-digit',
+            minute: '2-digit',
+          }),
+          appointment_mode: modeLabel,
+          office_name: input.officeName ?? '',
+          office_address: input.officeAddress ?? '',
+        },
+        { type: 'doctor', id: input.doctorId },
+      );
+    } catch (err) {
+      this.logger.warn(
+        `[notify] doctor new-appointment notice failed for appointment ${input.appointmentId} ` +
+          `(non-fatal): ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
   }
 
   // ---------------------------------------------------------------------------

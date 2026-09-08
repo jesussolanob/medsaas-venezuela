@@ -16,6 +16,10 @@ import {
 } from '../../../../offices/domain/repositories/office.repository';
 import { CreateConsultationUseCase } from '../../../../consultations/application/use-cases/consultations/create-consultation.use-case';
 import { computeActiveStatus } from '../../../domain/policies/appointment-status.policy';
+import {
+  AppointmentNotificationService,
+  APPOINTMENT_NOTIFICATION_SERVICE,
+} from '../../../../integrations/application/services/appointment-notification.service';
 
 /**
  * Computes the initial appointment status based on who is creating the appointment
@@ -60,6 +64,19 @@ export class CreateAppointmentUseCase {
     @Optional()
     @Inject(CreateConsultationUseCase)
     private readonly createConsultationUC: CreateConsultationUseCase | null = null,
+    /**
+     * Optional for the same backward-compatibility reason as createConsultationUC.
+     * When present, best-effort emails the specialist about their own alta —
+     * this path does NOT create a Google Calendar event or a patient email
+     * (unlike the public booking flow's notify()); it only informs the doctor.
+     *
+     * @Inject(APPOINTMENT_NOTIFICATION_SERVICE) is mandatory here: TypeScript
+     * emits `Object` as the design:paramtype for the `T | null` union, so Nest
+     * cannot resolve the token without the explicit decorator.
+     */
+    @Optional()
+    @Inject(APPOINTMENT_NOTIFICATION_SERVICE)
+    private readonly notificationService: AppointmentNotificationService | null = null,
   ) {}
 
   /**
@@ -73,6 +90,10 @@ export class CreateAppointmentUseCase {
     // 1. If an office is specified, validate ownership and modality compatibility.
     //    Also capture slotDuration so we can (a) check overlap correctly and (b) persist it.
     let slotDuration = 30;
+    // Captured for the doctor's own new-appointment notice (step 9) — hoisted out
+    // of the if-block since that block's `office` local goes out of scope.
+    let officeName: string | undefined;
+    let officeAddress: string | undefined;
     if (dto.office_id) {
       const office = await this.officeRepo.findById(dto.office_id);
       if (!office || !office.isOwnedBy(dto.doctor_id)) {
@@ -84,6 +105,8 @@ export class CreateAppointmentUseCase {
       // C1: use the block's own duration, not the office default.
       // Falls back to office.slotDuration when scheduledAt is outside any block.
       slotDuration = office.slotDurationAt(scheduledAt);
+      officeName = office.name;
+      officeAddress = office.address;
     }
 
     // 2. Guard: same patient already has an overlapping appointment (cross-doctor).
@@ -170,7 +193,30 @@ export class CreateAppointmentUseCase {
 
     const saved = await this.appointmentRepo.save(appointment);
 
-    // 8. Auto-create consultation for any appointment with a known patient.
+    // 8. Best-effort: let the specialist know about their own alta by email.
+    //    Independent of the consultation branch below — must fire either way,
+    //    and a failure here must never break appointment creation (the method
+    //    itself already swallows errors; the try/catch here is defence in depth).
+    if (this.notificationService) {
+      try {
+        await this.notificationService.notifyDoctorOfNewAppointment({
+          appointmentId: saved.id,
+          doctorId: saved.doctorId,
+          patientName: saved.patientName ?? 'Paciente',
+          scheduledAtISO: saved.scheduledAt.toISOString(),
+          appointmentMode: saved.appointmentMode,
+          officeAddress,
+          officeName,
+        });
+      } catch (err: unknown) {
+        this.logger.warn(
+          `[create-appointment] doctor notice failed for appointment ${saved.id} (non-fatal): ` +
+            `${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
+
+    // 9. Auto-create consultation for any appointment with a known patient.
     //    Idempotency: skip if a consultation is already linked (saved.consultationId != null).
     if (saved.patientId && this.createConsultationUC && !saved.consultationId) {
       return this.maybeCreateConsultation(saved);
