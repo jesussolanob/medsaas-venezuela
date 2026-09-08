@@ -311,4 +311,48 @@ describe('SequelizeFinanceRepository', () => {
       expect(result[0]?.amount).toBe(75);
     });
   });
+  /**
+   * REGLA DE NEGOCIO (dueño, 2026-09-07): un pago APROBADO es un ingreso, y el
+   * estado de la cita NO interviene.
+   *
+   * Antes el cálculo exigía además que la cita estuviera en 'confirmed',
+   * 'completed' o 'no_show'. Eso escondía plata realmente cobrada —cinco
+   * consultas de cuatro especialistas en producción— sin ningún aviso.
+   *
+   * Cuando se quitó esa condición no falló una sola de las 405 suites: nadie
+   * cubría la regla. Estas pruebas existen para que reintroducirla rompa algo;
+   * se verificó que FALLAN si se vuelve a poner el filtro.
+   *
+   * Afirman sobre el SQL emitido porque el Sequelize de los tests es simulado:
+   * no hay base que pueda contestar. El SQL se comprobó además contra la base
+   * real, que es la única forma de saber que Postgres lo acepta.
+   */
+  describe('ingreso = pago aprobado (sin mirar el estado de la cita)', () => {
+    it('no condiciona el total de ingresos al estado de la cita', async () => {
+      mockSequelize.query.mockResolvedValue([
+        { approved_total: '0', approved_count: '0', pending_total: '0' },
+      ]);
+
+      await repo.getConsultationSummary('doc-id-1', '2026-09');
+
+      const sql = String(mockSequelize.query.mock.calls[0]?.[0] ?? '');
+      expect(sql).toContain("payment_status = 'approved'");
+      expect(sql).not.toContain('confirmed');
+      expect(sql).not.toContain('no_show');
+    });
+
+    it('cuenta como pendiente solo lo que NO esta aprobado', async () => {
+      mockSequelize.query.mockResolvedValue([
+        { approved_total: '0', approved_count: '0', pending_total: '0' },
+      ]);
+
+      await repo.getConsultationSummary('doc-id-1', '2026-09');
+
+      const sql = String(mockSequelize.query.mock.calls[0]?.[0] ?? '');
+      expect(sql).toContain("payment_status = 'pending'");
+      // "Por ingresar" ya no arrastra las aprobadas cuya cita sigue agendada:
+      // ahi era donde se perdia la plata.
+      expect(sql).not.toContain('NOT (a.id IS NULL');
+    });
+  });
 });

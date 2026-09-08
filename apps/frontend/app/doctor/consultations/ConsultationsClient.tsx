@@ -5528,6 +5528,8 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                             return;
                           }
                           setPagoDetailsSaving(true);
+                          // Lo llena la aprobación, que es la que fija el total final.
+                          let montoAprobado: number | null = null;
                           try {
                             // 1. Guardar detalles (método/referencia/comprobante).
                             const montoEditado =
@@ -5595,6 +5597,7 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                               const json = (await res.json()) as {
                                 success?: boolean;
                                 error?: string;
+                                data?: { amount?: number | null };
                               };
                               if (!res.ok || !json.success) {
                                 showToast({
@@ -5603,12 +5606,28 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                                 });
                                 return;
                               }
+                              // El total definitivo lo fija la aprobación (base + extras),
+                              // así que pisa al que devolvió el guardado de detalles.
+                              if (json.data?.amount != null) montoAprobado = json.data.amount;
                             }
-                            // Actualizar estado local de forma inmutable
+                            // Actualizar estado local de forma inmutable.
+                            //
+                            // El MONTO tiene que viajar acá. Antes solo se refrescaban
+                            // método, referencia y comprobante: el importe se guardaba
+                            // bien en la BD pero `selected.amount` conservaba el viejo,
+                            // así que el especialista corregía 45 → 120, guardaba, y
+                            // "Total cobrado" seguía diciendo $45 hasta recargar. Parecía
+                            // que el cambio no se había guardado.
+                            //
+                            // Se toma el importe que devuelve el backend, no el tecleado:
+                            // al aprobar, el total se recalcula como base + extras, y
+                            // puede no coincidir con lo que se escribió en el campo.
+                            const montoPersistido = montoAprobado ?? result.consultation?.amount;
                             const updated = {
                               payment_method: pagoMethod || null,
                               payment_reference: pagoReference || null,
                               payment_receipt_url: pagoReceiptPath,
+                              ...(montoPersistido != null ? { amount: montoPersistido } : {}),
                             };
                             setSelected((prev) => (prev ? { ...prev, ...updated } : prev));
                             setConsultations((prev) =>

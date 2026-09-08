@@ -430,6 +430,39 @@ export default function NewAppointmentFlow({ open, onClose, onSuccess, initialCo
               createPatientInline={flow.createPatientInline}
               selectPatient={flow.selectPatient}
             />
+
+            {/*
+              Aviso, no candado. Un paciente que compró un paquete deja sus
+              sesiones restantes esperando en "Consultas por agendar". Si el
+              especialista le arma una cita nueva desde cero, esas sesiones
+              quedan sin usar y la consulta se cobra aparte: así terminó un
+              paquete facturado a precio de consulta suelta.
+
+              No se bloquea la creación a propósito: puede estar vendiéndole
+              un servicio distinto, y eso es legítimo.
+            */}
+            {flow.pendingToSchedule > 0 && (
+              <div className="mt-3 flex items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5">
+                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
+                <div className="min-w-0 text-xs text-amber-800">
+                  <p className="font-semibold">
+                    Este paciente tiene {flow.pendingToSchedule}{' '}
+                    {flow.pendingToSchedule === 1 ? 'consulta' : 'consultas'} por agendar de un
+                    paquete ya pagado.
+                  </p>
+                  <p className="mt-0.5 text-amber-700">
+                    Si vas a usar una de ellas, agendala desde{' '}
+                    <a
+                      href="/doctor/pending-consultations"
+                      className="font-semibold underline underline-offset-2 hover:text-amber-900"
+                    >
+                      Consultas por agendar
+                    </a>{' '}
+                    — así no se le vuelve a cobrar. Si es otro servicio, seguí normalmente.
+                  </p>
+                </div>
+              </div>
+            )}
           </AccordionSection>
 
           {/* ── PASO 2: Consultorio ──────────────────────────────────── */}
