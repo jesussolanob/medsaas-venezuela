@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { cedulaSchema } from '../common';
 
 // ---------------------------------------------------------------------------
 // Enums / value-object schemas
@@ -70,14 +71,49 @@ export const QuoteItemInputSchema = z
 export type QuoteItemInput = z.infer<typeof QuoteItemInputSchema>;
 
 // ---------------------------------------------------------------------------
+// New recipient (quote for someone who is not yet a patient)
+// ---------------------------------------------------------------------------
+
+/**
+ * Data for a recipient who does not exist yet as a patient nor a lead.
+ *
+ * The backend resolves this to a patient_id: if a patient with this cédula
+ * already exists for the doctor, that patient is REUSED (never duplicated —
+ * a specialist quoting someone they forgot they already had on file must not
+ * split that person's clinical history in two). Otherwise a new patient is
+ * created through the same encrypted-PII path as the Patients module.
+ *
+ * cedula is required — it is the only reliable identity key to dedupe against
+ * an existing patient. phone is required (the specialist's contact channel
+ * for follow-up); email stays optional, matching lead creation today.
+ */
+export const QuoteNewRecipientSchema = z
+  .object({
+    first_name: z.string().trim().min(1, 'El nombre es requerido').max(200),
+    last_name: z.string().trim().min(1, 'El apellido es requerido').max(200),
+    email: z.string().trim().email('El correo no es válido').max(300).optional().nullable(),
+    phone: z.string().trim().min(1, 'El teléfono es requerido').max(50),
+    cedula: cedulaSchema,
+  })
+  .strict();
+
+export type QuoteNewRecipient = z.infer<typeof QuoteNewRecipientSchema>;
+
+// ---------------------------------------------------------------------------
 // Create quote
 // ---------------------------------------------------------------------------
 
 export const CreateQuoteDtoSchema = z
   .object({
-    /** Exactly one of patient_id / lead_id must be set. Validated in use case. */
+    /**
+     * Exactly one of patient_id / lead_id / new_recipient must be set.
+     * Validated in CreateQuoteUseCase (QuoteInvalidRecipientError) — not here,
+     * so the domain layer owns the invariant and the error message stays
+     * consistent with the update/XOR checks already living there.
+     */
     patient_id: z.string().uuid().optional().nullable(),
     lead_id: z.string().uuid().optional().nullable(),
+    new_recipient: QuoteNewRecipientSchema.optional().nullable(),
     valid_until: z.string().date().optional().nullable(),
     notes: z.string().max(5000).default(''),
     discount_type: QuoteDiscountTypeSchema.default('amount'),

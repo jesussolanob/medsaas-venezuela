@@ -12,6 +12,21 @@ export const timestampsSchema = z.object({
 });
 
 // ---------------------------------------------------------------------------
+// Venezuelan cédula — format V/E/P-<value> (V = venezolano, E = extranjero,
+// P = pasaporte). Shared across doctor registration, patients, and quote
+// recipients — reuse this schema instead of writing a new regex.
+// ---------------------------------------------------------------------------
+
+export const cedulaSchema = z
+  .string()
+  .trim()
+  .regex(
+    /^[VEP]-[A-Za-z0-9]{3,20}$/,
+    'La cédula debe tener el formato V/E/P-<valor> (ej. V-12345678)',
+  )
+  .max(30, 'La cédula no puede tener más de 30 caracteres');
+
+// ---------------------------------------------------------------------------
 // API response envelopes
 // ---------------------------------------------------------------------------
 

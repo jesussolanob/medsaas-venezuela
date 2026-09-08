@@ -7,22 +7,28 @@
  * Covers §8 of the spec: recipient picker, item builder, discount, notes (with
  * mandatory public-visibility warning per §4.1), and validity date.
  *
- * Recipient XOR rule (spec §3.1):
- *   - "Paciente existente": sets patient_id, leaves lead_id null.
- *   - "Prospecto nuevo": creates a lead first (POST /api/doctor/leads), then
- *     sets lead_id, leaves patient_id null.
+ * Recipient XOR rule (spec §3.1, updated for the cédula-based patient flow):
+ *   - "Paciente existente": sets patient_id, leaves lead_id/new_recipient null.
+ *   - "Paciente nuevo": sends new_recipient (name, phone, cédula, correo
+ *     opcional). The backend resolves it to a patient_id — reusing an
+ *     existing patient by cédula when one already exists for this doctor
+ *     (their saved data is never overwritten by what's typed here), or
+ *     creating one otherwise. This no longer creates a `leads` row — that
+ *     path is kept only so OLD quotes that already point to a lead_id keep
+ *     rendering (list, detail, PDF, public view).
  */
 
 import { useState, useEffect } from 'react';
 import { X, Plus, Trash2, Loader2, Info, Search } from 'lucide-react';
+import { cedulaSchema } from '@delta/shared-types';
 import { showToast } from '@/components/ui/Toaster';
 import {
   getQuoteFormOptions,
   createQuote,
-  createProspectLead,
   type QuoteItemInput,
   type QuoteFormOptions,
   type QuoteDiscountType,
+  type NewRecipientInput,
 } from './actions';
 import type { Patient } from '@/app/doctor/patients/actions';
 import type { DoctorService } from '@/app/doctor/services-shared';
@@ -33,7 +39,8 @@ import { computeSubtotal, computeDiscountUsd, computeTotal } from './quote-math'
 // Types
 // ---------------------------------------------------------------------------
 
-type RecipientMode = 'patient' | 'prospect';
+type RecipientMode = 'patient' | 'new_patient';
+type CedulaPrefix = 'V' | 'E' | 'P';
 
 interface FormItem {
   _key: string;
@@ -102,9 +109,13 @@ export default function QuoteCreateModal({ onClose, onCreated }: Props) {
   const [recipientMode, setRecipientMode] = useState<RecipientMode>('patient');
   const [selectedPatientId, setSelectedPatientId] = useState<string>('');
   const [patientSearch, setPatientSearch] = useState('');
-  const [prospectName, setProspectName] = useState('');
-  const [prospectLastName, setProspectLastName] = useState('');
-  const [prospectEmail, setProspectEmail] = useState('');
+  const [newPatientFirstName, setNewPatientFirstName] = useState('');
+  const [newPatientLastName, setNewPatientLastName] = useState('');
+  const [newPatientEmail, setNewPatientEmail] = useState('');
+  const [newPatientPhone, setNewPatientPhone] = useState('');
+  const [newPatientCedulaPrefix, setNewPatientCedulaPrefix] = useState<CedulaPrefix>('V');
+  const [newPatientCedulaNumber, setNewPatientCedulaNumber] = useState('');
+  const [cedulaError, setCedulaError] = useState<string | null>(null);
 
   // Items
   const [items, setItems] = useState<FormItem[]>([newItem()]);
@@ -198,19 +209,45 @@ export default function QuoteCreateModal({ onClose, onCreated }: Props) {
     e.preventDefault();
 
     // Validate recipient
+    setCedulaError(null);
     if (recipientMode === 'patient' && !selectedPatientId) {
-      showToast({ type: 'error', message: 'Seleccioná un paciente o elegí "Prospecto nuevo".' });
+      showToast({ type: 'error', message: 'Seleccioná un paciente o elegí "Paciente nuevo".' });
       return;
     }
-    if (recipientMode === 'prospect') {
-      if (!prospectName.trim()) {
-        showToast({ type: 'error', message: 'El nombre del prospecto es requerido.' });
+    let newRecipient: NewRecipientInput | null = null;
+    if (recipientMode === 'new_patient') {
+      if (!newPatientFirstName.trim()) {
+        showToast({ type: 'error', message: 'El nombre del paciente es requerido.' });
         return;
       }
-      if (!prospectEmail.trim() || !prospectEmail.includes('@')) {
-        showToast({ type: 'error', message: 'Ingresá un correo válido para el prospecto.' });
+      if (!newPatientLastName.trim()) {
+        showToast({ type: 'error', message: 'El apellido del paciente es requerido.' });
         return;
       }
+      if (!newPatientPhone.trim()) {
+        showToast({ type: 'error', message: 'El teléfono del paciente es requerido.' });
+        return;
+      }
+      if (newPatientEmail.trim() && !newPatientEmail.includes('@')) {
+        showToast({ type: 'error', message: 'El correo ingresado no es válido.' });
+        return;
+      }
+      // Reuse the shared cédula schema (V/E/P-<valor>) instead of a new regex —
+      // it's the same rule the backend enforces to dedupe against an existing
+      // patient, so the field-level error the specialist sees here must match.
+      const cedula = `${newPatientCedulaPrefix}-${newPatientCedulaNumber.trim()}`;
+      const cedulaCheck = cedulaSchema.safeParse(cedula);
+      if (!cedulaCheck.success) {
+        setCedulaError(cedulaCheck.error.issues[0]?.message ?? 'La cédula ingresada no es válida.');
+        return;
+      }
+      newRecipient = {
+        first_name: newPatientFirstName.trim(),
+        last_name: newPatientLastName.trim(),
+        email: newPatientEmail.trim() || null,
+        phone: newPatientPhone.trim(),
+        cedula: cedulaCheck.data,
+      };
     }
 
     // Validate items
@@ -245,26 +282,10 @@ export default function QuoteCreateModal({ onClose, onCreated }: Props) {
 
     setSaving(true);
     try {
-      let leadId: string | null = null;
-      if (recipientMode === 'prospect') {
-        const leadResult = await createProspectLead({
-          name: prospectName.trim(),
-          last_name: prospectLastName.trim(),
-          email: prospectEmail.trim(),
-        });
-        if (leadResult.error || !leadResult.lead_id) {
-          showToast({
-            type: 'error',
-            message: leadResult.error ?? 'No se pudo crear el cliente potencial.',
-          });
-          return;
-        }
-        leadId = leadResult.lead_id;
-      }
-
       const result = await createQuote({
         patient_id: recipientMode === 'patient' ? selectedPatientId : null,
-        lead_id: leadId,
+        lead_id: null,
+        new_recipient: newRecipient,
         valid_until: validUntil || null,
         notes: notes.trim(),
         discount_type: discountType,
@@ -346,7 +367,7 @@ export default function QuoteCreateModal({ onClose, onCreated }: Props) {
 
               {/* Mode selector */}
               <div className="flex gap-2 mb-4">
-                {(['patient', 'prospect'] as const).map((mode) => (
+                {(['patient', 'new_patient'] as const).map((mode) => (
                   <button
                     key={mode}
                     type="button"
@@ -357,7 +378,7 @@ export default function QuoteCreateModal({ onClose, onCreated }: Props) {
                         : 'border-slate-200 text-slate-500 hover:bg-slate-50'
                     }`}
                   >
-                    {mode === 'patient' ? 'Paciente existente' : 'Prospecto nuevo'}
+                    {mode === 'patient' ? 'Paciente existente' : 'Paciente nuevo'}
                   </button>
                 ))}
               </div>
@@ -406,8 +427,8 @@ export default function QuoteCreateModal({ onClose, onCreated }: Props) {
                     </label>
                     <input
                       type="text"
-                      value={prospectName}
-                      onChange={(e) => setProspectName(e.target.value)}
+                      value={newPatientFirstName}
+                      onChange={(e) => setNewPatientFirstName(e.target.value)}
                       placeholder="Ej. Carlos"
                       className="w-full text-sm border border-slate-200 rounded-xl py-2.5 px-3 outline-none focus:border-teal-400 bg-white placeholder:text-slate-300"
                       required
@@ -415,28 +436,101 @@ export default function QuoteCreateModal({ onClose, onCreated }: Props) {
                   </div>
                   <div>
                     <label className="block text-xs font-semibold text-slate-600 mb-1">
-                      Apellido
+                      Apellido <span className="text-red-500">*</span>
                     </label>
                     <input
                       type="text"
-                      value={prospectLastName}
-                      onChange={(e) => setProspectLastName(e.target.value)}
+                      value={newPatientLastName}
+                      onChange={(e) => setNewPatientLastName(e.target.value)}
                       placeholder="Ej. Rodríguez"
                       className="w-full text-sm border border-slate-200 rounded-xl py-2.5 px-3 outline-none focus:border-teal-400 bg-white placeholder:text-slate-300"
+                      required
                     />
                   </div>
                   <div className="col-span-2">
                     <label className="block text-xs font-semibold text-slate-600 mb-1">
-                      Correo electrónico <span className="text-red-500">*</span>
+                      Teléfono <span className="text-red-500">*</span>
                     </label>
                     <input
-                      type="email"
-                      value={prospectEmail}
-                      onChange={(e) => setProspectEmail(e.target.value)}
-                      placeholder="correo@ejemplo.com"
+                      type="tel"
+                      value={newPatientPhone}
+                      onChange={(e) => setNewPatientPhone(e.target.value)}
+                      placeholder="Ej. 0414-1234567"
                       className="w-full text-sm border border-slate-200 rounded-xl py-2.5 px-3 outline-none focus:border-teal-400 bg-white placeholder:text-slate-300"
                       required
                     />
+                  </div>
+                  <div className="col-span-2">
+                    <label className="block text-xs font-semibold text-slate-600 mb-1">
+                      Cédula <span className="text-red-500">*</span>
+                    </label>
+                    <div className="flex gap-2">
+                      <select
+                        value={newPatientCedulaPrefix}
+                        onChange={(e) => {
+                          const next = e.target.value as CedulaPrefix;
+                          const wasPassport = newPatientCedulaPrefix === 'P';
+                          const willBePassport = next === 'P';
+                          if (wasPassport !== willBePassport) setNewPatientCedulaNumber('');
+                          setNewPatientCedulaPrefix(next);
+                          setCedulaError(null);
+                        }}
+                        aria-label="Tipo de documento"
+                        className="w-16 shrink-0 text-sm font-semibold border border-slate-200 rounded-xl py-2.5 px-2 outline-none focus:border-teal-400 bg-white"
+                      >
+                        <option value="V">V</option>
+                        <option value="E">E</option>
+                        <option value="P">P</option>
+                      </select>
+                      <input
+                        type="text"
+                        inputMode={newPatientCedulaPrefix === 'P' ? 'text' : 'numeric'}
+                        value={newPatientCedulaNumber}
+                        onChange={(e) => {
+                          const clean =
+                            newPatientCedulaPrefix === 'P'
+                              ? e.target.value
+                                  .toUpperCase()
+                                  .replace(/[^A-Z0-9]/g, '')
+                                  .slice(0, 20)
+                              : e.target.value.replace(/\D/g, '').slice(0, 9);
+                          setNewPatientCedulaNumber(clean);
+                          setCedulaError(null);
+                        }}
+                        placeholder={newPatientCedulaPrefix === 'P' ? 'AB1234567' : '12345678'}
+                        required
+                        className={`flex-1 text-sm border rounded-xl py-2.5 px-3 outline-none bg-white placeholder:text-slate-300 ${
+                          cedulaError
+                            ? 'border-red-300 focus:border-red-400'
+                            : 'border-slate-200 focus:border-teal-400'
+                        }`}
+                        aria-invalid={!!cedulaError}
+                      />
+                    </div>
+                    {cedulaError && (
+                      <p className="text-[11px] text-red-500 mt-1.5" role="alert">
+                        {cedulaError}
+                      </p>
+                    )}
+                  </div>
+                  <div className="col-span-2">
+                    <label className="block text-xs font-semibold text-slate-600 mb-1">
+                      Correo electrónico
+                    </label>
+                    <input
+                      type="email"
+                      value={newPatientEmail}
+                      onChange={(e) => setNewPatientEmail(e.target.value)}
+                      placeholder="correo@ejemplo.com (opcional)"
+                      className="w-full text-sm border border-slate-200 rounded-xl py-2.5 px-3 outline-none focus:border-teal-400 bg-white placeholder:text-slate-300"
+                    />
+                  </div>
+                  <div className="col-span-2 flex items-start gap-2 px-3 py-2.5 bg-amber-50 border border-amber-200 rounded-xl">
+                    <Info className="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
+                    <p className="text-[11px] text-amber-800">
+                      Si la cédula ya pertenece a un paciente tuyo, el presupuesto se le asigna a
+                      ese paciente y sus datos guardados no se modifican.
+                    </p>
                   </div>
                 </div>
               )}

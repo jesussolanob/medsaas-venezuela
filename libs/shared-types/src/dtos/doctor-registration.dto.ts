@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { cedulaSchema } from '../common';
 
 /**
  * POST /api/doctor/registration
@@ -15,13 +16,7 @@ export const DoctorRegistrationDtoSchema = z
       .string()
       .min(2, 'full_name must be at least 2 characters')
       .max(200, 'full_name must be at most 200 characters'),
-    cedula: z
-      .string()
-      .regex(
-        /^[VEP]-[A-Za-z0-9]{3,20}$/,
-        'cedula must follow format V/E/P-<value> (e.g. V-12345678)',
-      )
-      .max(30, 'cedula must be at most 30 characters'),
+    cedula: cedulaSchema,
     /**
      * Teléfono del especialista — OBLIGATORIO desde 2026-08-17.
      *

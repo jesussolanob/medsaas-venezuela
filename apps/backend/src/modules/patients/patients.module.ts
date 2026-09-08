@@ -57,6 +57,9 @@ import { DoctorProfileModel } from '../doctor-settings/infrastructure/database/m
   ],
   // Export the repository token so other modules (e.g. PrescriptionsModule) can
   // inject it for ownership checks without duplicating the Sequelize model.
-  exports: [PATIENT_REPOSITORY],
+  // CreatePatientUseCase is exported so other modules that need to create a
+  // patient (e.g. QuotesModule, resolving a quote's new_recipient) reuse the
+  // same encrypted-PII creation path instead of duplicating it.
+  exports: [PATIENT_REPOSITORY, CreatePatientUseCase],
 })
 export class PatientsModule {}

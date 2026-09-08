@@ -8,13 +8,13 @@
  *
  * Backend endpoints (doctorId from auth headers — anti-IDOR):
  *   GET  /api/doctor/quotes               → paginated list
- *   POST /api/doctor/quotes               → create draft
+ *   POST /api/doctor/quotes               → create draft (patient_id / lead_id /
+ *                                            new_recipient — see NewRecipientInput)
  *   GET  /api/doctor/quotes/:id           → single quote
  *   PUT  /api/doctor/quotes/:id           → update draft
  *   DELETE /api/doctor/quotes/:id         → delete draft (204)
  *   POST /api/doctor/quotes/:id/send      → emit quote
  *   PUT  /api/doctor/quotes/:id/status    → mark accepted/rejected
- *   POST /api/doctor/leads                → create prospect lead
  *
  * IMPORTANT: NUMERIC columns come as JS numbers from the domain entity (the
  * repository coerces with parseFloat). No additional coercion needed here.
@@ -285,9 +285,25 @@ export interface QuoteItemInput {
   sort_order?: number;
 }
 
+/**
+ * Data for a recipient who is not yet a patient nor a lead — the backend
+ * resolves this to a patient_id (see CreateQuoteDtoSchema in
+ * `@delta/shared-types` for the authoritative contract, including the
+ * cédula-based dedupe rule).
+ */
+export interface NewRecipientInput {
+  first_name: string;
+  last_name: string;
+  email?: string | null;
+  phone: string;
+  cedula: string;
+}
+
 export interface CreateQuoteInput {
   patient_id?: string | null;
   lead_id?: string | null;
+  /** Exactly one of patient_id / lead_id / new_recipient must be set. */
+  new_recipient?: NewRecipientInput | null;
   valid_until?: string | null;
   notes?: string;
   discount_type?: QuoteDiscountType;
@@ -305,6 +321,7 @@ export async function createQuote(input: CreateQuoteInput): Promise<QuoteActionR
   const payload = {
     patient_id: input.patient_id ?? null,
     lead_id: input.lead_id ?? null,
+    new_recipient: input.new_recipient ?? null,
     valid_until: input.valid_until ?? null,
     notes: input.notes ?? '',
     discount_type: input.discount_type ?? 'amount',
@@ -401,37 +418,6 @@ export async function updateQuoteStatus(
   const result = await backendPut<BackendQuote>(`/api/doctor/quotes/${id}/status`, { status });
   if (!result.ok) return { error: result.error.message };
   return { quote: toQuoteRow(result.value) };
-}
-
-// ---------------------------------------------------------------------------
-// Create prospect lead (for new quote recipients who are not yet patients)
-// ---------------------------------------------------------------------------
-
-export interface CreateProspectInput {
-  name: string;
-  last_name: string;
-  email: string;
-  phone?: string;
-  channel?: string;
-}
-
-export interface LeadActionResult {
-  lead_id?: string;
-  error?: string;
-}
-
-export async function createProspectLead(input: CreateProspectInput): Promise<LeadActionResult> {
-  const result = await backendPost<{ id: string }>('/api/doctor/leads', {
-    name: input.name,
-    last_name: input.last_name,
-    email: input.email,
-    phone: input.phone ?? '',
-    channel: 'web',
-    stage: 'new',
-    message: '',
-  });
-  if (!result.ok) return { error: result.error.message };
-  return { lead_id: (result.value as { id: string }).id };
 }
 
 // ---------------------------------------------------------------------------

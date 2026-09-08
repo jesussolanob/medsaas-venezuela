@@ -12,6 +12,7 @@ import { SequelizeQuoteRepository } from './infrastructure/persistence/repositor
 
 // Use cases
 import { CreateQuoteUseCase } from './application/use-cases/create-quote.use-case';
+import { ResolveQuoteRecipientPatientUseCase } from './application/use-cases/resolve-quote-recipient-patient.use-case';
 import { GetQuoteUseCase } from './application/use-cases/get-quote.use-case';
 import { ListQuotesUseCase } from './application/use-cases/list-quotes.use-case';
 import { UpdateQuoteUseCase } from './application/use-cases/update-quote.use-case';
@@ -47,6 +48,7 @@ import { LeadsModule } from '../leads/leads.module';
  *   - DoctorTemplatesModule → DOCTOR_TEMPLATE_REPOSITORY (template config for PDF)
  *   - StorageModule      → STORAGE_PORT (re-sign GCS URLs for logo / signature)
  *   - PatientsModule     → PATIENT_REPOSITORY (patient name → IDs for encrypted name filter + recipient name on public view)
+ *                          + CreatePatientUseCase (resolves new_recipient into a patient on create)
  *   - LeadsModule        → LEAD_REPOSITORY (lead name on public quote view)
  *
  * IMPORTANT: Sequelize is NOT in providers[] — already registered globally by
@@ -69,6 +71,7 @@ import { LeadsModule } from '../leads/leads.module';
       provide: QUOTE_REPOSITORY,
       useClass: SequelizeQuoteRepository,
     },
+    ResolveQuoteRecipientPatientUseCase,
     CreateQuoteUseCase,
     GetQuoteUseCase,
     ListQuotesUseCase,

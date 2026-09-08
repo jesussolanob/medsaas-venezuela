@@ -4,13 +4,23 @@ import { Quote } from '../../domain/entities/quote.entity';
 import { QuoteItem } from '../../domain/entities/quote-item.entity';
 import { QuoteInvalidRecipientError } from '../../domain/errors/quote-invalid-recipient.error';
 import { QuoteItemSourceNotFoundError } from '../../domain/errors/quote-item-source-not-found.error';
-import type { CreateQuoteDto } from '@delta/shared-types';
+import type { ResolveQuoteRecipientPatientUseCase } from './resolve-quote-recipient-patient.use-case';
+import type { CreateQuoteDto, QuoteNewRecipient } from '@delta/shared-types';
 
 const DOCTOR_ID = 'dddddddd-0000-0000-0000-000000000001';
 const PATIENT_ID = 'pppppppp-0000-0000-0000-000000000001';
 const LEAD_ID = 'llllllll-0000-0000-0000-000000000001';
+const NEW_PATIENT_ID = 'pppppppp-0000-0000-0000-000000000002';
 const PRODUCT_ID = 'aaaaaaaa-0000-0000-0000-000000000001';
 const now = new Date('2026-09-01T00:00:00Z');
+
+const validNewRecipient: QuoteNewRecipient = {
+  first_name: 'María',
+  last_name: 'Pérez',
+  email: 'maria@example.com',
+  phone: '584141234567',
+  cedula: 'V-12345678',
+};
 
 function makeItem(): QuoteItem {
   return QuoteItem.create({
@@ -68,6 +78,12 @@ function makeRepo(): jest.Mocked<IQuoteRepository> {
   };
 }
 
+function makeResolveRecipient(): jest.Mocked<ResolveQuoteRecipientPatientUseCase> {
+  return {
+    execute: jest.fn(),
+  } as unknown as jest.Mocked<ResolveQuoteRecipientPatientUseCase>;
+}
+
 const validItemInput: CreateQuoteDto['items'][number] = {
   kind: 'product',
   source_id: null,
@@ -83,10 +99,12 @@ const validItemInput: CreateQuoteDto['items'][number] = {
 describe('CreateQuoteUseCase — §9-1 recipient XOR', () => {
   let uc: CreateQuoteUseCase;
   let repo: jest.Mocked<IQuoteRepository>;
+  let resolveRecipient: jest.Mocked<ResolveQuoteRecipientPatientUseCase>;
 
   beforeEach(() => {
     repo = makeRepo();
-    uc = new CreateQuoteUseCase(repo);
+    resolveRecipient = makeResolveRecipient();
+    uc = new CreateQuoteUseCase(repo, resolveRecipient);
   });
 
   it('§9-1a throws QuoteInvalidRecipientError when both patient_id and lead_id are provided', async () => {
@@ -142,6 +160,60 @@ describe('CreateQuoteUseCase — §9-1 recipient XOR', () => {
     const result = await uc.execute(dto, DOCTOR_ID);
     expect(result.leadId).toBe(LEAD_ID);
   });
+
+  it('§9-1c throws QuoteInvalidRecipientError when patient_id and new_recipient are both provided', async () => {
+    const dto: CreateQuoteDto = {
+      patient_id: PATIENT_ID,
+      lead_id: null,
+      new_recipient: validNewRecipient,
+      notes: '',
+      discount_type: 'amount',
+      discount_value: 0,
+      items: [validItemInput],
+    };
+    await expect(uc.execute(dto, DOCTOR_ID)).rejects.toThrow(QuoteInvalidRecipientError);
+    // Must reject BEFORE resolving new_recipient — otherwise patient_id would
+    // be silently discarded in favor of whoever new_recipient resolves to.
+    expect(resolveRecipient.execute).not.toHaveBeenCalled();
+    expect(repo.create).not.toHaveBeenCalled();
+  });
+
+  it('§9-1d throws QuoteInvalidRecipientError when lead_id and new_recipient are both provided', async () => {
+    const dto: CreateQuoteDto = {
+      patient_id: null,
+      lead_id: LEAD_ID,
+      new_recipient: validNewRecipient,
+      notes: '',
+      discount_type: 'amount',
+      discount_value: 0,
+      items: [validItemInput],
+    };
+    await expect(uc.execute(dto, DOCTOR_ID)).rejects.toThrow(QuoteInvalidRecipientError);
+    expect(resolveRecipient.execute).not.toHaveBeenCalled();
+    expect(repo.create).not.toHaveBeenCalled();
+  });
+
+  it('creates successfully with only new_recipient — resolved to a patient_id by ResolveQuoteRecipientPatientUseCase', async () => {
+    resolveRecipient.execute.mockResolvedValueOnce(NEW_PATIENT_ID);
+    repo.create.mockResolvedValueOnce(makeQuote({ patientId: NEW_PATIENT_ID, leadId: null }));
+    const dto: CreateQuoteDto = {
+      patient_id: null,
+      lead_id: null,
+      new_recipient: validNewRecipient,
+      notes: '',
+      discount_type: 'amount',
+      discount_value: 0,
+      items: [validItemInput],
+    };
+
+    const result = await uc.execute(dto, DOCTOR_ID);
+
+    expect(resolveRecipient.execute).toHaveBeenCalledWith(DOCTOR_ID, validNewRecipient);
+    const createCall = (repo.create as jest.Mock).mock.calls[0][0];
+    expect(createCall.patientId).toBe(NEW_PATIENT_ID);
+    expect(createCall.leadId).toBeNull();
+    expect(result.patientId).toBe(NEW_PATIENT_ID);
+  });
 });
 
 // ─── §9-2: Snapshot isolation ──────────────────────────────────────────────
@@ -154,7 +226,7 @@ describe('CreateQuoteUseCase — §9-2 item snapshot', () => {
    */
   it('§9-2 passes item name and price as-is to the repository (snapshot, not reference)', async () => {
     const repo = makeRepo();
-    const uc = new CreateQuoteUseCase(repo);
+    const uc = new CreateQuoteUseCase(repo, makeResolveRecipient());
 
     const dto: CreateQuoteDto = {
       patient_id: PATIENT_ID,
@@ -204,7 +276,7 @@ describe('CreateQuoteUseCase — §9-3 atomic quote_number', () => {
       makeQuote({ quoteNumber: numbers[callIndex++] }),
     );
 
-    const uc = new CreateQuoteUseCase(repo);
+    const uc = new CreateQuoteUseCase(repo, makeResolveRecipient());
     const dto: CreateQuoteDto = {
       patient_id: PATIENT_ID,
       lead_id: null,
@@ -236,7 +308,7 @@ describe('CreateQuoteUseCase — §9-6 totalUsd computation', () => {
    */
   it('§9-6 passes discountType/discountValue to repo — it computes discountUsd/totalUsd', async () => {
     const repo = makeRepo();
-    const uc = new CreateQuoteUseCase(repo);
+    const uc = new CreateQuoteUseCase(repo, makeResolveRecipient());
 
     const dto: CreateQuoteDto = {
       patient_id: PATIENT_ID,
@@ -288,7 +360,7 @@ describe('CreateQuoteUseCase — source validation', () => {
     (repo.validateItemSources as jest.Mock).mockRejectedValueOnce(
       new QuoteItemSourceNotFoundError('product', PRODUCT_ID),
     );
-    const uc = new CreateQuoteUseCase(repo);
+    const uc = new CreateQuoteUseCase(repo, makeResolveRecipient());
 
     const dto: CreateQuoteDto = {
       patient_id: PATIENT_ID,
@@ -305,7 +377,7 @@ describe('CreateQuoteUseCase — source validation', () => {
 
   it('skips validation for items without sourceId', async () => {
     const repo = makeRepo();
-    const uc = new CreateQuoteUseCase(repo);
+    const uc = new CreateQuoteUseCase(repo, makeResolveRecipient());
 
     const dto: CreateQuoteDto = {
       patient_id: PATIENT_ID,
@@ -326,7 +398,7 @@ describe('CreateQuoteUseCase — source validation', () => {
 
   it('forwards a manual item (no source_id) as-is — never validated against a catalog', async () => {
     const repo = makeRepo();
-    const uc = new CreateQuoteUseCase(repo);
+    const uc = new CreateQuoteUseCase(repo, makeResolveRecipient());
 
     const dto: CreateQuoteDto = {
       patient_id: PATIENT_ID,
