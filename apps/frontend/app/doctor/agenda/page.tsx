@@ -2728,10 +2728,17 @@ export default function AgendaPage() {
         <ImmediateConsultationModal
           onClose={() => setShowImmediate(false)}
           onCreated={(consultationId) => {
+            // NO se cierra el modal acá: la navegación de Next tarda, y cerrarlo
+            // antes dejaba al especialista mirando esta pantalla sin saber si el
+            // sistema estaba trabajando. El modal se queda mostrando "Abriendo la
+            // consulta…" y se va solo cuando esta página se desmonta al navegar.
+            if (consultationId) {
+              router.push(`/doctor/consultations?open=${consultationId}`);
+              return;
+            }
+            // Sin consulta creada no hay a dónde ir: se cierra y se refresca.
             setShowImmediate(false);
             void loadData();
-            // El paciente está enfrente: se abre la consulta para atenderlo.
-            if (consultationId) router.push(`/doctor/consultations?open=${consultationId}`);
           }}
         />
       )}
