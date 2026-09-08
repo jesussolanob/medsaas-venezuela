@@ -80,8 +80,19 @@ interface BackendQuote {
    * null si se borró después de emitir la cotización.
    */
   recipient_name: string | null;
-  /** Correo ya resuelto del destinatario, para mostrarlo al enviar. */
-  recipient_email: string | null;
+  /**
+   * Correo ya resuelto del destinatario, para mostrarlo al enviar.
+   *
+   * OPCIONAL a propósito: solo lo manda el DETALLE (`GET /:id`), que es la única
+   * pantalla desde donde se envía. El LISTADO no lo incluye — serializa con
+   * `withShareData(q, q.recipientName)`, sin tercer argumento — y mandar el
+   * correo de cada destinatario en cada página de la lista sería PII de más
+   * viajando sin que nadie la use.
+   *
+   * Declararlo obligatorio sería un tipo que miente sobre la respuesta: TS daría
+   * la anotación por buena y el campo llegaría `undefined` igual.
+   */
+  recipient_email?: string | null;
 }
 
 interface BackendQuoteItem {
