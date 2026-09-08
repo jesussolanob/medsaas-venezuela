@@ -640,7 +640,12 @@ export default function QuoteDetailClient({ initialQuote }: Props) {
   const discountVal = editMode
     ? computeDiscountUsd(subtotal, editDiscountType, editDiscountNum)
     : quote.discount_usd;
-  const totalVal = Math.max(0, subtotal - discountVal);
+  // computeTotal y no la resta a mano: es el mismo redondeo que hace el backend.
+  // Acá no cambiaba nada visible —usdFmt ya recorta a dos decimales—, pero la
+  // resta cruda deja ruido de punto flotante (100,10 − 0,70 = 99,39999999999999)
+  // y tener dos formas de calcular la misma plata es como empezó el desfase que
+  // motivó quote-math.ts: la vista previa mostraba un número y se guardaba otro.
+  const totalVal = computeTotal(subtotal, discountVal);
 
   // ---------------------------------------------------------------------------
   // Render
