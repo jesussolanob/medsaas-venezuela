@@ -60,6 +60,8 @@ function makeRepo(quote: Quote | null): jest.Mocked<IQuoteRepository> {
     updateStatus: jest.fn(),
     delete: jest.fn(),
     findItemsByQuoteId: jest.fn(),
+    findQuotesNearingExpiry: jest.fn(),
+    markExpiryReminderSent: jest.fn(),
   };
 }
 

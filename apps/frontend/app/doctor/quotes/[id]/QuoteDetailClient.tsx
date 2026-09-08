@@ -47,6 +47,13 @@ import {
   type SendQuoteEmailSkipReason,
 } from '../actions';
 import { computeSubtotal, computeDiscountUsd, computeTotal } from '../quote-math';
+import {
+  MAX_VALIDITY_DAYS,
+  validityDaysToDate,
+  isValidityInvalid,
+  dateToValidityDays,
+  formatVencimiento,
+} from '../quote-validity';
 import { useBcvRate } from '@/lib/useBcvRate';
 
 // ---------------------------------------------------------------------------
@@ -330,7 +337,26 @@ export default function QuoteDetailClient({ initialQuote }: Props) {
   );
   const [editDiscountValue, setEditDiscountValue] = useState(String(initialQuote.discount_value));
   const [editNotes, setEditNotes] = useState(initialQuote.notes);
-  const [editValidUntil, setEditValidUntil] = useState(initialQuote.valid_until ?? '');
+  // Se edita en DÍAS contados desde hoy, igual que en el alta. Al abrir la
+  // edición se precarga con los días que le QUEDAN al presupuesto, así el
+  // valor va y vuelve sin correrse.
+  const [editValidityDays, setEditValidityDays] = useState(() =>
+    dateToValidityDays(initialQuote.valid_until),
+  );
+  /** Fecha que va a quedar guardada. Derivada, no un segundo estado que se
+   *  desincronice del anterior. */
+  const editFechaVencimiento = validityDaysToDate(editValidityDays);
+  /**
+   * El presupuesto tiene fecha, pero ya pasó (o es hoy).
+   *
+   * Un control que pide "días desde hoy" no puede representar una fecha vieja,
+   * así que el campo arranca VACÍO — y vacío significa "no vence". Sin avisar,
+   * guardar sin tocar nada le quitaría el vencimiento en silencio. Solo pasa en
+   * borradores, que son los únicos editables, pero un borrador con fecha vieja
+   * existe apenas se deja sin enviar unos días.
+   */
+  const vigenciaYaVencida =
+    quote.valid_until !== null && dateToValidityDays(quote.valid_until) === '';
 
   // Action state
   const [saving, setSaving] = useState(false);
@@ -358,7 +384,7 @@ export default function QuoteDetailClient({ initialQuote }: Props) {
     setEditDiscountType(quote.discount_type);
     setEditDiscountValue(String(quote.discount_value));
     setEditNotes(quote.notes);
-    setEditValidUntil(quote.valid_until ?? '');
+    setEditValidityDays(dateToValidityDays(quote.valid_until));
     setEditMode(true);
   }
 
@@ -389,11 +415,20 @@ export default function QuoteDetailClient({ initialQuote }: Props) {
       });
       return;
     }
+    // Se corta acá en vez de guardar `null`, que significaría "no vence" — lo
+    // contrario de lo que quiso pedir quien tecleó, por ejemplo, 400 días.
+    if (isValidityInvalid(editValidityDays)) {
+      showToast({
+        type: 'error',
+        message: `La vigencia debe ser entre 1 y ${MAX_VALIDITY_DAYS} días, o quedar vacía si no vence.`,
+      });
+      return;
+    }
 
     setSaving(true);
     try {
       const result = await updateQuote(quote.id, {
-        valid_until: editValidUntil || null,
+        valid_until: validityDaysToDate(editValidityDays),
         notes: editNotes,
         discount_type: editDiscountType,
         discount_value: discountNum,
@@ -782,13 +817,40 @@ export default function QuoteDetailClient({ initialQuote }: Props) {
               Válido hasta
             </p>
             {editMode ? (
-              <input
-                type="date"
-                value={editValidUntil}
-                onChange={(e) => setEditValidUntil(e.target.value)}
-                min={new Date().toISOString().split('T')[0]}
-                className="text-sm border border-slate-200 rounded-lg py-1.5 px-2.5 outline-none focus:border-teal-400 bg-white text-slate-600 w-full"
-              />
+              <>
+                <div className="relative">
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    min={1}
+                    max={MAX_VALIDITY_DAYS}
+                    value={editValidityDays}
+                    onChange={(e) => setEditValidityDays(e.target.value)}
+                    placeholder="Sin vencimiento"
+                    aria-label="Días de vigencia contados desde hoy"
+                    className="text-sm border border-slate-200 rounded-lg py-1.5 pl-2.5 pr-12 outline-none focus:border-teal-400 bg-white text-slate-600 w-full"
+                  />
+                  <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-slate-400 pointer-events-none">
+                    días
+                  </span>
+                </div>
+                {isValidityInvalid(editValidityDays) ? (
+                  <p className="text-[11px] text-red-500 mt-1">
+                    Entre 1 y {MAX_VALIDITY_DAYS} días, o vacío si no vence.
+                  </p>
+                ) : vigenciaYaVencida && !editValidityDays.trim() ? (
+                  <p className="text-[11px] text-amber-600 mt-1">
+                    Su fecha ({formatDate(quote.valid_until)}) ya pasó. Poné los días que quieras
+                    que valga de acá en adelante, o guardá así y no vencerá.
+                  </p>
+                ) : (
+                  <p className="text-[11px] text-slate-400 mt-1">
+                    {editFechaVencimiento
+                      ? `Vence el ${formatVencimiento(editFechaVencimiento)}`
+                      : 'Sin vencimiento'}
+                  </p>
+                )}
+              </>
             ) : (
               <p className="text-slate-700 font-medium">{formatDate(quote.valid_until)}</p>
             )}

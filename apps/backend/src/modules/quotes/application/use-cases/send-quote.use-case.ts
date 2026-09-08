@@ -5,6 +5,7 @@ import {
   QUOTE_REPOSITORY,
   type IQuoteRepository,
 } from '../../domain/repositories/iquote.repository';
+import { VENEZUELA_UTC_OFFSET_HOURS } from '../../domain/entities/quote.entity';
 import type { Quote } from '../../domain/entities/quote.entity';
 import { QuoteShareLink } from '../../domain/entities/quote-share-link.entity';
 import { QuoteNotFoundError } from '../../domain/errors/quote-not-found.error';
@@ -173,11 +174,23 @@ export class SendQuoteUseCase {
   // Private helpers
   // ---------------------------------------------------------------------------
 
-  private computeExpiresAt(validUntil: Date | null): Date {
+  /**
+   * Hasta cuándo vive el ENLACE público.
+   *
+   * `Date | string` porque al leer de la base esto es una cadena 'YYYY-MM-DD'
+   * (columna DATEONLY). `new Date(...)` acepta las dos formas.
+   *
+   * El corte va al fin del día EN CARACAS y no en UTC: son las 03:59:59.999 UTC
+   * del día siguiente. Con las 23:59:59 UTC, el enlace moría a las 19:59 de
+   * Caracas y el paciente perdía las últimas cuatro horas del día que el propio
+   * presupuesto le prometía. Tiene que coincidir con `Quote.expiresAt()`, que es
+   * el corte del ESTADO: si divergen, el paciente ve un presupuesto vigente que
+   * el backend le rechaza al aceptarlo, o al revés.
+   */
+  private computeExpiresAt(validUntil: Date | string | null): Date {
     if (validUntil) {
-      // validUntil is date-only — expire at end of that day (23:59:59 UTC)
       const d = new Date(validUntil);
-      d.setUTCHours(23, 59, 59, 999);
+      d.setUTCHours(23 + VENEZUELA_UTC_OFFSET_HOURS, 59, 59, 999);
       return d;
     }
     const d = new Date();

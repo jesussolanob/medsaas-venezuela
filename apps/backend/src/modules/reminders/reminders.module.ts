@@ -32,6 +32,10 @@ import { EmailModule } from '../email/email.module';
 // and ExpireDuePendingConsultationsUseCase for the cron endpoint.
 // Dependency chain: RemindersModule → PendingConsultationsModule → AppointmentsModule (no cycle).
 import { PendingConsultationsModule } from '../pending-consultations/pending-consultations.module';
+// QuotesModule exports DispatchQuoteExpiryNoticesUseCase for the same cron
+// endpoint (no dedicated Cloud Scheduler job for quote expiry). QuotesModule
+// does not import RemindersModule anywhere in its own graph — no cycle.
+import { QuotesModule } from '../quotes/quotes.module';
 
 /**
  * RemindersModule — Doctor reminder configuration + queue monitoring + cron dispatch.
@@ -60,6 +64,12 @@ import { PendingConsultationsModule } from '../pending-consultations/pending-con
  *     model registration collision)
  *   - MailerService  → EmailModule (exported)
  *   - ConfigService  → global (registered in AppModule)
+ *
+ * DispatchQuoteExpiryNoticesUseCase (injected @Optional into the cron
+ * controller, same pattern as the pending-consultation sub-tasks) requires:
+ *   - QUOTE_REPOSITORY, PATIENT_REPOSITORY, LEAD_REPOSITORY,
+ *     DOCTOR_PROFILE_REPOSITORY, MailerService — all satisfied inside
+ *     QuotesModule's own import graph; only the use case itself is exported.
  */
 @Module({
   imports: [
@@ -70,6 +80,7 @@ import { PendingConsultationsModule } from '../pending-consultations/pending-con
     DoctorSettingsModule,
     EmailModule,
     PendingConsultationsModule,
+    QuotesModule,
   ],
   controllers: [DoctorRemindersController, AdminRemindersController, CronRemindersController],
   providers: [

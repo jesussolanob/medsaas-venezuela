@@ -1151,6 +1151,25 @@ Por qué no viajaba antes: la entidad guarda solo `patient_id` / `lead_id`, y el
 está cifrado. La pantalla y el PDF pintaban la **categoría**, así que un presupuesto no decía a
 quién iba dirigido.
 
+## Cambio de contrato: `recipient_email` en el detalle de presupuesto (2026-09-08)
+
+`GET /api/doctor/quotes/:id` suma **`recipient_email`**: el correo ya resuelto del paciente o del
+prospecto, por el mismo camino que `recipient_name`. `null` cuando el destinatario no tiene correo
+cargado o se borró después de emitir el presupuesto.
+
+⚠️ **Solo el detalle.** El **listado** (`GET /api/doctor/quotes`) NO lo manda: serializa con
+`withShareData(q, q.recipientName)`, sin tercer argumento. Es deliberado — el envío se hace desde
+el detalle, y mandar el correo de cada destinatario en cada página de la lista sería PII viajando
+sin que ninguna pantalla la use. Por eso en el frontend el campo es **opcional**
+(`recipient_email?: string | null`): declararlo obligatorio sería un tipo que miente sobre la
+respuesta.
+
+⚠️ Es **PII** — endpoint del especialista dueño; nunca loguear la respuesta.
+
+Para qué: la ventana de envío mostraba dos campos vacíos pidiendo nombre y correo. El backend ya
+resolvía la dirección solo —dejarlos en blanco funcionaba— pero el especialista no tenía cómo
+saberlo y parecía que sin llenarlos no se enviaba. Ahora la ventana dice a quién se le va a mandar.
+
 ## Comisiones: aprobación y ficha del especialista (2026-09-02)
 
 | Método | Ruta                                    | Notas                                                                          |

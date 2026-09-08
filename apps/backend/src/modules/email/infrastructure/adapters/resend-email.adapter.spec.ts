@@ -134,6 +134,37 @@ describe('ResendEmailAdapter', () => {
       ).rejects.toBeInstanceOf(EmailSendError);
     });
 
+    it('keeps the address Resend echoes back OUT of the error message', async () => {
+      // Arrange: Resend devuelve la dirección rechazada DENTRO del texto del
+      // error. Ese texto lo interpolan los use cases en sus logs, así que la
+      // dirección de un paciente terminaría en Cloud Logging, que no está
+      // cifrado ni tiene el control de acceso de la base.
+      mockSend.mockResolvedValueOnce({
+        data: null,
+        error: {
+          name: 'validation_error',
+          message: 'The paciente@ejemplo.com address is not verified',
+          statusCode: 403,
+        },
+      });
+      const adapter = new ResendEmailAdapter(makeConfig());
+
+      // Act
+      let error: EmailSendError | null = null;
+      try {
+        await adapter.send({ to: 'paciente@ejemplo.com', subject: 'x', html: '<p>x</p>' });
+      } catch (e: unknown) {
+        error = e as EmailSendError;
+      }
+
+      // Assert
+      expect(error).toBeInstanceOf(EmailSendError);
+      expect(error?.message).not.toContain('paciente@ejemplo.com');
+      expect(error?.message).toContain('validation_error');
+      // El texto completo sigue disponible para email_send_log.
+      expect(error?.detail).toBe('The paciente@ejemplo.com address is not verified');
+    });
+
     it('thrown EmailSendError has HTTP 502 status', async () => {
       mockSend.mockResolvedValueOnce({
         data: null,

@@ -34,6 +34,13 @@ import type { Patient } from '@/app/doctor/patients/actions';
 import type { DoctorService } from '@/app/doctor/services-shared';
 import type { ProductRow } from '@/app/doctor/inventory/actions';
 import { computeSubtotal, computeDiscountUsd, computeTotal } from './quote-math';
+import {
+  DEFAULT_VALIDITY_DAYS,
+  MAX_VALIDITY_DAYS,
+  validityDaysToDate,
+  isValidityInvalid,
+  formatVencimiento,
+} from './quote-validity';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -123,7 +130,27 @@ export default function QuoteCreateModal({ onClose, onCreated }: Props) {
   // Quote fields
   const [discountType, setDiscountType] = useState<QuoteDiscountType>('amount');
   const [discountValue, setDiscountValue] = useState('0');
-  const [validUntil, setValidUntil] = useState('');
+  // Se pide en DÍAS, no en calendario: la vigencia se piensa como "vale un mes",
+  // no como "vale hasta el 8 de octubre". Se cuenta desde hoy y la fecha
+  // resultante se calcula sola al guardar.
+  //
+  // Prellenado en 30 y editable o borrable: vacío = no vence, igual que antes.
+  // Sin vencimiento, el filtro "Vencidos" queda vacío para siempre y el
+  // recordatorio nunca se dispara, así que un valor por defecto es lo que hace
+  // que el estado "vencido" signifique algo.
+  const [validityDays, setValidityDays] = useState(DEFAULT_VALIDITY_DAYS);
+  /** Fecha que va a quedar guardada, solo para mostrarla. Se DERIVA, no se guarda
+   *  en estado: un segundo useState con la misma verdad se desincroniza. */
+  const fechaVencimiento = validityDaysToDate(validityDays);
+  /**
+   * Tecleó algo que no es una cantidad de días usable (0, negativo, letras, o
+   * más de MAX_VALIDITY_DAYS).
+   *
+   * Hay que distinguirlo de VACÍO, que sí es una elección válida y significa "no
+   * vence". Sin esta distinción, escribir 400 días guardaba `null` en silencio —
+   * o sea, "no vence nunca", justo lo contrario de lo que se quiso pedir.
+   */
+  const validityInvalid = isValidityInvalid(validityDays);
   const [notes, setNotes] = useState('');
 
   // Submission
@@ -250,6 +277,16 @@ export default function QuoteCreateModal({ onClose, onCreated }: Props) {
       };
     }
 
+    // Vigencia: se corta acá en vez de guardar `null` (que significaría "no
+    // vence") cuando lo que hubo fue un tecleo inválido.
+    if (validityInvalid) {
+      showToast({
+        type: 'error',
+        message: `La vigencia debe ser entre 1 y ${MAX_VALIDITY_DAYS} días, o quedar vacía si no vence.`,
+      });
+      return;
+    }
+
     // Validate items
     if (items.length === 0) {
       showToast({ type: 'error', message: 'Agregá al menos un ítem al presupuesto.' });
@@ -286,7 +323,10 @@ export default function QuoteCreateModal({ onClose, onCreated }: Props) {
         patient_id: recipientMode === 'patient' ? selectedPatientId : null,
         lead_id: null,
         new_recipient: newRecipient,
-        valid_until: validUntil || null,
+        // La fecha se calcula recién ACÁ, al guardar, y no al abrir el modal:
+        // si el especialista deja la pantalla abierta y cruza la medianoche, los
+        // 30 días tienen que contar desde el día en que efectivamente guardó.
+        valid_until: validityDaysToDate(validityDays),
         notes: notes.trim(),
         discount_type: discountType,
         discount_value: discountNum,
@@ -772,16 +812,43 @@ export default function QuoteCreateModal({ onClose, onCreated }: Props) {
                 ) : null}
               </div>
               <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1">
-                  Válido hasta
+                <label
+                  htmlFor="quote-validity-days"
+                  className="block text-xs font-semibold text-slate-600 mb-1"
+                >
+                  Vence en
                 </label>
-                <input
-                  type="date"
-                  value={validUntil}
-                  onChange={(e) => setValidUntil(e.target.value)}
-                  min={new Date().toISOString().split('T')[0]}
-                  className="w-full text-sm border border-slate-200 rounded-xl py-2.5 px-3 outline-none focus:border-teal-400 bg-white text-slate-600"
-                />
+                <div className="relative">
+                  <input
+                    id="quote-validity-days"
+                    type="number"
+                    inputMode="numeric"
+                    min={1}
+                    max={MAX_VALIDITY_DAYS}
+                    value={validityDays}
+                    onChange={(e) => setValidityDays(e.target.value)}
+                    placeholder="Sin vencimiento"
+                    className="w-full text-sm border border-slate-200 rounded-xl py-2.5 pl-3 pr-14 outline-none focus:border-teal-400 bg-white text-slate-600"
+                  />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400 pointer-events-none">
+                    días
+                  </span>
+                </div>
+                {/* Se muestra la fecha que va a quedar guardada: el especialista
+                    teclea días, pero lo que ve el paciente en el presupuesto es
+                    una fecha, y conviene que la confirme antes de emitir.
+                    También hace visible que el campo se puede vaciar. */}
+                {validityInvalid ? (
+                  <p className="text-[11px] text-red-500 mt-1.5">
+                    Poné entre 1 y {MAX_VALIDITY_DAYS} días, o dejalo vacío si no vence.
+                  </p>
+                ) : (
+                  <p className="text-[11px] text-slate-400 mt-1.5">
+                    {fechaVencimiento
+                      ? `Vence el ${formatVencimiento(fechaVencimiento)}. Borralo si no querés que venza.`
+                      : 'Sin vencimiento: no expira y no se envía recordatorio.'}
+                  </p>
+                )}
               </div>
             </section>
 
