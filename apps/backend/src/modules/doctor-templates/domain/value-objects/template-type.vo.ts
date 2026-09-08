@@ -8,7 +8,14 @@
  * No external imports — pure domain logic.
  */
 
-export const TEMPLATE_TYPES = ['informe', 'recipe', 'prescripciones', 'reposo'] as const;
+export const TEMPLATE_TYPES = [
+  'informe',
+  'recipe',
+  'prescripciones',
+  'reposo',
+  'presupuesto',
+  'recibo',
+] as const;
 
 export type TemplateTypeValue = (typeof TEMPLATE_TYPES)[number];
 

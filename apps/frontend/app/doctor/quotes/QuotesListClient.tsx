@@ -102,15 +102,15 @@ export default function QuotesListClient({ initialQuotes, initialTotal, fetchErr
           });
           if (result.error) {
             setLoadError(result.error);
-            showToast({ type: 'error', message: 'Error al cargar las cotizaciones' });
+            showToast({ type: 'error', message: 'Error al cargar los presupuestos' });
             return;
           }
           setLoadError(undefined);
           setQuotes(result.quotes);
           setTotal(result.total);
         } catch {
-          setLoadError('Error de conexión al cargar las cotizaciones');
-          showToast({ type: 'error', message: 'Error al cargar las cotizaciones' });
+          setLoadError('Error de conexión al cargar los presupuestos');
+          showToast({ type: 'error', message: 'Error al cargar los presupuestos' });
         }
       });
     },
@@ -146,7 +146,7 @@ export default function QuotesListClient({ initialQuotes, initialTotal, fetchErr
       {/* Page header */}
       <div className="mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-slate-800">Cotizaciones</h1>
+          <h1 className="text-2xl font-bold text-slate-800">Presupuestos</h1>
           <p className="text-sm text-slate-500 mt-0.5">
             Presupuestos para pacientes y clientes potenciales
           </p>
@@ -158,7 +158,7 @@ export default function QuotesListClient({ initialQuotes, initialTotal, fetchErr
           style={{ background: 'linear-gradient(135deg,#00C4CC 0%,#0891b2 100%)' }}
         >
           <Plus className="w-4 h-4" />
-          Nueva cotización
+          Nuevo presupuesto
         </button>
       </div>
 
@@ -222,7 +222,7 @@ export default function QuotesListClient({ initialQuotes, initialTotal, fetchErr
       {loadError && (
         <div className="mb-4 flex items-center gap-3 px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700">
           <AlertCircle className="w-4 h-4 shrink-0" />
-          <span>Error al cargar las cotizaciones. Revisá tu conexión y recargá la página.</span>
+          <span>Error al cargar los presupuestos. Revisá tu conexión y recargá la página.</span>
         </div>
       )}
 
@@ -238,7 +238,7 @@ export default function QuotesListClient({ initialQuotes, initialTotal, fetchErr
             <p className="font-medium">No se pudo cargar la lista</p>
           ) : (
             <>
-              <p className="font-medium">Sin cotizaciones</p>
+              <p className="font-medium">Sin presupuestos</p>
               <p className="text-sm mt-1">Creá tu primer presupuesto con el botón de arriba</p>
             </>
           )}
@@ -337,7 +337,7 @@ export default function QuotesListClient({ initialQuotes, initialTotal, fetchErr
           </div>
           {total > quotes.length && (
             <div className="px-4 py-3 border-t border-slate-100 text-center text-xs text-slate-400">
-              Mostrando {quotes.length} de {total} cotizaciones
+              Mostrando {quotes.length} de {total} presupuestos
             </div>
           )}
         </div>

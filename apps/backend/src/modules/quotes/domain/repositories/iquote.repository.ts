@@ -1,4 +1,4 @@
-import type { Quote, QuoteStatus } from '../entities/quote.entity';
+import type { Quote, QuoteStatus, QuoteDiscountType } from '../entities/quote.entity';
 import type { QuoteItem } from '../entities/quote-item.entity';
 import type { QuoteShareLink } from '../entities/quote-share-link.entity';
 
@@ -51,7 +51,7 @@ export interface QuoteListResult {
 // ---------------------------------------------------------------------------
 
 export interface CreateQuoteItemParams {
-  kind: 'service' | 'product';
+  kind: 'service' | 'product' | 'manual';
   sourceId: string | null;
   name: string;
   description: string;
@@ -66,7 +66,8 @@ export interface CreateQuoteParams {
   leadId: string | null;
   validUntil: Date | null;
   notes: string;
-  discountUsd: number;
+  discountType: QuoteDiscountType;
+  discountValue: number;
   items: CreateQuoteItemParams[];
 }
 
@@ -75,7 +76,8 @@ export interface UpdateQuoteParams {
   leadId?: string | null;
   validUntil?: Date | null;
   notes?: string;
-  discountUsd?: number;
+  discountType?: QuoteDiscountType;
+  discountValue?: number;
   items?: CreateQuoteItemParams[];
 }
 
@@ -95,9 +97,12 @@ export interface SendQuoteParams {
  * Separation of concerns:
  *   - quote_number is generated atomically by the repository (Postgres advisory
  *     lock + MAX within transaction). The use case never generates it.
- *   - totalUsd = Σ(amount_usd) − discount_usd is ALWAYS computed here before
- *     persisting; the value from the client is discarded.
+ *   - discount_usd = Quote.computeDiscount(subtotal_usd, discountType, discountValue)
+ *     and totalUsd = Σ(amount_usd) − discount_usd are ALWAYS computed here before
+ *     persisting; a client-provided discount_usd would be discarded (the DTO does
+ *     not even accept one — only discount_type / discount_value).
  *   - validateItemSources() checks sourceIds against the catalog before saving.
+ *     'manual' items are always skipped — they have no catalog to validate against.
  */
 export interface IQuoteRepository {
   // --------------------------------------------------------------------------
@@ -131,12 +136,13 @@ export interface IQuoteRepository {
 
   /**
    * Validates that all provided sourceIds belong to the doctor.
-   * Items without a sourceId are skipped.
+   * Items without a sourceId are skipped — this includes every 'manual' item,
+   * which never carries a sourceId (there is no catalog to validate against).
    *
    * @throws {QuoteItemSourceNotFoundError} for any invalid sourceId.
    */
   validateItemSources(
-    items: Array<{ kind: 'service' | 'product'; sourceId: string | null }>,
+    items: Array<{ kind: 'service' | 'product' | 'manual'; sourceId: string | null }>,
     doctorId: string,
   ): Promise<void>;
 

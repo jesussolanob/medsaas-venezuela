@@ -6,7 +6,7 @@ export class InvalidTemplateTypeError extends DomainError {
 
   constructor(value: string) {
     super(
-      `Invalid template type: "${value}". Must be one of: informe, recipe, prescripciones, reposo`,
+      `Invalid template type: "${value}". Must be one of: informe, recipe, prescripciones, reposo, presupuesto, recibo`,
     );
   }
 }

@@ -3,7 +3,11 @@ import { InjectModel } from '@nestjs/sequelize';
 import { QueryTypes, type WhereOptions } from 'sequelize';
 import { Sequelize } from 'sequelize-typescript';
 import { randomUUID } from 'crypto';
-import { Quote, type QuoteStatus } from '../../../domain/entities/quote.entity';
+import {
+  Quote,
+  type QuoteStatus,
+  type QuoteDiscountType,
+} from '../../../domain/entities/quote.entity';
 import { QuoteItem, type QuoteItemKind } from '../../../domain/entities/quote-item.entity';
 import { QuoteShareLink } from '../../../domain/entities/quote-share-link.entity';
 import { QuoteNotFoundError } from '../../../domain/errors/quote-not-found.error';
@@ -191,7 +195,7 @@ export class SequelizeQuoteRepository implements IQuoteRepository {
    * @throws {QuoteItemSourceNotFoundError} for any invalid sourceId.
    */
   async validateItemSources(
-    items: Array<{ kind: 'service' | 'product'; sourceId: string | null }>,
+    items: Array<{ kind: 'service' | 'product' | 'manual'; sourceId: string | null }>,
     doctorId: string,
   ): Promise<void> {
     const productIds = items
@@ -270,7 +274,11 @@ export class SequelizeQuoteRepository implements IQuoteRepository {
 
       // Build items with amountUsd and compute totals via domain entity
       const itemsWithAmounts = this.buildItemsWithAmounts(params.items);
-      const { subtotalUsd, totalUsd } = Quote.computeTotals(itemsWithAmounts, params.discountUsd);
+      const { subtotalUsd, discountUsd, totalUsd } = Quote.computeTotals(
+        itemsWithAmounts,
+        params.discountType,
+        params.discountValue,
+      );
 
       const quoteId = randomUUID();
 
@@ -285,7 +293,9 @@ export class SequelizeQuoteRepository implements IQuoteRepository {
           validUntil: params.validUntil,
           notes: params.notes,
           subtotalUsd,
-          discountUsd: params.discountUsd,
+          discountType: params.discountType,
+          discountValue: params.discountValue,
+          discountUsd,
           totalUsd,
           bcvRate: null,
           totalBs: null,
@@ -348,15 +358,28 @@ export class SequelizeQuoteRepository implements IQuoteRepository {
       if (params.leadId !== undefined) updateFields['leadId'] = params.leadId;
       if (params.validUntil !== undefined) updateFields['validUntil'] = params.validUntil;
       if (params.notes !== undefined) updateFields['notes'] = params.notes;
-      if (params.discountUsd !== undefined) updateFields['discountUsd'] = params.discountUsd;
+      if (params.discountType !== undefined) updateFields['discountType'] = params.discountType;
+      if (params.discountValue !== undefined) updateFields['discountValue'] = params.discountValue;
+
+      // Unset fields fall back to whatever the row already has — a partial
+      // update (e.g. only discountValue) must not silently reset the other half.
+      const discountType: QuoteDiscountType =
+        params.discountType ?? (row.discountType as QuoteDiscountType);
+      const discountValue =
+        params.discountValue !== undefined ? params.discountValue : parseFloat(row.discountValue);
+      const discountChanged =
+        params.discountType !== undefined || params.discountValue !== undefined;
 
       if (params.items !== undefined) {
         const itemsWithAmounts = this.buildItemsWithAmounts(params.items);
-        const discountUsd =
-          params.discountUsd !== undefined ? params.discountUsd : parseFloat(row.discountUsd);
-        const { subtotalUsd, totalUsd } = Quote.computeTotals(itemsWithAmounts, discountUsd);
+        const { subtotalUsd, discountUsd, totalUsd } = Quote.computeTotals(
+          itemsWithAmounts,
+          discountType,
+          discountValue,
+        );
 
         updateFields['subtotalUsd'] = subtotalUsd;
+        updateFields['discountUsd'] = discountUsd;
         updateFields['totalUsd'] = totalUsd;
 
         await this.itemModel.destroy({ where: { quoteId: id } as WhereOptions, transaction: t });
@@ -378,11 +401,12 @@ export class SequelizeQuoteRepository implements IQuoteRepository {
             { transaction: t },
           );
         }
-      } else if (params.discountUsd !== undefined) {
+      } else if (discountChanged) {
         const subtotalUsd = parseFloat(row.subtotalUsd);
-        // Recompute using existing subtotal and the new discount
-        const correctedTotal =
-          Math.round(Math.max(0, subtotalUsd - params.discountUsd) * 100) / 100;
+        // Recompute using the existing subtotal and the new discount input.
+        const discountUsd = Quote.computeDiscount(subtotalUsd, discountType, discountValue);
+        const correctedTotal = Math.round(Math.max(0, subtotalUsd - discountUsd) * 100) / 100;
+        updateFields['discountUsd'] = discountUsd;
         updateFields['totalUsd'] = correctedTotal;
       }
 
@@ -524,6 +548,8 @@ export class SequelizeQuoteRepository implements IQuoteRepository {
       validUntil: row.validUntil,
       notes: row.notes,
       subtotalUsd: parseFloat(row.subtotalUsd),
+      discountType: row.discountType as QuoteDiscountType,
+      discountValue: parseFloat(row.discountValue),
       discountUsd: parseFloat(row.discountUsd),
       totalUsd: parseFloat(row.totalUsd),
       bcvRate: row.bcvRate !== null ? parseFloat(row.bcvRate) : null,

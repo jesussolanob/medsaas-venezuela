@@ -3,7 +3,7 @@
 /**
  * app/doctor/quotes/actions.ts
  *
- * Server Actions for the Quotes (Cotizaciones) module.
+ * Server Actions for the Quotes (Presupuestos) module.
  * Thin-proxy to the NestJS quotes controller via api-client.server.
  *
  * Backend endpoints (doctorId from auth headers — anti-IDOR):
@@ -35,7 +35,12 @@ import type { LeadRow } from '@/app/doctor/crm/actions';
 // ---------------------------------------------------------------------------
 
 export type QuoteStatus = 'draft' | 'sent' | 'accepted' | 'rejected' | 'expired';
-export type QuoteItemKind = 'service' | 'product';
+export type QuoteItemKind = 'service' | 'product' | 'manual';
+/**
+ * 'amount'  → discount_value is a flat USD amount (e.g. 30 = $30).
+ * 'percent' → discount_value is a percentage of the subtotal (e.g. 30 = 30%).
+ */
+export type QuoteDiscountType = 'amount' | 'percent';
 
 /**
  * The backend returns Quote domain entity instances, serialized as camelCase.
@@ -53,6 +58,10 @@ interface BackendQuote {
   validUntil: string | null;
   notes: string;
   subtotalUsd: number;
+  /** What the specialist typed — see QuoteDiscountType. */
+  discountType: QuoteDiscountType;
+  discountValue: number;
+  /** Always derived by the backend from (discountType, discountValue). */
   discountUsd: number;
   totalUsd: number;
   bcvRate: number | null;
@@ -99,6 +108,10 @@ export interface QuoteRow {
   valid_until: string | null;
   notes: string;
   subtotal_usd: number;
+  /** What the specialist typed — see QuoteDiscountType. */
+  discount_type: QuoteDiscountType;
+  discount_value: number;
+  /** Always derived by the backend from (discount_type, discount_value). */
   discount_usd: number;
   total_usd: number;
   bcv_rate: number | null;
@@ -167,6 +180,8 @@ function toQuoteRow(q: BackendQuote): QuoteRow {
     valid_until: toDateString(q.validUntil),
     notes: q.notes,
     subtotal_usd: Number(q.subtotalUsd),
+    discount_type: q.discountType,
+    discount_value: Number(q.discountValue),
     discount_usd: Number(q.discountUsd),
     total_usd: Number(q.totalUsd),
     bcv_rate: q.bcvRate !== null ? Number(q.bcvRate) : null,
@@ -275,7 +290,9 @@ export interface CreateQuoteInput {
   lead_id?: string | null;
   valid_until?: string | null;
   notes?: string;
-  discount_usd?: number;
+  discount_type?: QuoteDiscountType;
+  /** What the specialist typed — 30 = $30 for 'amount', 30 = 30% for 'percent'. */
+  discount_value?: number;
   items: QuoteItemInput[];
 }
 
@@ -290,7 +307,8 @@ export async function createQuote(input: CreateQuoteInput): Promise<QuoteActionR
     lead_id: input.lead_id ?? null,
     valid_until: input.valid_until ?? null,
     notes: input.notes ?? '',
-    discount_usd: input.discount_usd ?? 0,
+    discount_type: input.discount_type ?? 'amount',
+    discount_value: input.discount_value ?? 0,
     items: input.items.map((it, i) => ({
       kind: it.kind,
       source_id: it.source_id ?? null,
@@ -316,7 +334,9 @@ export interface UpdateQuoteInput {
   lead_id?: string | null;
   valid_until?: string | null;
   notes?: string;
-  discount_usd?: number;
+  discount_type?: QuoteDiscountType;
+  /** What the specialist typed — 30 = $30 for 'amount', 30 = 30% for 'percent'. */
+  discount_value?: number;
   items?: QuoteItemInput[];
 }
 
@@ -326,7 +346,8 @@ export async function updateQuote(id: string, input: UpdateQuoteInput): Promise<
   if (input.lead_id !== undefined) payload.lead_id = input.lead_id;
   if (input.valid_until !== undefined) payload.valid_until = input.valid_until;
   if (input.notes !== undefined) payload.notes = input.notes;
-  if (input.discount_usd !== undefined) payload.discount_usd = input.discount_usd;
+  if (input.discount_type !== undefined) payload.discount_type = input.discount_type;
+  if (input.discount_value !== undefined) payload.discount_value = input.discount_value;
   if (input.items !== undefined) {
     payload.items = input.items.map((it, i) => ({
       kind: it.kind,

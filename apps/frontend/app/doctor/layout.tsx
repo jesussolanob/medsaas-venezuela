@@ -102,7 +102,7 @@ const navSections: NavSection[] = [
       { name: 'Cobros', href: '/doctor/cobros', icon: Receipt, moduleKey: 'finances' },
       { name: 'Servicios', href: '/doctor/services', icon: Package, moduleKey: 'services' },
       { name: 'Inventario', href: '/doctor/inventory', icon: Boxes, moduleKey: 'inventory' },
-      { name: 'Cotizaciones', href: '/doctor/quotes', icon: FileText, moduleKey: 'quotes' },
+      { name: 'Presupuestos', href: '/doctor/quotes', icon: FileText, moduleKey: 'quotes' },
     ],
   },
   {

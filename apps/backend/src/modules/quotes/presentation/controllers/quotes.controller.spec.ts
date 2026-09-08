@@ -40,6 +40,8 @@ function makeQuote(status: 'draft' | 'sent' = 'draft'): Quote {
     validUntil: null,
     notes: '',
     subtotalUsd: 100,
+    discountType: 'amount',
+    discountValue: 0,
     discountUsd: 0,
     totalUsd: 100,
     bcvRate: null,
@@ -127,7 +129,8 @@ describe('QuotesController', () => {
         patient_id: PATIENT_ID,
         lead_id: null,
         notes: '',
-        discount_usd: 0,
+        discount_type: 'amount',
+        discount_value: 0,
         items: [
           {
             kind: 'product',

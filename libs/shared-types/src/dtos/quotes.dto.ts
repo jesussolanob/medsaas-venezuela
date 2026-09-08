@@ -7,8 +7,15 @@ import { z } from 'zod';
 export const QuoteStatusSchema = z.enum(['draft', 'sent', 'accepted', 'rejected', 'expired']);
 export type QuoteStatus = z.infer<typeof QuoteStatusSchema>;
 
-export const QuoteItemKindSchema = z.enum(['service', 'product']);
+export const QuoteItemKindSchema = z.enum(['service', 'product', 'manual']);
 export type QuoteItemKind = z.infer<typeof QuoteItemKindSchema>;
+
+/**
+ * 'amount'  → discount_value is a flat USD amount (e.g. 30 = $30).
+ * 'percent' → discount_value is a percentage of the subtotal (e.g. 30 = 30%).
+ */
+export const QuoteDiscountTypeSchema = z.enum(['amount', 'percent']);
+export type QuoteDiscountType = z.infer<typeof QuoteDiscountTypeSchema>;
 
 // ---------------------------------------------------------------------------
 // Business-level upper bounds (consistent with inventory.dto.ts)
@@ -34,7 +41,11 @@ const MAX_COLUMN_NUMERIC12 = 9_999_999_999.99;
 export const QuoteItemInputSchema = z
   .object({
     kind: QuoteItemKindSchema,
-    /** Source id: pricing_plan.id for services, product.id for products. Optional/informational. */
+    /**
+     * Source id: pricing_plan.id for services, product.id for products.
+     * 'manual' items have NO catalog entry — source_id must be null/absent for
+     * them (enforced below). For 'service'/'product' it stays optional.
+     */
     source_id: z.string().uuid().optional().nullable(),
     name: z.string().min(1, 'El nombre del ítem es requerido').max(300),
     description: z.string().max(1000).default(''),
@@ -50,6 +61,10 @@ export const QuoteItemInputSchema = z
   .refine((it) => it.quantity * it.unit_price_usd <= MAX_COLUMN_NUMERIC12, {
     message: `El monto por ítem (cantidad × precio) supera el límite máximo permitido (${MAX_COLUMN_NUMERIC12.toLocaleString('es-VE')})`,
     path: ['unit_price_usd'],
+  })
+  .refine((it) => it.kind !== 'manual' || !it.source_id, {
+    message: 'Un ítem manual no puede tener un source_id — no viene de ningún catálogo',
+    path: ['source_id'],
   });
 
 export type QuoteItemInput = z.infer<typeof QuoteItemInputSchema>;
@@ -65,7 +80,13 @@ export const CreateQuoteDtoSchema = z
     lead_id: z.string().uuid().optional().nullable(),
     valid_until: z.string().date().optional().nullable(),
     notes: z.string().max(5000).default(''),
-    discount_usd: z
+    discount_type: QuoteDiscountTypeSchema.default('amount'),
+    /**
+     * What the specialist typed — 30 = $30 for 'amount', 30 = 30% for 'percent'.
+     * discount_usd (the computed dollar result) is NEVER accepted from the
+     * client — the backend always derives it from these two fields.
+     */
+    discount_value: z
       .number()
       .nonnegative('El descuento no puede ser negativo')
       .max(MAX_PRICE)
@@ -77,6 +98,10 @@ export const CreateQuoteDtoSchema = z
       .max(MAX_ITEMS),
   })
   .strict()
+  .refine((dto) => dto.discount_type !== 'percent' || dto.discount_value <= 100, {
+    message: 'Un descuento por porcentaje no puede superar el 100%',
+    path: ['discount_value'],
+  })
   .refine(
     (dto) => {
       const subtotal = dto.items.reduce((sum, it) => sum + it.quantity * it.unit_price_usd, 0);
@@ -100,10 +125,15 @@ export const UpdateQuoteDtoSchema = z
     lead_id: z.string().uuid().optional().nullable(),
     valid_until: z.string().date().optional().nullable(),
     notes: z.string().max(5000).optional(),
-    discount_usd: z.number().nonnegative().max(MAX_PRICE).finite().optional(),
+    discount_type: QuoteDiscountTypeSchema.optional(),
+    discount_value: z.number().nonnegative().max(MAX_PRICE).finite().optional(),
     items: z.array(QuoteItemInputSchema).min(1).max(MAX_ITEMS).optional(),
   })
-  .strict();
+  .strict()
+  .refine((dto) => dto.discount_type !== 'percent' || (dto.discount_value ?? 0) <= 100, {
+    message: 'Un descuento por porcentaje no puede superar el 100%',
+    path: ['discount_value'],
+  });
 
 export type UpdateQuoteDto = z.infer<typeof UpdateQuoteDtoSchema>;
 

@@ -42,7 +42,9 @@ import {
   type QuoteItemRow,
   type QuoteStatus,
   type QuoteItemInput,
+  type QuoteDiscountType,
 } from '../actions';
+import { computeSubtotal, computeDiscountUsd, computeTotal } from '../quote-math';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -80,6 +82,12 @@ function usdFmt(n: number): string {
   return `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
+const KIND_BADGE: Record<'service' | 'product' | 'manual', { label: string; className: string }> = {
+  service: { label: 'S', className: 'bg-teal-50 text-teal-700' },
+  product: { label: 'P', className: 'bg-violet-50 text-violet-700' },
+  manual: { label: 'M', className: 'bg-slate-200 text-slate-700' },
+};
+
 // ---------------------------------------------------------------------------
 // Editable item state (local draft while in edit mode)
 // ---------------------------------------------------------------------------
@@ -88,7 +96,8 @@ interface EditItem {
   _key: string;
   /** Existing item id (undefined for newly added rows). */
   id?: string;
-  kind: 'service' | 'product';
+  kind: 'service' | 'product' | 'manual';
+  source_id: string | null;
   name: string;
   description: string;
   quantity: string;
@@ -98,6 +107,7 @@ interface EditItem {
 function itemToInput(item: EditItem, index: number): QuoteItemInput {
   return {
     kind: item.kind,
+    source_id: item.source_id ?? null,
     name: item.name.trim(),
     description: item.description.trim() || undefined,
     quantity: parseFloat(item.quantity) || 1,
@@ -111,6 +121,7 @@ function existingToEdit(row: QuoteItemRow): EditItem {
     _key: row.id,
     id: row.id,
     kind: row.kind,
+    source_id: row.source_id,
     name: row.name,
     description: row.description,
     quantity: String(row.quantity),
@@ -118,10 +129,15 @@ function existingToEdit(row: QuoteItemRow): EditItem {
   };
 }
 
+/**
+ * A row typed directly in the item table (no service/product picker here) is
+ * a manual item — it has no catalog entry, so source_id must stay null.
+ */
 function newEditItem(): EditItem {
   return {
     _key: Math.random().toString(36).slice(2),
-    kind: 'service',
+    kind: 'manual',
+    source_id: null,
     name: '',
     description: '',
     quantity: '1',
@@ -161,10 +177,10 @@ function SendModal({ quoteId, onClose, onSent }: SendModalProps) {
         recipient_name: name.trim() || null,
       });
       if (result.error || !result.quote) {
-        showToast({ type: 'error', message: result.error ?? 'Error al enviar la cotización' });
+        showToast({ type: 'error', message: result.error ?? 'Error al enviar el presupuesto' });
         return;
       }
-      showToast({ type: 'success', message: 'Cotización enviada' });
+      showToast({ type: 'success', message: 'Presupuesto enviado' });
       onSent(result.quote);
     } finally {
       setSaving(false);
@@ -180,7 +196,7 @@ function SendModal({ quoteId, onClose, onSent }: SendModalProps) {
       }}
     >
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6" role="dialog">
-        <h2 className="text-sm font-bold text-slate-800 mb-4">Enviar cotización</h2>
+        <h2 className="text-sm font-bold text-slate-800 mb-4">Enviar presupuesto</h2>
         <p className="text-xs text-slate-500 mb-4">
           Podés especificar el correo del destinatario. El sistema generará un enlace de acceso con
           el que podrá ver y descargar el presupuesto.
@@ -246,7 +262,10 @@ export default function QuoteDetailClient({ initialQuote }: Props) {
   // Edit mode state
   const [editMode, setEditMode] = useState(false);
   const [editItems, setEditItems] = useState<EditItem[]>(initialQuote.items.map(existingToEdit));
-  const [editDiscount, setEditDiscount] = useState(String(initialQuote.discount_usd));
+  const [editDiscountType, setEditDiscountType] = useState<QuoteDiscountType>(
+    initialQuote.discount_type,
+  );
+  const [editDiscountValue, setEditDiscountValue] = useState(String(initialQuote.discount_value));
   const [editNotes, setEditNotes] = useState(initialQuote.notes);
   const [editValidUntil, setEditValidUntil] = useState(initialQuote.valid_until ?? '');
 
@@ -269,7 +288,8 @@ export default function QuoteDetailClient({ initialQuote }: Props) {
 
   function startEdit() {
     setEditItems(quote.items.map(existingToEdit));
-    setEditDiscount(String(quote.discount_usd));
+    setEditDiscountType(quote.discount_type);
+    setEditDiscountValue(String(quote.discount_value));
     setEditNotes(quote.notes);
     setEditValidUntil(quote.valid_until ?? '');
     setEditMode(true);
@@ -294,13 +314,22 @@ export default function QuoteDetailClient({ initialQuote }: Props) {
       showToast({ type: 'error', message: 'Debe haber al menos un ítem.' });
       return;
     }
+    const discountNum = parseFloat(editDiscountValue) || 0;
+    if (editDiscountType === 'percent' && discountNum > 100) {
+      showToast({
+        type: 'error',
+        message: 'Un descuento por porcentaje no puede superar el 100%.',
+      });
+      return;
+    }
 
     setSaving(true);
     try {
       const result = await updateQuote(quote.id, {
         valid_until: editValidUntil || null,
         notes: editNotes,
-        discount_usd: parseFloat(editDiscount) || 0,
+        discount_type: editDiscountType,
+        discount_value: discountNum,
         items: editItems.map(itemToInput),
       });
       if (result.error || !result.quote) {
@@ -331,7 +360,7 @@ export default function QuoteDetailClient({ initialQuote }: Props) {
         showToast({ type: 'error', message: result.error });
         return;
       }
-      showToast({ type: 'success', message: 'Cotización eliminada' });
+      showToast({ type: 'success', message: 'Presupuesto eliminado' });
       router.replace('/doctor/quotes');
     } finally {
       setDeleting(false);
@@ -356,10 +385,10 @@ export default function QuoteDetailClient({ initialQuote }: Props) {
         type: 'success',
         message:
           status === 'accepted'
-            ? 'Cotización marcada como aceptada'
+            ? 'Presupuesto marcado como aceptado'
             : status === 'rejected'
-              ? 'Cotización marcada como rechazada'
-              : 'Cotización marcada como vencida',
+              ? 'Presupuesto marcado como rechazado'
+              : 'Presupuesto marcado como vencido',
       });
     } finally {
       setSaving(false);
@@ -444,7 +473,7 @@ export default function QuoteDetailClient({ initialQuote }: Props) {
       const blobUrl = URL.createObjectURL(blob);
       const anchor = document.createElement('a');
       anchor.href = blobUrl;
-      anchor.download = `Cotizacion-${quote.quote_number}.pdf`;
+      anchor.download = `Presupuesto-${quote.quote_number}.pdf`;
       document.body.appendChild(anchor);
       anchor.click();
       setTimeout(() => {
@@ -493,12 +522,21 @@ export default function QuoteDetailClient({ initialQuote }: Props) {
   // Computed totals
   // ---------------------------------------------------------------------------
 
+  // Mismo cálculo que el backend — ver quote-math.ts. Sumar en crudo desalineaba
+  // la vista previa del descuento por porcentaje con lo que se guardaba.
   const subtotal = editMode
-    ? editItems.reduce((s, it) => {
-        return s + (parseFloat(it.quantity) || 0) * (parseFloat(it.unit_price_usd) || 0);
-      }, 0)
+    ? computeSubtotal(
+        editItems.map((it) => ({
+          quantity: parseFloat(it.quantity) || 0,
+          unit_price_usd: parseFloat(it.unit_price_usd) || 0,
+        })),
+      )
     : quote.subtotal_usd;
-  const discountVal = editMode ? parseFloat(editDiscount) || 0 : quote.discount_usd;
+  const editDiscountNum = parseFloat(editDiscountValue) || 0;
+  const editDiscountOverLimit = editDiscountType === 'percent' && editDiscountNum > 100;
+  const discountVal = editMode
+    ? computeDiscountUsd(subtotal, editDiscountType, editDiscountNum)
+    : quote.discount_usd;
   const totalVal = Math.max(0, subtotal - discountVal);
 
   // ---------------------------------------------------------------------------
@@ -514,7 +552,7 @@ export default function QuoteDetailClient({ initialQuote }: Props) {
             type="button"
             onClick={() => router.push('/doctor/quotes')}
             className="p-2 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
-            aria-label="Volver a cotizaciones"
+            aria-label="Volver a presupuestos"
           >
             <ArrowLeft className="w-4 h-4" />
           </button>
@@ -735,13 +773,9 @@ export default function QuoteDetailClient({ initialQuote }: Props) {
                       <tr key={it._key} className="bg-white">
                         <td className="px-4 py-2 text-center">
                           <span
-                            className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${
-                              it.kind === 'service'
-                                ? 'bg-teal-50 text-teal-700'
-                                : 'bg-violet-50 text-violet-700'
-                            }`}
+                            className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${KIND_BADGE[it.kind].className}`}
                           >
-                            {it.kind === 'service' ? 'S' : 'P'}
+                            {KIND_BADGE[it.kind].label}
                           </span>
                         </td>
                         <td className="px-4 py-2">
@@ -805,13 +839,9 @@ export default function QuoteDetailClient({ initialQuote }: Props) {
                       <tr key={it.id} className="bg-white hover:bg-slate-50/50 transition-colors">
                         <td className="px-4 py-3 text-center">
                           <span
-                            className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${
-                              it.kind === 'service'
-                                ? 'bg-teal-50 text-teal-700'
-                                : 'bg-violet-50 text-violet-700'
-                            }`}
+                            className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${KIND_BADGE[it.kind].className}`}
                           >
-                            {it.kind === 'service' ? 'S' : 'P'}
+                            {KIND_BADGE[it.kind].label}
                           </span>
                         </td>
                         <td className="px-4 py-3">
@@ -845,23 +875,58 @@ export default function QuoteDetailClient({ initialQuote }: Props) {
                 </span>
               </div>
               {editMode ? (
-                <div className="flex items-center justify-between gap-4 text-sm text-slate-500">
-                  <span>Descuento</span>
-                  <div className="relative w-32">
-                    <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-slate-400">
-                      $
-                    </span>
-                    <input
-                      type="text"
-                      inputMode="decimal"
-                      value={editDiscount}
-                      onChange={(e) => {
-                        const v = e.target.value.replace(/[^0-9.]/g, '');
-                        setEditDiscount(v);
-                      }}
-                      className="w-full text-xs border border-slate-200 rounded-lg py-1.5 pl-4 pr-2 outline-none focus:border-teal-400 bg-white text-right"
-                    />
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between gap-4 text-sm text-slate-500">
+                    <span>Descuento</span>
+                    <div className="flex gap-1">
+                      <div className="flex rounded-lg border border-slate-200 overflow-hidden shrink-0">
+                        {(['amount', 'percent'] as const).map((t) => (
+                          <button
+                            key={t}
+                            type="button"
+                            onClick={() => setEditDiscountType(t)}
+                            className={`px-2 py-1.5 text-xs font-semibold transition-colors ${
+                              editDiscountType === t
+                                ? 'bg-teal-500 text-white'
+                                : 'bg-white text-slate-500 hover:bg-slate-50'
+                            }`}
+                          >
+                            {t === 'amount' ? '$' : '%'}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="relative w-24">
+                        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-slate-400">
+                          {editDiscountType === 'amount' ? '$' : '%'}
+                        </span>
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          value={editDiscountValue}
+                          onChange={(e) => {
+                            const v = e.target.value.replace(/[^0-9.]/g, '');
+                            setEditDiscountValue(v);
+                          }}
+                          className={`w-full text-xs border rounded-lg py-1.5 pl-4 pr-2 outline-none bg-white text-right ${
+                            editDiscountOverLimit
+                              ? 'border-red-300 focus:border-red-400'
+                              : 'border-slate-200 focus:border-teal-400'
+                          }`}
+                        />
+                      </div>
+                    </div>
                   </div>
+                  {editDiscountOverLimit ? (
+                    <p className="text-[11px] text-red-500 text-right">
+                      Un descuento por porcentaje no puede superar el 100%.
+                    </p>
+                  ) : subtotal > 0 ? (
+                    <p className="text-[11px] text-slate-400 text-right">
+                      {editDiscountType === 'percent'
+                        ? `${editDiscountNum || 0}% de ${usdFmt(subtotal)} = ${usdFmt(discountVal)}`
+                        : `${usdFmt(discountVal)} de descuento`}
+                    </p>
+                  ) : null}
                 </div>
               ) : discountVal > 0 ? (
                 <div className="flex items-center justify-between gap-8 text-sm text-slate-500">
@@ -945,7 +1010,7 @@ export default function QuoteDetailClient({ initialQuote }: Props) {
             {confirmDelete ? (
               <div className="flex items-center gap-3 px-4 py-3 bg-red-50 border border-red-200 rounded-xl">
                 <AlertTriangle className="w-4 h-4 text-red-600 shrink-0" />
-                <p className="text-xs text-red-700 font-semibold">¿Eliminar esta cotización?</p>
+                <p className="text-xs text-red-700 font-semibold">¿Eliminar este presupuesto?</p>
                 <button
                   type="button"
                   onClick={() => setConfirmDelete(false)}
@@ -970,7 +1035,7 @@ export default function QuoteDetailClient({ initialQuote }: Props) {
                 className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-red-500 border border-red-200 rounded-lg hover:bg-red-50 transition-colors"
               >
                 <Trash2 className="w-3.5 h-3.5" />
-                Eliminar cotización
+                Eliminar presupuesto
               </button>
             )}
           </div>

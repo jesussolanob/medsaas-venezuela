@@ -27,7 +27,7 @@ const BACKEND_URL =
 
 interface BackendPublicQuoteItem {
   id: string;
-  kind: 'service' | 'product';
+  kind: 'service' | 'product' | 'manual';
   name: string;
   description: string;
   quantity: number;
@@ -115,11 +115,11 @@ export async function GET(
     });
 
     if (res.status === 404) {
-      return NextResponse.json({ error: 'Cotización no encontrada.' }, { status: 404 });
+      return NextResponse.json({ error: 'Presupuesto no encontrado.' }, { status: 404 });
     }
     if (!res.ok) {
       return NextResponse.json(
-        { error: 'No se pudo obtener la cotización.' },
+        { error: 'No se pudo obtener el presupuesto.' },
         { status: res.status },
       );
     }
@@ -201,7 +201,7 @@ export async function GET(
     );
 
     const safeNumber = quoteData.quoteNumber.replace(/[^\w-]/g, '');
-    const filename = `Cotizacion-${safeNumber}.pdf`;
+    const filename = `Presupuesto-${safeNumber}.pdf`;
 
     return new NextResponse(arrayBuffer as ArrayBuffer, {
       status: 200,

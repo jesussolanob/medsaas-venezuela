@@ -3,7 +3,7 @@
 /**
  * QuoteCreateModal
  *
- * Full-form modal to create a new draft cotización.
+ * Full-form modal to create a new draft presupuesto.
  * Covers §8 of the spec: recipient picker, item builder, discount, notes (with
  * mandatory public-visibility warning per §4.1), and validity date.
  *
@@ -22,10 +22,12 @@ import {
   createProspectLead,
   type QuoteItemInput,
   type QuoteFormOptions,
+  type QuoteDiscountType,
 } from './actions';
 import type { Patient } from '@/app/doctor/patients/actions';
 import type { DoctorService } from '@/app/doctor/services-shared';
 import type { ProductRow } from '@/app/doctor/inventory/actions';
+import { computeSubtotal, computeDiscountUsd, computeTotal } from './quote-math';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -35,7 +37,7 @@ type RecipientMode = 'patient' | 'prospect';
 
 interface FormItem {
   _key: string;
-  kind: 'service' | 'product';
+  kind: 'service' | 'product' | 'manual';
   source_id: string | null;
   name: string;
   description: string;
@@ -68,19 +70,15 @@ function itemToInput(item: FormItem, index: number): QuoteItemInput {
   };
 }
 
-function computeTotal(items: FormItem[], discount: string): number {
-  const subtotal = items.reduce((sum, it) => {
-    const qty = parseFloat(it.quantity) || 0;
-    const price = parseFloat(it.unit_price_usd) || 0;
-    return sum + qty * price;
-  }, 0);
-  const disc = parseFloat(discount) || 0;
-  return Math.max(0, subtotal - disc);
-}
-
 function usdFmt(n: number): string {
   return `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
+
+const KIND_BADGE: Record<FormItem['kind'], { label: string; className: string }> = {
+  service: { label: 'S', className: 'bg-teal-50 text-teal-700' },
+  product: { label: 'P', className: 'bg-violet-50 text-violet-700' },
+  manual: { label: 'M', className: 'bg-slate-200 text-slate-700' },
+};
 
 // ---------------------------------------------------------------------------
 // Props
@@ -112,7 +110,8 @@ export default function QuoteCreateModal({ onClose, onCreated }: Props) {
   const [items, setItems] = useState<FormItem[]>([newItem()]);
 
   // Quote fields
-  const [discount, setDiscount] = useState('0');
+  const [discountType, setDiscountType] = useState<QuoteDiscountType>('amount');
+  const [discountValue, setDiscountValue] = useState('0');
   const [validUntil, setValidUntil] = useState('');
   const [notes, setNotes] = useState('');
 
@@ -149,7 +148,10 @@ export default function QuoteCreateModal({ onClose, onCreated }: Props) {
   // ---------------------------------------------------------------------------
 
   function addManualItem() {
-    setItems((prev) => [...prev, newItem()]);
+    // Manual items have NO catalog entry — source_id must stay null, the
+    // backend rejects it otherwise (a manual item can't reference a service
+    // or a product).
+    setItems((prev) => [...prev, newItem({ kind: 'manual', source_id: null })]);
   }
 
   function addFromService(svc: DoctorService) {
@@ -231,6 +233,16 @@ export default function QuoteCreateModal({ onClose, onCreated }: Props) {
       }
     }
 
+    // Validate discount — the backend rejects a percent above 100%.
+    const discountNum = parseFloat(discountValue) || 0;
+    if (discountType === 'percent' && discountNum > 100) {
+      showToast({
+        type: 'error',
+        message: 'Un descuento por porcentaje no puede superar el 100%.',
+      });
+      return;
+    }
+
     setSaving(true);
     try {
       let leadId: string | null = null;
@@ -255,16 +267,17 @@ export default function QuoteCreateModal({ onClose, onCreated }: Props) {
         lead_id: leadId,
         valid_until: validUntil || null,
         notes: notes.trim(),
-        discount_usd: parseFloat(discount) || 0,
+        discount_type: discountType,
+        discount_value: discountNum,
         items: items.map(itemToInput),
       });
 
       if (result.error || !result.quote) {
-        showToast({ type: 'error', message: result.error ?? 'Error al crear la cotización.' });
+        showToast({ type: 'error', message: result.error ?? 'Error al crear el presupuesto.' });
         return;
       }
 
-      showToast({ type: 'success', message: `Cotización ${result.quote.quote_number} creada` });
+      showToast({ type: 'success', message: `Presupuesto ${result.quote.quote_number} creado` });
       onCreated(result.quote.id);
     } finally {
       setSaving(false);
@@ -275,10 +288,20 @@ export default function QuoteCreateModal({ onClose, onCreated }: Props) {
   // Render
   // ---------------------------------------------------------------------------
 
-  const total = computeTotal(items, discount);
-  const subtotal = items.reduce((s, it) => {
-    return s + (parseFloat(it.quantity) || 0) * (parseFloat(it.unit_price_usd) || 0);
-  }, 0);
+  // Se usa el MISMO cálculo que el backend (ver quote-math.ts): el subtotal
+  // redondea el importe de cada ítem antes de sumar. Sumar en crudo hacía que
+  // un descuento por PORCENTAJE se aplicara sobre una base distinta y el
+  // especialista viera un número acá y otro en el presupuesto guardado.
+  const subtotal = computeSubtotal(
+    items.map((it) => ({
+      quantity: parseFloat(it.quantity) || 0,
+      unit_price_usd: parseFloat(it.unit_price_usd) || 0,
+    })),
+  );
+  const discountNum = parseFloat(discountValue) || 0;
+  const discountUsd = computeDiscountUsd(subtotal, discountType, discountNum);
+  const total = computeTotal(subtotal, discountUsd);
+  const percentOverLimit = discountType === 'percent' && discountNum > 100;
 
   return (
     <div
@@ -297,7 +320,7 @@ export default function QuoteCreateModal({ onClose, onCreated }: Props) {
         {/* Modal header */}
         <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-slate-100">
           <h2 id="create-quote-title" className="text-sm font-bold text-slate-800">
-            Nueva cotización
+            Nuevo presupuesto
           </h2>
           <button
             type="button"
@@ -504,13 +527,16 @@ export default function QuoteCreateModal({ onClose, onCreated }: Props) {
                     {/* Kind badge */}
                     <div className="col-span-1 flex justify-center">
                       <span
-                        className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${
+                        className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${KIND_BADGE[item.kind].className}`}
+                        title={
                           item.kind === 'service'
-                            ? 'bg-teal-50 text-teal-700'
-                            : 'bg-violet-50 text-violet-700'
-                        }`}
+                            ? 'Servicio del catálogo'
+                            : item.kind === 'product'
+                              ? 'Producto del inventario'
+                              : 'Ítem manual — no viene de ningún catálogo'
+                        }
                       >
-                        {item.kind === 'service' ? 'S' : 'P'}
+                        {KIND_BADGE[item.kind].label}
                       </span>
                     </div>
                     {/* Name */}
@@ -586,7 +612,7 @@ export default function QuoteCreateModal({ onClose, onCreated }: Props) {
                   </div>
                   <div className="flex items-center justify-between gap-8 text-xs text-slate-500">
                     <span>Descuento</span>
-                    <span className="text-red-500">-{usdFmt(parseFloat(discount) || 0)}</span>
+                    <span className="text-red-500">-{usdFmt(discountUsd)}</span>
                   </div>
                   <div className="flex items-center justify-between gap-8 text-sm font-bold text-slate-800 pt-1 border-t border-slate-200">
                     <span>Total</span>
@@ -598,26 +624,58 @@ export default function QuoteCreateModal({ onClose, onCreated }: Props) {
 
             {/* ── Quote fields ── */}
             <section className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1">
-                  Descuento (USD)
-                </label>
-                <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-slate-400">
-                    $
-                  </span>
-                  <input
-                    type="text"
-                    inputMode="decimal"
-                    value={discount}
-                    onChange={(e) => {
-                      const v = e.target.value.replace(/[^0-9.]/g, '');
-                      setDiscount(v);
-                    }}
-                    placeholder="0.00"
-                    className="w-full text-sm border border-slate-200 rounded-xl py-2.5 pl-7 pr-3 outline-none focus:border-teal-400 bg-white"
-                  />
+              <div className="col-span-2">
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Descuento</label>
+                <div className="flex gap-2">
+                  {/* $ / % selector */}
+                  <div className="flex rounded-xl border border-slate-200 overflow-hidden shrink-0">
+                    {(['amount', 'percent'] as const).map((t) => (
+                      <button
+                        key={t}
+                        type="button"
+                        onClick={() => setDiscountType(t)}
+                        className={`px-3 py-2.5 text-sm font-semibold transition-colors ${
+                          discountType === t
+                            ? 'bg-teal-500 text-white'
+                            : 'bg-white text-slate-500 hover:bg-slate-50'
+                        }`}
+                      >
+                        {t === 'amount' ? '$' : '%'}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="relative flex-1">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-slate-400">
+                      {discountType === 'amount' ? '$' : '%'}
+                    </span>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      value={discountValue}
+                      onChange={(e) => {
+                        const v = e.target.value.replace(/[^0-9.]/g, '');
+                        setDiscountValue(v);
+                      }}
+                      placeholder="0.00"
+                      className={`w-full text-sm border rounded-xl py-2.5 pl-7 pr-3 outline-none bg-white ${
+                        percentOverLimit
+                          ? 'border-red-300 focus:border-red-400'
+                          : 'border-slate-200 focus:border-teal-400'
+                      }`}
+                    />
+                  </div>
                 </div>
+                {percentOverLimit ? (
+                  <p className="text-[11px] text-red-500 mt-1.5">
+                    Un descuento por porcentaje no puede superar el 100%.
+                  </p>
+                ) : subtotal > 0 ? (
+                  <p className="text-[11px] text-slate-400 mt-1.5">
+                    {discountType === 'percent'
+                      ? `${discountNum || 0}% de ${usdFmt(subtotal)} = ${usdFmt(discountUsd)} de descuento`
+                      : `${usdFmt(discountUsd)} de descuento`}
+                  </p>
+                ) : null}
               </div>
               <div>
                 <label className="block text-xs font-semibold text-slate-600 mb-1">
@@ -672,7 +730,7 @@ export default function QuoteCreateModal({ onClose, onCreated }: Props) {
                 style={{ background: 'linear-gradient(135deg,#00C4CC 0%,#0891b2 100%)' }}
               >
                 {saving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                Crear cotización
+                Crear presupuesto
               </button>
             </div>
           </form>

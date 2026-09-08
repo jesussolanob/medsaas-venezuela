@@ -9,7 +9,7 @@
 import { getQuotes } from './actions';
 import QuotesListClient from './QuotesListClient';
 
-export const metadata = { title: 'Cotizaciones | Delta Salud' };
+export const metadata = { title: 'Presupuestos | Delta Salud' };
 
 export default async function QuotesPage() {
   const result = await getQuotes({ page: 1, limit: 20 });

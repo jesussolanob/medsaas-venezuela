@@ -22,6 +22,9 @@ import { QuoteItemModel } from './quote-item.model';
  *   - UNIQUE (doctor_id, quote_number)
  *   - CHECK (patient_id IS NOT NULL) <> (lead_id IS NOT NULL)   [XOR]
  *   - status CHECK IN (draft, sent, accepted, rejected, expired)
+ *
+ * Migration 20260908000001 adds:
+ *   - discount_type CHECK IN (amount, percent)
  */
 @Table({
   tableName: 'quotes',
@@ -61,6 +64,17 @@ export class QuoteModel extends Model {
   @Column({ type: DataType.DECIMAL(12, 2), allowNull: false, field: 'subtotal_usd' })
   declare subtotalUsd: string; // DECIMAL comes as string from pg driver
 
+  /** 'amount' | 'percent' — what the specialist chose. */
+  @Default('amount')
+  @Column({ type: DataType.TEXT, allowNull: false, field: 'discount_type' })
+  declare discountType: string;
+
+  /** What the specialist typed — 30 = $30 for 'amount', 30 = 30% for 'percent'. */
+  @Default(0)
+  @Column({ type: DataType.DECIMAL(12, 2), allowNull: false, field: 'discount_value' })
+  declare discountValue: string;
+
+  /** Always derived from (discount_type, discount_value) — never trusted from the client. */
   @Default(0)
   @Column({ type: DataType.DECIMAL(12, 2), allowNull: false, field: 'discount_usd' })
   declare discountUsd: string;

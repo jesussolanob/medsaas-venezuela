@@ -25,6 +25,8 @@ interface PublicQuoteResponse {
     validUntil: string | null;
     notes: string;
     subtotalUsd: number;
+    discountType: string;
+    discountValue: number;
     discountUsd: number;
     totalUsd: number;
     bcvRate: number | null;
@@ -99,6 +101,8 @@ export class PublicQuotesController {
         validUntil: quote.validUntil?.toISOString().split('T')[0] ?? null,
         notes: quote.notes,
         subtotalUsd: quote.subtotalUsd,
+        discountType: quote.discountType,
+        discountValue: quote.discountValue,
         discountUsd: quote.discountUsd,
         totalUsd: quote.totalUsd,
         bcvRate: quote.bcvRate,

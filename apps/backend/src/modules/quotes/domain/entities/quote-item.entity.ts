@@ -5,13 +5,16 @@
  * catalog at creation time. Updating the catalog never changes a QuoteItem.
  * source_id is informational only (the product/service may be deactivated later).
  *
+ * 'manual' items are free-typed lines with no catalog entry at all — sourceId
+ * is always null for them (enforced at the DTO boundary, QuoteItemInputSchema).
+ *
  * amount_usd MUST equal quantity × unit_price_usd. The backend always computes it;
  * the value from the client is ignored for this field.
  *
  * No imports from NestJS, Sequelize, or any external library.
  */
 
-export type QuoteItemKind = 'service' | 'product';
+export type QuoteItemKind = 'service' | 'product' | 'manual';
 
 export interface QuoteItemCreateParams {
   id: string;

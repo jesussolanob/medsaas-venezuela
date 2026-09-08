@@ -22,7 +22,7 @@ import { Document, Page, View, Text, Image, StyleSheet } from '@react-pdf/render
 // ---------------------------------------------------------------------------
 
 export interface QuoteItemPdf {
-  kind: 'service' | 'product';
+  kind: 'service' | 'product' | 'manual';
   name: string;
   description: string;
   quantity: number;
@@ -242,8 +242,8 @@ function buildStyles(primaryColor: string) {
     cellBold: { fontSize: 8, fontFamily: 'Helvetica-Bold', color: '#1e293b' },
     cellRight: { textAlign: 'right' },
     // Column widths
-    colKind: { width: '8%' },
-    colName: { width: '38%' },
+    colKind: { width: '11%' },
+    colName: { width: '35%' },
     colQty: { width: '9%', textAlign: 'right' },
     colUnit: { width: '18%', textAlign: 'right' },
     colAmount: { width: '17%', textAlign: 'right' },
@@ -433,7 +433,7 @@ export default function QuotePdf({
                 style={[styles.tableRow, isEven ? styles.tableRowEven : styles.tableRowOdd]}
               >
                 <Text style={[styles.cell, styles.colKind]}>
-                  {item.kind === 'service' ? 'Serv.' : 'Prod.'}
+                  {item.kind === 'service' ? 'Serv.' : item.kind === 'product' ? 'Prod.' : 'Manual'}
                 </Text>
                 <View style={styles.colName}>
                   <Text style={styles.cellBold}>{item.name}</Text>

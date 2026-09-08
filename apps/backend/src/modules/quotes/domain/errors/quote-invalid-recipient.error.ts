@@ -9,7 +9,7 @@ export class QuoteInvalidRecipientError extends DomainError {
 
   constructor() {
     super(
-      'Una cotización debe tener exactamente un destinatario: un paciente o un cliente potencial (no ambos, no ninguno)',
+      'Un presupuesto debe tener exactamente un destinatario: un paciente o un cliente potencial (no ambos, no ninguno)',
     );
   }
 }

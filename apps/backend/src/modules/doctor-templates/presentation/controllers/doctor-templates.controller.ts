@@ -50,7 +50,7 @@ export class DoctorTemplatesController {
    * PUT /api/doctor/templates/:templateType
    * Upserts the template configuration for the given type.
    * Creates the row if it does not exist; updates if it does.
-   * Valid templateType values: informe | recipe | prescripciones | reposo
+   * Valid templateType values: informe | recipe | prescripciones | reposo | presupuesto | recibo
    */
   @Put(':templateType')
   async upsert(

@@ -9,6 +9,6 @@ export class QuoteAlreadySentError extends DomainError {
   override readonly httpStatus = 409;
 
   constructor() {
-    super('Solo las cotizaciones en borrador pueden ser modificadas o enviadas');
+    super('Solo los presupuestos en borrador pueden ser modificados o enviados');
   }
 }

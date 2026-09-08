@@ -51,7 +51,8 @@ export class CreateQuoteUseCase {
       leadId,
       validUntil: dto.valid_until ? new Date(dto.valid_until) : null,
       notes: dto.notes ?? '',
-      discountUsd: dto.discount_usd ?? 0,
+      discountType: dto.discount_type ?? 'amount',
+      discountValue: dto.discount_value ?? 0,
       items: dto.items.map((it) => ({
         kind: it.kind,
         sourceId: it.source_id ?? null,

@@ -38,6 +38,8 @@ function makeQuote(overrides: Partial<Parameters<typeof Quote.create>[0]> = {}):
     validUntil: null,
     notes: '',
     subtotalUsd: 10,
+    discountType: 'amount',
+    discountValue: 0,
     discountUsd: 0,
     totalUsd: 10,
     bcvRate: null,
@@ -92,7 +94,8 @@ describe('CreateQuoteUseCase — §9-1 recipient XOR', () => {
       patient_id: PATIENT_ID,
       lead_id: LEAD_ID,
       notes: '',
-      discount_usd: 0,
+      discount_type: 'amount',
+      discount_value: 0,
       items: [validItemInput],
     };
     await expect(uc.execute(dto, DOCTOR_ID)).rejects.toThrow(QuoteInvalidRecipientError);
@@ -104,7 +107,8 @@ describe('CreateQuoteUseCase — §9-1 recipient XOR', () => {
       patient_id: null,
       lead_id: null,
       notes: '',
-      discount_usd: 0,
+      discount_type: 'amount',
+      discount_value: 0,
       items: [validItemInput],
     };
     await expect(uc.execute(dto, DOCTOR_ID)).rejects.toThrow(QuoteInvalidRecipientError);
@@ -116,7 +120,8 @@ describe('CreateQuoteUseCase — §9-1 recipient XOR', () => {
       patient_id: PATIENT_ID,
       lead_id: null,
       notes: '',
-      discount_usd: 0,
+      discount_type: 'amount',
+      discount_value: 0,
       items: [validItemInput],
     };
     const result = await uc.execute(dto, DOCTOR_ID);
@@ -130,7 +135,8 @@ describe('CreateQuoteUseCase — §9-1 recipient XOR', () => {
       patient_id: null,
       lead_id: LEAD_ID,
       notes: '',
-      discount_usd: 0,
+      discount_type: 'amount',
+      discount_value: 0,
       items: [validItemInput],
     };
     const result = await uc.execute(dto, DOCTOR_ID);
@@ -154,7 +160,8 @@ describe('CreateQuoteUseCase — §9-2 item snapshot', () => {
       patient_id: PATIENT_ID,
       lead_id: null,
       notes: '',
-      discount_usd: 0,
+      discount_type: 'amount',
+      discount_value: 0,
       items: [
         {
           kind: 'product',
@@ -202,7 +209,8 @@ describe('CreateQuoteUseCase — §9-3 atomic quote_number', () => {
       patient_id: PATIENT_ID,
       lead_id: null,
       notes: '',
-      discount_usd: 0,
+      discount_type: 'amount',
+      discount_value: 0,
       items: [validItemInput],
     };
 
@@ -226,7 +234,7 @@ describe('CreateQuoteUseCase — §9-6 totalUsd computation', () => {
    * The backend computes this; client values are ignored.
    * Here we verify the use case forwards the correct params to repo.create().
    */
-  it('§9-6 passes correct discountUsd to repo so totalUsd = Σ(amountUsd) − discountUsd', async () => {
+  it('§9-6 passes discountType/discountValue to repo — it computes discountUsd/totalUsd', async () => {
     const repo = makeRepo();
     const uc = new CreateQuoteUseCase(repo);
 
@@ -234,7 +242,8 @@ describe('CreateQuoteUseCase — §9-6 totalUsd computation', () => {
       patient_id: PATIENT_ID,
       lead_id: null,
       notes: '',
-      discount_usd: 15,
+      discount_type: 'amount',
+      discount_value: 15,
       items: [
         {
           kind: 'product',
@@ -260,8 +269,10 @@ describe('CreateQuoteUseCase — §9-6 totalUsd computation', () => {
     await uc.execute(dto, DOCTOR_ID);
 
     const createCall = (repo.create as jest.Mock).mock.calls[0][0];
-    // The repo receives discountUsd and items — it computes the totals internally
-    expect(createCall.discountUsd).toBe(15);
+    // The repo receives discountType/discountValue and items — it computes the
+    // totals internally (never a raw discountUsd from the use case).
+    expect(createCall.discountType).toBe('amount');
+    expect(createCall.discountValue).toBe(15);
     expect(createCall.items).toHaveLength(2);
     // Verify item data passed correctly
     expect(createCall.items[0].quantity).toBe(2);
@@ -283,7 +294,8 @@ describe('CreateQuoteUseCase — source validation', () => {
       patient_id: PATIENT_ID,
       lead_id: null,
       notes: '',
-      discount_usd: 0,
+      discount_type: 'amount',
+      discount_value: 0,
       items: [{ ...validItemInput, source_id: PRODUCT_ID }],
     };
 
@@ -299,7 +311,8 @@ describe('CreateQuoteUseCase — source validation', () => {
       patient_id: PATIENT_ID,
       lead_id: null,
       notes: '',
-      discount_usd: 0,
+      discount_type: 'amount',
+      discount_value: 0,
       items: [validItemInput], // source_id: null
     };
 
@@ -309,5 +322,42 @@ describe('CreateQuoteUseCase — source validation', () => {
       [{ kind: 'product', sourceId: null }],
       DOCTOR_ID,
     );
+  });
+
+  it('forwards a manual item (no source_id) as-is — never validated against a catalog', async () => {
+    const repo = makeRepo();
+    const uc = new CreateQuoteUseCase(repo);
+
+    const dto: CreateQuoteDto = {
+      patient_id: PATIENT_ID,
+      lead_id: null,
+      notes: '',
+      discount_type: 'amount',
+      discount_value: 0,
+      items: [
+        {
+          kind: 'manual',
+          source_id: null,
+          name: 'Traslado a domicilio',
+          description: '',
+          quantity: 1,
+          unit_price_usd: 25,
+          sort_order: 0,
+        },
+      ],
+    };
+
+    await uc.execute(dto, DOCTOR_ID);
+
+    expect(repo.validateItemSources).toHaveBeenCalledWith(
+      [{ kind: 'manual', sourceId: null }],
+      DOCTOR_ID,
+    );
+    const createCall = (repo.create as jest.Mock).mock.calls[0][0];
+    expect(createCall.items[0]).toMatchObject({
+      kind: 'manual',
+      sourceId: null,
+      name: 'Traslado a domicilio',
+    });
   });
 });

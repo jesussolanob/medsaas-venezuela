@@ -64,7 +64,8 @@ export class UpdateQuoteUseCase {
             : null
           : undefined,
       notes: dto.notes,
-      discountUsd: dto.discount_usd,
+      discountType: dto.discount_type,
+      discountValue: dto.discount_value,
       items: dto.items?.map((it) => ({
         kind: it.kind,
         sourceId: it.source_id ?? null,

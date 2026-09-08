@@ -20,7 +20,7 @@ export class QuoteInvalidStatusTransitionError extends DomainError {
   constructor(currentStatus: QuoteStatus, targetStatus: QuoteStatus) {
     super(
       `No se puede cambiar el estado de '${currentStatus}' a '${targetStatus}'. ` +
-        `Solo las cotizaciones enviadas pueden marcarse como aceptadas, rechazadas o vencidas.`,
+        `Solo los presupuestos enviados pueden marcarse como aceptados, rechazados o vencidos.`,
     );
   }
 }

@@ -10,6 +10,6 @@ export class QuoteLinkExpiredError extends DomainError {
   override readonly httpStatus = 404;
 
   constructor() {
-    super('El enlace de cotización no es válido o ha vencido');
+    super('El enlace del presupuesto no es válido o ha vencido');
   }
 }

@@ -3,6 +3,8 @@
  *
  * Invariants:
  *   - Exactly one of patientId / leadId must be non-null (XOR constraint).
+ *   - discountUsd is ALWAYS derived from (discountType, discountValue): never
+ *     trusted directly from the client. See computeDiscount().
  *   - totalUsd = Σ(items.amountUsd) − discountUsd (computed by the backend).
  *   - bcvRate and totalBs are frozen at send time, never recalculated afterward.
  *   - isOwnedBy() enforces anti-IDOR — same 404 for missing and foreign quotes.
@@ -16,6 +18,13 @@ import { QuoteItem } from './quote-item.entity';
 
 export type QuoteStatus = 'draft' | 'sent' | 'accepted' | 'rejected' | 'expired';
 
+/**
+ * 'amount'  → discountValue is a flat USD amount (e.g. 30 = $30).
+ * 'percent' → discountValue is a percentage of the subtotal (e.g. 30 = 30%),
+ *             clamped to 0..100 by computeDiscount().
+ */
+export type QuoteDiscountType = 'amount' | 'percent';
+
 export interface QuoteCreateParams {
   id: string;
   doctorId: string;
@@ -26,6 +35,10 @@ export interface QuoteCreateParams {
   validUntil: Date | null;
   notes: string;
   subtotalUsd: number;
+  /** What the specialist typed — 30 = $30 for 'amount', 30 = 30% for 'percent'. */
+  discountType: QuoteDiscountType;
+  discountValue: number;
+  /** Always derived from (discountType, discountValue) — see computeDiscount(). */
   discountUsd: number;
   totalUsd: number;
   bcvRate: number | null;
@@ -62,6 +75,8 @@ export class Quote {
   readonly validUntil: Date | null;
   readonly notes: string;
   readonly subtotalUsd: number;
+  readonly discountType: QuoteDiscountType;
+  readonly discountValue: number;
   readonly discountUsd: number;
   readonly totalUsd: number;
   readonly bcvRate: number | null;
@@ -85,6 +100,8 @@ export class Quote {
     this.validUntil = params.validUntil;
     this.notes = params.notes;
     this.subtotalUsd = params.subtotalUsd;
+    this.discountType = params.discountType;
+    this.discountValue = params.discountValue;
     this.discountUsd = params.discountUsd;
     this.totalUsd = params.totalUsd;
     this.bcvRate = params.bcvRate;
@@ -147,20 +164,46 @@ export class Quote {
   }
 
   /**
-   * Computes totals from items and discount.
-   * Always called in the backend — never trusts client-provided totals.
+   * Computes discountUsd from the specialist's input.
+   * Always called in the backend — never trusts a client-provided discountUsd.
+   *
+   *   amount  → min(discountValue, subtotalUsd) — never discounts more than the
+   *             subtotal, and never negative.
+   *   percent → round(subtotalUsd × clamp(discountValue, 0, 100) / 100, 2) — the
+   *             percentage itself is clamped, not the resulting dollar amount
+   *             (it is already ≤ subtotalUsd by construction).
+   */
+  static computeDiscount(
+    subtotalUsd: number,
+    discountType: QuoteDiscountType,
+    discountValue: number,
+  ): number {
+    if (discountType === 'percent') {
+      const clampedPercent = Math.min(100, Math.max(0, discountValue));
+      return Math.round(((subtotalUsd * clampedPercent) / 100) * 100) / 100;
+    }
+    return Math.min(Math.max(0, discountValue), subtotalUsd);
+  }
+
+  /**
+   * Computes subtotal, discount, and total from items and the specialist's
+   * discount input. Always called in the backend — never trusts client-provided
+   * totals.
    *
    * @param items  QuoteItem array (amountUsd already computed per item)
-   * @param discountUsd  Flat discount in USD (must be non-negative)
-   * @returns { subtotalUsd, totalUsd }
+   * @param discountType   'amount' | 'percent'
+   * @param discountValue  What the specialist typed — see QuoteDiscountType
+   * @returns { subtotalUsd, discountUsd, totalUsd } — totalUsd is never negative.
    */
   static computeTotals(
     items: Array<{ amountUsd: number }>,
-    discountUsd: number,
-  ): { subtotalUsd: number; totalUsd: number } {
+    discountType: QuoteDiscountType,
+    discountValue: number,
+  ): { subtotalUsd: number; discountUsd: number; totalUsd: number } {
     const subtotalUsd = Math.round(items.reduce((sum, it) => sum + it.amountUsd, 0) * 100) / 100;
+    const discountUsd = this.computeDiscount(subtotalUsd, discountType, discountValue);
     const totalUsd = Math.round(Math.max(0, subtotalUsd - discountUsd) * 100) / 100;
-    return { subtotalUsd, totalUsd };
+    return { subtotalUsd, discountUsd, totalUsd };
   }
 
   static create(params: QuoteCreateParams): Quote {

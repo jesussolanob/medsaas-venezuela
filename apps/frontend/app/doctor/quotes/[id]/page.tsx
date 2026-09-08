@@ -13,7 +13,7 @@ interface Props {
   params: Promise<{ id: string }>;
 }
 
-export const metadata = { title: 'Detalle de cotización | Delta Salud' };
+export const metadata = { title: 'Detalle de presupuesto | Delta Salud' };
 
 export default async function QuoteDetailPage({ params }: Props) {
   const { id } = await params;

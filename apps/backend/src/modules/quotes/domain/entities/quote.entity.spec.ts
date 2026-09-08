@@ -18,6 +18,8 @@ function makeQuote(overrides: Partial<Parameters<typeof Quote.create>[0]> = {}):
     validUntil: null,
     notes: '',
     subtotalUsd: 100,
+    discountType: 'amount',
+    discountValue: 0,
     discountUsd: 0,
     totalUsd: 100,
     bcvRate: null,
@@ -61,23 +63,70 @@ describe('Quote.computeTotals', () => {
   /**
    * §9-6: totalUsd = Σ(amount_usd) − discount_usd, computed by the backend.
    */
-  it('§9-6 computes subtotalUsd and totalUsd correctly', () => {
+  it('§9-6 computes subtotalUsd, discountUsd and totalUsd correctly (amount)', () => {
     const items = [{ amountUsd: 50 }, { amountUsd: 30 }, { amountUsd: 20 }];
-    const { subtotalUsd, totalUsd } = Quote.computeTotals(items, 10);
+    const { subtotalUsd, discountUsd, totalUsd } = Quote.computeTotals(items, 'amount', 10);
     expect(subtotalUsd).toBe(100);
+    expect(discountUsd).toBe(10);
     expect(totalUsd).toBe(90);
   });
 
-  it('clamps totalUsd to zero when discount exceeds subtotal', () => {
+  it('clamps totalUsd to zero when the amount discount exceeds subtotal', () => {
     const items = [{ amountUsd: 50 }];
-    const { totalUsd } = Quote.computeTotals(items, 100);
+    const { discountUsd, totalUsd } = Quote.computeTotals(items, 'amount', 100);
+    expect(discountUsd).toBe(50);
     expect(totalUsd).toBe(0);
   });
 
-  it('returns zero subtotal and total for empty items', () => {
-    const { subtotalUsd, totalUsd } = Quote.computeTotals([], 0);
-    expect(subtotalUsd).toBe(0);
+  it('computes a percent discount as a share of the subtotal', () => {
+    const items = [{ amountUsd: 200 }];
+    const { subtotalUsd, discountUsd, totalUsd } = Quote.computeTotals(items, 'percent', 30);
+    expect(subtotalUsd).toBe(200);
+    expect(discountUsd).toBe(60);
+    expect(totalUsd).toBe(140);
+  });
+
+  it('clamps a percent discount above 100 to 100%', () => {
+    const items = [{ amountUsd: 80 }];
+    const { discountUsd, totalUsd } = Quote.computeTotals(items, 'percent', 150);
+    expect(discountUsd).toBe(80);
     expect(totalUsd).toBe(0);
+  });
+
+  it('clamps a negative percent discount to 0%', () => {
+    const items = [{ amountUsd: 80 }];
+    const { discountUsd, totalUsd } = Quote.computeTotals(items, 'percent', -20);
+    expect(discountUsd).toBe(0);
+    expect(totalUsd).toBe(80);
+  });
+
+  it('returns zero subtotal, discount, and total for empty items', () => {
+    const { subtotalUsd, discountUsd, totalUsd } = Quote.computeTotals([], 'amount', 0);
+    expect(subtotalUsd).toBe(0);
+    expect(discountUsd).toBe(0);
+    expect(totalUsd).toBe(0);
+  });
+});
+
+describe('Quote.computeDiscount', () => {
+  it('amount: never exceeds the subtotal', () => {
+    expect(Quote.computeDiscount(50, 'amount', 100)).toBe(50);
+  });
+
+  it('amount: never negative', () => {
+    expect(Quote.computeDiscount(50, 'amount', -10)).toBe(0);
+  });
+
+  it('percent: rounds to 2 decimals', () => {
+    expect(Quote.computeDiscount(99.99, 'percent', 33)).toBeCloseTo(33.0, 2);
+  });
+
+  it('percent: 0% yields zero discount', () => {
+    expect(Quote.computeDiscount(100, 'percent', 0)).toBe(0);
+  });
+
+  it('percent: 100% discounts the full subtotal', () => {
+    expect(Quote.computeDiscount(150, 'percent', 100)).toBe(150);
   });
 });
 

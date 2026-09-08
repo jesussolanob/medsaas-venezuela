@@ -38,7 +38,7 @@ export class QuoteItemModel extends Model {
   declare doctorId: string;
 
   @Column({ type: DataType.TEXT, allowNull: false })
-  declare kind: string; // 'service' | 'product'
+  declare kind: string; // 'service' | 'product' | 'manual'
 
   /** No FK constraint — intentionally nullable and unconstrained (snapshot pattern). */
   @Column({ type: DataType.UUID, allowNull: true, field: 'source_id' })

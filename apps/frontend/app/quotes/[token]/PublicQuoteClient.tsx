@@ -47,6 +47,12 @@ function usdFmt(n: number): string {
   return `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
+const KIND_BADGE: Record<'service' | 'product' | 'manual', { label: string; className: string }> = {
+  service: { label: 'S', className: 'bg-teal-50 text-teal-700' },
+  product: { label: 'P', className: 'bg-violet-50 text-violet-700' },
+  manual: { label: 'M', className: 'bg-slate-200 text-slate-700' },
+};
+
 // ---------------------------------------------------------------------------
 // Props
 // ---------------------------------------------------------------------------
@@ -121,7 +127,7 @@ export default function PublicQuoteClient({ token, quote }: Props) {
             <Clock className="w-5 h-5 text-amber-600 shrink-0" />
             <p className="text-sm font-semibold text-amber-700">
               {quote.status === 'expired'
-                ? 'Este presupuesto ya venció. Solicitá una nueva cotización.'
+                ? 'Este presupuesto ya venció. Solicitá un nuevo presupuesto.'
                 : 'Este presupuesto fue rechazado.'}
             </p>
           </div>
@@ -157,6 +163,9 @@ export default function PublicQuoteClient({ token, quote }: Props) {
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-100">
+                  <th className="text-left px-4 py-2.5 text-[11px] font-semibold text-slate-400 uppercase tracking-wide w-8">
+                    Tipo
+                  </th>
                   <th className="text-left px-4 py-2.5 text-[11px] font-semibold text-slate-400 uppercase tracking-wide">
                     Descripción
                   </th>
@@ -176,6 +185,13 @@ export default function PublicQuoteClient({ token, quote }: Props) {
                   .sort((a, b) => a.sortOrder - b.sortOrder)
                   .map((it) => (
                     <tr key={it.id} className="hover:bg-slate-50/50 transition-colors">
+                      <td className="px-4 py-3 text-center">
+                        <span
+                          className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${KIND_BADGE[it.kind].className}`}
+                        >
+                          {KIND_BADGE[it.kind].label}
+                        </span>
+                      </td>
                       <td className="px-4 py-3">
                         <p className="font-semibold text-slate-800">{it.name}</p>
                         {it.description && (

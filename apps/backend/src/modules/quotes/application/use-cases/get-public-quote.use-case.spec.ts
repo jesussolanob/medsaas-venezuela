@@ -27,6 +27,8 @@ function makeQuote(overrides: Partial<Parameters<typeof Quote.create>[0]> = {}):
     validUntil: null,
     notes: 'Nota',
     subtotalUsd: 100,
+    discountType: 'amount',
+    discountValue: 0,
     discountUsd: 0,
     totalUsd: 100,
     bcvRate: 36.5,

@@ -23,6 +23,7 @@ import {
   Type,
   Image as ImageIcon,
   Receipt,
+  Calculator,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { reportError } from '@/lib/report-error';
@@ -38,6 +39,13 @@ const TemplatePdfPreview = dynamic(
 // Preview del recibo: usa el generador REAL (buildReceiptHtml) en iframe, no react-pdf.
 const ReceiptPreview = dynamic(
   () => import('@/components/pdf/ReceiptPreview').then((m) => ({ default: m.ReceiptPreview })),
+  { ssr: false, loading: () => null },
+);
+
+// Preview del presupuesto: usa el mismo componente react-pdf (QuotePdf) que la
+// descarga real desde /doctor/quotes.
+const QuotePreview = dynamic(
+  () => import('@/components/pdf/QuotePreview').then((m) => ({ default: m.QuotePreview })),
   { ssr: false, loading: () => null },
 );
 
@@ -95,21 +103,38 @@ const ICON_MAP: Record<string, LucideIcon> = {
   internal_notes: FileText,
   next_followup: FileText,
   informe: FileText,
-  // Recibo de pago (Cobros) — tipo configurable en frontend; pendiente soporte backend
+  // Recibo de pago (Cobros) — 100% configurable desde el backend.
   recibo: Receipt,
+  // Presupuesto (módulo Presupuestos) — mismo patrón que recibo: tipo standalone,
+  // no viene de ningún bloque de consulta.
+  presupuesto: Calculator,
 };
 
 /**
- * Tipos de plantilla que el backend acepta actualmente.
- * 'recibo' NO está incluido — se almacena en localStorage hasta que el backend lo soporte.
- *
- * DEPENDENCIA PENDIENTE: agregar 'recibo' al enum TemplateType del backend
- * (apps/backend/src/modules/doctor-templates/domain/value-objects/template-type.vo.ts)
- * para que el recibo de Cobros sea 100% configurable desde el backend.
+ * Tipos de plantilla que el backend acepta — mirrors TEMPLATE_TYPES en
+ * apps/backend/src/modules/doctor-templates/domain/value-objects/template-type.vo.ts.
  */
-const BACKEND_VALID_TYPES = new Set(['informe', 'recipe', 'prescripciones', 'reposo']);
+const BACKEND_VALID_TYPES = new Set([
+  'informe',
+  'recipe',
+  'prescripciones',
+  'reposo',
+  'recibo',
+  'presupuesto',
+]);
 
-/** localStorage key for the recibo template config (frontend-only until backend supports it). */
+/**
+ * Tipos de plantilla standalone: no vienen de ningún bloque de consulta del
+ * doctor (a diferencia de 'informe', 'recipe', etc., que se derivan del
+ * catálogo de bloques). Por eso SIEMPRE deben estar disponibles como pestaña,
+ * incluso cuando el doctor sí tiene bloques configurados — de lo contrario
+ * la lógica de abajo que reemplaza `dynamicTabs` por los bloques del catálogo
+ * las hacía desaparecer para cualquier doctor que ya hubiera pasado el
+ * onboarding (el caso común).
+ */
+const STANDALONE_TYPES = new Set(['recibo', 'presupuesto']);
+
+/** localStorage key for the recibo template config — legacy, only read once for migration. */
 const RECIBO_LOCALSTORAGE_KEY = 'delta_recibo_template_config';
 
 // Fallback para doctores sin bloques configurados (retrocompat con datos viejos).
@@ -145,6 +170,12 @@ const FALLBACK_TABS: TemplateTab[] = [
     label: 'Recibo',
     icon: Receipt,
     description: 'Recibo de pago (módulo Cobros) — color, encabezado y pie configurables',
+  },
+  {
+    key: 'presupuesto',
+    label: 'Presupuesto',
+    icon: Calculator,
+    description: 'Presupuesto médico (módulo Presupuestos) — color, encabezado y pie configurables',
   },
 ];
 
@@ -274,10 +305,21 @@ export default function TemplatesPage() {
           icon,
           description,
         }));
+        // Los tipos standalone ('recibo', 'presupuesto') no vienen de ningún
+        // bloque de consulta — el catálogo de bloques nunca los incluye. Sin
+        // este paso, cualquier doctor con bloques configurados (el caso común,
+        // todo doctor que ya pasó el onboarding) se quedaba sin esas pestañas.
+        for (const tab of FALLBACK_TABS) {
+          if (STANDALONE_TYPES.has(tab.key) && !dynamicTabs.some((t) => t.key === tab.key)) {
+            dynamicTabs = [...dynamicTabs, tab];
+          }
+        }
         // Guardar los bloques habilitados (en orden) para la preview del informe.
-        // Excluimos 'recibo' (tipo local sin bloque de consulta real).
+        // Excluimos los tipos standalone (sin bloque de consulta real).
         setEnabledBlocks(
-          result.filter(({ key }) => key !== 'recibo').map(({ key, label }) => ({ key, label })),
+          result
+            .filter(({ key }) => !STANDALONE_TYPES.has(key))
+            .map(({ key, label }) => ({ key, label })),
         );
       }
     } catch (err) {
@@ -291,15 +333,19 @@ export default function TemplatesPage() {
     }
 
     // ── 3) Cargar plantillas guardadas desde el backend (NestJS doctor-templates)
-    const savedMap = await loadTemplateConfigs();
+    let savedMap = await loadTemplateConfigs();
 
-    // Leer config de 'recibo' desde localStorage (no existe en backend todavía)
-    let reciboLocalConfig: TemplateConfig | null = null;
+    // Migración única: 'recibo' vivía en localStorage porque el backend no
+    // soportaba ese tipo. Ahora sí lo soporta — si el backend todavía no tiene
+    // una config para 'recibo' pero localStorage sí, la subimos una sola vez
+    // y limpiamos la copia local para no perder lo que el especialista ya
+    // había configurado. Si el backend ya tiene algo, la copia local quedó
+    // obsoleta y solo se descarta.
     try {
       const raw = localStorage.getItem(RECIBO_LOCALSTORAGE_KEY);
-      if (raw) {
+      if (raw && !savedMap['recibo']) {
         const parsed = JSON.parse(raw) as Partial<TemplateConfig>;
-        reciboLocalConfig = {
+        const migrated: UpsertTemplateInput = {
           logo_url: parsed.logo_url ?? null,
           signature_url: parsed.signature_url ?? null,
           font_family: parsed.font_family || 'Inter',
@@ -309,18 +355,20 @@ export default function TemplatesPage() {
           show_signature: parsed.show_signature !== false,
           primary_color: parsed.primary_color || '#0891b2',
         };
+        const migration = await saveTemplateConfig('recibo', migrated);
+        if (migration.ok) {
+          localStorage.removeItem(RECIBO_LOCALSTORAGE_KEY);
+          savedMap = await loadTemplateConfigs();
+        }
+      } else if (raw) {
+        localStorage.removeItem(RECIBO_LOCALSTORAGE_KEY);
       }
     } catch {
-      // localStorage no disponible o JSON inválido — usar defaults
+      // localStorage no disponible o JSON inválido — no hay nada que migrar
     }
 
     const initialConfigs: Record<string, TemplateConfig> = {};
     for (const t of dynamicTabs) {
-      // 'recibo' se almacena en localStorage hasta que el backend lo soporte
-      if (t.key === 'recibo') {
-        initialConfigs[t.key] = reciboLocalConfig ?? { ...DEFAULT_CONFIG };
-        continue;
-      }
       const saved = savedMap[t.key];
       initialConfigs[t.key] = saved
         ? {
@@ -382,25 +430,6 @@ export default function TemplatesPage() {
   async function saveTemplate() {
     setSaving(true);
     try {
-      // 'recibo' se almacena en localStorage — el backend no soporta este tipo todavía.
-      // DEPENDENCIA PENDIENTE: cuando el backend agregue 'recibo' al enum TemplateType,
-      // remover esta rama y dejar que fluya al bloque normal de abajo.
-      if (activeTab === 'recibo') {
-        try {
-          localStorage.setItem(RECIBO_LOCALSTORAGE_KEY, JSON.stringify(config));
-        } catch {
-          showToast({
-            type: 'error',
-            message: 'No se pudo guardar la config del recibo localmente',
-          });
-          return;
-        }
-        setSaved(true);
-        setTimeout(() => setSaved(false), 2500);
-        showToast({ type: 'success', message: 'Plantilla "Recibo" guardada (local).' });
-        return;
-      }
-
       const input: UpsertTemplateInput = {
         logo_url: config.logo_url,
         signature_url: config.signature_url,
@@ -441,27 +470,11 @@ export default function TemplatesPage() {
         primary_color: currentConfig.primary_color,
       };
 
-      // El backend solo acepta los 4 tipos en BACKEND_VALID_TYPES.
-      // 'recibo' se persiste en localStorage; los demás tipos dinámicos que no
-      // son del backend se ignoran en la iteración de applyTemplateConfigToAll.
+      // El backend solo acepta los tipos en BACKEND_VALID_TYPES; los demás
+      // tipos dinámicos (bloques de consulta que el backend no modela como
+      // documento, p. ej. 'paraclinical') se ignoran en esta iteración.
       const backendTypes = templateTabs.map((t) => t.key).filter((k) => BACKEND_VALID_TYPES.has(k));
       const result = await applyTemplateConfigToAll(input, backendTypes);
-
-      // También actualizar 'recibo' en localStorage si hay una tab de recibo
-      if (templateTabs.some((t) => t.key === 'recibo')) {
-        try {
-          localStorage.setItem(
-            RECIBO_LOCALSTORAGE_KEY,
-            JSON.stringify({
-              ...currentConfig,
-              logo_url: null,
-              signature_url: null,
-            }),
-          );
-        } catch {
-          // localStorage no disponible — ignorar silenciosamente
-        }
-      }
 
       if (!result.ok) {
         showToast({
@@ -834,14 +847,35 @@ export default function TemplatesPage() {
                   </div>
                 )}
                 {/* El recibo usa su generador REAL (buildReceiptHtml en iframe) para que
-                    la vista previa coincida con lo que se descarga en Cobros. Los demás
-                    tipos usan el preview react-pdf de MedicalDocumentPdf. */}
+                    la vista previa coincida con lo que se descarga en Cobros. El presupuesto
+                    usa el mismo componente react-pdf (QuotePdf) que la descarga real desde
+                    /doctor/quotes. Los demás tipos usan el preview react-pdf de MedicalDocumentPdf. */}
                 {activeTab === 'recibo' ? (
                   <ReceiptPreview
                     templateConfig={{
                       header_text: config.header_text,
                       footer_text: config.footer_text,
                       primary_color: config.primary_color,
+                      logo_url: profileLogoUrl,
+                      signature_url: profileSignatureUrl,
+                      show_logo: config.show_logo,
+                      show_signature: config.show_signature,
+                    }}
+                    doctor={{
+                      fullName: doctorName || 'Dr. Nombre Apellido',
+                      specialty: doctorSpecialty || null,
+                      licenseNumber: doctorLicense,
+                    }}
+                  />
+                ) : activeTab === 'presupuesto' ? (
+                  <QuotePreview
+                    key={activeTab}
+                    onReady={() => setPreviewLoading(false)}
+                    templateConfig={{
+                      header_text: config.header_text,
+                      footer_text: config.footer_text,
+                      primary_color: config.primary_color,
+                      font_family: config.font_family,
                       logo_url: profileLogoUrl,
                       signature_url: profileSignatureUrl,
                       show_logo: config.show_logo,

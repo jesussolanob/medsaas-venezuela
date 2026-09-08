@@ -11,6 +11,6 @@ export class QuoteNotFoundError extends DomainError {
   override readonly httpStatus = 404;
 
   constructor() {
-    super('Cotización no encontrada');
+    super('Presupuesto no encontrado');
   }
 }

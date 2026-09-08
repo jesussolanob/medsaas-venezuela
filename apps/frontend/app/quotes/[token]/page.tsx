@@ -23,7 +23,7 @@ const BACKEND_URL =
 
 interface PublicQuoteItem {
   id: string;
-  kind: 'service' | 'product';
+  kind: 'service' | 'product' | 'manual';
   name: string;
   description: string;
   quantity: number;
@@ -71,7 +71,7 @@ interface Props {
   params: Promise<{ token: string }>;
 }
 
-export const metadata = { title: 'Cotización | Delta Salud' };
+export const metadata = { title: 'Presupuesto | Delta Salud' };
 
 export const dynamic = 'force-dynamic';
 
@@ -95,7 +95,7 @@ export default async function PublicQuotePage({ params }: Props) {
     fetchError =
       'Este enlace ya no está disponible. El presupuesto venció o fue retirado. Solicitale uno nuevo al especialista.';
   } else if (!res.ok) {
-    fetchError = 'No se pudo cargar la cotización. Intentá de nuevo.';
+    fetchError = 'No se pudo cargar el presupuesto. Intentá de nuevo.';
   } else {
     const envelope = (await res.json().catch(() => null)) as {
       success: boolean;
