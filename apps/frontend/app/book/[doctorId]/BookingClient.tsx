@@ -20,7 +20,7 @@ import {
   UserPlus,
   Stethoscope,
 } from 'lucide-react';
-import { getProfessionalTitle } from '@/lib/professional-title';
+import { formatProfessionalName } from '@/lib/professional-title';
 import { useBcvRate } from '@/lib/useBcvRate';
 import { reportError } from '@/lib/report-error';
 import { isValidEmail } from '@/lib/validation';
@@ -851,7 +851,7 @@ export default function BookingClient({
           <p className="text-sm text-slate-500 mb-5">
             Tu consulta con{' '}
             <strong>
-              {getProfessionalTitle(doctor.professional_title, doctor.specialty)} {doctor.full_name}
+              {formatProfessionalName(doctor.professional_title, doctor.full_name)}
             </strong>{' '}
             fue registrada.
           </p>
@@ -1105,8 +1105,7 @@ export default function BookingClient({
               </div>
               <div>
                 <h1 className="text-lg font-bold leading-tight">
-                  {getProfessionalTitle(doctor.professional_title, doctor.specialty)}{' '}
-                  {doctor.full_name}
+                  {formatProfessionalName(doctor.professional_title, doctor.full_name)}
                 </h1>
                 <p className="text-sm text-white/70 mt-0.5">
                   {doctor.specialty || 'Médico especialista'}

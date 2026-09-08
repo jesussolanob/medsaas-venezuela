@@ -26,6 +26,36 @@ export const cedulaSchema = z
   )
   .max(30, 'La cédula no puede tener más de 30 caracteres');
 
+/**
+ * Forma CANÓNICA en la que se guarda una cédula: `V-12345678`.
+ *
+ * Saca puntos, espacios y guiones de más, y pone el prefijo en mayúscula, de modo
+ * que `v.12.345.678`, `V 12345678` y `V--12345678` terminan guardados idénticos.
+ * Así el especialista puede tipear como quiera y en la base queda una sola forma.
+ *
+ * ⚠️ CONSERVA el guion estructural, y no es un detalle estético: `cedulaSchema`
+ * lo exige (`/^[VEP]-.../`). Guardar `V12345678` haría fallar la validación en
+ * cualquier pantalla que relea el valor y lo vuelva a enviar — editar un
+ * paciente, sin ir más lejos.
+ *
+ * ⚠️ NO inventa el prefijo. Un valor sin `V/E/P` adelante se devuelve sin
+ * prefijo: suponer la nacionalidad de alguien sería inventarle un dato.
+ *
+ * Es hermana de `normalizeCedulaForSearch` (@delta/shared-crypto), que hace lo
+ * mismo pero SIN el guion, porque esa se usa para la huella de búsqueda y ahí
+ * los separadores solo estorban. Las dos tienen que coincidir en qué consideran
+ * "la misma cédula".
+ */
+export function toCanonicalCedula(raw: string): string {
+  const limpia = raw.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (!limpia) return '';
+  const prefijo = limpia.charAt(0);
+  if (prefijo === 'V' || prefijo === 'E' || prefijo === 'P') {
+    return `${prefijo}-${limpia.slice(1)}`;
+  }
+  return limpia;
+}
+
 // ---------------------------------------------------------------------------
 // API response envelopes
 // ---------------------------------------------------------------------------

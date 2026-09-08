@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import { useBcvRate } from '@/lib/useBcvRate';
 import { formatBs, type PaymentRow } from '@/lib/finances';
 import { reportError } from '@/lib/report-error';
-import { getProfessionalTitle } from '@/lib/professional-title';
+import { formatProfessionalName } from '@/lib/professional-title';
 import {
   Users,
   Calendar,
@@ -743,15 +743,12 @@ export default function DoctorDashboard() {
               }}
             >
               {/*
-                Antes caía a "Dr." fijo, así que a un psicólogo la app lo trataba de
-                doctor sin que él lo hubiera elegido nunca. `getProfessionalTitle` usa
-                el título cargado y, si no hay, lo deriva de la especialidad
-                (psicología → "Psic.", odontología → "Odont."). Es el mismo helper que
-                ya usa el booking público, así que el especialista se ve igual en los
-                dos lados.
+                El título NO se infiere. Antes se derivaba de la especialidad y, si no
+                la reconocía, caía en "Dr." fijo: la app le adjudicaba un título a
+                quien nunca lo eligió. Sin título cargado se muestra solo el nombre.
               */}
               {profile?.full_name
-                ? `${getProfessionalTitle(profile.professional_title, profile.specialty)} ${profile.full_name}`
+                ? formatProfessionalName(profile.professional_title, profile.full_name)
                 : 'Bienvenido'}
             </h1>
             {profile?.specialty && (

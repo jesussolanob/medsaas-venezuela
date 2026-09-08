@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useRef, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { getProfessionalTitle } from '@/lib/professional-title';
 import PaymentDetailsEditor from '@/components/shared/PaymentDetailsEditor';
 import {
   User,
