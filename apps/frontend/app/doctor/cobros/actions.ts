@@ -49,6 +49,13 @@ export type PaymentExportRow = {
   patient_name: string;
   plan_name: string | null;
   amount_usd: number;
+  /**
+   * Monto en Bs CONGELADO al cobrar. El backend ya lo devolvía (`amount_bs` en
+   * PaymentOutput) y este tipo no lo declaraba, así que la exportación lo
+   * ignoraba y recalculaba TODO a la tasa del día — incluidos los cobros ya
+   * pagados. Una planilla que se archiva y circula con cifras que nadie pagó.
+   */
+  amount_bs: number | null;
   payment_method: string | null;
   status: string;
   appointment_code: string | null;
@@ -362,6 +369,7 @@ export async function getPaymentsForExport(
         patient_name: String(appt?.['patient_name'] ?? 'Paciente'),
         plan_name: (appt?.['plan_name'] as string | null) ?? null,
         amount_usd: Number(r['amount_usd'] ?? 0),
+        amount_bs: r['amount_bs'] != null ? Number(r['amount_bs']) : null,
         payment_method: (r['method_snapshot'] as string | null) ?? null,
         status: String(r['status'] ?? ''),
         appointment_code: (appt?.['appointment_code'] as string | null) ?? null,
