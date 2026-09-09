@@ -1,4 +1,44 @@
-# 10 — Lista completa de QA: lo que hay en staging y NO en producción
+# 10 — Qué falta probar antes de producción
+
+> ⚠️ **PUNTO DE RETOME — actualizado 2026-09-09.** Lo de más abajo es de lotes anteriores y sigue
+> vigente. Esto es lo que quedó abierto al cerrar el lote de presupuestos.
+
+## Estado
+
+**92 commits en `staging` sin promover a `main`.** Ocho lotes acumulados. Todo el lote de
+presupuestos, inventario y las correcciones del QA están desplegados y verificados en staging.
+
+## Lo primero al retomar
+
+1. **Ejecutar el guion de QA manual**: `memory-bank/11-qa-lote-presupuestos-septiembre.md`.
+   Está ordenado por riesgo; la Prioridad 1 son los ocho casos que **nadie pudo probar**.
+2. **Lo que necesita BD + esperar el cron** (bloque C completo): que un vencido pase a "Vencido", que
+   el aviso previo llegue a los dos con la fecha correcta y no se repita, que un aceptado no se toque,
+   y que el día valga hasta el final del día venezolano.
+3. **Confirmar que llega el correo** de cita nueva al especialista (se verificó que la cita se crea,
+   no que el correo llegue) y que los **recordatorios de citas** siguen saliendo — el cron nuevo vive
+   en el mismo endpoint.
+
+## Al promover a producción
+
+- ⚠️ **DESPAUSAR el cron**: `gcloud scheduler jobs resume doctor-inactivity-notices --location=us-east1`
+- Las migraciones `20260908000001` a `...05` viajan con el código. La `...04` **renumera COT→PRE**:
+  un destinatario que recibió "COT-0004" verá "PRE-0004" si reabre el enlace (aceptado por el dueño).
+- 🔴 **Producción hoy responde 500** en la página pública de un presupuesto **con fecha de vigencia**.
+  No se nota porque el campo arranca vacío. Este lote lo corrige **y** prellena la fecha con 30 días,
+  así que promover las dos cosas juntas es obligatorio: prellenar sin el arreglo rompería el enlace
+  del correo en todos los presupuestos nuevos.
+
+## Decisiones abiertas
+
+- **El rehasheo de cédulas en producción** quedó DESCARTADO como bloqueante: son ~2 filas, la
+  búsqueda ya prueba variantes y las viejas se arreglan solas al editarlas. El script está en el
+  scratchpad por si alguna vez hace falta.
+- **`bcv_rate` en NULL** en 100 de 100 citas del booking desde el 18/06 (medido en producción). Se
+  corrige de acá en adelante; las viejas no se recuperan y van a mostrar la conversión del día.
+  Ningún monto cobrado se vio afectado.
+
+---
 
 > Del diff real `main..staging` al **2026-08-17**.
 > **178 commits** · **94 cambios funcionales** · **7 migraciones** · **2 pantallas nuevas**.
