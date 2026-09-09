@@ -987,3 +987,31 @@ especialista salía sin marca (ADR-062).
 ⚠️ **Falta probar el ENVÍO de punta a punta**: congelado de la tasa, correo y vista pública por
 token. Mismo gating de frontend solamente que inventario — ningún módulo del repo lo tiene en el
 backend.
+
+## Piezas del lote de presupuestos (2026-09-08/09)
+
+### Backend
+
+| Pieza | Dónde | Para qué |
+| ----- | ----- | -------- |
+| `DispatchQuoteExpiryNoticesUseCase` | `modules/quotes/application/use-cases/` | Barre vencidos y manda el aviso previo. Colgado del cron `appointment-reminders`, **sin Cloud Scheduler nuevo** |
+| `Quote.expiresAt()` | `quotes/domain/entities/quote.entity.ts` | Instante real de vencimiento. **Nunca comparar `validUntil` crudo** — es una cadena (ADR-063) |
+| `Quote.validUntilAsDateString()` | idem | Serializa el día calendario. Existe porque `validUntil?.toISOString()` **lanzaba** |
+| `VENEZUELA_UTC_OFFSET_HOURS` | idem | Desfase fijo (sin horario de verano desde 2016) |
+| `toCanonicalCedula()` | `libs/shared-types/src/common.ts` | Forma en que se GUARDA la cédula. Hermana de `normalizeCedulaForSearch` |
+| `EmailSendError.detail` | `modules/email/domain/errors/` | Texto crudo del proveedor, para `email_send_log`. **Nunca en `message`**, que va a los logs |
+
+### Frontend
+
+| Pieza | Dónde | Para qué |
+| ----- | ----- | -------- |
+| `quote-validity.ts` | `app/doctor/quotes/` | Vigencia en DÍAS ↔ fecha. Compartido por el alta y el detalle: dos copias de aritmética de fechas divergen |
+| `quote-math.ts` | idem | Totales con el mismo redondeo que el backend |
+| `lib/bcv-rate.ts` | `apps/frontend/lib/` | **Fuente única** de la tasa. Se llama EN PROCESO; el route handler es una envoltura (ADR-069) |
+| `formatProfessionalName()` | `lib/professional-title.ts` | "Psic. Ana" o "Ana" a secas. **No infiere** el título (ADR-067) |
+
+### Migraciones
+
+`20260908000001` ítem manual y tipo de descuento · `...02` índice único de cédula ·
+`...03` plantillas de correo · `...04` renumerado COT→PRE · `...05` `expiry_reminder_sent_at`,
+índice parcial y las dos plantillas del aviso de vencimiento.

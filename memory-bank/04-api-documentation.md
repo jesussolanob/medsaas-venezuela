@@ -1151,6 +1151,36 @@ Por qué no viajaba antes: la entidad guarda solo `patient_id` / `lead_id`, y el
 está cifrado. La pantalla y el PDF pintaban la **categoría**, así que un presupuesto no decía a
 quién iba dirigido.
 
+## Cambios de contrato del 2026-09-09
+
+### `POST /api/doctor/quotes/:id/send` ahora devuelve el destinatario
+
+Armaba el cuerpo con `withShareData(quote)`, sin los argumentos, así que salía con `recipient_name` y
+`recipient_email` en **null**. La pantalla del especialista reemplaza su estado con esa respuesta, así
+que apenas enviaba pasaba a decir "Sin nombre"; al recargar volvía. El GET del detalle sí los pasaba.
+
+`SendQuoteResult` suma `recipientName` / `recipientEmail` — el use case YA los tenía resueltos
+(`resolveRecipient`, donde el correo explícito gana sobre el de la ficha), solo no los devolvía.
+
+### `GET /api/finances/payments` — `amount_bs` ya viajaba
+
+No hubo cambio de backend: el endpoint **siempre** devolvió `amount_bs` en `PaymentOutput`. Lo que
+faltaba era del lado del frontend, donde `PaymentExportRow` no lo declaraba — así que la exportación a
+Excel lo ignoraba y recalculaba todo a la tasa del día, **incluidos los cobros ya pagados**.
+
+⚠️ Patrón repetido: un tipo del frontend que **miente por omisión** hace invisible un dato que el
+backend sí manda. Ya nos costó cuatro defectos.
+
+### Búsqueda de pacientes — cédula y teléfono
+
+`SearchPatientsUseCase` hasheaba el texto crudo (`hashForSearch(q)`) mientras la huella guardada se
+calcula sobre la forma **canónica**: no coincidían nunca y **toda** búsqueda por cédula devolvía cero.
+Ahora prueba las variantes (`cedulaSearchVariants`), igual que los otros tres puntos de búsqueda.
+
+El camino de nombre —que ya descifra toda la lista del especialista— compara además **teléfono y
+cédula por dígitos** (mínimo 4), así `0414-123 45 67` y `+58 414 1234567` se encuentran entre sí. El
+placeholder prometía "nombre, teléfono o cédula" y solo andaba por nombre.
+
 ## Cambio de contrato: `recipient_email` en el detalle de presupuesto (2026-09-08)
 
 `GET /api/doctor/quotes/:id` suma **`recipient_email`**: el correo ya resuelto del paciente o del
