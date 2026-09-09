@@ -290,7 +290,33 @@ export default function CobrosPage() {
   });
 
   const totalUSD = filtered.reduce((sum, p) => sum + (p.plan_price || 0), 0);
-  const totalBs = bcvRate ? totalUSD * bcvRate : null;
+  /**
+   * Total en Bs: lo ya COBRADO suma su monto congelado; lo pendiente se convierte
+   * a la tasa del día. Antes se multiplicaba el total entero por la tasa actual,
+   * así que un mes con cobros viejos daba una cifra que nadie pagó.
+   *
+   * Devuelve null solo si no hay tasa Y además hay algo pendiente que convertir:
+   * si todo lo listado ya está cobrado, el total sale de los congelados y no
+   * depende de que la tasa del día esté disponible.
+   */
+  const totalBs = (() => {
+    let acumulado = 0;
+    let faltaTasa = false;
+    for (const p of filtered) {
+      const congelado =
+        p.status === 'approved' && typeof p.amount_bs === 'number' && p.amount_bs > 0
+          ? p.amount_bs
+          : null;
+      if (congelado !== null) {
+        acumulado += congelado;
+      } else if (bcvRate) {
+        acumulado += (p.plan_price || 0) * bcvRate;
+      } else {
+        faltaTasa = true;
+      }
+    }
+    return faltaTasa ? null : acumulado;
+  })();
 
   // Export to CSV/Excel — ETAPA 1: migrado al backend (GET /api/finances/payments).
   async function exportExcel() {
@@ -316,7 +342,12 @@ export default function CobrosPage() {
       r.patient_name || '',
       r.plan_name || '',
       r.amount_usd.toFixed(2),
-      bcvRate ? (r.amount_usd * bcvRate).toFixed(2) : 'N/A',
+      // Congelado si ya se cobró; a la tasa del día si sigue pendiente.
+      r.status === 'approved' && typeof r.amount_bs === 'number' && r.amount_bs > 0
+        ? r.amount_bs.toFixed(2)
+        : bcvRate
+          ? (r.amount_usd * bcvRate).toFixed(2)
+          : 'N/A',
       formatPaymentMethod(r.payment_method),
       r.status || '',
       r.consultation_code || r.appointment_code || '',
@@ -1083,8 +1114,28 @@ export default function CobrosPage() {
                   </span>
                 </div>
                 <div className="col-span-1 text-right">
+                  {/*
+                    Lo ya COBRADO muestra su monto en Bs CONGELADO; lo pendiente se
+                    recalcula a la tasa del día.
+
+                    Antes esta columna multiplicaba SIEMPRE por la tasa actual,
+                    también en los cobros aprobados: un cobro de agosto se veía hoy
+                    con la tasa de hoy, o sea con una cifra que nadie pagó nunca. Y
+                    el modal de detalle sí usaba el congelado, así que el mismo
+                    cobro mostraba dos números distintos según dónde se lo mirara.
+
+                    Un aprobado sin `amount_bs` guardado cae al cálculo en vivo: es
+                    lo único que se puede mostrar, y es lo que pasa con los cobros
+                    viejos anteriores a que se guardara ese campo.
+                  */}
                   <span className="text-xs text-slate-500">
-                    {bcvRate ? formatBs((p.plan_price || 0) * bcvRate) : '—'}
+                    {p.status === 'approved' &&
+                    typeof p.amount_bs === 'number' &&
+                    p.amount_bs > 0
+                      ? formatBs(p.amount_bs)
+                      : bcvRate
+                        ? formatBs((p.plan_price || 0) * bcvRate)
+                        : '—'}
                   </span>
                 </div>
                 <div className="col-span-1 text-center">
