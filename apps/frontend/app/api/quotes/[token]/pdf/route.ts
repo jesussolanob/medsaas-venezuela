@@ -169,11 +169,18 @@ export async function GET(
    * mismo que la pantalla: si uno mostrara la tasa de emisión y el otro la del
    * día, el paciente vería dos montos distintos para el mismo presupuesto.
    *
-   * Best-effort: si la tasa no se puede obtener se cae a la congelada, que es
-   * mejor que no mostrar ningún equivalente en bolívares.
+   * Si la tasa viva no se puede obtener, el PDF sale SIN equivalente en bolívares.
+   * Antes caía a la congelada, y eso era peor que no mostrar nada: la congelada la
+   * fija el backend con `rateStore.getRate()`, que es la USDT/manual y NO la del
+   * BCV. En el QA del 09/09 esa caída silenciosa hacía que el PDF dijera Bs. 47.963
+   * (tasa 959,28) mientras la página del mismo presupuesto decía Bs. 41.005 (tasa
+   * 820,10): un 17% de diferencia, en el documento que el paciente usa para pagar.
+   *
+   * El fallo ahora se LOGUEA en vez de tragarse. Que un PDF salga sin bolívares es
+   * visible y raro; que salga con un número equivocado no lo nota nadie.
    */
-  let bcvRate = quoteData.bcvRate !== null ? Number(quoteData.bcvRate) : null;
-  let totalBsVivo = quoteData.totalBs !== null ? Number(quoteData.totalBs) : null;
+  let bcvRate: number | null = null;
+  let totalBsVivo: number | null = null;
   try {
     const rateRes = await fetch(new URL('/api/admin/bcv-rate', _req.url).toString(), {
       cache: 'no-store',
@@ -183,10 +190,16 @@ export async function GET(
       if (rateJson.rate && rateJson.rate > 0) {
         bcvRate = rateJson.rate;
         totalBsVivo = Math.round(Number(quoteData.totalUsd) * rateJson.rate * 100) / 100;
+      } else {
+        log.warn('[quotes/pdf] la tasa viva vino vacia o en cero — el PDF sale sin bolivares');
       }
+    } else {
+      log.warn('[quotes/pdf] no se pudo obtener la tasa viva', { status: rateRes.status });
     }
-  } catch {
-    /* se conserva la tasa de emisión */
+  } catch (err: unknown) {
+    log.warn('[quotes/pdf] fallo la consulta de la tasa viva', {
+      message: err instanceof Error ? err.message : 'unknown',
+    });
   }
 
   // 4. Render PDF server-side
