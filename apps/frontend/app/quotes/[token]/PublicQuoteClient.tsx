@@ -372,12 +372,13 @@ export default function PublicQuoteClient({ token, quote: initialQuote }: Props)
                     </span>
                   </div>
                   {/*
-                    La tasa y el monto en bolívares se CONGELAN al emitir el
-                    presupuesto (send-quote.use-case.ts) y no se recalculan después.
-                    Decir "a la tasa del día" sería mentir: un presupuesto de hace
-                    dos semanas mostraría una tasa vieja y el paciente creería que
-                    ese es el monto que va a pagar hoy. Se aclara la fecha de la
-                    tasa y que el monto puede variar al momento de pagar.
+                    ⚠️ Este comentario decía justo lo CONTRARIO de lo que hace el
+                    código de arriba: afirmaba que la tasa se congela al emitir. Es
+                    comentario podrido de antes del cambio — quedó desmentido por
+                    `const bcvRate = liveRate`, unas líneas más arriba.
+
+                    La regla real: los bolívares se recalculan SIEMPRE a la tasa
+                    viva del día; lo único que queda fijo es el monto en divisa.
                   */}
                   <p className="text-[11px] leading-relaxed text-slate-400">
                     Monto referencial indexado a la tasa oficial del BCV del día: Bs.{' '}

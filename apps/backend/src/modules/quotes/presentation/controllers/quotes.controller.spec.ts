@@ -243,6 +243,29 @@ describe('QuotesController', () => {
 
   // ─── send ──────────────────────────────────────────────────────────────────
   describe('POST /:id/send (send)', () => {
+    it('devuelve el destinatario resuelto, no null', async () => {
+      // La respuesta del envío armaba el cuerpo con `withShareData(quote)`, sin
+      // el destinatario, así que salía `recipient_name: null`. La pantalla del
+      // especialista reemplaza su estado con esta respuesta y pasaba a decir
+      // "Sin nombre" apenas enviaba; al recargar volvía a aparecer.
+      //
+      // Ningún test lo veía porque todos miraban `email_sent` y el estado, nunca
+      // el destinatario del cuerpo de ESTA respuesta.
+      const { controller, sendUC } = makeController();
+      sendUC.execute.mockResolvedValue({
+        quote: makeQuote('sent'),
+        emailSent: true,
+        emailSkipReason: null,
+        recipientName: 'Ana Pérez',
+        recipientEmail: 'ana@example.com',
+      });
+
+      const result = await controller.send(QUOTE_ID, {} as SendQuoteDto, makeUser());
+
+      expect(result.data.recipient_name).toBe('Ana Pérez');
+      expect(result.data.recipient_email).toBe('ana@example.com');
+    });
+
     it('delegates to SendQuoteUseCase with doctorId from user.sub', async () => {
       const { controller, sendUC } = makeController();
       const sentQuote = makeQuote('sent');
@@ -250,6 +273,8 @@ describe('QuotesController', () => {
         quote: sentQuote,
         emailSent: true,
         emailSkipReason: null,
+        recipientName: 'Ana Pérez',
+        recipientEmail: 'ana@example.com',
       });
 
       const dto: SendQuoteDto = {
@@ -279,6 +304,8 @@ describe('QuotesController', () => {
         quote: makeQuote('sent'),
         emailSent: false,
         emailSkipReason: 'no_recipient_email',
+        recipientName: 'Ana Pérez',
+        recipientEmail: 'ana@example.com',
       });
 
       const result = await controller.send(QUOTE_ID, {}, makeUser());
@@ -293,6 +320,8 @@ describe('QuotesController', () => {
         quote: makeQuote('sent'),
         emailSent: false,
         emailSkipReason: 'no_recipient_email',
+        recipientName: 'Ana Pérez',
+        recipientEmail: 'ana@example.com',
       });
 
       const dto: SendQuoteDto = {};

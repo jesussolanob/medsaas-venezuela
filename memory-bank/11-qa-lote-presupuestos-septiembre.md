@@ -10,6 +10,48 @@ correo de un paciente de verdad.
 
 ---
 
+## ✅ Estado tras el QA en navegador del 2026-09-09
+
+Un agente con Playwright recorrió los bloques **A, B, D y E** contra staging. Lo que sigue está
+**verificado en pantalla** y el QA manual no necesita repetirlo, salvo que quiera confirmar:
+
+| Bloque | Resultado |
+| ------ | --------- |
+| A1–A5  | **Pasan.** Incluida la página pública con fecha (el 500 que hoy está en producción). |
+| B1–B6  | **Pasan**, menos B6.2 (sin datos para probarlo). |
+| D1, D2 | **Pasan.** D1 sin confirmar la recepción del correo (hace falta la casilla). |
+| E2–E5  | **Pasan**, menos E4 (ver abajo). |
+
+**Cuatro defectos encontrados y ya corregidos** (no hace falta re-testear el diagnóstico, sí el
+resultado):
+
+1. **Los bolívares salían con la tasa congelada** en el detalle del especialista y en los dos PDF.
+   El mismo presupuesto decía Bs. 47.963 en el PDF y Bs. 41.005 en la página: **17% de diferencia**
+   en el documento con el que el paciente paga. Solo la página pública estaba bien.
+2. **Al enviar, el detalle perdía el nombre del destinatario** ("Sin nombre" hasta recargar).
+3. **Buscar por cédula devolvía cero resultados, siempre** — regresión de este mismo lote. El
+   buscador tampoco encontraba por teléfono, aunque lo prometiera.
+4. **Ningún campo obligatorio del booking estaba marcado** como tal.
+
+**Un defecto del GUION, no del producto:** el caso A5 pedía que con prefijo `P` la etiqueta dijera
+"Pasaporte". Eso solo existe en el alta del **especialista**, no en la ficha de paciente. Ignorar
+esa expectativa.
+
+**Descartado tras investigarlo:** un presupuesto que parecía redirigir a Configuración (era un clic
+desviado al menú) y un supuesto bucle de peticiones (era el refresco normal del router de Next.js
+cada 30 segundos sobre una página cuyo presupuesto ya no existe).
+
+### 🔴 Lo que sigue SIN PROBAR y necesita el QA manual
+
+Los cuatro necesitan lo mismo: **acceso a la base de datos** y **esperar una corrida del cron**.
+
+- **Todo el Bloque C** (C1 a C4): el barrido de vencidos y el aviso de "por vencer".
+- **B6.2**: el aviso ámbar al editar un borrador con fecha ya pasada (hay que retrofechar en la BD).
+- **D1 (correo)**: que al especialista le LLEGUE el aviso de cita nueva.
+- **D3** y **E1**: la advertencia de consultas por agendar y los recordatorios de citas.
+
+---
+
 ## Bloque A — Lo que casi llega roto a producción
 
 ### A1. La página pública de un presupuesto CON fecha de vencimiento 🔴

@@ -207,7 +207,8 @@ export class QuotesController {
     // as a fallback; the frontend can send the display name via the DTO if needed.
     // doctorName is now resolved inside SendQuoteUseCase from profiles.full_name.
     // Never use user.email — that's the Auth0 email, not the display name.
-    const { quote, emailSent, emailSkipReason } = await this.sendQuote.execute({
+    const { quote, emailSent, emailSkipReason, recipientName, recipientEmail } =
+      await this.sendQuote.execute({
       quoteId: id,
       doctorId: user.sub,
       recipientEmail: dto.recipient_email ?? undefined,
@@ -219,7 +220,9 @@ export class QuotesController {
     return {
       success: true,
       data: {
-        ...this.withShareData(quote),
+        // Con el destinatario: sin él, la pantalla del especialista pasaba a
+        // decir "Sin nombre" apenas enviaba, y solo se recuperaba al recargar.
+        ...this.withShareData(quote, recipientName, recipientEmail),
         email_sent: emailSent,
         email_skip_reason: emailSkipReason,
       } as QuoteSendResponseData,

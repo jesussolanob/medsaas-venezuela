@@ -61,6 +61,20 @@ export interface SendQuoteResult {
   emailSent: boolean;
   /** Why the email was not sent. Null when emailSent is true. */
   emailSkipReason: SendQuoteEmailSkipReason | null;
+  /**
+   * Destinatario EFECTIVO del envío, ya resuelto (el explícito gana sobre el de
+   * la ficha). Viaja en el resultado para que el controlador pueda devolverlo.
+   *
+   * Sin esto, la respuesta del envío salía con el destinatario en null y la
+   * pantalla del especialista pasaba a decir "Sin nombre" apenas enviaba; al
+   * recargar volvía a aparecer. El use case ya lo tenía resuelto: solo no lo
+   * devolvía.
+   *
+   * SECURITY: PII. Se expone al especialista dueño, que ya la ve en su ficha.
+   * NUNCA loguear.
+   */
+  recipientName: string | null;
+  recipientEmail: string | null;
 }
 
 /**
@@ -152,7 +166,13 @@ export class SendQuoteUseCase {
       this.logger.log(
         `[send-quote] quote ${quoteId} sent without email — no address on file or provided`,
       );
-      return { quote: sentQuote, emailSent: false, emailSkipReason: 'no_recipient_email' };
+      return {
+        quote: sentQuote,
+        emailSent: false,
+        emailSkipReason: 'no_recipient_email',
+        recipientName: resolved.name ?? null,
+        recipientEmail: null,
+      };
     }
 
     const emailSent = await this.sendEmailSafely(
@@ -167,6 +187,8 @@ export class SendQuoteUseCase {
       quote: sentQuote,
       emailSent,
       emailSkipReason: emailSent ? null : 'delivery_failed',
+      recipientName: resolved.name ?? null,
+      recipientEmail: resolved.email,
     };
   }
 
