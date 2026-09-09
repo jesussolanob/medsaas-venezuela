@@ -12,6 +12,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import React from 'react';
 import { log } from '@/lib/logger';
+import { fetchBcvRates } from '@/lib/bcv-rate';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -182,19 +183,16 @@ export async function GET(
   let bcvRate: number | null = null;
   let totalBsVivo: number | null = null;
   try {
-    const rateRes = await fetch(new URL('/api/admin/bcv-rate', _req.url).toString(), {
-      cache: 'no-store',
-    });
-    if (rateRes.ok) {
-      const rateJson = (await rateRes.json()) as { rate?: number };
-      if (rateJson.rate && rateJson.rate > 0) {
-        bcvRate = rateJson.rate;
-        totalBsVivo = Math.round(Number(quoteData.totalUsd) * rateJson.rate * 100) / 100;
-      } else {
-        log.warn('[quotes/pdf] la tasa viva vino vacia o en cero — el PDF sale sin bolivares');
-      }
+    // Llamada EN PROCESO, no `fetch` a la propia URL. La vuelta por HTTP fallaba
+    // en el contenedor desplegado y el PDF salía sin ningún monto en bolívares.
+    const tasas = await fetchBcvRates();
+    if (tasas.rate && tasas.rate > 0) {
+      bcvRate = tasas.rate;
+      totalBsVivo = Math.round(Number(quoteData.totalUsd) * tasas.rate * 100) / 100;
     } else {
-      log.warn('[quotes/pdf] no se pudo obtener la tasa viva', { status: rateRes.status });
+      log.warn('[quotes/pdf] la tasa viva vino vacia — el PDF sale sin bolivares', {
+        source: tasas.source,
+      });
     }
   } catch (err: unknown) {
     log.warn('[quotes/pdf] fallo la consulta de la tasa viva', {
