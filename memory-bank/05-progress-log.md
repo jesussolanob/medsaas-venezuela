@@ -4,6 +4,75 @@
 > ⚠️ Orden: **la entrada más nueva va ARRIBA**. La del 2026-08-11 quedó al final
 > del archivo por error; no se movió para no ensuciar el diff.
 
+## 2026-09-09 — QA en navegador del lote: **ocho defectos que 4.347 tests no vieron**
+
+> Todo en `staging`, **nada en `main`** (92 commits de atraso). ADR-066 a ADR-069.
+> Guion para el QA manual: `memory-bank/11-qa-lote-presupuestos-septiembre.md`.
+
+Un agente con Playwright recorrió los bloques A, B, D y E del guion contra staging. **La suite estaba
+en verde con los ocho defectos adentro.**
+
+### Los cuatro que encontró el QA
+
+1. **Los bolívares con tasa congelada.** El mismo presupuesto decía `Bs. 47.963` en el PDF y
+   `Bs. 41.005` en la página — **17% de diferencia en el documento con el que el paciente paga**. De
+   cuatro superficies, solo la página pública cumplía la regla.
+2. **"Sin nombre" al enviar.** La respuesta del envío armaba el cuerpo sin el destinatario. El GET del
+   detalle sí lo pasaba; solo el envío no. Se recuperaba al recargar.
+3. **Buscar por cédula devolvía CERO, siempre** — regresión de este mismo lote (ver abajo).
+4. **Ningún campo obligatorio del booking estaba marcado.** El QA reportó el teléfono; eran los tres.
+
+### Los cuatro que aparecieron al arreglar los anteriores
+
+5. **La búsqueda: se barrieron los que ESCRIBEN, no los que LEEN.** Al cambiar la huella a la forma
+   canónica se actualizaron los tres puntos de alta y el **buscador** quedó afuera. Y **el test que
+   debía atraparlo afirmaba el comportamiento roto**: exigía que se buscara con el texto crudo. La
+   suite estaba verde *gracias* al bug. El buscador tampoco encontraba por teléfono, aunque su
+   etiqueta lo prometiera.
+6. **El servidor se pedía la tasa a sí mismo por HTTP** (ADR-069). Lo destapó el re-test: tras el
+   primer arreglo el PDF salió **sin** bolívares, lo que probó que la petición no fallaba a veces sino
+   **siempre**. Antes quedaba tapada cayendo a la congelada.
+7. **El mismo patrón en `/api/book`**, con el error atrapado sin registro: la cita se creaba **sin
+   monto en bolívares** y nadie se enteraba. Lo encontró el **barrido**, no el QA.
+8. **Cobros mostraba los bolívares de hoy para lo ya pagado** (ADR-068), en la columna, el total y la
+   exportación a Excel. El backend YA devolvía el monto congelado y el tipo del frontend no lo
+   declaraba: el dato llegaba y se tiraba.
+
+### Dos falsas alarmas, descartadas con evidencia
+
+- Un presupuesto que "redirigía a Configuración": **no existe ningún redirect a Configuración** en el
+  frontend. Era un clic desviado al menú lateral.
+- Un "bucle de 404" con 178 peticiones: era el **refresco normal del router de Next.js** cada 30
+  segundos sobre una página cuyo presupuesto ya no existe. Se zanjó dejando la pantalla 82 segundos
+  quieta y contando: 3 peticiones, ninguna a un id inexistente.
+
+### Un defecto del GUION, no del producto
+
+El caso A5 pedía que con prefijo `P` la etiqueta dijera "Pasaporte". Eso solo existe en el alta del
+**especialista** (`OnboardingForm`), no en la ficha de paciente. Estaba en el bloque equivocado.
+
+### También en este lote
+
+- **La cédula se guarda canónica** (ADR-066) y **el título ya no se infiere** (ADR-067).
+- El detalle del especialista usaba su propia resta para el total en vez del helper compartido. No
+  cambiaba nada visible, pero volvía a haber dos formas de calcular la misma plata — que es como
+  empezó el desfase que motivó `quote-math.ts`.
+- El `catch` que resuelve el destinatario era **mudo**: cuando fallaba, la pantalla decía "Sin nombre"
+  sin dejar rastro. Ahora loguea el TIPO de error y el id, nunca el mensaje (puede arrastrar PII).
+
+### Método que funcionó
+
+- **Inyectar la regresión** para confirmar que cada test nuevo la atrapa. Se hizo seis veces; en dos
+  el test "nuevo" no atrapaba nada hasta corregirlo.
+- **Verificar en la BASE, no en la pantalla.** La columna de bolívares de Cobros se calcula en vivo,
+  así que mirarla no probaba nada. La confirmación vino de una consulta: la única cita con
+  `bcv_rate` es la creada después del despliegue.
+- **Barrer el repo** al encontrar un patrón. Así apareció el defecto #7, que el QA no había tocado.
+- El agente de QA marcó **NO EJECUTADO** en siete casos en vez de suponer verde, y las dos veces que
+  dudó de su propia conclusión tenía razón.
+
+⚠️ **Sigue sin probarse todo el bloque C (el cron)**: necesita BD y esperar una corrida.
+
 ## 2026-09-08 — Presupuestos: cierre del backlog del dueño y **un estado inalcanzable**
 
 > Rama `feature/presupuestos-cron-vencimiento` (commits `9a87ec68`, `9690ad18`, `42f3846e`) sobre

@@ -925,6 +925,55 @@ status='active'` con `QueryTypes.UPDATE` (devuelve `[undefined, affectedCount]`;
   Ambos caminos usan ahora la misma cascada: plantilla del tipo → perfil del especialista → vacío.
   ⚠️ Un `null` escrito a mano en un parámetro de marca es un defecto silencioso: no rompe nada,
   solo produce un documento pelado que nadie mira hasta que lo recibe un paciente.
+- **ADR-066 (2026-09-09):** **La cédula se GUARDA en forma canónica `V-12345678`.**
+  Se guardaba tal cual se tipeaba, así que la misma persona quedaba registrada de tres formas según
+  quién la cargara. Ahora `toCanonicalCedula()` (`@delta/shared-types`) saca puntos, espacios y
+  guiones repetidos y pone el prefijo en mayúscula. Se aplica en el **repositorio**, único punto por
+  el que pasan el alta y la edición — se verificó que no exista ningún `INSERT` crudo que lo esquive.
+
+  ⚠️ **CONSERVA el guion** aunque el pedido decía "sin guiones ni puntos": `cedulaSchema` lo EXIGE
+  (`/^[VEP]-.../`). Guardar sin él rompería la validación en cualquier pantalla que relea el valor y
+  lo reenvíe, como editar un paciente. **NO inventa prefijos**: `12345678` queda igual — suponer la
+  nacionalidad sería inventarle un dato clínico al paciente.
+
+  Hermana de `normalizeCedulaForSearch` (@delta/shared-crypto), que hace lo mismo **sin** el guion
+  porque se usa para la huella. Las dos tienen que coincidir en qué consideran "la misma cédula".
+- **ADR-067 (2026-09-09):** **El título profesional NO se infiere.**
+  `getProfessionalTitle` derivaba el título de la especialidad (psicología → "Psic.") y, si no la
+  reconocía, caía en **"Dr." fijo**. La app le adjudicaba credenciales a quien nunca las declaró.
+
+  No es cosmético: el título aparece en presupuestos, facturas y la página pública de reservas —
+  documentos que ve el paciente. Sin título cargado va **solo el nombre**, vía
+  `formatProfessionalName(title, fullName)`, que además resuelve el espacio sobrante en un solo lugar.
+- **ADR-068 (2026-09-09):** **Bolívares: se congela lo PAGADO, se recalcula lo pendiente.**
+  Regla del dueño. Lo que se pacta y queda fijo es el monto en **divisa**; los bolívares son una
+  conversión referencial. Pero **una vez cobrado**, el monto en Bs y su tasa son un hecho histórico y
+  no se recalculan.
+
+  Aplicación por superficie:
+  - **Presupuestos** → SIEMPRE tasa viva. Un presupuesto nunca está "pagado": sus estados son
+    borrador/enviado/aceptado/rechazado/vencido, y aceptar **no es** pagar.
+  - **Cobros** → los aprobados muestran su `amount_bs` congelado; los pendientes se recalculan. Esto
+    vale para la **columna**, el **total** y la **exportación a Excel** — los tres estaban mal.
+
+  Un aprobado sin `amount_bs` cae al cálculo en vivo: es lo único que se puede mostrar.
+- **ADR-069 (2026-09-09):** **El servidor NO se pide cosas a sí mismo por HTTP.**
+  `fetch(new URL('/api/admin/bcv-rate', req.url))` — la app pidiéndose la tasa a su propia URL
+  pública— **falla siempre en el contenedor desplegado**, y en local funciona. Un defecto que solo
+  existe en producción.
+
+  Estaba en dos lugares y los dos lo tragaban en silencio: el PDF público de presupuestos caía a la
+  tasa congelada (17% de diferencia con la página) y `/api/book` creaba la cita **sin monto en
+  bolívares**. La lógica vive ahora en `lib/bcv-rate.ts` (`fetchBcvRates()`) y se llama **en proceso**;
+  el route handler quedó como envoltura fina.
+
+  Regla: si dos caminos del servidor necesitan lo mismo, se extrae a una función. Una vuelta por HTTP
+  contra uno mismo es una dependencia de red innecesaria en algo que se resuelve con una llamada.
+
+  📊 **Daño medido en producción:** **100 de 100** citas del booking público desde el 18/06 quedaron
+  con `bcv_rate` en NULL. De 54 cobros aprobados, 17 tienen su `amount_bs` (los cobrados desde la
+  pantalla, otro camino que nunca estuvo roto) y 37 no. **Ningún monto cobrado se vio afectado** — el
+  dólar, que es lo que se pacta, siempre estuvo bien.
 - **ADR-063 (2026-09-08):** **Una columna `DATEONLY` devuelve una CADENA, no un `Date`.**
   Sequelize 6 sanea `DATEONLY` con `moment(v).format('YYYY-MM-DD')` (`data-types.js`), así que al
   LEER llega `'2026-10-08'`, y al ESCRIBIR se le pasa un `Date`. `quotes.valid_until` se declaraba
