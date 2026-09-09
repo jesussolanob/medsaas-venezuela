@@ -36,6 +36,8 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { reportError } from '@/lib/report-error';
+import { log } from '@/lib/logger';
+import { fetchBcvRates } from '@/lib/bcv-rate';
 
 const BACKEND_URL = process.env.BACKEND_INTERNAL_URL ?? 'http://localhost:3001';
 
@@ -112,16 +114,21 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Fetch BCV rate for Bs calculation (best-effort, non-blocking)
+    // Tasa del BCV para el monto en Bs (best-effort, no bloquea la reserva).
+    //
+    // Llamada EN PROCESO y no `fetch` a la propia URL: esa vuelta por HTTP falla
+    // en el contenedor desplegado, y acá el fallo era MUDO — la cita se creaba
+    // igual, sin monto en bolívares, y nadie se enteraba. El mismo patrón dejó al
+    // PDF público de presupuestos sin bolívares (QA del 09/09).
     let bcvRate: number | null = null;
     try {
-      const bcvRes = await fetch(new URL('/api/admin/bcv-rate', req.url).toString());
-      if (bcvRes.ok) {
-        const bcvData = (await bcvRes.json()) as { rate?: number };
-        if (bcvData.rate && bcvData.rate > 0) bcvRate = bcvData.rate;
-      }
-    } catch {
-      /* best-effort — booking proceeds without BCV rate */
+      const tasas = await fetchBcvRates();
+      if (tasas.rate && tasas.rate > 0) bcvRate = tasas.rate;
+      else log.warn('[book] la tasa del BCV vino vacia — la cita se crea sin monto en Bs');
+    } catch (err: unknown) {
+      log.warn('[book] fallo la consulta de la tasa del BCV', {
+        message: err instanceof Error ? err.message : 'unknown',
+      });
     }
 
     // Build the CreateBookingDto payload for the backend
