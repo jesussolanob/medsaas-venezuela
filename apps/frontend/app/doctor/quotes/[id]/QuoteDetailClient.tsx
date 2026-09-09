@@ -326,9 +326,25 @@ export default function QuoteDetailClient({ initialQuote }: Props) {
   // Moneda del especialista. El PDF que descarga acá tiene que salir en la misma
   // moneda que ve el paciente en el enlace público; si no, el mismo presupuesto
   // dice "$" en un lado y "€" en el otro.
-  const { mode: currencyMode } = useBcvRate();
+  const { mode: currencyMode, rate: tasaViva } = useBcvRate();
   const [quote, setQuote] = useState<QuoteRow>(initialQuote);
 
+  /**
+   * Bolívares SIEMPRE recalculados a la tasa viva del día.
+   *
+   * `quote.bcv_rate` y `quote.total_bs` son el registro histórico de la emisión
+   * y NO se muestran: en Venezuela lo que se pacta y queda fijo es el monto en
+   * divisa, y los bolívares son una conversión referencial que cambia todos los
+   * días. Esta pantalla mostraba la congelada, así que un presupuesto de hace dos
+   * semanas exhibía un monto en Bs que ya no existía.
+   *
+   * Peor todavía: la tasa congelada la fija el backend con `rateStore.getRate()`,
+   * que es la USDT/manual, NO la del BCV. Frente a la tasa viva del BCV que ve el
+   * paciente en el enlace público, la diferencia observada fue del 17%.
+   *
+   * Sin tasa disponible no se muestra ningún equivalente — mejor nada que un
+   * número que nadie va a poder pagar.
+   */
   // Edit mode state
   const [editMode, setEditMode] = useState(false);
   const [editItems, setEditItems] = useState<EditItem[]>(initialQuote.items.map(existingToEdit));
@@ -549,8 +565,10 @@ export default function QuoteDetailClient({ initialQuote }: Props) {
         subtotal_usd: quote.subtotal_usd,
         discount_usd: quote.discount_usd,
         total_usd: quote.total_usd,
-        bcv_rate: quote.bcv_rate,
-        total_bs: quote.total_bs,
+        // Tasa VIVA, no la congelada: el PDF del especialista y el que ve el
+        // paciente tienen que decir el mismo monto en bolívares.
+        bcv_rate: tasaViva,
+        total_bs: tasaViva != null ? Math.round(quote.total_usd * tasaViva * 100) / 100 : null,
         created_at: quote.created_at,
         // El nombre real, igual que hace la ruta pública del PDF. Acá estaba
         // escrita a mano la CATEGORÍA, así que el presupuesto que descargaba el
@@ -640,6 +658,26 @@ export default function QuoteDetailClient({ initialQuote }: Props) {
   const discountVal = editMode
     ? computeDiscountUsd(subtotal, editDiscountType, editDiscountNum)
     : quote.discount_usd;
+  /**
+   * Bolívares SIEMPRE recalculados a la tasa viva del día, sobre `quote` (no
+   * sobre `initialQuote`), para que después de editar no quede el monto viejo.
+   *
+   * `quote.bcv_rate` y `quote.total_bs` son el registro histórico de la emisión y
+   * NO se muestran: lo que se pacta y queda fijo es el monto en divisa, y los
+   * bolívares son una conversión referencial que cambia todos los días. Esta
+   * pantalla mostraba la congelada, así que un presupuesto de hace dos semanas
+   * exhibía un monto en Bs que ya no existía.
+   *
+   * Peor: la tasa congelada la fija el backend con `rateStore.getRate()`, que es
+   * la USDT/manual y NO la del BCV. Contra la tasa viva que ve el paciente en el
+   * enlace público, la diferencia observada en QA fue del 17%.
+   *
+   * Sin tasa disponible no se muestra nada — mejor ningún equivalente que uno que
+   * el paciente no va a poder pagar.
+   */
+  const totalBsVivo =
+    tasaViva != null ? Math.round(quote.total_usd * tasaViva * 100) / 100 : null;
+
   // computeTotal y no la resta a mano: es el mismo redondeo que hace el backend.
   // Acá no cambiaba nada visible —usdFmt ya recorta a dos decimales—, pero la
   // resta cruda deja ruido de punto flotante (100,10 − 0,70 = 99,39999999999999)
@@ -1102,12 +1140,12 @@ export default function QuoteDetailClient({ initialQuote }: Props) {
                   {usdFmt(totalVal)}
                 </span>
               </div>
-              {!editMode && quote.total_bs && quote.bcv_rate && (
+              {!editMode && totalBsVivo != null && tasaViva != null && (
                 <div className="flex items-center justify-between gap-8 text-xs text-slate-400">
-                  <span>En bolívares (tasa {quote.bcv_rate.toFixed(2)})</span>
+                  <span>En bolívares (tasa del día: {tasaViva.toFixed(2)})</span>
                   <span className="tabular-nums">
                     Bs.{' '}
-                    {quote.total_bs.toLocaleString('es-VE', {
+                    {totalBsVivo.toLocaleString('es-VE', {
                       minimumFractionDigits: 2,
                       maximumFractionDigits: 2,
                     })}

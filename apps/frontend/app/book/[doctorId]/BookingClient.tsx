@@ -2040,6 +2040,13 @@ export default function BookingClient({
                   <div>
                     <label className="block text-xs font-semibold text-slate-600 mb-1.5">
                       Email
+                      {/* Los tres son obligatorios —la validacion corta con
+                          "Nombre, email y telefono son requeridos"— pero ninguno
+                          lo decia: se descubria recien al intentar confirmar. */}
+                      <span className="text-red-500" aria-hidden="true">
+                        {' '}
+                        *
+                      </span>
                     </label>
                     <input
                       type="email"
@@ -2098,6 +2105,13 @@ export default function BookingClient({
                   <div>
                     <label className="block text-xs font-semibold text-slate-600 mb-1.5">
                       Nombre completo
+                      {/* Los tres son obligatorios —la validacion corta con
+                          "Nombre, email y telefono son requeridos"— pero ninguno
+                          lo decia: se descubria recien al intentar confirmar. */}
+                      <span className="text-red-500" aria-hidden="true">
+                        {' '}
+                        *
+                      </span>
                     </label>
                     <input
                       type="text"
@@ -2122,6 +2136,13 @@ export default function BookingClient({
                   <div>
                     <label className="block text-xs font-semibold text-slate-600 mb-1.5">
                       Teléfono
+                      {/* Los tres son obligatorios —la validacion corta con
+                          "Nombre, email y telefono son requeridos"— pero ninguno
+                          lo decia: se descubria recien al intentar confirmar. */}
+                      <span className="text-red-500" aria-hidden="true">
+                        {' '}
+                        *
+                      </span>
                     </label>
                     {/* L6 (2026-04-29): canonico 584XXXXXXXXX listo para wa.me */}
                     <PhoneInput
@@ -2132,6 +2153,13 @@ export default function BookingClient({
                   <div>
                     <label className="block text-xs font-semibold text-slate-600 mb-1.5">
                       Email
+                      {/* Los tres son obligatorios —la validacion corta con
+                          "Nombre, email y telefono son requeridos"— pero ninguno
+                          lo decia: se descubria recien al intentar confirmar. */}
+                      <span className="text-red-500" aria-hidden="true">
+                        {' '}
+                        *
+                      </span>
                     </label>
                     <input
                       type="email"
@@ -2383,6 +2411,13 @@ export default function BookingClient({
                   <div>
                     <label className="block text-xs font-semibold text-slate-600 mb-1.5">
                       Teléfono
+                      {/* Los tres son obligatorios —la validacion corta con
+                          "Nombre, email y telefono son requeridos"— pero ninguno
+                          lo decia: se descubria recien al intentar confirmar. */}
+                      <span className="text-red-500" aria-hidden="true">
+                        {' '}
+                        *
+                      </span>
                     </label>
                     {/* L6 (2026-04-29): canonico 584XXXXXXXXX (modo invitado) */}
                     <PhoneInput

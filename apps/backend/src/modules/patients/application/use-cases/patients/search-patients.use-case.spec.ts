@@ -51,6 +51,28 @@ describe('SearchPatientsUseCase', () => {
     useCase = new SearchPatientsUseCase(repo, crypto as never);
   });
 
+  it('encuentra al paciente aunque la cédula se teclee con guiones y la huella guardada sea canónica', async () => {
+    // La huella se guarda sobre la forma CANÓNICA ('V12345678'), pero acá se
+    // hasheaba el texto crudo ('V-12345678'): no coincidían nunca y TODA búsqueda
+    // por cédula devolvía cero, con el placeholder prometiendo que servía.
+    //
+    // El mock simula la base real: solo responde a la huella canónica.
+    const patient = makePatient();
+    repo.findByCedulaHash.mockImplementation((hash: string) =>
+      Promise.resolve(hash === 'hash:V12345678' ? patient : null),
+    );
+
+    const result = await useCase.execute({
+      query: 'V-12345678',
+      doctorId: DOCTOR_ID,
+      page: 1,
+      limit: 20,
+    });
+
+    expect(result.items).toHaveLength(1);
+    expect(repo.findByCedulaHash).toHaveBeenCalledWith('hash:V12345678', DOCTOR_ID);
+  });
+
   it('searches by cédula hash when query starts with V-', async () => {
     const patient = makePatient();
     repo.findByCedulaHash.mockResolvedValue(patient);
