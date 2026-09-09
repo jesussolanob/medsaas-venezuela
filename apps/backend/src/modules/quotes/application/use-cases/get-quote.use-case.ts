@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import {
   QUOTE_REPOSITORY,
   type IQuoteRepository,
@@ -57,6 +57,8 @@ export interface QuoteWithRecipient {
  */
 @Injectable()
 export class GetQuoteUseCase {
+  private readonly logger = new Logger(GetQuoteUseCase.name);
+
   constructor(
     @Inject(QUOTE_REPOSITORY)
     private readonly quoteRepo: IQuoteRepository,
@@ -104,8 +106,19 @@ export class GetQuoteUseCase {
           email: lead.email?.trim() || null,
         };
       }
-    } catch {
-      // Sin log: el mensaje podría arrastrar el nombre o el correo, que son PII.
+    } catch (err: unknown) {
+      // Se loguea el TIPO de error y el id del presupuesto, nunca el mensaje: el
+      // mensaje puede arrastrar el nombre o el correo del paciente, que son PII.
+      //
+      // Antes este catch era mudo. Cuando fallaba, la pantalla decía "Sin nombre"
+      // y no quedaba ni un rastro de por qué: en el QA del 09/09 apareció ese
+      // texto y perdimos un rato sin poder distinguir un fallo transitorio de la
+      // base de un bug de mapeo. Un catch sin señal convierte un problema
+      // diagnosticable en un misterio.
+      this.logger.warn(
+        `[get-quote] no se pudo resolver el destinatario de ${quote.id}: ` +
+          `${err instanceof Error ? err.constructor.name : typeof err}`,
+      );
       return { name: null, email: null };
     }
 
