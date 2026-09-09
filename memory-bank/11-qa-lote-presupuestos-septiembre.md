@@ -41,6 +41,29 @@ esa expectativa.
 desviado al menú) y un supuesto bucle de peticiones (era el refresco normal del router de Next.js
 cada 30 segundos sobre una página cuyo presupuesto ya no existe).
 
+### Re-test del 2026-09-09 (tras corregir)
+
+- **Los bolívares coinciden en las CUATRO superficies** (detalle, PDF del especialista, página
+  pública y su PDF): `Bs. 12.301,53` a la misma tasa. ✅
+- **El destinatario sobrevive al envío** ✅ · **La búsqueda encuentra la cédula en 6 formatos**
+  (con guiones, sin nada, con puntos, solo el número, y teléfono con y sin código de país) ✅ ·
+  **Los campos obligatorios del booking están marcados** ✅
+
+El primer intento del re-test **falló de forma útil**: el PDF salió sin ningún monto en bolívares,
+lo que probó que la petición de la tasa no fallaba a veces sino **siempre** en el contenedor —antes
+quedaba tapada cayendo a la congelada—. La causa era que la app **se pedía la tasa a sí misma por
+HTTP**. Ahora se resuelve en proceso. Barriendo el repo apareció el **mismo patrón en el booking
+público**, ahí con el error atrapado sin registro: la cita se creaba sin monto en bolívares y nadie
+se enteraba. Corregido también.
+
+⚠️ **NO VERIFICADO: que la cita creada desde el booking GUARDE su tasa.** La columna de bolívares de
+`/doctor/cobros` se calcula **en vivo** (`precio × tasa actual`), no lee el campo guardado, así que
+mirar esa pantalla no confirma nada. Hace falta consultar la base.
+
+🔴 **DECISIÓN ABIERTA:** esa misma columna calcula en vivo **también para los cobros ya aprobados**,
+y la regla del dueño es que lo pagado se congela. El modal de detalle sí usa el monto congelado; el
+listado no. Son dos números distintos para el mismo cobro según dónde se mire.
+
 ### 🔴 Lo que sigue SIN PROBAR y necesita el QA manual
 
 Los cuatro necesitan lo mismo: **acceso a la base de datos** y **esperar una corrida del cron**.
