@@ -7,6 +7,7 @@ import { GetAppointmentByIdUseCase } from '../../application/use-cases/appointme
 import { RescheduleAppointmentUseCase } from '../../application/use-cases/appointments/reschedule-appointment.use-case';
 import { DeleteAppointmentUseCase } from '../../application/use-cases/appointments/delete-appointment.use-case';
 import { SyncDoctorCalendarUseCase } from '../../application/use-cases/appointments/sync-doctor-calendar.use-case';
+import { ChangeAppointmentServiceUseCase } from '../../application/use-cases/appointments/change-appointment-service.use-case';
 import {
   Appointment,
   type AppointmentCreateParams,
@@ -67,6 +68,7 @@ describe('AppointmentsController', () => {
   const mockRescheduleUseCase = { execute: jest.fn() };
   const mockDeleteUseCase = { execute: jest.fn() };
   const mockSyncCalendarUseCase = { execute: jest.fn() };
+  const mockChangeServiceUseCase = { execute: jest.fn() };
 
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -81,6 +83,7 @@ describe('AppointmentsController', () => {
         { provide: RescheduleAppointmentUseCase, useValue: mockRescheduleUseCase },
         { provide: DeleteAppointmentUseCase, useValue: mockDeleteUseCase },
         { provide: SyncDoctorCalendarUseCase, useValue: mockSyncCalendarUseCase },
+        { provide: ChangeAppointmentServiceUseCase, useValue: mockChangeServiceUseCase },
       ],
     })
       .overrideGuard(AppAuthGuard)
@@ -400,6 +403,41 @@ describe('AppointmentsController', () => {
       expect(mockDeleteUseCase.execute).toHaveBeenCalledWith(
         expect.objectContaining({ actorId: 'admin-uuid' }),
       );
+    });
+  });
+  describe('PATCH /api/appointments/:id/service', () => {
+    it('toma la cita de la URL y el especialista de la sesión (anti-IDOR)', async () => {
+      mockChangeServiceUseCase.execute.mockResolvedValue({
+        appointmentsUpdated: 4,
+        pendingConsultationsUpdated: true,
+        paymentAdjusted: true,
+        planName: 'Paquete 4 sesiones',
+        planPriceUsd: 160,
+        unchanged: false,
+      });
+
+      const response = await controller.changeAppointmentService(
+        APPT_ID,
+        { plan_id: 'plan-nuevo-uuid' },
+        mockUser,
+      );
+
+      expect(response.success).toBe(true);
+      // El cuerpo SOLO puede elegir el servicio: ni la cita ni el doctor salen de ahí.
+      expect(mockChangeServiceUseCase.execute).toHaveBeenCalledWith({
+        appointmentId: APPT_ID,
+        doctorId: DOCTOR_ID,
+        actorId: DOCTOR_ID,
+        newPlanId: 'plan-nuevo-uuid',
+      });
+    });
+
+    it('propaga AppointmentNotFoundError (cita ajena o inexistente)', async () => {
+      mockChangeServiceUseCase.execute.mockRejectedValue(new AppointmentNotFoundError(APPT_ID));
+
+      await expect(
+        controller.changeAppointmentService(APPT_ID, { plan_id: 'plan-nuevo-uuid' }, mockUser),
+      ).rejects.toBeInstanceOf(AppointmentNotFoundError);
     });
   });
 });

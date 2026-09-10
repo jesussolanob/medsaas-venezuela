@@ -333,6 +333,37 @@ export async function updateAppointmentStatus(
   return { success: true };
 }
 
+/**
+ * Corrige el servicio contratado de una cita → PATCH /api/appointments/:id/service.
+ *
+ * El error típico: el paciente eligió mal el paquete en la reserva pública y quedó
+ * cobrado el servicio que no era. El backend arrastra el cambio a todo el paquete,
+ * le ajusta el monto al pago —que sigue aprobado— y deja asiento de auditoría.
+ *
+ * El mensaje de error del backend se devuelve TAL CUAL: ya viene en español y dice
+ * lo único que el especialista necesita saber (por ejemplo, que el servicio elegido
+ * tiene otra cantidad de consultas).
+ */
+export async function changeAppointmentService(
+  appointmentId: string,
+  planId: string,
+): Promise<ConsultationActionResult> {
+  const result = await backendPatch<unknown>(`/api/appointments/${appointmentId}/service`, {
+    plan_id: planId,
+  });
+
+  if (!result.ok) {
+    log.error('[changeAppointmentService] backend error', {
+      code: result.error.code,
+      status: result.error.status,
+    });
+    return { success: false, error: appErrorToString(result.error) };
+  }
+
+  revalidatePath('/doctor/consultations');
+  return { success: true };
+}
+
 // ---------------------------------------------------------------------------
 // Quick items (doctor_quick_items)
 // ---------------------------------------------------------------------------

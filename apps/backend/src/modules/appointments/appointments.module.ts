@@ -15,6 +15,7 @@ import { DeleteAppointmentUseCase } from './application/use-cases/appointments/d
 import { ConfirmAppointmentByTokenUseCase } from './application/use-cases/appointments/confirm-appointment-by-token.use-case';
 import { GetAppointmentConfirmInfoUseCase } from './application/use-cases/appointments/get-appointment-confirm-info.use-case';
 import { SyncDoctorCalendarUseCase } from './application/use-cases/appointments/sync-doctor-calendar.use-case';
+import { ChangeAppointmentServiceUseCase } from './application/use-cases/appointments/change-appointment-service.use-case';
 
 import { AppointmentsController } from './presentation/controllers/appointments.controller';
 import { PublicAppointmentsController } from './presentation/controllers/public-appointments.controller';
@@ -33,6 +34,8 @@ import { ConsultationsModule } from '../consultations/consultations.module';
 // Required by ConfirmAppointmentByTokenUseCase and GetAppointmentConfirmInfoUseCase
 // to resolve the doctor display name for the public confirmation page.
 import { DoctorSettingsModule } from '../doctor-settings/doctor-settings.module';
+// PackagesModule exports PRICING_PLAN_REPOSITORY (catálogo de servicios del especialista).
+import { PackagesModule } from '../packages/packages.module';
 
 @Module({
   imports: [
@@ -47,6 +50,9 @@ import { DoctorSettingsModule } from '../doctor-settings/doctor-settings.module'
     ConsultationsModule,
     // Exports DOCTOR_PROFILE_REPOSITORY for resolving doctor name on public confirm page.
     DoctorSettingsModule,
+    // Exports PRICING_PLAN_REPOSITORY for ChangeAppointmentServiceUseCase: corregir el
+    // servicio exige leer el catálogo (que exista, que sea del doctor, y su sessions_count).
+    PackagesModule,
   ],
   controllers: [AppointmentsController, PublicAppointmentsController],
   providers: [
@@ -65,6 +71,7 @@ import { DoctorSettingsModule } from '../doctor-settings/doctor-settings.module'
     RescheduleAppointmentUseCase,
     DeleteAppointmentUseCase,
     ConfirmAppointmentByTokenUseCase,
+    ChangeAppointmentServiceUseCase,
     GetAppointmentConfirmInfoUseCase,
     SyncDoctorCalendarUseCase,
   ],

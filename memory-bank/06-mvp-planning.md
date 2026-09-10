@@ -187,10 +187,10 @@ auto-siembra de 8 leads de demostración antes de que convivan con prospectos re
 
 Entran acá por la regla 1 del documento: toda feature nueva se registra antes de codificar.
 
-| Ítem                                                                                                                                                                      | Justificación de negocio                                                                                                                                                               | Plan                      | Estado                                                                                    |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------- | ----------------------------------------------------------------------------------------- |
-| **Una sesión de paquete no vuelve a pedir cobro** — las consultas 2..N de un paquete ya pagado se muestran como cubiertas, con el plan y el pago que las cubre a la vista | Hoy la pantalla pide confirmar el pago **otra vez** en cada sesión de un paquete que ya se cobró completo. El especialista no sabe si ya cobró, y replicar el cobro infla las finanzas | — (no es feature de plan) | **backend + pantalla listos** (`feature/consultas-paquete-pagado`), falta QA en navegador |
-| **Cambiar el servicio de una consulta** — corregir el plan mal elegido por el paciente, con cascada a monto, cita y pago                                                  | El paciente se equivoca al elegir el paquete en el booking público y hoy **no hay forma de corregirlo**: queda cobrado el servicio que no era, y la única salida es rehacer la cita    | — (no es feature de plan) | pendiente (`feature/cambiar-servicio-consulta`)                                           |
+| Ítem                                                                                                                                                                      | Justificación de negocio                                                                                                                                                               | Plan                      | Estado                                                                                     |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------- | ------------------------------------------------------------------------------------------ |
+| **Una sesión de paquete no vuelve a pedir cobro** — las consultas 2..N de un paquete ya pagado se muestran como cubiertas, con el plan y el pago que las cubre a la vista | Hoy la pantalla pide confirmar el pago **otra vez** en cada sesión de un paquete que ya se cobró completo. El especialista no sabe si ya cobró, y replicar el cobro infla las finanzas | — (no es feature de plan) | **backend + pantalla listos** (`feature/consultas-paquete-pagado`), falta QA en navegador  |
+| **Cambiar el servicio de una consulta** — corregir el plan mal elegido por el paciente, con cascada a monto, cita y pago                                                  | El paciente se equivoca al elegir el paquete en el booking público y hoy **no hay forma de corregirlo**: queda cobrado el servicio que no era, y la única salida es rehacer la cita    | — (no es feature de plan) | **implementado** (`feature/cambiar-servicio-consulta`) — falta correr la migración y el QA |
 
 **Decisiones del dueño en este lote (2026-09-10):**
 
@@ -234,3 +234,18 @@ Entran acá por la regla 1 del documento: toda feature nueva se registra antes d
   consultas une el plan **por nombre** (`AND pp.name = a.plan_name`, tres veces): dos servicios
   homónimos o uno renombrado devuelven el plan equivocado. `plan_id` es prerrequisito del ítem 2 y
   arregla esa unión de paso.
+
+**Cierre del ítem 2 (2026-09-10):** implementado como `PATCH /api/appointments/:id/service` +
+modal en el panel de la consulta. Decisiones que se tomaron al construirlo:
+
+- **Entrada por la consulta**, no por la agenda: ahí se ve el cobro, el estado y la cobertura del
+  paquete al mismo tiempo.
+- **Se permite con la consulta ya atendida.** El error se descubre casi siempre después; bloquearlo
+  dejaba sin salida al caso más común.
+- **Alcanza al paquete entero.** No es preferencia: el sistema une las sesiones POR NOMBRE del plan,
+  así que dejar una con el nombre viejo parte el paquete y rompe el rótulo "2 de 3", el total y las
+  preconsultas.
+- **Los bolívares del pago se recalculan con la tasa congelada del propio pago**, no con la de hoy —
+  coherente con el lote de cobros del 09/09.
+- ⚠️ **La migración `20260910000001` NO se ejecutó**: no hay Postgres levantado en la máquina. Va en
+  la próxima ventana de QA, ANTES de cualquier deploy (una migración rota bloquea todos).

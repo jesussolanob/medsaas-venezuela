@@ -1036,3 +1036,17 @@ backend.
 | Bloque "A cobrar aparte en esta consulta"                                                    | Los extras de una sesión cubierta se cobran solos, sin sumar ni repetir el paquete                                                                                                                              |
 | Fila "Servicio:" desde `selected.plan_name`                                                  | Reemplaza al bloque muerto de `appointmentData`, que **nunca se llenó** (los tres caminos hacían `setAppointmentData(null)`): plan, monto y método de la cita no los vio nadie. El estado y su tipo se borraron |
 | El detalle vuelve a traer `session_number` / `package_total_sessions` / `package_charge_usd` | `fresh` reemplaza entero a `selected` y los perdía: abrir una consulta de paquete borraba el rótulo "Consulta 2 de 3"                                                                                           |
+
+## Cambiar el servicio de una consulta (2026-09-10) — piezas nuevas
+
+| Pieza                                                          | Dónde                                              | Para qué                                                                                                                                                                   |
+| -------------------------------------------------------------- | -------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ChangeAppointmentServiceUseCase`                              | `appointments/application/use-cases/appointments/` | Valida equivalencia (mismo `sessions_count`), catálogo y ownership. Vive en appointments porque Consultations→Finances ya existe y meterlo ahí cerraba un ciclo de módulos |
+| `IAppointmentRepository.changeService()`                       | `appointments/domain/repositories/`                | ⚠️ **Método nuevo en el puerto**: rompió 6 mocks de specs (regla de [backend-agent-port-mocks-rule]). Hace las cinco tablas en UNA transacción                             |
+| `ServiceChangeNotEquivalentError` · `ServiceNotAvailableError` | `appointments/domain/errors/`                      | 422 con mensaje en español. El segundo es deliberadamente ambiguo (anti-enumeración de IDs)                                                                                |
+| `Appointment.planId` + `appointments.plan_id`                  | entidad, modelo y las 3 SELECT crudas              | Identidad del servicio. Reemplaza la unión por nombre                                                                                                                      |
+| `ChangeServiceModal.tsx`                                       | `app/doctor/consultations/`                        | Solo lista servicios equivalentes y muestra **antes de confirmar** en cuánto queda el cobro (`$120 → $160`)                                                                |
+| `refreshSelectedConsultation()`                                | `ConsultationsClient.tsx`                          | Refresca solo los campos del panel de pago. Reabrir la consulta entera pisaría el informe a medio escribir                                                                 |
+
+⚠️ El catálogo que carga `ConsultationsClient` ahora conserva `sessions_count` e `is_active`: sin
+eso el modal no puede filtrar lo equivalente.

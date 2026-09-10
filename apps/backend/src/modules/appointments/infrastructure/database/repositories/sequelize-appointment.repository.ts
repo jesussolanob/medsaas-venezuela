@@ -12,6 +12,8 @@ import type {
   PatientOverlapParams,
   PackageInfo,
   AuditLogEntry,
+  ChangeServiceParams,
+  ChangeServiceResult,
 } from '../../../domain/repositories/appointment.repository';
 import { AppointmentModel } from '../models/appointment.model';
 import { AppointmentChangesLogModel } from '../models/appointment-changes-log.model';
@@ -21,6 +23,18 @@ import { AppointmentChangesLogModel } from '../models/appointment-changes-log.mo
 import { Sequelize } from 'sequelize-typescript';
 
 const ACTIVE_STATUSES = ['scheduled', 'confirmed', 'pending', 'accepted'];
+
+/**
+ * Texto que se guarda en `appointment_changes_log.old_value` / `new_value` al
+ * corregir el servicio: "Paquete 4 consultas · $120".
+ *
+ * Es un rastro para leer, no un dato para calcular: quien audite quiere ver de qué
+ * a qué se cambió sin tener que reconstruirlo desde tres tablas.
+ */
+function formatServiceAuditValue(planName: string | null, priceUsd: number | null): string {
+  const name = planName ?? 'sin servicio';
+  return priceUsd !== null ? `${name} · $${priceUsd.toFixed(2)}` : name;
+}
 
 /**
  * Common raw-SQL row shape returned by appointment queries.
@@ -42,6 +56,7 @@ interface RawAppointmentRow {
   status: string;
   appointment_mode: string;
   source: string | null;
+  plan_id: string | null;
   plan_name: string | null;
   plan_price: string | null;
   payment_method: string | null;
@@ -126,7 +141,8 @@ export class SequelizeAppointmentRepository implements IAppointmentRepository {
          a.id, a.doctor_id, a.patient_id, a.auth_user_id, a.consultation_id,
          a.patient_name, a.patient_phone, a.patient_email, a.patient_cedula,
          a.scheduled_at, a.status, a.appointment_mode, a.source,
-         a.plan_name, a.plan_price, a.payment_method, a.payment_reference, a.payment_receipt_url,
+         a.plan_id, a.plan_name, a.plan_price, a.payment_method, a.payment_reference,
+         a.payment_receipt_url,
          a.insurance_name, a.bcv_rate, a.amount_bs, a.package_id, a.session_number,
          a.chief_complaint, a.appointment_code, a.payment_id, a.meet_link, a.office_id,
          a.google_calendar_event_id, a.duration_minutes, a.created_at, a.updated_at,
@@ -167,6 +183,7 @@ export class SequelizeAppointmentRepository implements IAppointmentRepository {
         status: appointment.status,
         appointmentMode: appointment.appointmentMode,
         source: appointment.source,
+        planId: appointment.planId ?? null,
         planName: appointment.planName,
         planPrice: appointment.planPrice,
         paymentMethod: appointment.paymentMethod,
@@ -349,8 +366,156 @@ export class SequelizeAppointmentRepository implements IAppointmentRepository {
     await this.changesLogModel.create({
       appointmentId: entry.appointmentId,
       actorId: entry.actorId,
+      changeType: 'status',
       oldStatus: entry.oldStatus ?? null,
       newStatus: entry.newStatus,
+    });
+  }
+
+  /**
+   * Corrige el servicio de una cita y de todo su paquete, en UNA transacción.
+   *
+   * Orden: se bloquea la cita (FOR UPDATE) → citas → preconsultas → pago →
+   * consulta pagadora → asiento de auditoría. Si algo revienta, no queda un
+   * paquete a medio renombrar: sería peor que el error que se venía a corregir.
+   */
+  async changeService(params: ChangeServiceParams): Promise<ChangeServiceResult | null> {
+    return this.sequelize.transaction(async (t) => {
+      // --- 1. Cita disparadora: existe, es de este doctor, y queda bloqueada ---
+      const apptRows = await this.sequelize.query<{ id: string; payment_id: string | null }>(
+        `SELECT id, payment_id
+           FROM appointments
+          WHERE id = :id AND doctor_id = :doctorId
+          FOR UPDATE`,
+        {
+          replacements: { id: params.appointmentId, doctorId: params.doctorId },
+          type: QueryTypes.SELECT,
+          transaction: t,
+        },
+      );
+      const appointment = apptRows[0];
+      if (!appointment) return null;
+
+      const paymentId = appointment.payment_id;
+
+      // --- 2. Citas alcanzadas -------------------------------------------------
+      // Con pago vinculado, el paquete ENTERO; si no, solo esta cita.
+      // `plan_price` se reescribe únicamente donde ya había precio: las sesiones
+      // 2..N de un paquete valen 0 y tienen que seguir valiendo 0, o el paquete
+      // pasaría a cobrarse N veces.
+      const scope = paymentId ? '(a.id = :id OR a.payment_id = :paymentId)' : 'a.id = :id';
+      const replacements: Record<string, unknown> = {
+        id: params.appointmentId,
+        doctorId: params.doctorId,
+        planId: params.newPlanId,
+        planName: params.newPlanName,
+        price: params.newPlanPriceUsd,
+        ...(paymentId ? { paymentId } : {}),
+      };
+
+      const updatedAppointments = await this.sequelize.query<{ id: string }>(
+        `UPDATE appointments a
+            SET plan_id    = :planId,
+                plan_name  = :planName,
+                plan_price = CASE
+                               WHEN a.plan_price IS NOT NULL AND a.plan_price > 0 THEN :price
+                               ELSE a.plan_price
+                             END,
+                updated_at = NOW()
+          WHERE a.doctor_id = :doctorId AND ${scope}
+          RETURNING a.id`,
+        { replacements, type: QueryTypes.SELECT, transaction: t },
+      );
+
+      // --- 3. Preconsultas por agendar ----------------------------------------
+      // Guardan el nombre del plan como texto: sin esto, "por agendar" seguiría
+      // ofreciendo el servicio equivocado.
+      let pendingConsultationsUpdated = false;
+      if (paymentId) {
+        const updatedPending = await this.sequelize.query<{ id: string }>(
+          `UPDATE pending_consultations
+              SET plan_name = :planName,
+                  updated_at = NOW()
+            WHERE doctor_id = :doctorId
+              AND payment_id = :paymentId
+              AND status = 'pending'
+            RETURNING id`,
+          {
+            replacements: { doctorId: params.doctorId, paymentId, planName: params.newPlanName },
+            type: QueryTypes.SELECT,
+            transaction: t,
+          },
+        );
+        pendingConsultationsUpdated = updatedPending.length > 0;
+      }
+
+      // --- 4. Pago: se le ajusta el MONTO y sigue aprobado ---------------------
+      // Los bolívares se recalculan con la tasa CONGELADA del propio pago, no con
+      // la de hoy: lo ya cobrado no se revalúa (ver el lote de cobros del 09/09).
+      // Si el pago no guardó tasa, `amount_bs` se deja como está antes que inventar una.
+      let paymentAdjusted = false;
+      if (paymentId) {
+        const updatedPayments = await this.sequelize.query<{ id: string }>(
+          `UPDATE payments
+              SET amount_usd = :price,
+                  amount_bs  = CASE
+                                 WHEN bcv_rate IS NOT NULL THEN ROUND((:price * bcv_rate)::numeric, 2)
+                                 ELSE amount_bs
+                               END,
+                  updated_at = NOW()
+            WHERE id = :paymentId AND doctor_id = :doctorId
+            RETURNING id`,
+          {
+            replacements: { paymentId, doctorId: params.doctorId, price: params.newPlanPriceUsd },
+            type: QueryTypes.SELECT,
+            transaction: t,
+          },
+        );
+        paymentAdjusted = updatedPayments.length > 0;
+      }
+
+      // --- 5. Consulta pagadora ------------------------------------------------
+      // Solo la de la sesión que lleva el precio (`session_number IS NULL`, que es
+      // como se guarda la sesión 1 y también una consulta suelta). El total se
+      // recompone como base + extras, igual que en la aprobación del cobro.
+      await this.sequelize.query(
+        `UPDATE consultations c
+            SET base_amount = :price,
+                amount = :price + COALESCE((
+                  SELECT SUM(ei.amount_usd)
+                    FROM consultation_extra_items ei
+                   WHERE ei.consultation_id = c.id
+                ), 0),
+                updated_at = NOW()
+           FROM appointments a
+          WHERE a.consultation_id = c.id
+            AND c.doctor_id = :doctorId
+            AND a.session_number IS NULL
+            AND ${scope}`,
+        { replacements, type: QueryTypes.UPDATE, transaction: t },
+      );
+
+      // --- 6. Asiento de auditoría --------------------------------------------
+      // El estado NO se mueve: por eso old_status/new_status van en null y el
+      // rastro del dinero viaja en old_value/new_value.
+      await this.changesLogModel.create(
+        {
+          appointmentId: params.appointmentId,
+          actorId: params.actorId,
+          changeType: 'service',
+          oldStatus: null,
+          newStatus: null,
+          oldValue: formatServiceAuditValue(params.oldPlanName, params.oldPlanPriceUsd),
+          newValue: formatServiceAuditValue(params.newPlanName, params.newPlanPriceUsd),
+        },
+        { transaction: t },
+      );
+
+      return {
+        appointmentsUpdated: updatedAppointments.length,
+        pendingConsultationsUpdated,
+        paymentAdjusted,
+      };
     });
   }
 
@@ -403,7 +568,8 @@ export class SequelizeAppointmentRepository implements IAppointmentRepository {
          a.id, a.doctor_id, a.patient_id, a.auth_user_id, a.consultation_id,
          a.patient_name, a.patient_phone, a.patient_email, a.patient_cedula,
          a.scheduled_at, a.status, a.appointment_mode, a.source,
-         a.plan_name, a.plan_price, a.payment_method, a.payment_reference, a.payment_receipt_url,
+         a.plan_id, a.plan_name, a.plan_price, a.payment_method, a.payment_reference,
+         a.payment_receipt_url,
          a.insurance_name, a.bcv_rate, a.amount_bs, a.package_id, a.session_number,
          a.chief_complaint, a.appointment_code, a.payment_id, a.meet_link, a.office_id,
          a.google_calendar_event_id, a.duration_minutes, a.created_at, a.updated_at,
@@ -485,6 +651,7 @@ export class SequelizeAppointmentRepository implements IAppointmentRepository {
       status: r.status as AppointmentStatus,
       appointmentMode: r.appointment_mode as AppointmentMode,
       source: r.source,
+      planId: r.plan_id ?? null,
       planName: r.plan_name,
       planPrice: r.plan_price !== null ? Number(r.plan_price) : null,
       paymentMethod: r.payment_method,
@@ -525,6 +692,7 @@ export class SequelizeAppointmentRepository implements IAppointmentRepository {
       status: row.status,
       appointmentMode: row.appointmentMode,
       source: row.source,
+      planId: row.planId ?? null,
       planName: row.planName,
       planPrice: row.planPrice !== null ? Number(row.planPrice) : null,
       paymentMethod: row.paymentMethod,
