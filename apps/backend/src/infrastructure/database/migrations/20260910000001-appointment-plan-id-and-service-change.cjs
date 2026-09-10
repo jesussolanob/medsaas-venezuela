@@ -20,87 +20,88 @@
  *    quién, cuándo, de qué a qué. Se agrega `change_type` + `old_value`/`new_value`, y
  *    `new_status` pasa a aceptar NULL porque en un cambio de servicio el estado no se mueve.
  *
- * Ver ADR del lote de paquete pagado y `memory-bank/06-mvp-planning.md`.
+ * TODO va en UNA transacción y con `IF NOT EXISTS`: en Postgres el DDL es transaccional,
+ * así que un fallo a mitad no deja la tabla medio migrada, y un reintento tras un fallo de
+ * red tampoco choca contra lo ya creado. Una migración trabada bloquea TODOS los deploys.
+ *
+ * Ver `memory-bank/06-mvp-planning.md` — lote de paquete pagado.
  *
  * @type {import('sequelize-cli').Migration}
  */
 module.exports = {
-  async up(queryInterface, Sequelize) {
-    const q = queryInterface.sequelize;
+  async up(queryInterface) {
+    await queryInterface.sequelize.transaction(async (transaction) => {
+      const q = (sql) => queryInterface.sequelize.query(sql, { transaction });
 
-    // --- 1. appointments.plan_id -------------------------------------------------
-    await queryInterface.addColumn('appointments', 'plan_id', {
-      type: Sequelize.UUID,
-      allowNull: true,
-      references: { model: 'pricing_plans', key: 'id' },
-      // SET NULL y no CASCADE: borrar un servicio del catálogo NO puede borrar la cita
-      // ni el historial de lo que se cobró.
-      onDelete: 'SET NULL',
-      onUpdate: 'CASCADE',
-    });
+      // --- 1. appointments.plan_id ---------------------------------------------
+      // SET NULL y no CASCADE: borrar un servicio del catálogo NO puede borrar la
+      // cita ni el historial de lo que se cobró.
+      await q(`
+        ALTER TABLE appointments
+          ADD COLUMN IF NOT EXISTS plan_id UUID NULL
+            REFERENCES pricing_plans(id) ON DELETE SET NULL;
+      `);
 
-    await queryInterface.addIndex('appointments', ['plan_id'], {
-      name: 'idx_appointments_plan_id',
-    });
+      await q(`
+        CREATE INDEX IF NOT EXISTS idx_appointments_plan_id
+          ON appointments (plan_id);
+      `);
 
-    // Backfill SOLO de los nombres inequívocos (HAVING COUNT(*) = 1).
-    await q.query(`
-      UPDATE appointments a
-         SET plan_id = m.plan_id
-        FROM (
-          SELECT pp.doctor_id,
-                 pp.name,
-                 MIN(pp.id::text)::uuid AS plan_id
-            FROM pricing_plans pp
-           GROUP BY pp.doctor_id, pp.name
-          HAVING COUNT(*) = 1
-        ) m
-       WHERE a.doctor_id = m.doctor_id
-         AND a.plan_name = m.name
-         AND a.plan_id IS NULL
-    `);
+      // Backfill SOLO de los nombres inequívocos (HAVING COUNT(*) = 1).
+      await q(`
+        UPDATE appointments a
+           SET plan_id = m.plan_id
+          FROM (
+            SELECT pp.doctor_id,
+                   pp.name,
+                   MIN(pp.id::text)::uuid AS plan_id
+              FROM pricing_plans pp
+             GROUP BY pp.doctor_id, pp.name
+            HAVING COUNT(*) = 1
+          ) m
+         WHERE a.doctor_id = m.doctor_id
+           AND a.plan_name = m.name
+           AND a.plan_id IS NULL;
+      `);
 
-    // --- 2. appointment_changes_log: cambios que no son de estado ----------------
-    await queryInterface.addColumn('appointment_changes_log', 'change_type', {
-      type: Sequelize.STRING(20),
-      allowNull: false,
-      // 'status' para que las filas históricas queden correctamente clasificadas:
+      // --- 2. appointment_changes_log: cambios que no son de estado -------------
+      // El default 'status' deja correctamente clasificadas las filas históricas:
       // hasta hoy la tabla SOLO registraba transiciones de estado.
-      defaultValue: 'status',
-    });
+      await q(`
+        ALTER TABLE appointment_changes_log
+          ADD COLUMN IF NOT EXISTS change_type VARCHAR(20) NOT NULL DEFAULT 'status',
+          ADD COLUMN IF NOT EXISTS old_value TEXT NULL,
+          ADD COLUMN IF NOT EXISTS new_value TEXT NULL;
+      `);
 
-    await queryInterface.changeColumn('appointment_changes_log', 'new_status', {
-      type: Sequelize.STRING(20),
-      allowNull: true,
-    });
-
-    await queryInterface.addColumn('appointment_changes_log', 'old_value', {
-      type: Sequelize.TEXT,
-      allowNull: true,
-    });
-
-    await queryInterface.addColumn('appointment_changes_log', 'new_value', {
-      type: Sequelize.TEXT,
-      allowNull: true,
+      // En un cambio de servicio el estado no se mueve, así que new_status va NULL.
+      await q(`
+        ALTER TABLE appointment_changes_log
+          ALTER COLUMN new_status DROP NOT NULL;
+      `);
     });
   },
 
-  async down(queryInterface, Sequelize) {
-    const q = queryInterface.sequelize;
+  async down(queryInterface) {
+    await queryInterface.sequelize.transaction(async (transaction) => {
+      const q = (sql) => queryInterface.sequelize.query(sql, { transaction });
 
-    // Las filas de cambio de servicio no tienen estado: no pueden sobrevivir a un
-    // new_status NOT NULL. Se borran antes de restaurar la restricción.
-    await q.query(`DELETE FROM appointment_changes_log WHERE new_status IS NULL`);
+      // Las filas de cambio de servicio no tienen estado: no pueden sobrevivir a un
+      // new_status NOT NULL. Se borran antes de restaurar la restricción.
+      await q(`DELETE FROM appointment_changes_log WHERE new_status IS NULL;`);
+      await q(`
+        ALTER TABLE appointment_changes_log
+          ALTER COLUMN new_status SET NOT NULL;
+      `);
+      await q(`
+        ALTER TABLE appointment_changes_log
+          DROP COLUMN IF EXISTS new_value,
+          DROP COLUMN IF EXISTS old_value,
+          DROP COLUMN IF EXISTS change_type;
+      `);
 
-    await queryInterface.removeColumn('appointment_changes_log', 'new_value');
-    await queryInterface.removeColumn('appointment_changes_log', 'old_value');
-    await queryInterface.removeColumn('appointment_changes_log', 'change_type');
-    await queryInterface.changeColumn('appointment_changes_log', 'new_status', {
-      type: Sequelize.STRING(20),
-      allowNull: false,
+      await q(`DROP INDEX IF EXISTS idx_appointments_plan_id;`);
+      await q(`ALTER TABLE appointments DROP COLUMN IF EXISTS plan_id;`);
     });
-
-    await queryInterface.removeIndex('appointments', 'idx_appointments_plan_id');
-    await queryInterface.removeColumn('appointments', 'plan_id');
   },
 };
