@@ -66,6 +66,45 @@ export interface AuditLogEntry {
   newStatus: AppointmentStatus | 'deleted';
 }
 
+/**
+ * Corrección del servicio elegido en una cita.
+ *
+ * ALCANCE: cuando la cita pertenece a un paquete (tiene `payment_id`), el cambio
+ * arrastra a TODAS sus hermanas y a las preconsultas por agendar. No es un lujo:
+ * el sistema une las sesiones de un paquete POR NOMBRE del plan, así que dejar una
+ * sola con el nombre viejo parte el paquete en dos y rompe el rótulo "2 de 3", el
+ * total del paquete y las preconsultas.
+ *
+ * El snapshot `plan_price` solo se reescribe en la cita PAGADORA (la que tiene el
+ * precio); las sesiones 2..N valen 0 y siguen valiendo 0.
+ */
+export interface ChangeServiceParams {
+  /** Cita desde la que se dispara la corrección. */
+  appointmentId: string;
+  /** Dueño — se verifica dentro de la transacción (anti-IDOR). */
+  doctorId: string;
+  /** Quién hace el cambio; queda en el asiento de auditoría. */
+  actorId: string;
+  /** Servicio nuevo. */
+  newPlanId: string;
+  newPlanName: string;
+  /** Precio TOTAL del servicio nuevo (pricing_plans.price_usd ya es el total). */
+  newPlanPriceUsd: number;
+  /** Nombre anterior, para el asiento de auditoría. */
+  oldPlanName: string | null;
+  /** Precio anterior de la cita pagadora, para el asiento de auditoría. */
+  oldPlanPriceUsd: number | null;
+}
+
+export interface ChangeServiceResult {
+  /** Citas actualizadas (la disparadora + sus hermanas del paquete). */
+  appointmentsUpdated: number;
+  /** Preconsultas por agendar que quedaron con el nombre nuevo. */
+  pendingConsultationsUpdated: boolean;
+  /** true cuando había un pago vinculado y se le ajustó el monto. */
+  paymentAdjusted: boolean;
+}
+
 export interface IAppointmentRepository {
   /** Fetch a single appointment by ID. Returns null if not found. */
   findById(id: string): Promise<Appointment | null>;
@@ -191,4 +230,16 @@ export interface IAppointmentRepository {
     from: Date,
     limit: number,
   ): Promise<Appointment[]>;
+
+  /**
+   * Corrige el servicio de una cita (y del paquete al que pertenezca) en UNA
+   * transacción: citas, preconsultas por agendar, monto del pago, monto de la
+   * consulta y asiento en `appointment_changes_log`.
+   *
+   * El pago **sigue aprobado**: solo se le ajusta el importe. La diferencia queda
+   * documentada en el asiento, con monto anterior, monto nuevo y autor.
+   *
+   * Devuelve null cuando la cita no existe o es de otro doctor.
+   */
+  changeService(params: ChangeServiceParams): Promise<ChangeServiceResult | null>;
 }

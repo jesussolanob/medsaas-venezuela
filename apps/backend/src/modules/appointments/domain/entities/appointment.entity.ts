@@ -93,6 +93,15 @@ export class Appointment {
      * Read-side enrichment only — not a domain invariant.
      */
     public readonly officeName: string | null = null,
+    /**
+     * FK → pricing_plans(id): identidad del servicio contratado.
+     *
+     * `planName`/`planPrice` son el snapshot de lo que se cobró y no cambian nunca;
+     * esto dice de qué servicio del catálogo salieron. Null en las citas viejas cuyo
+     * nombre era ambiguo al migrar. Va último y con default para no reordenar los 30
+     * argumentos posicionales de este constructor.
+     */
+    public readonly planId: string | null = null,
   ) {}
 
   /**
@@ -153,6 +162,7 @@ export class Appointment {
       params.paymentStatus ?? null,
       params.consultationCode ?? null,
       params.officeName ?? null,
+      params.planId ?? null,
     );
   }
 }
@@ -171,6 +181,8 @@ export interface AppointmentCreateParams {
   status: AppointmentStatus;
   appointmentMode: AppointmentMode;
   source?: string | null;
+  /** FK → pricing_plans(id) — identidad del servicio. El snapshot va en planName/planPrice. */
+  planId?: string | null;
   planName?: string | null;
   planPrice?: number | null;
   paymentMethod?: string | null;

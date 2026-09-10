@@ -82,6 +82,8 @@ export type Consultation = {
   /** Enriched by the backend list/detail endpoints (JOIN patients / appointments). */
   patient_name?: string | null;
   appointment_status?: string | null;
+  /** Servicio contratado (appointments.plan_name). Se muestra siempre, con monto o sin él. */
+  plan_name?: string | null;
   /** Combo de varias sesiones: "la 2 de 3". Null cuando la consulta es suelta. */
   session_number?: number | null;
   package_total_sessions?: number | null;
@@ -90,6 +92,32 @@ export type Consultation = {
    * paquete se paga una sola vez, en la primera. No se divide ni se multiplica.
    */
   package_charge_usd?: number | null;
+  /**
+   * Pago que YA cubre esta consulta — sesiones 2..N de un paquete cobrado por
+   * adelantado. Cuando viene, la consulta no genera cobro propio: la pantalla
+   * muestra de dónde salió el dinero en vez de volver a pedir el cobro.
+   *
+   * Solo lo rellena `GET /api/consultations/:id`; en el listado viene null.
+   */
+  covered_by?: ConsultationCoverage | null;
+};
+
+/**
+ * Datos del pago del paquete que cubre una sesión 2..N.
+ *
+ * `amount_usd` es el importe del PAQUETE COMPLETO (lo que se pagó una sola vez
+ * en la primera sesión), no el de esta consulta: esta no cobra nada.
+ */
+export type ConsultationCoverage = {
+  payment_id: string;
+  plan_name: string | null;
+  session_number: number | null;
+  total_sessions: number | null;
+  amount_usd: number;
+  amount_bs: number | null;
+  paid_at: string | null;
+  method: string | null;
+  reference: string | null;
 };
 
 export type ConsultationActionResult = { success: true } | { success: false; error: string };
@@ -298,6 +326,37 @@ export async function updateAppointmentStatus(
       status: result.error.status,
     });
     // Non-fatal: return error but do not throw — caller applies optimistic update regardless.
+    return { success: false, error: appErrorToString(result.error) };
+  }
+
+  revalidatePath('/doctor/consultations');
+  return { success: true };
+}
+
+/**
+ * Corrige el servicio contratado de una cita → PATCH /api/appointments/:id/service.
+ *
+ * El error típico: el paciente eligió mal el paquete en la reserva pública y quedó
+ * cobrado el servicio que no era. El backend arrastra el cambio a todo el paquete,
+ * le ajusta el monto al pago —que sigue aprobado— y deja asiento de auditoría.
+ *
+ * El mensaje de error del backend se devuelve TAL CUAL: ya viene en español y dice
+ * lo único que el especialista necesita saber (por ejemplo, que el servicio elegido
+ * tiene otra cantidad de consultas).
+ */
+export async function changeAppointmentService(
+  appointmentId: string,
+  planId: string,
+): Promise<ConsultationActionResult> {
+  const result = await backendPatch<unknown>(`/api/appointments/${appointmentId}/service`, {
+    plan_id: planId,
+  });
+
+  if (!result.ok) {
+    log.error('[changeAppointmentService] backend error', {
+      code: result.error.code,
+      status: result.error.status,
+    });
     return { success: false, error: appErrorToString(result.error) };
   }
 

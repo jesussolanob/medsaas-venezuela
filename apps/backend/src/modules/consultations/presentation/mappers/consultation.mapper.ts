@@ -41,6 +41,12 @@ export function toConsultationResponse(consultation: Consultation): Record<strin
     patient_name: consultation.patientName,
     appointment_status: consultation.appointmentStatus,
     /**
+     * Servicio contratado por el paciente (appointments.plan_name).
+     * La UI lo muestra SIEMPRE, tenga monto o no: un consultorio puede tener
+     * varios planes y por el importe solo no se distingue cuál se contrató.
+     */
+    plan_name: consultation.planName,
+    /**
      * Combo de varias sesiones: "consulta 2 de 3". Null cuando la consulta es suelta.
      */
     session_number: consultation.sessionNumber,
@@ -64,6 +70,26 @@ export function toConsultationResponse(consultation: Consultation): Record<strin
       quantity: ei.quantity ?? 1,
       unit_price_usd: ei.unitPriceUsd ?? null,
     })),
+    /**
+     * Cobertura del pago del paquete — solo no es null para sesiones 2..N.
+     * El frontend usa este objeto para pintar:
+     *   "Cubierta por: Paquete 4 consultas — $120, pagado el 03/09 · ref. 0012 · Esta consulta no genera cobro."
+     * Null para consultas sueltas o la primera sesión del paquete (que es la pagadora).
+     * Solo se rellena en GET /consultations/:id (findById); en list endpoints viene null.
+     */
+    covered_by: consultation.coveredBy
+      ? {
+          payment_id: consultation.coveredBy.paymentId,
+          plan_name: consultation.coveredBy.planName,
+          session_number: consultation.coveredBy.sessionNumber,
+          total_sessions: consultation.coveredBy.totalSessions,
+          amount_usd: consultation.coveredBy.amountUsd,
+          amount_bs: consultation.coveredBy.amountBs,
+          paid_at: consultation.coveredBy.paidAt?.toISOString() ?? null,
+          method: consultation.coveredBy.method,
+          reference: consultation.coveredBy.reference,
+        }
+      : null,
   };
 }
 

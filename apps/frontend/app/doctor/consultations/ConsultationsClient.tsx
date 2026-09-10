@@ -87,7 +87,9 @@ import {
   updateConsultationPaymentDetails,
   getQuickItems,
   updateAppointmentStatus,
+  changeAppointmentService,
 } from './actions';
+import type { ConsultationCoverage } from './actions';
 // El consumo del combo vive en las acciones de pacientes: es el mismo endpoint
 // que alimenta la ficha, y no tiene sentido duplicar el mapeo del wire.
 import { getPackageUsage, type PackageUsage } from '@/app/doctor/patients/actions';
@@ -118,6 +120,7 @@ import { showToast } from '@/components/ui/Toaster';
 import ShareDocumentsModal from './ShareDocumentsModal';
 import ApprovePaymentModal, { type ExistingExtraItem } from './ApprovePaymentModal';
 import PaymentMethodModal from './PaymentMethodModal';
+import ChangeServiceModal from './ChangeServiceModal';
 import IncomeModal, { type IncomeForm } from '@/components/finances/IncomeModal';
 import {
   getIncomeConcepts,
@@ -140,10 +143,19 @@ type Consultation = {
   status: 'pending' | 'in_progress' | 'completed' | 'no_show'; // Estado de la CONSULTA (no del pago)
   /** Raw appointment status (scheduled/confirmed/completed/no_show) — preservado para mostrar "Por confirmar" */
   appointment_status?: string | null;
+  /** Servicio contratado por el paciente. Se muestra siempre, con monto o sin él. */
+  plan_name?: string | null;
   /** Combo de varias sesiones: "Consulta 2 de 3". Null cuando la consulta es suelta. */
   session_number?: number | null;
   package_total_sessions?: number | null;
   package_charge_usd?: number | null;
+  /**
+   * Pago del paquete que YA cubre esta consulta (sesiones 2..N).
+   * Cuando viene, la consulta no genera cobro propio y el panel de pago
+   * muestra de dónde salió el dinero en vez de volver a pedirlo.
+   * Solo lo trae el detalle (`getConsultation`), no el listado.
+   */
+  covered_by?: ConsultationCoverage | null;
   payment_status: 'pending' | 'approved'; // Quitamos 'cancelled' — los pagos no se cancelan
   payment_method?: string | null;
   payment_reference?: string | null;
@@ -226,13 +238,6 @@ type Medication = {
 type Recipe = {
   medications: Medication[];
   notes: string;
-};
-
-type AppointmentData = {
-  payment_receipt_url?: string | null;
-  payment_method?: string | null;
-  plan_price?: number | null;
-  plan_name?: string | null;
 };
 
 // Estados de PAGO únicamente (no estados de cita ni de consulta)
@@ -714,6 +719,8 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
   const [showApprovePaymentModal, setShowApprovePaymentModal] = useState(false);
   // Modal de método de pago — se abre cuando el doctor intenta aprobar sin método seleccionado
   const [showPaymentMethodModal, setShowPaymentMethodModal] = useState(false);
+  /** Modal para corregir el servicio que el paciente eligió mal al reservar. */
+  const [showChangeServiceModal, setShowChangeServiceModal] = useState(false);
   // Callback pendiente tras seleccionar el método en el modal (aprobación o marcar pagado)
   const [pendingApprovalAfterMethod, setPendingApprovalAfterMethod] = useState(false);
   // Modal de confirmación al salir de una consulta no atendida
@@ -737,7 +744,15 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
   // "Historia clínica" en generar/compartir (evita PDF vacío / 422 sin EHR).
   const [patientEhrCount, setPatientEhrCount] = useState(0);
   const [pricingPlans, setPricingPlans] = useState<
-    { id: string; name: string; price_usd: number; duration_minutes: number }[]
+    {
+      id: string;
+      name: string;
+      price_usd: number;
+      duration_minutes: number;
+      /** Consultas que incluye. Lo usa "Cambiar servicio": solo se ofrece lo equivalente. */
+      sessions_count: number;
+      is_active: boolean;
+    }[]
   >([]);
   // Helper to get local datetime string for datetime-local input
   const getLocalDateTimeString = () => {
@@ -832,8 +847,6 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
   type ImproveMode = 'improve' | 'formal' | 'shorten' | 'lengthen';
   const [improveMode, setImproveMode] = useState<ImproveMode>('improve');
 
-  // Appointment data (for payment receipt, method, price)
-  const [appointmentData, setAppointmentData] = useState<AppointmentData | null>(null);
   // Consumo del combo al que pertenece esta consulta (qué se atendió y qué falta).
   const [comboUsage, setComboUsage] = useState<PackageUsage[]>([]);
 
@@ -1195,6 +1208,8 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
               name: s.name,
               price_usd: s.price_usd ?? 0,
               duration_minutes: s.duration_minutes ?? 30,
+              sessions_count: s.sessions_count ?? 1,
+              is_active: s.is_active,
             })),
           );
         });
@@ -1470,6 +1485,32 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
     }
   }
 
+  /**
+   * Vuelve a leer del backend lo que cambia al corregir el servicio: nombre del
+   * plan, montos y cobertura del paquete.
+   *
+   * No reabre la consulta entera a propósito: eso pisaría el informe que el
+   * especialista pueda tener a medio escribir. Solo se refrescan los campos del
+   * panel de pago, que son los que el cambio de servicio mueve.
+   */
+  async function refreshSelectedConsultation(consultationId: string) {
+    const fresh = await getConsultation(consultationId);
+    if (!fresh) return;
+    const patch: Partial<Consultation> = {
+      plan_name: fresh.plan_name ?? null,
+      amount: fresh.amount ?? null,
+      base_amount: (fresh as Record<string, unknown>).base_amount as number | null | undefined,
+      covered_by: fresh.covered_by ?? null,
+      payment_status: fresh.payment_status,
+      session_number: fresh.session_number ?? null,
+      package_total_sessions: fresh.package_total_sessions ?? null,
+      package_charge_usd: fresh.package_charge_usd ?? null,
+    };
+    setSelected((prev) => (prev && prev.id === consultationId ? { ...prev, ...patch } : prev));
+    setConsultations((prev) => prev.map((x) => (x.id === consultationId ? { ...x, ...patch } : x)));
+    setPagoAmount(fresh.amount != null ? String(fresh.amount) : '');
+  }
+
   async function updatePagoStatus(
     consultationId: string,
     newStatus: 'pending' | 'approved',
@@ -1740,6 +1781,22 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
           started_at: fresh_raw.started_at,
           ended_at: fresh_raw.ended_at,
           duration_minutes: fresh_raw.duration_minutes,
+          /*
+            Servicio y paquete.
+
+            Se traían del listado y se PERDÍAN acá: `fresh` reemplaza entero a
+            `selected`, así que abrir una consulta de paquete borraba el rótulo
+            "Consulta 2 de 3" y el aviso de que el paquete ya se cobró. El
+            fallback a `c` mantiene lo que ya mostraba la fila mientras el
+            detalle no traiga el dato.
+          */
+          plan_name: fresh_raw.plan_name ?? c.plan_name ?? null,
+          session_number: fresh_raw.session_number ?? c.session_number ?? null,
+          package_total_sessions:
+            fresh_raw.package_total_sessions ?? c.package_total_sessions ?? null,
+          package_charge_usd: fresh_raw.package_charge_usd ?? c.package_charge_usd ?? null,
+          // Pago del paquete que cubre esta sesión. Solo lo trae el detalle.
+          covered_by: fresh_raw.covered_by ?? null,
           amount: (fresh_raw as Record<string, unknown>).amount as number | null | undefined,
           base_amount: (fresh_raw as Record<string, unknown>).base_amount as
             | number
@@ -1790,8 +1847,6 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
         setPagoAmount(fresh.amount != null ? String(fresh.amount) : '');
         setPagoReceiptPath(fresh.payment_receipt_url ?? null);
         setConsultations((prev) => prev.map((x) => (x.id === fresh.id ? fresh : x)));
-        // Appointment data for receipt — no backend endpoint in Etapa 1, stays null.
-        setAppointmentData(null);
       } else {
         // Fallback to cached data
         setSelected(c);
@@ -1814,7 +1869,6 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
         setPagoReference(c.payment_reference ?? '');
         setPagoAmount(c.amount != null ? String(c.amount) : '');
         setPagoReceiptPath(c.payment_receipt_url ?? null);
-        setAppointmentData(null);
       }
     } catch {
       // Fallback to cached data on error
@@ -1836,7 +1890,6 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
       setPagoReference(c.payment_reference ?? '');
       setPagoAmount(c.amount != null ? String(c.amount) : '');
       setPagoReceiptPath(c.payment_receipt_url ?? null);
-      setAppointmentData(null);
     }
 
     // Consumo de los combos del paciente. No bloquea nada: si falla, la tarjeta
@@ -3382,7 +3435,22 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
   }
 
   if (view === 'consultation' && selected) {
-    const ps = PAYMENT_STATUS[report.payment_status];
+    /*
+      Sesión 2..N de un paquete que ya se cobró completo en la primera.
+
+      Cuando viene `covered_by`, esta consulta NO genera cobro propio: el panel
+      de pago deja de pedir método/monto/estado y pasa a explicar de dónde salió
+      el dinero. Antes pedía confirmar el pago otra vez en cada sesión, y el
+      especialista no tenía forma de saber si ya había cobrado.
+    */
+    const coverage = selected.covered_by ?? null;
+    /*
+      Importe del PAQUETE, no de esta consulta: se muestra una sola vez, en el
+      recuadro de cobertura. Repetir "$120" en las 4 sesiones se lee como $480.
+    */
+    const ps = coverage
+      ? { label: 'Cubierta', color: 'bg-violet-100 text-violet-700', dot: 'bg-violet-500' }
+      : PAYMENT_STATUS[report.payment_status];
 
     return (
       <>
@@ -5096,10 +5164,7 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                         estamos, esto dice cuánto se atendió y cuánto falta.
                         "Sin asistir" va aparte: una inasistencia no consume. */}
                     {comboUsage
-                      .filter(
-                        (u) =>
-                          !appointmentData?.plan_name || u.planName === appointmentData.plan_name,
-                      )
+                      .filter((u) => !selected.plan_name || u.planName === selected.plan_name)
                       .map((u) => {
                         const total =
                           u.totalSessions ??
@@ -5166,126 +5231,166 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                   </button>
                   {showPaymentDetails && (
                     <div className="mt-3 space-y-2">
-                      {/* Datos de cita (read-only) */}
-                      {appointmentData &&
-                        (appointmentData.payment_method || appointmentData.plan_price) && (
-                          <div className="pt-2 border-t border-slate-100 space-y-1.5 text-xs">
-                            {appointmentData.plan_name && (
-                              <div className="flex items-center justify-between">
-                                <span className="text-slate-500">Plan:</span>
-                                <span className="font-semibold text-slate-800">
-                                  {appointmentData.plan_name}
-                                </span>
-                              </div>
-                            )}
-                            {appointmentData.plan_price != null && (
-                              <div className="flex items-center justify-between">
-                                <span className="text-slate-500">Monto:</span>
-                                <div className="text-right">
-                                  <span className="font-semibold text-slate-800">
-                                    {format(appointmentData.plan_price)}
-                                  </span>
-                                  {bcvRate && (
-                                    <span className="block text-[10px] text-slate-400">
-                                      {toBs(appointmentData.plan_price)}
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
-                            )}
-                            {appointmentData.payment_method && (
-                              <div className="flex items-center justify-between">
-                                <span className="text-slate-500">Método:</span>
-                                <span className="font-semibold text-slate-800">
-                                  {appointmentData.payment_method.replace(/_/g, ' ')}
-                                </span>
-                              </div>
-                            )}
-                          </div>
-                        )}
+                      {/*
+                        Servicio contratado — SIEMPRE visible, con monto o sin él.
+                        Un consultorio puede tener varios planes y por el importe
+                        solo no se distingue cuál eligió el paciente.
 
-                      {/* === Detalles del pago (editables) — método PRIMERO para no dejarlo en blanco === */}
-                      <div className="pt-2 border-t border-slate-100 space-y-2">
-                        <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">
-                          Detalles del pago
-                        </p>
+                        Antes esto se pintaba desde `appointmentData`, que nunca
+                        se llenó: los tres caminos que abren una consulta hacían
+                        `setAppointmentData(null)`, así que el bloque completo
+                        —plan, monto y método de la cita— no lo vio nadie nunca.
+                      */}
+                      {selected.plan_name && (
+                        <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs gap-2">
+                          <span className="text-slate-500 shrink-0">Servicio:</span>
+                          <span className="min-w-0 text-right">
+                            <span className="block font-semibold text-slate-800 truncate">
+                              {selected.plan_name}
+                            </span>
+                            {/* Corregir el servicio elegido por error en la reserva pública.
+                                Solo con cita: el cambio se aplica sobre la cita, no sobre la
+                                consulta suelta creada a mano. */}
+                            {selected.appointment_id && (
+                              <button
+                                type="button"
+                                onClick={() => setShowChangeServiceModal(true)}
+                                className="text-[11px] font-semibold text-teal-600 hover:text-teal-700 transition-colors"
+                              >
+                                Cambiar servicio
+                              </button>
+                            )}
+                          </span>
+                        </div>
+                      )}
 
-                        {/* Método de pago */}
-                        <div>
-                          <label className="block text-[10px] text-slate-500 mb-1">
-                            Método de pago
-                          </label>
-                          <div className="relative">
-                            <select
-                              value={pagoMethod}
-                              disabled={pagoDetailsSaving}
-                              onChange={(e) => setPagoMethod(e.target.value)}
-                              className="w-full text-xs border border-slate-200 rounded-lg py-1.5 pl-2.5 pr-8 outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-400 transition-all appearance-none bg-white text-slate-700 disabled:text-slate-400 disabled:cursor-wait"
-                            >
-                              <option value="">— Sin especificar —</option>
-                              {(doctorPaymentMethods.length > 0
-                                ? [
-                                    { value: 'efectivo', label: 'Efectivo USD' },
-                                    { value: 'efectivo_bs', label: 'Efectivo Bs' },
-                                    { value: 'pago_movil', label: 'Pago Móvil' },
-                                    { value: 'transferencia', label: 'Transferencia' },
-                                    { value: 'zelle', label: 'Zelle' },
-                                    { value: 'binance', label: 'Binance' },
-                                    { value: 'pos', label: 'POS / Punto de venta' },
-                                    { value: 'seguro', label: 'Seguro' },
-                                  ].filter((m) => doctorPaymentMethods.includes(m.value))
-                                : [
-                                    { value: 'efectivo', label: 'Efectivo USD' },
-                                    { value: 'efectivo_bs', label: 'Efectivo Bs' },
-                                    { value: 'pago_movil', label: 'Pago Móvil' },
-                                    { value: 'transferencia', label: 'Transferencia' },
-                                    { value: 'zelle', label: 'Zelle' },
-                                    { value: 'binance', label: 'Binance' },
-                                    { value: 'pos', label: 'POS / Punto de venta' },
-                                    { value: 'seguro', label: 'Seguro' },
-                                  ]
-                              ).map((m) => (
-                                <option key={m.value} value={m.value}>
-                                  {m.label}
-                                </option>
-                              ))}
-                            </select>
-                            <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none">
-                              <ChevronDown className="w-3 h-3 text-slate-400" />
+                      {/*
+                        Cobertura del paquete (sesiones 2..N).
+
+                        Reemplaza a TODO el bloque de cobro: monto, método,
+                        referencia, comprobante y estado. Esta consulta ya está
+                        pagada; lo único que falta es decir con qué dinero.
+                      */}
+                      {coverage && (
+                        <div className="rounded-xl bg-violet-50 border border-violet-200 px-3 py-2.5 space-y-1">
+                          <p className="text-[10px] font-semibold text-violet-700 uppercase tracking-wider">
+                            Cubierta por un paquete ya pagado
+                          </p>
+                          <p className="text-sm font-extrabold text-violet-800">
+                            {format(coverage.amount_usd)}
+                            {/* `!= null` y no un truthy suelto: con 0 sesiones, `0 && …`
+                                pinta un "0" pegado al monto. */}
+                            {coverage.total_sessions != null && coverage.total_sessions > 1 && (
+                              <span className="font-semibold text-[11px] text-violet-600">
+                                {' '}
+                                por {coverage.total_sessions} consultas
+                              </span>
+                            )}
+                          </p>
+                          {bcvRate && (
+                            <p className="text-[10px] text-violet-500">
+                              {toBs(coverage.amount_usd)}
+                            </p>
+                          )}
+                          <p className="text-[10px] text-violet-700 leading-snug">
+                            {coverage.paid_at
+                              ? `Pagado el ${new Date(coverage.paid_at).toLocaleDateString('es-VE')}`
+                              : 'Cobro registrado en la primera consulta del paquete'}
+                            {coverage.method && ` · ${coverage.method.replace(/_/g, ' ')}`}
+                            {coverage.reference && ` · ref. ${coverage.reference}`}
+                          </p>
+                          <p className="text-[10px] font-semibold text-violet-600 leading-snug">
+                            Esta consulta no genera un cobro nuevo.
+                          </p>
+                        </div>
+                      )}
+
+                      {/* === Detalles del pago (editables) — método PRIMERO para no dejarlo en blanco ===
+                          Se ocultan en una sesión cubierta: el cobro ya ocurrió en la primera
+                          consulta del paquete y volver a pedir método/monto/referencia es lo
+                          que hacía que el especialista cobrara dos veces el mismo paquete. */}
+                      {!coverage && (
+                        <div className="pt-2 border-t border-slate-100 space-y-2">
+                          <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">
+                            Detalles del pago
+                          </p>
+
+                          {/* Método de pago */}
+                          <div>
+                            <label className="block text-[10px] text-slate-500 mb-1">
+                              Método de pago
+                            </label>
+                            <div className="relative">
+                              <select
+                                value={pagoMethod}
+                                disabled={pagoDetailsSaving}
+                                onChange={(e) => setPagoMethod(e.target.value)}
+                                className="w-full text-xs border border-slate-200 rounded-lg py-1.5 pl-2.5 pr-8 outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-400 transition-all appearance-none bg-white text-slate-700 disabled:text-slate-400 disabled:cursor-wait"
+                              >
+                                <option value="">— Sin especificar —</option>
+                                {(doctorPaymentMethods.length > 0
+                                  ? [
+                                      { value: 'efectivo', label: 'Efectivo USD' },
+                                      { value: 'efectivo_bs', label: 'Efectivo Bs' },
+                                      { value: 'pago_movil', label: 'Pago Móvil' },
+                                      { value: 'transferencia', label: 'Transferencia' },
+                                      { value: 'zelle', label: 'Zelle' },
+                                      { value: 'binance', label: 'Binance' },
+                                      { value: 'pos', label: 'POS / Punto de venta' },
+                                      { value: 'seguro', label: 'Seguro' },
+                                    ].filter((m) => doctorPaymentMethods.includes(m.value))
+                                  : [
+                                      { value: 'efectivo', label: 'Efectivo USD' },
+                                      { value: 'efectivo_bs', label: 'Efectivo Bs' },
+                                      { value: 'pago_movil', label: 'Pago Móvil' },
+                                      { value: 'transferencia', label: 'Transferencia' },
+                                      { value: 'zelle', label: 'Zelle' },
+                                      { value: 'binance', label: 'Binance' },
+                                      { value: 'pos', label: 'POS / Punto de venta' },
+                                      { value: 'seguro', label: 'Seguro' },
+                                    ]
+                                ).map((m) => (
+                                  <option key={m.value} value={m.value}>
+                                    {m.label}
+                                  </option>
+                                ))}
+                              </select>
+                              <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none">
+                                <ChevronDown className="w-3 h-3 text-slate-400" />
+                              </div>
                             </div>
                           </div>
-                        </div>
 
-                        {/* Monto cobrado — editable */}
-                        <div>
-                          <label className="block text-[10px] text-slate-500 mb-1">
-                            Monto cobrado ({currencyCode})
-                          </label>
-                          {/*
+                          {/* Monto cobrado — editable */}
+                          <div>
+                            <label className="block text-[10px] text-slate-500 mb-1">
+                              Monto cobrado ({currencyCode})
+                            </label>
+                            {/*
                             step="any" y NO step="1": las flechas mueven de a 1
                             —un monto se corrige en dólares, no en céntimos— pero
                             un importe con decimales (20.50) sigue siendo válido.
                             Con step="1" el navegador lo marcaría como inválido.
                           */}
-                          <input
-                            type="number"
-                            min="0"
-                            step="any"
-                            inputMode="decimal"
-                            value={pagoAmount}
-                            disabled={pagoDetailsSaving}
-                            onChange={(e) => setPagoAmount(e.target.value)}
-                            placeholder={
-                              selected.amount != null ? selected.amount.toFixed(2) : '0.00'
-                            }
-                            className="w-full text-xs border border-slate-200 rounded-lg py-1.5 px-2.5 outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-400 transition-all bg-white text-slate-700 placeholder:text-slate-400 disabled:text-slate-400 disabled:cursor-wait"
-                          />
-                          {bcvRate && pagoAmount.trim() !== '' && !isNaN(Number(pagoAmount)) && (
-                            <p className="mt-1 text-[10px] text-slate-400">
-                              {toBs(Number(pagoAmount))}
-                            </p>
-                          )}
-                          {/*
+                            <input
+                              type="number"
+                              min="0"
+                              step="any"
+                              inputMode="decimal"
+                              value={pagoAmount}
+                              disabled={pagoDetailsSaving}
+                              onChange={(e) => setPagoAmount(e.target.value)}
+                              placeholder={
+                                selected.amount != null ? selected.amount.toFixed(2) : '0.00'
+                              }
+                              className="w-full text-xs border border-slate-200 rounded-lg py-1.5 px-2.5 outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-400 transition-all bg-white text-slate-700 placeholder:text-slate-400 disabled:text-slate-400 disabled:cursor-wait"
+                            />
+                            {bcvRate && pagoAmount.trim() !== '' && !isNaN(Number(pagoAmount)) && (
+                              <p className="mt-1 text-[10px] text-slate-400">
+                                {toBs(Number(pagoAmount))}
+                              </p>
+                            )}
+                            {/*
                             El aviso de paquete tiene que estar ACÁ, junto al monto, y no solo
                             en el bloque "Total cobrado": ese bloque se muestra únicamente
                             cuando el pago ya está aprobado, así que una consulta de paquete
@@ -5293,167 +5398,212 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                             consultas — que es justo el momento en que el especialista decide
                             cuánto cobrar.
                           */}
-                          {isPackageSession(selected) && (
-                            <p className="mt-1 text-[10px] font-semibold text-teal-600 leading-snug">
-                              Pago de paquete — {sessionLabel(selected)?.toLowerCase()}. El paquete
-                              completo son{' '}
-                              {format(Number(packageAmount(selected) ?? selected.amount ?? 0))} por{' '}
-                              {selected.package_total_sessions} consultas, y se cobra una sola vez.
-                            </p>
-                          )}
-                        </div>
+                            {isPackageSession(selected) && (
+                              <p className="mt-1 text-[10px] font-semibold text-teal-600 leading-snug">
+                                Pago de paquete — {sessionLabel(selected)?.toLowerCase()}. El
+                                paquete completo son{' '}
+                                {format(Number(packageAmount(selected) ?? selected.amount ?? 0))}{' '}
+                                por {selected.package_total_sessions} consultas, y se cobra una sola
+                                vez.
+                              </p>
+                            )}
+                          </div>
 
-                        {/* Referencia */}
-                        <div>
-                          <label className="block text-[10px] text-slate-500 mb-1">
-                            Referencia / Nro. comprobante
-                          </label>
-                          <input
-                            type="text"
-                            value={pagoReference}
-                            disabled={pagoDetailsSaving}
-                            onChange={(e) => setPagoReference(e.target.value)}
-                            placeholder="Ej: #12345, últimos 4 dígitos…"
-                            className="w-full text-xs border border-slate-200 rounded-lg py-1.5 px-2.5 outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-400 transition-all bg-white text-slate-700 placeholder:text-slate-400 disabled:text-slate-400 disabled:cursor-wait"
-                          />
-                        </div>
+                          {/* Referencia */}
+                          <div>
+                            <label className="block text-[10px] text-slate-500 mb-1">
+                              Referencia / Nro. comprobante
+                            </label>
+                            <input
+                              type="text"
+                              value={pagoReference}
+                              disabled={pagoDetailsSaving}
+                              onChange={(e) => setPagoReference(e.target.value)}
+                              placeholder="Ej: #12345, últimos 4 dígitos…"
+                              className="w-full text-xs border border-slate-200 rounded-lg py-1.5 px-2.5 outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-400 transition-all bg-white text-slate-700 placeholder:text-slate-400 disabled:text-slate-400 disabled:cursor-wait"
+                            />
+                          </div>
 
-                        {/* Comprobante de pago */}
-                        <div>
-                          <label className="block text-[10px] text-slate-500 mb-1">
-                            Comprobante{' '}
-                            <span className="text-slate-400 normal-case font-normal">
-                              (opcional)
-                            </span>
-                          </label>
-                          {pagoReceiptPath ? (
-                            <div className="flex items-center gap-2">
-                              <a
-                                href={pagoReceiptPath}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-xs text-teal-600 hover:text-teal-800 font-semibold flex items-center gap-1"
-                              >
-                                <FileText className="w-3 h-3" /> Ver comprobante
-                              </a>
-                              <button
-                                type="button"
-                                disabled={pagoDetailsSaving || pagoReceiptUploading}
-                                onClick={() => setPagoReceiptPath(null)}
-                                className="text-[10px] text-slate-400 hover:text-red-500 transition-colors"
-                              >
-                                <X className="w-3 h-3" />
-                              </button>
-                            </div>
-                          ) : (
-                            <label className="flex items-center gap-2 border border-dashed border-slate-300 rounded-lg px-2.5 py-2 cursor-pointer hover:bg-slate-50 transition-colors">
-                              {pagoReceiptUploading ? (
-                                <>
-                                  <Loader2 className="w-3 h-3 animate-spin text-teal-500" />
-                                  <span className="text-[10px] text-teal-600">Subiendo…</span>
-                                </>
-                              ) : (
-                                <>
-                                  <Upload className="w-3 h-3 text-slate-400" />
-                                  <span className="text-[10px] text-slate-500">
-                                    Adjuntar comprobante
-                                  </span>
-                                </>
-                              )}
-                              <input
-                                type="file"
-                                accept="image/*,application/pdf"
-                                disabled={pagoReceiptUploading || pagoDetailsSaving}
-                                className="hidden"
-                                onChange={async (e) => {
-                                  const file = e.target.files?.[0];
-                                  if (!file) return;
-                                  setPagoReceiptUploading(true);
-                                  try {
-                                    const fd = new FormData();
-                                    fd.append('file', file);
-                                    fd.append('kind', 'receipt');
-                                    const uploadRes = await fetch('/api/storage/upload', {
-                                      method: 'POST',
-                                      body: fd,
-                                    });
-                                    const uploadJson: unknown = await uploadRes.json();
-                                    const urlData = uploadJson as {
-                                      data?: { url?: string; path?: string };
-                                    };
-                                    const path = urlData?.data?.path ?? urlData?.data?.url ?? null;
-                                    if (uploadRes.ok && path) {
-                                      setPagoReceiptPath(path);
-                                    } else {
+                          {/* Comprobante de pago */}
+                          <div>
+                            <label className="block text-[10px] text-slate-500 mb-1">
+                              Comprobante{' '}
+                              <span className="text-slate-400 normal-case font-normal">
+                                (opcional)
+                              </span>
+                            </label>
+                            {pagoReceiptPath ? (
+                              <div className="flex items-center gap-2">
+                                <a
+                                  href={pagoReceiptPath}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-xs text-teal-600 hover:text-teal-800 font-semibold flex items-center gap-1"
+                                >
+                                  <FileText className="w-3 h-3" /> Ver comprobante
+                                </a>
+                                <button
+                                  type="button"
+                                  disabled={pagoDetailsSaving || pagoReceiptUploading}
+                                  onClick={() => setPagoReceiptPath(null)}
+                                  className="text-[10px] text-slate-400 hover:text-red-500 transition-colors"
+                                >
+                                  <X className="w-3 h-3" />
+                                </button>
+                              </div>
+                            ) : (
+                              <label className="flex items-center gap-2 border border-dashed border-slate-300 rounded-lg px-2.5 py-2 cursor-pointer hover:bg-slate-50 transition-colors">
+                                {pagoReceiptUploading ? (
+                                  <>
+                                    <Loader2 className="w-3 h-3 animate-spin text-teal-500" />
+                                    <span className="text-[10px] text-teal-600">Subiendo…</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Upload className="w-3 h-3 text-slate-400" />
+                                    <span className="text-[10px] text-slate-500">
+                                      Adjuntar comprobante
+                                    </span>
+                                  </>
+                                )}
+                                <input
+                                  type="file"
+                                  accept="image/*,application/pdf"
+                                  disabled={pagoReceiptUploading || pagoDetailsSaving}
+                                  className="hidden"
+                                  onChange={async (e) => {
+                                    const file = e.target.files?.[0];
+                                    if (!file) return;
+                                    setPagoReceiptUploading(true);
+                                    try {
+                                      const fd = new FormData();
+                                      fd.append('file', file);
+                                      fd.append('kind', 'receipt');
+                                      const uploadRes = await fetch('/api/storage/upload', {
+                                        method: 'POST',
+                                        body: fd,
+                                      });
+                                      const uploadJson: unknown = await uploadRes.json();
+                                      const urlData = uploadJson as {
+                                        data?: { url?: string; path?: string };
+                                      };
+                                      const path =
+                                        urlData?.data?.path ?? urlData?.data?.url ?? null;
+                                      if (uploadRes.ok && path) {
+                                        setPagoReceiptPath(path);
+                                      } else {
+                                        showToast({
+                                          type: 'error',
+                                          message: 'No se pudo subir el comprobante',
+                                        });
+                                      }
+                                    } catch {
                                       showToast({
                                         type: 'error',
-                                        message: 'No se pudo subir el comprobante',
+                                        message: 'Error al subir el comprobante',
                                       });
+                                    } finally {
+                                      setPagoReceiptUploading(false);
+                                      // Reset input so the same file can be re-selected
+                                      e.target.value = '';
                                     }
-                                  } catch {
-                                    showToast({
-                                      type: 'error',
-                                      message: 'Error al subir el comprobante',
-                                    });
-                                  } finally {
-                                    setPagoReceiptUploading(false);
-                                    // Reset input so the same file can be re-selected
-                                    e.target.value = '';
-                                  }
-                                }}
-                              />
-                            </label>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* === Estado del pago (marcar pagado) — ÚLTIMO: exige método elegido === */}
-                      <div>
-                        <label className="block text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
-                          Estado del pago
-                        </label>
-                        <div className="relative">
-                          <select
-                            value={normalizePaymentStatus(report.payment_status)}
-                            disabled={pagoSaving}
-                            onChange={(e) => {
-                              const next = e.target.value as 'pending' | 'approved';
-                              if (next === normalizePaymentStatus(report.payment_status)) return;
-                              // Candado: sin método de pago → abre el modal para capturarlo
-                              // en vez de bloquear con un toast de error.
-                              if (next === 'approved' && !pagoMethod.trim()) {
-                                setPendingApprovalAfterMethod(true);
-                                setShowPaymentMethodModal(true);
-                                return;
-                              }
-                              updatePagoStatus(selected.id, next, selected.appointment_id);
-                            }}
-                            className={`w-full text-xs font-semibold border-2 rounded-lg py-2 pl-3 pr-9 outline-none focus:ring-2 focus:ring-teal-500/20 transition-all appearance-none bg-white ${
-                              pagoSaving
-                                ? 'border-slate-200 text-slate-400 cursor-wait'
-                                : 'border-slate-200 text-slate-700 hover:border-teal-300 cursor-pointer'
-                            }`}
-                          >
-                            {(['pending', 'approved'] as const).map((key) => (
-                              <option key={key} value={key}>
-                                {PAYMENT_STATUS[key].label}
-                              </option>
-                            ))}
-                          </select>
-                          <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
-                            {pagoSaving ? (
-                              <Loader2 className="w-3.5 h-3.5 animate-spin text-teal-500" />
-                            ) : (
-                              <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+                                  }}
+                                />
+                              </label>
                             )}
                           </div>
                         </div>
-                        {pagoSaving && (
-                          <p className="text-[10px] text-teal-600 mt-1 flex items-center gap-1">
-                            <Loader2 className="w-2.5 h-2.5 animate-spin" /> Guardando…
+                      )}
+
+                      {/* === Estado del pago (marcar pagado) — ÚLTIMO: exige método elegido ===
+                          Oculto en una sesión cubierta: su estado lo manda el pago del
+                          paquete, no esta consulta. Dejarlo editable permitía marcar
+                          "pendiente" una consulta que en realidad está pagada. */}
+                      {!coverage && (
+                        <div>
+                          <label className="block text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
+                            Estado del pago
+                          </label>
+                          <div className="relative">
+                            <select
+                              value={normalizePaymentStatus(report.payment_status)}
+                              disabled={pagoSaving}
+                              onChange={(e) => {
+                                const next = e.target.value as 'pending' | 'approved';
+                                if (next === normalizePaymentStatus(report.payment_status)) return;
+                                // Candado: sin método de pago → abre el modal para capturarlo
+                                // en vez de bloquear con un toast de error.
+                                if (next === 'approved' && !pagoMethod.trim()) {
+                                  setPendingApprovalAfterMethod(true);
+                                  setShowPaymentMethodModal(true);
+                                  return;
+                                }
+                                updatePagoStatus(selected.id, next, selected.appointment_id);
+                              }}
+                              className={`w-full text-xs font-semibold border-2 rounded-lg py-2 pl-3 pr-9 outline-none focus:ring-2 focus:ring-teal-500/20 transition-all appearance-none bg-white ${
+                                pagoSaving
+                                  ? 'border-slate-200 text-slate-400 cursor-wait'
+                                  : 'border-slate-200 text-slate-700 hover:border-teal-300 cursor-pointer'
+                              }`}
+                            >
+                              {(['pending', 'approved'] as const).map((key) => (
+                                <option key={key} value={key}>
+                                  {PAYMENT_STATUS[key].label}
+                                </option>
+                              ))}
+                            </select>
+                            <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
+                              {pagoSaving ? (
+                                <Loader2 className="w-3.5 h-3.5 animate-spin text-teal-500" />
+                              ) : (
+                                <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+                              )}
+                            </div>
+                          </div>
+                          {pagoSaving && (
+                            <p className="text-[10px] text-teal-600 mt-1 flex items-center gap-1">
+                              <Loader2 className="w-2.5 h-2.5 animate-spin" /> Guardando…
+                            </p>
+                          )}
+                        </div>
+                      )}
+
+                      {/*
+                        Extras de una sesión cubierta.
+
+                        El paquete quedó cerrado en su monto: lo que se agregue en esta
+                        sesión (productos, costos adicionales) se cobra APARTE y solo por
+                        los extras. Por eso no se suma al importe del paquete ni lo repite.
+                      */}
+                      {coverage && selected.extra_items && selected.extra_items.length > 0 && (
+                        <div className="rounded-xl bg-emerald-50 border border-emerald-200 px-3 py-2.5 space-y-1">
+                          <p className="text-[10px] font-semibold text-emerald-700 uppercase tracking-wider">
+                            A cobrar aparte en esta consulta
                           </p>
-                        )}
-                      </div>
+                          <p className="text-sm font-extrabold text-emerald-700">
+                            {format(
+                              selected.extra_items.reduce(
+                                (sum, ei) => sum + Number(ei.amount_usd),
+                                0,
+                              ),
+                            )}
+                          </p>
+                          <div className="pt-1 space-y-0.5">
+                            {selected.extra_items.map((ei, idx) => (
+                              <div
+                                key={ei.id ?? idx}
+                                className="flex justify-between text-[10px] text-emerald-600"
+                              >
+                                <span className="truncate mr-2">{ei.description}</span>
+                                <span className="shrink-0">{format(Number(ei.amount_usd))}</span>
+                              </div>
+                            ))}
+                          </div>
+                          <p className="text-[10px] text-emerald-600 leading-snug">
+                            No incluye el paquete, que ya está pagado.
+                          </p>
+                        </div>
+                      )}
 
                       {/*
                         Total cobrado.
@@ -5463,53 +5613,60 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                         guardan en 0 (el paquete se cobra entero en la primera), así
                         que esperar a "aprobado" las dejaba sin ningún importe a la
                         vista, como si hubieran sido gratis.
+
+                        No se muestra en una sesión cubierta: ahí el importe del paquete
+                        ya lo dice el recuadro de cobertura, y repetirlo en cada sesión
+                        hace que un paquete de $120 se lea como $480.
                       */}
-                      {((selected.payment_status === 'approved' && selected.amount != null) ||
-                        packageAmount(selected) != null) && (
-                        <div className="rounded-xl bg-emerald-50 border border-emerald-200 px-3 py-2.5 space-y-1">
-                          <p className="text-[10px] font-semibold text-emerald-700 uppercase tracking-wider">
-                            Total cobrado
-                          </p>
-                          {/*
+                      {!coverage &&
+                        ((selected.payment_status === 'approved' && selected.amount != null) ||
+                          packageAmount(selected) != null) && (
+                          <div className="rounded-xl bg-emerald-50 border border-emerald-200 px-3 py-2.5 space-y-1">
+                            <p className="text-[10px] font-semibold text-emerald-700 uppercase tracking-wider">
+                              Total cobrado
+                            </p>
+                            {/*
                             En un paquete se muestra el importe del PAQUETE COMPLETO, el
                             mismo en las N sesiones: 3 consultas por $120 muestran $120 en
                             las tres. No se divide ni se multiplica.
                           */}
-                          <p className="text-sm font-extrabold text-emerald-700">
-                            {format(Number(packageAmount(selected) ?? selected.amount))}
-                          </p>
-                          {isPackageSession(selected) && (
-                            <p className="text-[10px] text-emerald-600 leading-snug">
-                              Pago de paquete — {sessionLabel(selected)?.toLowerCase()}. Este monto
-                              cubre las {selected.package_total_sessions} consultas y se cobra una
-                              sola vez.
+                            <p className="text-sm font-extrabold text-emerald-700">
+                              {format(Number(packageAmount(selected) ?? selected.amount))}
                             </p>
-                          )}
-                          {selected.extra_items && selected.extra_items.length > 0 && (
-                            <div className="pt-1 space-y-0.5">
-                              {selected.base_amount != null && (
-                                <div className="flex justify-between text-[10px] text-emerald-600">
-                                  <span>
-                                    {isPackageSession(selected)
-                                      ? `Paquete (${selected.package_total_sessions} consultas)`
-                                      : 'Consulta base'}
-                                  </span>
-                                  <span>{format(Number(selected.base_amount))}</span>
-                                </div>
-                              )}
-                              {selected.extra_items.map((ei, idx) => (
-                                <div
-                                  key={ei.id ?? idx}
-                                  className="flex justify-between text-[10px] text-emerald-600"
-                                >
-                                  <span className="truncate mr-2">{ei.description}</span>
-                                  <span className="shrink-0">{format(Number(ei.amount_usd))}</span>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      )}
+                            {isPackageSession(selected) && (
+                              <p className="text-[10px] text-emerald-600 leading-snug">
+                                Pago de paquete — {sessionLabel(selected)?.toLowerCase()}. Este
+                                monto cubre las {selected.package_total_sessions} consultas y se
+                                cobra una sola vez.
+                              </p>
+                            )}
+                            {selected.extra_items && selected.extra_items.length > 0 && (
+                              <div className="pt-1 space-y-0.5">
+                                {selected.base_amount != null && (
+                                  <div className="flex justify-between text-[10px] text-emerald-600">
+                                    <span>
+                                      {isPackageSession(selected)
+                                        ? `Paquete (${selected.package_total_sessions} consultas)`
+                                        : 'Consulta base'}
+                                    </span>
+                                    <span>{format(Number(selected.base_amount))}</span>
+                                  </div>
+                                )}
+                                {selected.extra_items.map((ei, idx) => (
+                                  <div
+                                    key={ei.id ?? idx}
+                                    className="flex justify-between text-[10px] text-emerald-600"
+                                  >
+                                    <span className="truncate mr-2">{ei.description}</span>
+                                    <span className="shrink-0">
+                                      {format(Number(ei.amount_usd))}
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
 
                       {/* Ingreso adicional — visible solo cuando el pago está aprobado */}
                       {selected.payment_status === 'approved' && (
@@ -5525,151 +5682,156 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                         </button>
                       )}
 
-                      {/* Botón Guardar pago — write final (persiste método/referencia/comprobante y aprueba) */}
-                      <button
-                        type="button"
-                        disabled={pagoDetailsSaving || pagoReceiptUploading}
-                        onClick={async () => {
-                          // "Guardar pago" es el ÚNICO punto que escribe a BD. Si el
-                          // estado del pago es "Aprobado", aquí se aprueba de verdad
-                          // (status + extras + método) y el método ES OBLIGATORIO.
-                          const isApproving =
-                            normalizePaymentStatus(report.payment_status) === 'approved';
-                          if (isApproving && !pagoMethod.trim()) {
-                            // Abrir modal de método de pago en lugar de bloquear con toast.
-                            // El doctor SÍ está aprobando → tras registrar el método, marcar pagado.
-                            setPendingApprovalAfterMethod(true);
-                            setShowPaymentMethodModal(true);
-                            return;
-                          }
-                          setPagoDetailsSaving(true);
-                          // Lo llena la aprobación, que es la que fija el total final.
-                          let montoAprobado: number | null = null;
-                          try {
-                            // 1. Guardar detalles (método/referencia/comprobante).
-                            const montoEditado =
-                              pagoAmount.trim() !== '' && !isNaN(Number(pagoAmount))
-                                ? Number(pagoAmount)
-                                : undefined;
-                            const result = await updateConsultationPaymentDetails(selected.id, {
-                              payment_method: pagoMethod || null,
-                              payment_reference: pagoReference || null,
-                              payment_receipt_url: pagoReceiptPath,
-                              // Solo viaja si el especialista escribió un monto:
-                              // sin esto se pisaría el guardado con un vacío.
-                              ...(montoEditado !== undefined ? { amount: montoEditado } : {}),
-                            });
-                            if (!result.success) {
-                              showToast({
-                                type: 'error',
-                                message: result.error ?? 'Error al guardar el pago',
-                              });
+                      {/* Botón Guardar pago — write final (persiste método/referencia/comprobante y aprueba)
+                          No se ofrece en una sesión cubierta: dispararía approve-payment sobre
+                          una consulta que ya está pagada por el paquete, recalculando su total
+                          y duplicando el cobro que se quiso evitar. */}
+                      {!coverage && (
+                        <button
+                          type="button"
+                          disabled={pagoDetailsSaving || pagoReceiptUploading}
+                          onClick={async () => {
+                            // "Guardar pago" es el ÚNICO punto que escribe a BD. Si el
+                            // estado del pago es "Aprobado", aquí se aprueba de verdad
+                            // (status + extras + método) y el método ES OBLIGATORIO.
+                            const isApproving =
+                              normalizePaymentStatus(report.payment_status) === 'approved';
+                            if (isApproving && !pagoMethod.trim()) {
+                              // Abrir modal de método de pago en lugar de bloquear con toast.
+                              // El doctor SÍ está aprobando → tras registrar el método, marcar pagado.
+                              setPendingApprovalAfterMethod(true);
+                              setShowPaymentMethodModal(true);
                               return;
                             }
-                            // 2. Si el estado es "Aprobado", persistir la aprobación
-                            //    (status + extras confirmados + método) en la BD.
-                            if (isApproving) {
-                              // ⚠️ approve-payment es REEMPLAZAR TODO (ADR-054): el backend
-                              // revierte el stock de la aprobación anterior y vuelve a
-                              // aplicar lo que llegue AHORA. Por eso hay que reenviar los
-                              // productos: acá se mandaban solo description/amount_usd y se
-                              // perdían product_id y quantity, así que al reguardar un cobro
-                              // ya aprobado el producto VOLVÍA al stock, el movimiento de
-                              // venta desaparecía y al paciente se le seguía cobrando. El
-                              // inventario quedaba inflado y no había ningún síntoma.
-                              const items = selected.extra_items || [];
-
-                              // Los que NO son productos viajan como extras de texto.
-                              const extras = items
-                                .filter((e) => !e.product_id)
-                                .map((e) => ({
-                                  description: e.description,
-                                  amount_usd: e.amount_usd,
-                                }));
-
-                              // Los productos viajan aparte: el backend resuelve el precio
-                              // y descuenta el stock. Mandar unit_price_usd haría fallar la
-                              // petición — el esquema es .strict().
-                              const productExtras = items
-                                .filter((e) => e.product_id)
-                                .map((e) => ({
-                                  product_id: e.product_id as string,
-                                  quantity: Number(e.quantity ?? 1),
-                                }));
-
-                              const res = await fetch(
-                                `/api/doctor/consultations/${selected.id}/approve-payment`,
-                                {
-                                  method: 'PATCH',
-                                  headers: { 'Content-Type': 'application/json' },
-                                  body: JSON.stringify({
-                                    extras,
-                                    product_extras: productExtras,
-                                    method: pagoMethod,
-                                  }),
-                                },
-                              );
-                              const json = (await res.json()) as {
-                                success?: boolean;
-                                error?: string;
-                                data?: { amount?: number | null };
-                              };
-                              if (!res.ok || !json.success) {
+                            setPagoDetailsSaving(true);
+                            // Lo llena la aprobación, que es la que fija el total final.
+                            let montoAprobado: number | null = null;
+                            try {
+                              // 1. Guardar detalles (método/referencia/comprobante).
+                              const montoEditado =
+                                pagoAmount.trim() !== '' && !isNaN(Number(pagoAmount))
+                                  ? Number(pagoAmount)
+                                  : undefined;
+                              const result = await updateConsultationPaymentDetails(selected.id, {
+                                payment_method: pagoMethod || null,
+                                payment_reference: pagoReference || null,
+                                payment_receipt_url: pagoReceiptPath,
+                                // Solo viaja si el especialista escribió un monto:
+                                // sin esto se pisaría el guardado con un vacío.
+                                ...(montoEditado !== undefined ? { amount: montoEditado } : {}),
+                              });
+                              if (!result.success) {
                                 showToast({
                                   type: 'error',
-                                  message: json.error ?? 'No se pudo aprobar el cobro',
+                                  message: result.error ?? 'Error al guardar el pago',
                                 });
                                 return;
                               }
-                              // El total definitivo lo fija la aprobación (base + extras),
-                              // así que pisa al que devolvió el guardado de detalles.
-                              if (json.data?.amount != null) montoAprobado = json.data.amount;
+                              // 2. Si el estado es "Aprobado", persistir la aprobación
+                              //    (status + extras confirmados + método) en la BD.
+                              if (isApproving) {
+                                // ⚠️ approve-payment es REEMPLAZAR TODO (ADR-054): el backend
+                                // revierte el stock de la aprobación anterior y vuelve a
+                                // aplicar lo que llegue AHORA. Por eso hay que reenviar los
+                                // productos: acá se mandaban solo description/amount_usd y se
+                                // perdían product_id y quantity, así que al reguardar un cobro
+                                // ya aprobado el producto VOLVÍA al stock, el movimiento de
+                                // venta desaparecía y al paciente se le seguía cobrando. El
+                                // inventario quedaba inflado y no había ningún síntoma.
+                                const items = selected.extra_items || [];
+
+                                // Los que NO son productos viajan como extras de texto.
+                                const extras = items
+                                  .filter((e) => !e.product_id)
+                                  .map((e) => ({
+                                    description: e.description,
+                                    amount_usd: e.amount_usd,
+                                  }));
+
+                                // Los productos viajan aparte: el backend resuelve el precio
+                                // y descuenta el stock. Mandar unit_price_usd haría fallar la
+                                // petición — el esquema es .strict().
+                                const productExtras = items
+                                  .filter((e) => e.product_id)
+                                  .map((e) => ({
+                                    product_id: e.product_id as string,
+                                    quantity: Number(e.quantity ?? 1),
+                                  }));
+
+                                const res = await fetch(
+                                  `/api/doctor/consultations/${selected.id}/approve-payment`,
+                                  {
+                                    method: 'PATCH',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({
+                                      extras,
+                                      product_extras: productExtras,
+                                      method: pagoMethod,
+                                    }),
+                                  },
+                                );
+                                const json = (await res.json()) as {
+                                  success?: boolean;
+                                  error?: string;
+                                  data?: { amount?: number | null };
+                                };
+                                if (!res.ok || !json.success) {
+                                  showToast({
+                                    type: 'error',
+                                    message: json.error ?? 'No se pudo aprobar el cobro',
+                                  });
+                                  return;
+                                }
+                                // El total definitivo lo fija la aprobación (base + extras),
+                                // así que pisa al que devolvió el guardado de detalles.
+                                if (json.data?.amount != null) montoAprobado = json.data.amount;
+                              }
+                              // Actualizar estado local de forma inmutable.
+                              //
+                              // El MONTO tiene que viajar acá. Antes solo se refrescaban
+                              // método, referencia y comprobante: el importe se guardaba
+                              // bien en la BD pero `selected.amount` conservaba el viejo,
+                              // así que el especialista corregía 45 → 120, guardaba, y
+                              // "Total cobrado" seguía diciendo $45 hasta recargar. Parecía
+                              // que el cambio no se había guardado.
+                              //
+                              // Se toma el importe que devuelve el backend, no el tecleado:
+                              // al aprobar, el total se recalcula como base + extras, y
+                              // puede no coincidir con lo que se escribió en el campo.
+                              const montoPersistido = montoAprobado ?? result.consultation?.amount;
+                              const updated = {
+                                payment_method: pagoMethod || null,
+                                payment_reference: pagoReference || null,
+                                payment_receipt_url: pagoReceiptPath,
+                                ...(montoPersistido != null ? { amount: montoPersistido } : {}),
+                              };
+                              setSelected((prev) => (prev ? { ...prev, ...updated } : prev));
+                              setConsultations((prev) =>
+                                prev.map((x) => (x.id === selected.id ? { ...x, ...updated } : x)),
+                              );
+                              showToast({
+                                type: 'success',
+                                message: isApproving
+                                  ? 'Cobro aprobado y guardado'
+                                  : 'Pago actualizado',
+                              });
+                            } finally {
+                              setPagoDetailsSaving(false);
                             }
-                            // Actualizar estado local de forma inmutable.
-                            //
-                            // El MONTO tiene que viajar acá. Antes solo se refrescaban
-                            // método, referencia y comprobante: el importe se guardaba
-                            // bien en la BD pero `selected.amount` conservaba el viejo,
-                            // así que el especialista corregía 45 → 120, guardaba, y
-                            // "Total cobrado" seguía diciendo $45 hasta recargar. Parecía
-                            // que el cambio no se había guardado.
-                            //
-                            // Se toma el importe que devuelve el backend, no el tecleado:
-                            // al aprobar, el total se recalcula como base + extras, y
-                            // puede no coincidir con lo que se escribió en el campo.
-                            const montoPersistido = montoAprobado ?? result.consultation?.amount;
-                            const updated = {
-                              payment_method: pagoMethod || null,
-                              payment_reference: pagoReference || null,
-                              payment_receipt_url: pagoReceiptPath,
-                              ...(montoPersistido != null ? { amount: montoPersistido } : {}),
-                            };
-                            setSelected((prev) => (prev ? { ...prev, ...updated } : prev));
-                            setConsultations((prev) =>
-                              prev.map((x) => (x.id === selected.id ? { ...x, ...updated } : x)),
-                            );
-                            showToast({
-                              type: 'success',
-                              message: isApproving
-                                ? 'Cobro aprobado y guardado'
-                                : 'Pago actualizado',
-                            });
-                          } finally {
-                            setPagoDetailsSaving(false);
-                          }
-                        }}
-                        className="w-full flex items-center justify-center gap-1.5 bg-teal-500 hover:bg-teal-600 disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-wait text-white text-xs font-semibold rounded-lg py-2 transition-colors"
-                      >
-                        {pagoDetailsSaving ? (
-                          <>
-                            <Loader2 className="w-3 h-3 animate-spin" /> Guardando…
-                          </>
-                        ) : (
-                          <>
-                            <Save className="w-3 h-3" /> Guardar pago
-                          </>
-                        )}
-                      </button>
+                          }}
+                          className="w-full flex items-center justify-center gap-1.5 bg-teal-500 hover:bg-teal-600 disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-wait text-white text-xs font-semibold rounded-lg py-2 transition-colors"
+                        >
+                          {pagoDetailsSaving ? (
+                            <>
+                              <Loader2 className="w-3 h-3 animate-spin" /> Guardando…
+                            </>
+                          ) : (
+                            <>
+                              <Save className="w-3 h-3" /> Guardar pago
+                            </>
+                          )}
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>
@@ -5677,6 +5839,32 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
             </div>
           )}
         </div>
+
+        {/* Modal: cambiar el servicio contratado (corrige el error de la reserva) */}
+        {showChangeServiceModal && selected?.appointment_id && (
+          <ChangeServiceModal
+            open={showChangeServiceModal}
+            currentPlanName={selected.plan_name ?? null}
+            /* El monto del PAQUETE, no el de esta sesión: las sesiones 2..N valen 0
+               y contrastar "0 → 160" no le diría nada al especialista. */
+            currentPriceUsd={
+              coverage?.amount_usd ?? packageAmount(selected) ?? selected.amount ?? null
+            }
+            currentSessions={selected.package_total_sessions ?? 1}
+            isPackage={isPackageSession(selected)}
+            services={pricingPlans}
+            formatAmount={format}
+            onClose={() => setShowChangeServiceModal(false)}
+            onConfirm={async (planId) => {
+              const result = await changeAppointmentService(selected.appointment_id!, planId);
+              if (result.success) {
+                await refreshSelectedConsultation(selected.id);
+                showToast({ type: 'success', message: 'Servicio corregido' });
+              }
+              return result;
+            }}
+          />
+        )}
 
         {/* Modal: Ingreso adicional (consulta ya pagada) */}
         {showExtraIncomeModal && selected && (

@@ -1251,3 +1251,77 @@ un mensaje genérico**: el error crudo puede traer direcciones internas de red.
 esquema es `.strict()`, así que mandar un `unit_price_usd` hace fallar la petición con 422.
 Y `extra_items` de la respuesta de consulta ahora incluye `product_id`, `quantity` y
 `unit_price_usd` (ver ADR-054: sin ellos la UI pierde el producto y el stock se infla al reaprobar).
+
+## Cambios de contrato del lote de paquete pagado (2026-09-10)
+
+### `GET /api/consultations/:id` — `covered_by` y `plan_name`
+
+Dos campos nuevos de solo lectura en la respuesta de consulta:
+
+| Campo        | Dónde aparece                    | Qué trae                                                        |
+| ------------ | -------------------------------- | --------------------------------------------------------------- |
+| `plan_name`  | detalle **y** listado            | `appointments.plan_name` — el servicio que contrató el paciente |
+| `covered_by` | **solo el detalle** (`findById`) | el pago del paquete que ya cubre esta sesión, o `null`          |
+
+`covered_by` es no-null **solo para las sesiones 2..N** de un paquete: exige
+`appointments.session_number IS NOT NULL` **y** `appointments.payment_id IS NOT NULL`. La sesión 1
+es la que **hizo** el pago, no la que lo recibe, así que va en `null`. Forma del objeto (snake_case,
+como el resto del envelope): `payment_id`, `plan_name`, `session_number`, `total_sessions`,
+`amount_usd`, `amount_bs`, `paid_at`, `method`, `reference`.
+
+⚠️ `amount_usd` es el importe del **paquete completo**, no el de esta consulta — esta no cobra nada.
+La UI lo muestra **una sola vez**, en el recuadro de cobertura: repetirlo en las 4 sesiones se lee
+como 4 × el precio.
+
+En el listado y en `approve-payment` llega `null` a propósito: son las únicas dos consultas que no
+hacen JOIN con `payments`. Por eso los campos `appt_payment_id` / `covered_*` de la fila SQL son
+opcionales en el tipo — declararlos obligatorios era un tipo que miente.
+
+### Sesiones de paquete: la consulta nace pagada
+
+Las consultas 2..N ya no nacen en `pending`: heredan el estado del pago padre
+(`initialPaymentStatus`) con `amount = 0`. Vale para los **tres** caminos que agendan una sesión —
+`schedule-pending-consultation` (especialista), `…-by-token` (paciente desde el correo, que delega
+en el anterior) y `create-immediate-appointment` (que además **reusa** el pago existente vía
+`existingPaymentId` en vez de crear un pago fantasma de $0).
+
+### `PATCH /api/appointments/:id/service` — corregir el servicio contratado
+
+Nuevo (2026-09-10). Cuerpo: `{ plan_id }` — **solo eso**: la cita sale de la URL y el especialista
+de la sesión, para que ninguno de los dos se pueda falsear desde el cuerpo. Esquema `.strict()`.
+
+Respuesta: `{ appointments_updated, pending_consultations_updated, payment_adjusted, plan_name,
+plan_price_usd, unchanged }` dentro del envelope `{success, data}`.
+
+**Reglas:**
+
+- Solo entre servicios **equivalentes** — mismo `sessions_count`. Distinto tamaño →
+  `SERVICE_CHANGE_NOT_EQUIVALENT` (422).
+- Servicio inexistente, de otro especialista o desactivado → `SERVICE_NOT_AVAILABLE` (422), **el
+  mismo error en los tres casos**: distinguirlos le confirma a quien prueba IDs ajenos cuáles existen.
+- Cita inexistente o ajena → `APPOINTMENT_NOT_FOUND`.
+- Elegir el servicio que ya tenía devuelve `unchanged: true` sin escribir nada (idempotente).
+- Se permite **aunque la consulta ya esté atendida**: el error se descubre casi siempre después.
+
+**Alcance del cambio (una transacción, cinco tablas):** citas del paquete entero (las que comparten
+`payment_id`), `pending_consultations` por agendar, monto del pago, monto de la consulta pagadora y
+asiento en `appointment_changes_log`. `plan_price` se reescribe **solo donde ya había precio**: las
+sesiones 2..N valen 0 y siguen valiendo 0.
+
+⚠️ El pago **sigue aprobado** — solo se le ajusta el importe (a diferencia de la multa por
+inasistencia del ADR-031, que lo devuelve a `pending`). Los bolívares se recalculan con la tasa
+**congelada del propio pago**, no con la de hoy.
+
+### `appointments.plan_id` y `appointment_changes_log` ampliado
+
+Migración `20260910000001`. `appointments` gana `plan_id` (FK → `pricing_plans`, ON DELETE SET NULL):
+hasta hoy el vínculo cita↔servicio era **por nombre** (`AND pp.name = a.plan_name`, tres veces en el
+repositorio de consultas) y dos servicios homónimos devolvían el equivocado. El snapshot
+`plan_name`/`plan_price` no se toca: sigue siendo lo que se cobró.
+
+El backfill solo rellena los nombres **inequívocos** (`HAVING COUNT(*) = 1`). Con homónimos queda
+NULL a propósito, y el caso de uso tampoco adivina: sin plan resoluble asume 1 sesión.
+
+`appointment_changes_log` gana `change_type` ('status' | 'service'), `old_value` y `new_value`, y
+`new_status` pasa a aceptar NULL — en un cambio de servicio el estado no se mueve, lo que se mueve
+es el dinero.
