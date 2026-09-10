@@ -161,6 +161,53 @@ describe('toConsultationResponse — enrichment fields', () => {
   });
 });
 
+describe('toConsultationResponse — covered_by (sesiones de un paquete)', () => {
+  const coverage = {
+    paymentId: 'pppppppp-0000-0000-0000-000000000001',
+    status: 'approved' as const,
+    planName: 'Paquete 4 consultas',
+    sessionNumber: 2,
+    totalSessions: 4,
+    amountUsd: 120,
+    amountBs: 4800,
+    paidAt: new Date('2026-09-03T15:00:00Z'),
+    method: 'pago_movil',
+    reference: '0012',
+  };
+
+  it('viaja en snake_case, como el resto del envelope', () => {
+    const result = toConsultationResponse(makeConsultation({ coveredBy: coverage }));
+    expect(result.covered_by).toEqual({
+      payment_id: coverage.paymentId,
+      status: 'approved',
+      plan_name: 'Paquete 4 consultas',
+      session_number: 2,
+      total_sessions: 4,
+      amount_usd: 120,
+      amount_bs: 4800,
+      paid_at: '2026-09-03T15:00:00.000Z',
+      method: 'pago_movil',
+      reference: '0012',
+    });
+  });
+
+  it('expone status=pending cuando el paquete AÚN NO se cobró', () => {
+    // La pantalla lo usa para no afirmar "paquete ya pagado": un paquete
+    // reservado por pago móvil sigue pendiente hasta que el especialista lo
+    // aprueba, y sus sesiones 2..N ya existen.
+    const result = toConsultationResponse(
+      makeConsultation({ coveredBy: { ...coverage, status: 'pending', paidAt: null } }),
+    );
+    expect((result.covered_by as Record<string, unknown>).status).toBe('pending');
+    expect((result.covered_by as Record<string, unknown>).paid_at).toBeNull();
+  });
+
+  it('es null en una consulta suelta o en la sesión que paga', () => {
+    const result = toConsultationResponse(makeConsultation());
+    expect(result.covered_by).toBeNull();
+  });
+});
+
 describe('toConsultationResponse — base_amount and extra_items', () => {
   it('exposes base_amount when set (post first approval)', () => {
     const consultation = makeConsultation({ amount: 50, baseAmount: 30 });

@@ -80,6 +80,10 @@ export function toConsultationResponse(consultation: Consultation): Record<strin
     covered_by: consultation.coveredBy
       ? {
           payment_id: consultation.coveredBy.paymentId,
+          /* Estado del pago del PAQUETE. La pantalla no puede afirmar "ya pagado"
+             sin esto: un paquete cobrado por pago móvil sigue pendiente hasta que
+             el especialista lo aprueba, y sus sesiones ya existen. */
+          status: consultation.coveredBy.status,
           plan_name: consultation.coveredBy.planName,
           session_number: consultation.coveredBy.sessionNumber,
           total_sessions: consultation.coveredBy.totalSessions,
