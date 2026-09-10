@@ -81,6 +81,7 @@ describe('SchedulePendingConsultationUseCase', () => {
       findFirstCompletedByPaymentId: jest.fn().mockResolvedValue(null),
       findUpcomingWithoutCalendarEvent: jest.fn().mockResolvedValue([]),
       findByIdScopedEnriched: jest.fn().mockResolvedValue(null),
+      changeService: jest.fn().mockResolvedValue(null),
     };
 
     mockPaymentRepo = {

@@ -7,6 +7,7 @@ import {
   HttpStatus,
   Param,
   ParseUUIDPipe,
+  Patch,
   Post,
   Put,
   Query,
@@ -22,6 +23,8 @@ import {
   CreateAppointmentDtoSchema,
   UpdateAppointmentStatusBodyDtoSchema,
   RescheduleAppointmentDtoSchema,
+  ChangeAppointmentServiceDtoSchema,
+  type ChangeAppointmentServiceDto,
   type CreateAppointmentDto,
   type UpdateAppointmentStatusBodyDto,
   type UpdateAppointmentStatusDto,
@@ -34,6 +37,10 @@ import { GetDoctorAgendaUseCase } from '../../application/use-cases/appointments
 import { GetAppointmentByIdUseCase } from '../../application/use-cases/appointments/get-appointment-by-id.use-case';
 import { RescheduleAppointmentUseCase } from '../../application/use-cases/appointments/reschedule-appointment.use-case';
 import { DeleteAppointmentUseCase } from '../../application/use-cases/appointments/delete-appointment.use-case';
+import {
+  ChangeAppointmentServiceUseCase,
+  type ChangeAppointmentServiceOutput,
+} from '../../application/use-cases/appointments/change-appointment-service.use-case';
 import {
   SyncDoctorCalendarUseCase,
   type SyncDoctorCalendarResult,
@@ -69,6 +76,7 @@ export class AppointmentsController {
     private readonly reschedule: RescheduleAppointmentUseCase,
     private readonly deleteAppointment: DeleteAppointmentUseCase,
     private readonly syncDoctorCalendar: SyncDoctorCalendarUseCase,
+    private readonly changeService: ChangeAppointmentServiceUseCase,
   ) {}
 
   /** GET /api/appointments — paginated list with PII masking applied by the mapper. */
@@ -182,6 +190,35 @@ export class AppointmentsController {
     };
     const appointment = await this.updateStatus.execute(dto);
     return { success: true, data: appointment };
+  }
+
+  /**
+   * PATCH /api/appointments/:id/service — corrige el servicio contratado.
+   *
+   * Existe porque el paciente se equivoca al elegir el paquete en la reserva
+   * pública y hasta hoy la única salida era rehacer la cita.
+   *
+   * Solo se acepta un servicio EQUIVALENTE (mismo número de consultas). El cambio
+   * arrastra al paquete entero, le ajusta el monto al pago —que sigue aprobado— y
+   * deja asiento en appointment_changes_log.
+   *
+   * SECURITY: la cita sale de la URL y el doctor de la sesión (anti-IDOR); el
+   * cuerpo solo puede elegir el servicio nuevo.
+   */
+  @Patch(':id/service')
+  async changeAppointmentService(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(ChangeAppointmentServiceDtoSchema))
+    body: ChangeAppointmentServiceDto,
+    @CurrentUser() user: CurrentUserPayload,
+  ): Promise<SuccessResponse<ChangeAppointmentServiceOutput>> {
+    const data = await this.changeService.execute({
+      appointmentId: id,
+      doctorId: user.sub,
+      actorId: user.sub,
+      newPlanId: body.plan_id,
+    });
+    return { success: true, data };
   }
 
   /**

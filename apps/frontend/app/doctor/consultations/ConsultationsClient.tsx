@@ -87,6 +87,7 @@ import {
   updateConsultationPaymentDetails,
   getQuickItems,
   updateAppointmentStatus,
+  changeAppointmentService,
 } from './actions';
 import type { ConsultationCoverage } from './actions';
 // El consumo del combo vive en las acciones de pacientes: es el mismo endpoint
@@ -119,6 +120,7 @@ import { showToast } from '@/components/ui/Toaster';
 import ShareDocumentsModal from './ShareDocumentsModal';
 import ApprovePaymentModal, { type ExistingExtraItem } from './ApprovePaymentModal';
 import PaymentMethodModal from './PaymentMethodModal';
+import ChangeServiceModal from './ChangeServiceModal';
 import IncomeModal, { type IncomeForm } from '@/components/finances/IncomeModal';
 import {
   getIncomeConcepts,
@@ -717,6 +719,8 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
   const [showApprovePaymentModal, setShowApprovePaymentModal] = useState(false);
   // Modal de método de pago — se abre cuando el doctor intenta aprobar sin método seleccionado
   const [showPaymentMethodModal, setShowPaymentMethodModal] = useState(false);
+  /** Modal para corregir el servicio que el paciente eligió mal al reservar. */
+  const [showChangeServiceModal, setShowChangeServiceModal] = useState(false);
   // Callback pendiente tras seleccionar el método en el modal (aprobación o marcar pagado)
   const [pendingApprovalAfterMethod, setPendingApprovalAfterMethod] = useState(false);
   // Modal de confirmación al salir de una consulta no atendida
@@ -740,7 +744,15 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
   // "Historia clínica" en generar/compartir (evita PDF vacío / 422 sin EHR).
   const [patientEhrCount, setPatientEhrCount] = useState(0);
   const [pricingPlans, setPricingPlans] = useState<
-    { id: string; name: string; price_usd: number; duration_minutes: number }[]
+    {
+      id: string;
+      name: string;
+      price_usd: number;
+      duration_minutes: number;
+      /** Consultas que incluye. Lo usa "Cambiar servicio": solo se ofrece lo equivalente. */
+      sessions_count: number;
+      is_active: boolean;
+    }[]
   >([]);
   // Helper to get local datetime string for datetime-local input
   const getLocalDateTimeString = () => {
@@ -1196,6 +1208,8 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
               name: s.name,
               price_usd: s.price_usd ?? 0,
               duration_minutes: s.duration_minutes ?? 30,
+              sessions_count: s.sessions_count ?? 1,
+              is_active: s.is_active,
             })),
           );
         });
@@ -1469,6 +1483,32 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
     } finally {
       setCancellingAppt(false);
     }
+  }
+
+  /**
+   * Vuelve a leer del backend lo que cambia al corregir el servicio: nombre del
+   * plan, montos y cobertura del paquete.
+   *
+   * No reabre la consulta entera a propósito: eso pisaría el informe que el
+   * especialista pueda tener a medio escribir. Solo se refrescan los campos del
+   * panel de pago, que son los que el cambio de servicio mueve.
+   */
+  async function refreshSelectedConsultation(consultationId: string) {
+    const fresh = await getConsultation(consultationId);
+    if (!fresh) return;
+    const patch: Partial<Consultation> = {
+      plan_name: fresh.plan_name ?? null,
+      amount: fresh.amount ?? null,
+      base_amount: (fresh as Record<string, unknown>).base_amount as number | null | undefined,
+      covered_by: fresh.covered_by ?? null,
+      payment_status: fresh.payment_status,
+      session_number: fresh.session_number ?? null,
+      package_total_sessions: fresh.package_total_sessions ?? null,
+      package_charge_usd: fresh.package_charge_usd ?? null,
+    };
+    setSelected((prev) => (prev && prev.id === consultationId ? { ...prev, ...patch } : prev));
+    setConsultations((prev) => prev.map((x) => (x.id === consultationId ? { ...x, ...patch } : x)));
+    setPagoAmount(fresh.amount != null ? String(fresh.amount) : '');
   }
 
   async function updatePagoStatus(
@@ -5204,8 +5244,22 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                       {selected.plan_name && (
                         <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs gap-2">
                           <span className="text-slate-500 shrink-0">Servicio:</span>
-                          <span className="font-semibold text-slate-800 text-right truncate">
-                            {selected.plan_name}
+                          <span className="min-w-0 text-right">
+                            <span className="block font-semibold text-slate-800 truncate">
+                              {selected.plan_name}
+                            </span>
+                            {/* Corregir el servicio elegido por error en la reserva pública.
+                                Solo con cita: el cambio se aplica sobre la cita, no sobre la
+                                consulta suelta creada a mano. */}
+                            {selected.appointment_id && (
+                              <button
+                                type="button"
+                                onClick={() => setShowChangeServiceModal(true)}
+                                className="text-[11px] font-semibold text-teal-600 hover:text-teal-700 transition-colors"
+                              >
+                                Cambiar servicio
+                              </button>
+                            )}
                           </span>
                         </div>
                       )}
@@ -5785,6 +5839,32 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
             </div>
           )}
         </div>
+
+        {/* Modal: cambiar el servicio contratado (corrige el error de la reserva) */}
+        {showChangeServiceModal && selected?.appointment_id && (
+          <ChangeServiceModal
+            open={showChangeServiceModal}
+            currentPlanName={selected.plan_name ?? null}
+            /* El monto del PAQUETE, no el de esta sesión: las sesiones 2..N valen 0
+               y contrastar "0 → 160" no le diría nada al especialista. */
+            currentPriceUsd={
+              coverage?.amount_usd ?? packageAmount(selected) ?? selected.amount ?? null
+            }
+            currentSessions={selected.package_total_sessions ?? 1}
+            isPackage={isPackageSession(selected)}
+            services={pricingPlans}
+            formatAmount={format}
+            onClose={() => setShowChangeServiceModal(false)}
+            onConfirm={async (planId) => {
+              const result = await changeAppointmentService(selected.appointment_id!, planId);
+              if (result.success) {
+                await refreshSelectedConsultation(selected.id);
+                showToast({ type: 'success', message: 'Servicio corregido' });
+              }
+              return result;
+            }}
+          />
+        )}
 
         {/* Modal: Ingreso adicional (consulta ya pagada) */}
         {showExtraIncomeModal && selected && (

@@ -69,6 +69,17 @@ export class AppointmentModel extends Model {
   @Column({ type: DataType.TEXT, allowNull: true })
   declare source: string | null;
 
+  /**
+   * FK → pricing_plans(id). Identidad del servicio contratado.
+   *
+   * `plan_name`/`plan_price` de abajo son el SNAPSHOT de lo que se cobró y no se
+   * tocan nunca; esta columna dice de QUÉ servicio del catálogo salieron. Null en
+   * las filas viejas cuyo nombre era ambiguo al migrar (dos planes homónimos).
+   * Agregada por 20260910000001-appointment-plan-id-and-service-change.
+   */
+  @Column({ type: DataType.UUID, allowNull: true, field: 'plan_id' })
+  declare planId: string | null;
+
   @Column({ type: DataType.TEXT, allowNull: true, field: 'plan_name' })
   declare planName: string | null;
 
