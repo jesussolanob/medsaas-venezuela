@@ -6,6 +6,8 @@ import { PendingConsultationExpiredError } from '../../domain/errors/pending-con
 import type { IPendingConsultationRepository } from '../../domain/repositories/pending-consultation.repository';
 import type { IAppointmentRepository } from '../../../appointments/domain/repositories/appointment.repository';
 import { AppointmentConflictError } from '../../../appointments/domain/errors/appointment-conflict.error';
+import type { IPaymentRepository } from '../../../finances/domain/repositories/payment.repository';
+import { Payment } from '../../../finances/domain/entities/payment.entity';
 
 const BASE = new Date('2026-01-01T00:00:00Z');
 const FUTURE_EXPIRES = new Date(Date.now() + 86_400_000 * 30);
@@ -42,6 +44,7 @@ describe('SchedulePendingConsultationUseCase', () => {
   let useCase: SchedulePendingConsultationUseCase;
   let mockPendingRepo: jest.Mocked<IPendingConsultationRepository>;
   let mockAppointmentRepo: jest.Mocked<IAppointmentRepository>;
+  let mockPaymentRepo: jest.Mocked<IPaymentRepository>;
   let mockSequelize: ReturnType<typeof makeSequelizeMock>;
 
   beforeEach(() => {
@@ -80,6 +83,19 @@ describe('SchedulePendingConsultationUseCase', () => {
       findByIdScopedEnriched: jest.fn().mockResolvedValue(null),
     };
 
+    mockPaymentRepo = {
+      listForDoctor: jest.fn(),
+      totalsForDoctor: jest.fn(),
+      findByIdForDoctor: jest.fn(),
+      updateStatus: jest.fn(),
+      addItem: jest.fn(),
+      removeItem: jest.fn(),
+      listItems: jest.fn(),
+      attachReceiptUrl: jest.fn(),
+      updateDetails: jest.fn(),
+      create: jest.fn(),
+    };
+
     mockSequelize = makeSequelizeMock();
 
     useCase = new SchedulePendingConsultationUseCase(
@@ -87,6 +103,7 @@ describe('SchedulePendingConsultationUseCase', () => {
       mockAppointmentRepo,
       mockSequelize as never,
       null, // no CreateConsultationUseCase in unit tests
+      null, // no IPaymentRepository in unit tests (default path)
     );
   });
 
@@ -163,5 +180,101 @@ describe('SchedulePendingConsultationUseCase', () => {
 
     expect(mockPendingRepo.findById).toHaveBeenCalledWith('pc-001');
     expect(mockPendingRepo.findByIdAndDoctor).not.toHaveBeenCalled();
+  });
+
+  describe('covered session path (sessions 2..N with paymentId)', () => {
+    const NOW = new Date('2026-01-01T10:00:00Z');
+
+    function makeApprovedPayment() {
+      return Payment.create({
+        id: 'pay-001',
+        doctorId: 'doc-001',
+        patientId: 'pat-001',
+        amountUsd: 120,
+        methodSnapshot: 'pago_movil',
+        paymentReference: 'ref-0012',
+        status: 'approved',
+        paidAt: NOW,
+        createdAt: NOW,
+        updatedAt: NOW,
+      });
+    }
+
+    it('creates consultation with amount=0 and approved status when parent payment is approved', async () => {
+      const pc = makePc({ paymentId: 'pay-001', expiresAt: FUTURE_EXPIRES });
+      const savedAppt = { id: 'appt-002' };
+      const scheduledPc = pc.markScheduled('appt-002', 'consult-002');
+      const parentPayment = makeApprovedPayment();
+
+      const mockCreateConsultation = {
+        execute: jest.fn().mockResolvedValue({ id: 'consult-002' }),
+      };
+
+      const ucWithPaymentRepo = new SchedulePendingConsultationUseCase(
+        mockPendingRepo,
+        mockAppointmentRepo,
+        mockSequelize as never,
+        mockCreateConsultation as never,
+        mockPaymentRepo,
+      );
+
+      mockPendingRepo.findByIdAndDoctor.mockResolvedValue(pc);
+      mockAppointmentRepo.hasOverlap.mockResolvedValue(false);
+      mockAppointmentRepo.save.mockResolvedValue(savedAppt as never);
+      mockAppointmentRepo.updateConsultationId.mockResolvedValue(undefined as never);
+      mockPendingRepo.save.mockResolvedValue(scheduledPc);
+      mockPaymentRepo.findByIdForDoctor.mockResolvedValue(parentPayment);
+
+      await ucWithPaymentRepo.execute({
+        id: 'pc-001',
+        doctorId: 'doc-001',
+        scheduledAt: SLOT,
+      });
+
+      expect(mockPaymentRepo.findByIdForDoctor).toHaveBeenCalledWith('pay-001', 'doc-001');
+      expect(mockCreateConsultation.execute).toHaveBeenCalledWith(
+        expect.objectContaining({
+          amount: 0,
+          initialPaymentStatus: 'approved',
+          paymentMethod: 'pago_movil',
+          paymentReference: 'ref-0012',
+        }),
+      );
+    });
+
+    it('creates consultation with amount=null when paymentId is absent (standalone session)', async () => {
+      const pc = makePc({ paymentId: undefined, expiresAt: FUTURE_EXPIRES });
+      const savedAppt = { id: 'appt-003' };
+      const scheduledPc = pc.markScheduled('appt-003', 'consult-003');
+
+      const mockCreateConsultation = {
+        execute: jest.fn().mockResolvedValue({ id: 'consult-003' }),
+      };
+
+      const ucWithPaymentRepo = new SchedulePendingConsultationUseCase(
+        mockPendingRepo,
+        mockAppointmentRepo,
+        mockSequelize as never,
+        mockCreateConsultation as never,
+        mockPaymentRepo,
+      );
+
+      mockPendingRepo.findByIdAndDoctor.mockResolvedValue(pc);
+      mockAppointmentRepo.hasOverlap.mockResolvedValue(false);
+      mockAppointmentRepo.save.mockResolvedValue(savedAppt as never);
+      mockAppointmentRepo.updateConsultationId.mockResolvedValue(undefined as never);
+      mockPendingRepo.save.mockResolvedValue(scheduledPc);
+
+      await ucWithPaymentRepo.execute({
+        id: 'pc-001',
+        doctorId: 'doc-001',
+        scheduledAt: SLOT,
+      });
+
+      expect(mockPaymentRepo.findByIdForDoctor).not.toHaveBeenCalled();
+      expect(mockCreateConsultation.execute).toHaveBeenCalledWith(
+        expect.objectContaining({ amount: null }),
+      );
+    });
   });
 });

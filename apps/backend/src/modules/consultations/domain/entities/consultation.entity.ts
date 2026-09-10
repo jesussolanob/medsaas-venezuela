@@ -2,6 +2,25 @@ import type { PaymentStatus } from '@delta/shared-types';
 import type { ConsultationExtraItem } from './consultation-extra-item.entity';
 
 /**
+ * Datos del pago que cubre esta consulta (sesión 2..N de un paquete).
+ *
+ * Null cuando la consulta es la primera del paquete (que es la que hizo
+ * el pago) o cuando no forma parte de un paquete. Jamás es un invariante
+ * de dominio — se rellena en el lado de lectura desde el JOIN con payments.
+ */
+export interface PaymentCoverage {
+  paymentId: string;
+  planName: string | null;
+  sessionNumber: number | null;
+  totalSessions: number | null;
+  amountUsd: number;
+  amountBs: number | null;
+  paidAt: Date | null;
+  method: string | null;
+  reference: string | null;
+}
+
+/**
  * A single block definition as stored in blocks_structure.
  *
  * Opaque, frontend-managed metadata persisted verbatim as JSONB. Items arrive with
@@ -56,6 +75,14 @@ export interface ConsultationCreateParams {
    */
   patientName?: string | null;
   appointmentStatus?: string | null;
+  /**
+   * Nombre del servicio contratado (appointments.plan_name).
+   *
+   * Se muestra SIEMPRE, con o sin monto: un consultorio puede tener varios
+   * planes y por el importe solo no se distingue cuál contrató el paciente.
+   * Null cuando la consulta no tiene cita o la cita no guardó plan.
+   */
+  planName?: string | null;
   /** Nº de sesión dentro del combo comprado (1-based); null si la cita no es de un paquete. */
   sessionNumber?: number | null;
   /** Total de sesiones del paquete de la cita; null si no hay paquete. */
@@ -72,6 +99,13 @@ export interface ConsultationCreateParams {
    * Empty array when there are no extras or when not loaded.
    */
   extraItems?: ConsultationExtraItem[];
+  /**
+   * Cobertura del pago del paquete — solo no es null para sesiones 2..N.
+   * Relleno en el lado de lectura por el JOIN de findById(); null en todos
+   * los demás paths de escritura (create, update, approveWithExtras, etc.)
+   * hasta que el cliente llame a GET /consultations/:id.
+   */
+  coveredBy?: PaymentCoverage | null;
 }
 
 /**
@@ -112,6 +146,8 @@ export class Consultation {
   readonly patientName: string | null;
   /** Status of the linked appointment — populated by the enriched list/findById query. */
   readonly appointmentStatus: string | null;
+  /** Servicio contratado (appointments.plan_name) — se muestra siempre, con o sin monto. */
+  readonly planName: string | null;
   /**
    * Ubicación de esta consulta dentro de un combo de varias sesiones: "la 2 de 3".
    * Ambos vienen del JOIN (appointments.session_number + patient_packages.total_sessions)
@@ -123,6 +159,11 @@ export class Consultation {
   readonly packageChargeUsd: number | null;
   /** Extra service items — populated by findById. Empty array when not loaded. */
   readonly extraItems: ConsultationExtraItem[];
+  /**
+   * Cobertura del pago del paquete — solo no es null para sesiones 2..N.
+   * Relleno en el lado de lectura por el JOIN de findById().
+   */
+  readonly coveredBy: PaymentCoverage | null;
 
   constructor(params: ConsultationCreateParams) {
     this.id = params.id;
@@ -148,10 +189,12 @@ export class Consultation {
     this.updatedAt = params.updatedAt;
     this.patientName = params.patientName ?? null;
     this.appointmentStatus = params.appointmentStatus ?? null;
+    this.planName = params.planName ?? null;
     this.sessionNumber = params.sessionNumber ?? null;
     this.packageTotalSessions = params.packageTotalSessions ?? null;
     this.packageChargeUsd = params.packageChargeUsd ?? null;
     this.extraItems = params.extraItems ?? [];
+    this.coveredBy = params.coveredBy ?? null;
   }
 
   /**

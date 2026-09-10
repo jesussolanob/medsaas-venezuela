@@ -254,6 +254,24 @@ export class CreateBookingUseCase {
        * Solo debe usarlo `CreateImmediateAppointmentUseCase`.
        */
       forceConfirmed?: boolean;
+      /**
+       * ID de un pago ya existente que cubre esta cita (sesión 2..N de un paquete).
+       *
+       * Cuando está presente, se salta la creación de un pago fantasma de $0 y
+       * la cita se vincula directamente a este pago. La consulta auto-creada nace
+       * con `amount=0` y hereda `existingPaymentStatus` para no aparecer en
+       * "Por cobrar" si el pago ya está aprobado.
+       *
+       * Solo debe usarlo `CreateImmediateAppointmentUseCase` (flujo de consulta
+       * inmediata que consume una preconsulta de un paquete ya pagado).
+       */
+      existingPaymentId?: string;
+      /**
+       * Estado del pago existente indicado en `existingPaymentId`.
+       * Se propaga a `initialPaymentStatus` de la consulta auto-creada.
+       * Ignorado cuando `existingPaymentId` está ausente.
+       */
+      existingPaymentStatus?: 'pending' | 'approved';
     },
   ): Promise<CreateBookingResult> {
     // --- Step 1: Turnstile validation (STUB — Etapa 1) ---
@@ -444,8 +462,13 @@ export class CreateBookingUseCase {
     const savedAppointment = await this.sequelize.transaction(async (t) => {
       // Create payment record first so we have the paymentId for the appointment link.
       // If paymentRepo is not available (legacy / test context), skip silently.
+      // If existingPaymentId is provided (covered session path), reuse it instead
+      // of creating a ghost $0 payment — the first session already owns the payment.
       let paymentId: string | null = null;
-      if (this.paymentRepo) {
+      if (options?.existingPaymentId) {
+        // Reuse the parent payment — no new record created.
+        paymentId = options.existingPaymentId;
+      } else if (this.paymentRepo) {
         const paymentAmount = dto.package_id ? 0 : (dto.plan_price ?? 0);
         const newPayment = await this.paymentRepo.create({
           id: randomUUID(),
@@ -700,13 +723,18 @@ export class CreateBookingUseCase {
     let createdConsultationCode: string | null = null;
     if (this.createConsultationUC && !savedAppointment.consultationId) {
       try {
+        // When this booking covers an existing payment (session 2..N of a package),
+        // the consultation is born with amount=0 and inherits the parent payment status.
+        // This prevents covered sessions from appearing in "Por cobrar".
+        const isCoveredSession = !!options?.existingPaymentId;
         const consultation = await this.createConsultationUC.execute({
           doctorId: dto.doctor_id,
           patientId: patient.id,
           appointmentId: savedAppointment.id,
           consultationDate: savedAppointment.scheduledAt,
           chiefComplaint: dto.chief_complaint ?? null,
-          amount: dto.plan_price ?? null,
+          amount: isCoveredSession ? 0 : (dto.plan_price ?? null),
+          initialPaymentStatus: isCoveredSession ? options?.existingPaymentStatus : undefined,
           // El método viaja a la consulta: se guardaba solo en la cita y el
           // especialista tenía que volver a elegirlo al cobrar.
           paymentMethod: savedAppointment.paymentMethod,

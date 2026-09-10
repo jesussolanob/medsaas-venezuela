@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import type { CreateImmediateAppointmentDto } from '@delta/shared-types';
 import {
   PATIENT_REPOSITORY,
@@ -19,6 +19,10 @@ import {
   type ImmediateWindowResult,
 } from './get-immediate-window.use-case';
 import { NoImmediateSlotError } from '../../../domain/errors/no-immediate-slot.error';
+import {
+  PAYMENT_REPOSITORY,
+  type IPaymentRepository,
+} from '../../../../finances/domain/repositories/payment.repository';
 
 /**
  * Minimum number of minutes required to accept an immediate-consultation request
@@ -77,6 +81,15 @@ export class CreateImmediateAppointmentUseCase {
     private readonly pendingRepo: IPendingConsultationRepository,
     private readonly getWindow: GetImmediateWindowUseCase,
     private readonly createBooking: CreateBookingUseCase,
+    /**
+     * Payment repository — optional for backward compatibility with existing tests.
+     * When present and pendingConsultation.paymentId is set, the parent payment is
+     * looked up so the new appointment and auto-created consultation can link to it
+     * instead of creating a ghost $0 payment record.
+     */
+    @Optional()
+    @Inject(PAYMENT_REPOSITORY)
+    private readonly paymentRepo: IPaymentRepository | null = null,
   ) {}
 
   async execute(
@@ -127,6 +140,22 @@ export class CreateImmediateAppointmentUseCase {
       // Any plan_name / plan_price sent by the client is silently ignored.
       planName = pendingConsultation.planName;
       planPrice = 0; // pre-paid; no new charge
+    }
+
+    // Resolve parent payment for covered sessions (paymentId set on the pending row).
+    // This lets CreateBookingUseCase reuse the existing payment instead of creating
+    // a ghost $0 payment, and lets the auto-created consultation inherit approved status.
+    let existingPaymentId: string | undefined;
+    let existingPaymentStatus: 'pending' | 'approved' | undefined;
+    if (pendingConsultation?.paymentId && this.paymentRepo) {
+      const parentPayment = await this.paymentRepo.findByIdForDoctor(
+        pendingConsultation.paymentId,
+        pendingConsultation.doctorId,
+      );
+      if (parentPayment) {
+        existingPaymentId = parentPayment.id;
+        existingPaymentStatus = parentPayment.status;
+      }
     }
 
     // --- Step 2: Compute available window ---
@@ -218,6 +247,10 @@ export class CreateImmediateAppointmentUseCase {
         // el estado a `confirmed`, que es el correcto para un walk-in que el doctor
         // acaba de crear.
         forceConfirmed: true,
+        // Sesión cubierta (paquete ya pagado): reusar el pago existente en lugar de
+        // crear un fantasma de $0 y heredar el estado del pago a la consulta.
+        existingPaymentId,
+        existingPaymentStatus,
       },
     );
 

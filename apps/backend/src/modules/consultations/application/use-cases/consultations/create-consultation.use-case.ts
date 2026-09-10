@@ -1,5 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { randomUUID } from 'crypto';
+import type { PaymentStatus } from '@delta/shared-types';
 import { Consultation } from '../../../domain/entities/consultation.entity';
 import { ConsultationCode } from '../../../domain/value-objects/consultation-code.vo';
 import { ConsultationCodeExhaustedError } from '../../../domain/errors/consultation-code-exhausted.error';
@@ -29,6 +30,15 @@ export interface CreateConsultationInput {
   paymentMethod?: string | null;
   /** Referencia o hash del pago, cuando el método la pide. */
   paymentReference?: string | null;
+  /**
+   * Estado de pago inicial de la consulta.
+   *
+   * Por defecto 'pending'. Las sesiones 2..N de un paquete nacen con el
+   * estado del pago que las cubre (inherited from the parent payment at
+   * scheduling time). Así el especialista no ve una consulta "por cobrar"
+   * para una sesión que ya se pagó en la primera.
+   */
+  initialPaymentStatus?: PaymentStatus;
 }
 
 /**
@@ -86,9 +96,9 @@ export class CreateConsultationUseCase {
         diagnosis: null,
         treatment: null,
         notes: input.notes ?? null,
-        // Sigue naciendo pendiente a propósito: el cobro se aprueba en Cobros.
-        // Lo que cambia es que el método elegido en el alta ya no se pierde.
-        paymentStatus: 'pending',
+        // Estado inicial: 'pending' por defecto. Las sesiones 2..N de un paquete
+        // nacen con el estado del pago que las cubre (approved cuando ya se cobró).
+        paymentStatus: input.initialPaymentStatus ?? 'pending',
         paymentMethod: input.paymentMethod ?? null,
         paymentReference: input.paymentReference ?? null,
         amount: input.amount ?? null,

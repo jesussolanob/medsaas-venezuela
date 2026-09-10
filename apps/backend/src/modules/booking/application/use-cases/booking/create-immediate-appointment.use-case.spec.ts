@@ -15,6 +15,11 @@ import type { Appointment } from '../../../../appointments/domain/entities/appoi
 import { NoImmediateSlotError } from '../../../domain/errors/no-immediate-slot.error';
 import { PatientNotFoundError } from './create-booking.use-case';
 import type { CreateImmediateAppointmentDto } from '@delta/shared-types';
+import {
+  PAYMENT_REPOSITORY,
+  type IPaymentRepository,
+} from '../../../../finances/domain/repositories/payment.repository';
+import { Payment } from '../../../../finances/domain/entities/payment.entity';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -501,6 +506,105 @@ describe('CreateImmediateAppointmentUseCase', () => {
         // The pending consultation must NOT have been marked as scheduled
         expect(pending.markScheduled).not.toHaveBeenCalled();
         expect(pendingRepoMock.save).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('covered session path — existingPaymentId propagation', () => {
+      const BASE_NOW = new Date('2026-01-01T10:00:00Z');
+
+      function makeApprovedPayment() {
+        return Payment.create({
+          id: 'payment-uuid',
+          doctorId: 'doctor-uuid',
+          patientId: 'patient-uuid',
+          amountUsd: 120,
+          methodSnapshot: 'pago_movil',
+          paymentReference: 'ref-0012',
+          status: 'approved',
+          paidAt: BASE_NOW,
+          createdAt: BASE_NOW,
+          updatedAt: BASE_NOW,
+        });
+      }
+
+      let ucWithPaymentRepo: CreateImmediateAppointmentUseCase;
+      let paymentRepoMock: jest.Mocked<IPaymentRepository>;
+
+      beforeEach(async () => {
+        paymentRepoMock = {
+          listForDoctor: jest.fn(),
+          totalsForDoctor: jest.fn(),
+          findByIdForDoctor: jest.fn(),
+          updateStatus: jest.fn(),
+          addItem: jest.fn(),
+          removeItem: jest.fn(),
+          listItems: jest.fn(),
+          attachReceiptUrl: jest.fn(),
+          updateDetails: jest.fn(),
+          create: jest.fn(),
+        } as jest.Mocked<IPaymentRepository>;
+
+        const module = await Test.createTestingModule({
+          providers: [
+            CreateImmediateAppointmentUseCase,
+            { provide: PATIENT_REPOSITORY, useValue: patientRepoMock },
+            { provide: PENDING_CONSULTATION_REPOSITORY, useValue: pendingRepoMock },
+            { provide: GetImmediateWindowUseCase, useValue: getWindowMock },
+            { provide: CreateBookingUseCase, useValue: createBookingMock },
+            { provide: PAYMENT_REPOSITORY, useValue: paymentRepoMock },
+          ],
+        }).compile();
+
+        ucWithPaymentRepo = module.get(CreateImmediateAppointmentUseCase);
+      });
+
+      it('passes existingPaymentId and existingPaymentStatus=approved to CreateBookingUseCase', async () => {
+        patientRepoMock.findById.mockResolvedValueOnce(makePatient());
+        const pending = makePending({ paymentId: 'payment-uuid' });
+        const markedScheduled = makePending({ status: 'scheduled' as never });
+        pending.markScheduled.mockReturnValue(markedScheduled as unknown as PendingConsultation);
+        pendingRepoMock.findByIdAndDoctor.mockResolvedValueOnce(pending);
+        pendingRepoMock.save.mockResolvedValueOnce(
+          markedScheduled as unknown as PendingConsultation,
+        );
+        paymentRepoMock.findByIdForDoctor.mockResolvedValueOnce(makeApprovedPayment());
+        getWindowMock.execute.mockResolvedValueOnce(makeWindowResult({ now: NOW }));
+        const savedAppt = makeSavedAppt({ id: 'appt-covered', scheduledAt: NOW });
+        createBookingMock.execute.mockResolvedValueOnce(
+          makeBookingResult(savedAppt, makePatient()),
+        );
+
+        await ucWithPaymentRepo.execute(DOCTOR_ID, DTO_WITH_PENDING);
+
+        expect(paymentRepoMock.findByIdForDoctor).toHaveBeenCalledWith(
+          'payment-uuid',
+          'doctor-uuid',
+        );
+        const [, options] = createBookingMock.execute.mock.calls[0]!;
+        expect(options?.existingPaymentId).toBe('payment-uuid');
+        expect(options?.existingPaymentStatus).toBe('approved');
+      });
+
+      it('passes existingPaymentId=undefined when pending has no paymentId', async () => {
+        patientRepoMock.findById.mockResolvedValueOnce(makePatient());
+        const pending = makePending({ paymentId: undefined });
+        const markedScheduled = makePending({ status: 'scheduled' as never });
+        pending.markScheduled.mockReturnValue(markedScheduled as unknown as PendingConsultation);
+        pendingRepoMock.findByIdAndDoctor.mockResolvedValueOnce(pending);
+        pendingRepoMock.save.mockResolvedValueOnce(
+          markedScheduled as unknown as PendingConsultation,
+        );
+        getWindowMock.execute.mockResolvedValueOnce(makeWindowResult({ now: NOW }));
+        createBookingMock.execute.mockResolvedValueOnce(
+          makeBookingResult(makeSavedAppt({ scheduledAt: NOW }), makePatient()),
+        );
+
+        await ucWithPaymentRepo.execute(DOCTOR_ID, DTO_WITH_PENDING);
+
+        expect(paymentRepoMock.findByIdForDoctor).not.toHaveBeenCalled();
+        const [, options] = createBookingMock.execute.mock.calls[0]!;
+        expect(options?.existingPaymentId).toBeUndefined();
+        expect(options?.existingPaymentStatus).toBeUndefined();
       });
     });
   });

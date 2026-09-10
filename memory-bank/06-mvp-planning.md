@@ -182,3 +182,55 @@ no bloquea** · la cotización se manda **por enlace**, no adjunta.
 en el menú lateral** — igual que `ehr`, `billing`, `reports`, `messages` e `invitations`. El listado
 de clientes potenciales es la puerta natural para volverlo alcanzable, y hay que sacarle la
 auto-siembra de 8 leads de demostración antes de que convivan con prospectos reales.
+
+## Lote de pagos de paquete — dos pedidos del dueño (2026-09-10)
+
+Entran acá por la regla 1 del documento: toda feature nueva se registra antes de codificar.
+
+| Ítem                                                                                                                                                                      | Justificación de negocio                                                                                                                                                               | Plan                      | Estado                                                                                    |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------- | ----------------------------------------------------------------------------------------- |
+| **Una sesión de paquete no vuelve a pedir cobro** — las consultas 2..N de un paquete ya pagado se muestran como cubiertas, con el plan y el pago que las cubre a la vista | Hoy la pantalla pide confirmar el pago **otra vez** en cada sesión de un paquete que ya se cobró completo. El especialista no sabe si ya cobró, y replicar el cobro infla las finanzas | — (no es feature de plan) | **backend + pantalla listos** (`feature/consultas-paquete-pagado`), falta QA en navegador |
+| **Cambiar el servicio de una consulta** — corregir el plan mal elegido por el paciente, con cascada a monto, cita y pago                                                  | El paciente se equivoca al elegir el paquete en el booking público y hoy **no hay forma de corregirlo**: queda cobrado el servicio que no era, y la única salida es rehacer la cita    | — (no es feature de plan) | pendiente (`feature/cambiar-servicio-consulta`)                                           |
+
+**Decisiones del dueño en este lote (2026-09-10):**
+
+1. **Los extras van a un cobro APARTE por consulta.** El pago del paquete queda cerrado en su monto;
+   los productos de inventario y costos adicionales de cada sesión generan su propio cobro, solo por
+   los extras. Se implementa con `base_amount = 0` en las sesiones cubiertas (`total = base + Σ extras`).
+2. **Al cambiar el servicio de una consulta ya cobrada, el pago se ajusta de monto y SIGUE aprobado**
+   (no vuelve a `pending` como sí hace la multa del ADR-031). Es la opción cómoda para el
+   especialista; para que la diferencia no quede sin rastro, el cambio deja **asiento en
+   `appointment_changes_log`** con monto anterior, monto nuevo y autor.
+3. **Solo se permite cambiar entre servicios equivalentes** — mismo `sessions_count`. Simple ↔ simple,
+   paquete de 4 ↔ paquete de 4. Así no hay que crear ni borrar preconsultas, ni decidir qué pasa con
+   sesiones ya agendadas.
+4. **La consulta cubierta NO muestra monto propio**: dice "Cubierta por: Paquete X — $120, pagado el
+   …". Mostrar $120 en cada una de las 4 se lee como $480.
+5. **El especialista tiene que ver SIEMPRE qué servicio contrató el paciente**, con o sin monto: un
+   consultorio puede tener varios planes y por el monto solo no se distingue cuál es.
+
+**Hallazgos de la investigación previa (2026-09-10):**
+
+- El modelo de "un pago, N consultas" **ya existe**: el booking crea las sesiones adicionales con
+  `amount: 0` ("Price already collected on the first session") y `payment_id` compartido, y al
+  aprobar el pago un `UPDATE ... FROM appointments WHERE a.payment_id = :paymentId` sincroniza todas
+  las consultas hermanas. Lo que falta es propagar el estado **al agendar**, porque ese UPDATE solo
+  alcanza a las sesiones que ya existían cuando se aprobó.
+- **Son TRES los caminos** que agendan una sesión de paquete y los tres tienen el mismo defecto:
+  `schedule-pending-consultation` (especialista), `schedule-pending-consultation-by-token` (paciente
+  desde el correo) y `create-immediate-appointment` (inmediata que consume sesión). Arreglar uno solo
+  repite el error del ADR-032 y el ADR-035. **Verificado al implementar:** el camino del paciente
+  (`…-by-token`) **delega** en `schedule-pending-consultation`, así que se arregló solo; hubo que
+  tocar los otros dos.
+- **El bloque que mostraba el plan en la consulta nunca se vio.** No estaba solo escondido detrás de
+  una condición: `appointmentData` es siempre `null` — los tres caminos que abren una consulta hacen
+  `setAppointmentData(null)`. Plan, monto y método de la cita eran código muerto. Se reemplazó por
+  `plan_name`, que ahora viaja en la respuesta de consulta.
+- **El nombre del plan ya se guarda** en las sesiones de paquete (`planName: entity.planName`), pero
+  la UI lo esconde: el bloque que lo pinta está detrás de
+  `(appointmentData.payment_method || appointmentData.plan_price)`, y esas sesiones nacen con ambos
+  en `null` justamente por estar pagadas.
+- **`appointments` no tiene `plan_id`** — solo el snapshot `plan_name`/`plan_price`. El repositorio de
+  consultas une el plan **por nombre** (`AND pp.name = a.plan_name`, tres veces): dos servicios
+  homónimos o uno renombrado devuelven el plan equivocado. `plan_id` es prerrequisito del ítem 2 y
+  arregla esa unión de paso.
