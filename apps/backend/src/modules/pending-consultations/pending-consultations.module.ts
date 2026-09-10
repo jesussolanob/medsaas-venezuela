@@ -37,6 +37,9 @@ import { PatientsModule } from '../patients/patients.module';
 import { PackagesModule } from '../packages/packages.module';
 // EmailModule exports MailerService — needed by DispatchPendingConsultationRemindersUseCase.
 import { EmailModule } from '../email/email.module';
+// FinancesModule exports PAYMENT_REPOSITORY — needed by SchedulePendingConsultationUseCase to
+// propagate parent payment state to covered sessions (sessions 2..N of a package).
+import { FinancesModule } from '../finances/finances.module';
 
 /**
  * PendingConsultationsModule
@@ -65,6 +68,8 @@ import { EmailModule } from '../email/email.module';
     PackagesModule,
     // Exports MailerService for DispatchPendingConsultationRemindersUseCase
     EmailModule,
+    // Exports PAYMENT_REPOSITORY for SchedulePendingConsultationUseCase
+    FinancesModule,
   ],
   controllers: [DoctorPendingConsultationsController, PublicPendingConsultationsController],
   providers: [

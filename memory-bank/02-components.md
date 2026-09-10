@@ -992,26 +992,47 @@ backend.
 
 ### Backend
 
-| Pieza | Dónde | Para qué |
-| ----- | ----- | -------- |
-| `DispatchQuoteExpiryNoticesUseCase` | `modules/quotes/application/use-cases/` | Barre vencidos y manda el aviso previo. Colgado del cron `appointment-reminders`, **sin Cloud Scheduler nuevo** |
-| `Quote.expiresAt()` | `quotes/domain/entities/quote.entity.ts` | Instante real de vencimiento. **Nunca comparar `validUntil` crudo** — es una cadena (ADR-063) |
-| `Quote.validUntilAsDateString()` | idem | Serializa el día calendario. Existe porque `validUntil?.toISOString()` **lanzaba** |
-| `VENEZUELA_UTC_OFFSET_HOURS` | idem | Desfase fijo (sin horario de verano desde 2016) |
-| `toCanonicalCedula()` | `libs/shared-types/src/common.ts` | Forma en que se GUARDA la cédula. Hermana de `normalizeCedulaForSearch` |
-| `EmailSendError.detail` | `modules/email/domain/errors/` | Texto crudo del proveedor, para `email_send_log`. **Nunca en `message`**, que va a los logs |
+| Pieza                               | Dónde                                    | Para qué                                                                                                        |
+| ----------------------------------- | ---------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `DispatchQuoteExpiryNoticesUseCase` | `modules/quotes/application/use-cases/`  | Barre vencidos y manda el aviso previo. Colgado del cron `appointment-reminders`, **sin Cloud Scheduler nuevo** |
+| `Quote.expiresAt()`                 | `quotes/domain/entities/quote.entity.ts` | Instante real de vencimiento. **Nunca comparar `validUntil` crudo** — es una cadena (ADR-063)                   |
+| `Quote.validUntilAsDateString()`    | idem                                     | Serializa el día calendario. Existe porque `validUntil?.toISOString()` **lanzaba**                              |
+| `VENEZUELA_UTC_OFFSET_HOURS`        | idem                                     | Desfase fijo (sin horario de verano desde 2016)                                                                 |
+| `toCanonicalCedula()`               | `libs/shared-types/src/common.ts`        | Forma en que se GUARDA la cédula. Hermana de `normalizeCedulaForSearch`                                         |
+| `EmailSendError.detail`             | `modules/email/domain/errors/`           | Texto crudo del proveedor, para `email_send_log`. **Nunca en `message`**, que va a los logs                     |
 
 ### Frontend
 
-| Pieza | Dónde | Para qué |
-| ----- | ----- | -------- |
-| `quote-validity.ts` | `app/doctor/quotes/` | Vigencia en DÍAS ↔ fecha. Compartido por el alta y el detalle: dos copias de aritmética de fechas divergen |
-| `quote-math.ts` | idem | Totales con el mismo redondeo que el backend |
-| `lib/bcv-rate.ts` | `apps/frontend/lib/` | **Fuente única** de la tasa. Se llama EN PROCESO; el route handler es una envoltura (ADR-069) |
-| `formatProfessionalName()` | `lib/professional-title.ts` | "Psic. Ana" o "Ana" a secas. **No infiere** el título (ADR-067) |
+| Pieza                      | Dónde                       | Para qué                                                                                                   |
+| -------------------------- | --------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `quote-validity.ts`        | `app/doctor/quotes/`        | Vigencia en DÍAS ↔ fecha. Compartido por el alta y el detalle: dos copias de aritmética de fechas divergen |
+| `quote-math.ts`            | idem                        | Totales con el mismo redondeo que el backend                                                               |
+| `lib/bcv-rate.ts`          | `apps/frontend/lib/`        | **Fuente única** de la tasa. Se llama EN PROCESO; el route handler es una envoltura (ADR-069)              |
+| `formatProfessionalName()` | `lib/professional-title.ts` | "Psic. Ana" o "Ana" a secas. **No infiere** el título (ADR-067)                                            |
 
 ### Migraciones
 
 `20260908000001` ítem manual y tipo de descuento · `...02` índice único de cédula ·
 `...03` plantillas de correo · `...04` renumerado COT→PRE · `...05` `expiry_reminder_sent_at`,
 índice parcial y las dos plantillas del aviso de vencimiento.
+
+## Lote de paquete pagado (2026-09-10) — piezas nuevas
+
+### Backend
+
+| Pieza                                                                  | Dónde                                                  | Para qué                                                                                                           |
+| ---------------------------------------------------------------------- | ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------ |
+| `PaymentCoverage` / `Consultation.coveredBy`                           | `consultations/domain/entities/consultation.entity.ts` | Pago del paquete que cubre una sesión 2..N. Read-model: lo llena el JOIN de `findById`, nunca un path de escritura |
+| `Consultation.planName`                                                | idem                                                   | Servicio contratado. Se muestra SIEMPRE, con monto o sin él: por el importe solo no se distingue el plan           |
+| `CreateConsultationInput.initialPaymentStatus`                         | `create-consultation.use-case.ts`                      | Deja nacer la consulta ya aprobada cuando el pago del paquete la cubre. Default sigue siendo `pending`             |
+| `CreateBookingUseCase` → `existingPaymentId` / `existingPaymentStatus` | `booking/…/create-booking.use-case.ts`                 | Reusa el pago del paquete en vez de crear un pago fantasma de $0. Solo lo usa la consulta inmediata                |
+
+### Frontend — `app/doctor/consultations/ConsultationsClient.tsx`
+
+| Cambio                                                                                       | Por qué                                                                                                                                                                                                         |
+| -------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `coverage = selected.covered_by` gobierna el panel de pago                                   | Con cobertura, el badge dice **"Cubierta"** y se ocultan detalles editables, selector de estado y "Guardar pago": ese botón dispara `approve-payment`, que recalcularía el total de una consulta ya pagada      |
+| Recuadro violeta "Cubierta por un paquete ya pagado"                                         | Monto del paquete **una sola vez**, con fecha, método y referencia del pago                                                                                                                                     |
+| Bloque "A cobrar aparte en esta consulta"                                                    | Los extras de una sesión cubierta se cobran solos, sin sumar ni repetir el paquete                                                                                                                              |
+| Fila "Servicio:" desde `selected.plan_name`                                                  | Reemplaza al bloque muerto de `appointmentData`, que **nunca se llenó** (los tres caminos hacían `setAppointmentData(null)`): plan, monto y método de la cita no los vio nadie. El estado y su tipo se borraron |
+| El detalle vuelve a traer `session_number` / `package_total_sessions` / `package_charge_usd` | `fresh` reemplaza entero a `selected` y los perdía: abrir una consulta de paquete borraba el rótulo "Consulta 2 de 3"                                                                                           |

@@ -69,6 +69,31 @@ interface ConsultationEnrichedRow {
    * NUMERIC de Postgres llega como string. Null en consultas sueltas.
    */
   package_charge_usd: string | null;
+  /**
+   * plan_name de la cita — el servicio que contrató el paciente.
+   * Lo seleccionan las TRES consultas que alimentan toDomainEnriched (detalle,
+   * listado y approveWithExtras): se muestra siempre, con monto o sin él.
+   */
+  appt_plan_name: string | null;
+  // --------------- Cobertura del pago (sesiones 2..N) ---------------
+  // OPCIONALES a propósito: solo los selecciona findById(), que es el único
+  // que hace JOIN con payments. En el listado y en approveWithExtras llegan
+  // `undefined` y toDomainEnriched deja coveredBy en null.
+  /**
+   * ID del pago que cubre esta sesión (a.payment_id). Null cuando la consulta
+   * no tiene cita o no es sesión 2..N (se aplica la condición en toDomainEnriched).
+   */
+  appt_payment_id?: string | null;
+  /** amount_usd del pago que cubre la sesión (NUMERIC → string). Null si no hay pago. */
+  covered_amount_usd?: string | null;
+  /** amount_bs del pago (NUMERIC → string). Null si no aplica. */
+  covered_amount_bs?: string | null;
+  /** paid_at del pago. Null si no está aprobado. */
+  covered_paid_at?: string | null;
+  /** method_snapshot del pago (efectivo, pago_movil, package, etc.). */
+  covered_method?: string | null;
+  /** payment_reference del pago. */
+  covered_reference?: string | null;
 }
 
 /** Raw row returned by queries against consultation_extra_items. */
@@ -140,6 +165,8 @@ export class SequelizeConsultationRepository implements IConsultationRepository 
          p.full_name AS patient_full_name_enc,
          a.status    AS appointment_status,
          a.session_number,
+         a.payment_id AS appt_payment_id,
+         a.plan_name  AS appt_plan_name,
          COALESCE(
            pkg.total_sessions,
            (SELECT pp.sessions_count
@@ -179,11 +206,19 @@ export class SequelizeConsultationRepository implements IConsultationRepository 
              AND a1.plan_name      = a.plan_name
              AND a1.session_number IS NULL
            ORDER BY a1.scheduled_at ASC
-           LIMIT 1) AS package_charge_usd
+           LIMIT 1) AS package_charge_usd,
+         /* Campos del pago que cubre esta sesión (sesiones 2..N del paquete).
+          * toDomainEnriched solo construye coveredBy cuando a.session_number IS NOT NULL. */
+         pay.amount_usd::text   AS covered_amount_usd,
+         pay.amount_bs::text    AS covered_amount_bs,
+         pay.paid_at::text      AS covered_paid_at,
+         pay.method_snapshot    AS covered_method,
+         pay.payment_reference  AS covered_reference
        FROM consultations c
-       LEFT JOIN patients         p   ON p.id  = c.patient_id
-       LEFT JOIN appointments     a   ON a.id  = c.appointment_id
-       LEFT JOIN patient_packages pkg ON pkg.id = a.package_id
+       LEFT JOIN patients         p   ON p.id      = c.patient_id
+       LEFT JOIN appointments     a   ON a.id      = c.appointment_id
+       LEFT JOIN patient_packages pkg ON pkg.id    = a.package_id
+       LEFT JOIN payments         pay ON pay.id    = a.payment_id
        WHERE c.id = :id AND c.doctor_id = :doctorId
        LIMIT 1`,
       { replacements: { id, doctorId }, type: QueryTypes.SELECT },
@@ -603,6 +638,7 @@ export class SequelizeConsultationRepository implements IConsultationRepository 
          p.full_name AS patient_full_name_enc,
          a.status    AS appointment_status,
          a.session_number,
+         a.plan_name AS appt_plan_name,
          COALESCE(
            pkg.total_sessions,
            (SELECT pp.sessions_count
@@ -1088,6 +1124,7 @@ export class SequelizeConsultationRepository implements IConsultationRepository 
            p.full_name AS patient_full_name_enc,
            a.status    AS appointment_status,
            a.session_number,
+           a.plan_name AS appt_plan_name,
            COALESCE(
              pkg.total_sessions,
              (SELECT pp.sessions_count
@@ -1315,7 +1352,7 @@ export class SequelizeConsultationRepository implements IConsultationRepository 
 
   /**
    * Maps a raw enriched SQL row (from JOIN queries) to a Consultation entity.
-   * Populates patientName (decrypted), appointmentStatus, and extraItems.
+   * Populates patientName (decrypted), appointmentStatus, extraItems, and coveredBy.
    *
    * @param extras - Pre-loaded extra items for this consultation. Pass [] for list
    *   queries where extras are not loaded (avoids N+1). Pass the loaded array for
@@ -1328,6 +1365,34 @@ export class SequelizeConsultationRepository implements IConsultationRepository 
     const patientName = row.patient_full_name_enc
       ? this.safeDecrypt(row.patient_full_name_enc, 'full_name')
       : null;
+
+    // coveredBy es no-null solo para sesiones 2..N (session_number IS NOT NULL)
+    // que tienen un pago vinculado. La primera sesión (session_number IS NULL) es
+    // la que hizo el pago, no la que lo recibe. Si no hay cita (appointment_id IS NULL)
+    // tampoco hay cobertura.
+    const coveredBy =
+      row.session_number !== null &&
+      row.session_number !== undefined &&
+      row.appt_payment_id !== null &&
+      row.appt_payment_id !== undefined
+        ? {
+            paymentId: row.appt_payment_id,
+            planName: row.appt_plan_name ?? null,
+            sessionNumber: row.session_number,
+            totalSessions: row.package_total_sessions ?? null,
+            amountUsd:
+              row.covered_amount_usd !== null && row.covered_amount_usd !== undefined
+                ? parseFloat(row.covered_amount_usd)
+                : 0,
+            amountBs:
+              row.covered_amount_bs !== null && row.covered_amount_bs !== undefined
+                ? parseFloat(row.covered_amount_bs)
+                : null,
+            paidAt: row.covered_paid_at ? new Date(row.covered_paid_at) : null,
+            method: row.covered_method ?? null,
+            reference: row.covered_reference ?? null,
+          }
+        : null;
 
     return Consultation.create({
       id: row.id,
@@ -1353,6 +1418,7 @@ export class SequelizeConsultationRepository implements IConsultationRepository 
       updatedAt: new Date(row.updated_at),
       patientName,
       appointmentStatus: row.appointment_status ?? null,
+      planName: row.appt_plan_name ?? null,
       sessionNumber: row.session_number ?? null,
       packageTotalSessions: row.package_total_sessions ?? null,
       // NUMERIC llega como string desde pg; parseFloat de un null daría NaN, y NaN
@@ -1362,6 +1428,7 @@ export class SequelizeConsultationRepository implements IConsultationRepository 
           ? parseFloat(row.package_charge_usd)
           : null,
       extraItems: extras,
+      coveredBy,
     });
   }
 }

@@ -17,6 +17,10 @@ import {
 import { AppointmentConflictError } from '../../../appointments/domain/errors/appointment-conflict.error';
 import { Appointment } from '../../../appointments/domain/entities/appointment.entity';
 import { CreateConsultationUseCase } from '../../../consultations/application/use-cases/consultations/create-consultation.use-case';
+import {
+  PAYMENT_REPOSITORY,
+  type IPaymentRepository,
+} from '../../../finances/domain/repositories/payment.repository';
 
 export interface SchedulePendingConsultationInput {
   id: string;
@@ -61,6 +65,9 @@ export class SchedulePendingConsultationUseCase {
     @Optional()
     @Inject(CreateConsultationUseCase)
     private readonly createConsultationUC: CreateConsultationUseCase | null = null,
+    @Optional()
+    @Inject(PAYMENT_REPOSITORY)
+    private readonly paymentRepo: IPaymentRepository | null = null,
   ) {}
 
   async execute(input: SchedulePendingConsultationInput): Promise<PendingConsultation> {
@@ -135,16 +142,41 @@ export class SchedulePendingConsultationUseCase {
       const savedAppointment = await this.appointmentRepo.save(appointment, tx);
 
       // 4. Auto-create consultation (best-effort)
+      //    For sessions 2..N of a package (entity.paymentId set), the parent payment
+      //    already covers the base price. The consultation is born with amount=0 and
+      //    inherits the parent payment status so it never appears in "Por cobrar".
       let consultationId: string | null = null;
       if (this.createConsultationUC && entity.patientId) {
         try {
+          // Resolve payment state when this session is covered by an existing payment.
+          let initialPaymentStatus: 'pending' | 'approved' | undefined;
+          let inheritedMethod: string | null | undefined;
+          let inheritedReference: string | null | undefined;
+          let coveredAmount: number | null = null;
+
+          if (entity.paymentId && this.paymentRepo) {
+            const parentPayment = await this.paymentRepo.findByIdForDoctor(
+              entity.paymentId,
+              entity.doctorId,
+            );
+            if (parentPayment) {
+              initialPaymentStatus = parentPayment.status;
+              inheritedMethod = parentPayment.methodSnapshot;
+              inheritedReference = parentPayment.paymentReference;
+              coveredAmount = 0; // base price already paid in session 1
+            }
+          }
+
           const consultation = await this.createConsultationUC.execute({
             doctorId: entity.doctorId,
             patientId: entity.patientId,
             appointmentId: savedAppointment.id,
             consultationDate: input.scheduledAt,
             chiefComplaint: null,
-            amount: null,
+            amount: coveredAmount,
+            initialPaymentStatus,
+            paymentMethod: inheritedMethod,
+            paymentReference: inheritedReference,
           });
           consultationId = consultation.id;
           await this.appointmentRepo.updateConsultationId(savedAppointment.id, consultation.id);

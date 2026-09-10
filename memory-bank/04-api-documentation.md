@@ -1251,3 +1251,36 @@ un mensaje genérico**: el error crudo puede traer direcciones internas de red.
 esquema es `.strict()`, así que mandar un `unit_price_usd` hace fallar la petición con 422.
 Y `extra_items` de la respuesta de consulta ahora incluye `product_id`, `quantity` y
 `unit_price_usd` (ver ADR-054: sin ellos la UI pierde el producto y el stock se infla al reaprobar).
+
+## Cambios de contrato del lote de paquete pagado (2026-09-10)
+
+### `GET /api/consultations/:id` — `covered_by` y `plan_name`
+
+Dos campos nuevos de solo lectura en la respuesta de consulta:
+
+| Campo        | Dónde aparece                    | Qué trae                                                        |
+| ------------ | -------------------------------- | --------------------------------------------------------------- |
+| `plan_name`  | detalle **y** listado            | `appointments.plan_name` — el servicio que contrató el paciente |
+| `covered_by` | **solo el detalle** (`findById`) | el pago del paquete que ya cubre esta sesión, o `null`          |
+
+`covered_by` es no-null **solo para las sesiones 2..N** de un paquete: exige
+`appointments.session_number IS NOT NULL` **y** `appointments.payment_id IS NOT NULL`. La sesión 1
+es la que **hizo** el pago, no la que lo recibe, así que va en `null`. Forma del objeto (snake_case,
+como el resto del envelope): `payment_id`, `plan_name`, `session_number`, `total_sessions`,
+`amount_usd`, `amount_bs`, `paid_at`, `method`, `reference`.
+
+⚠️ `amount_usd` es el importe del **paquete completo**, no el de esta consulta — esta no cobra nada.
+La UI lo muestra **una sola vez**, en el recuadro de cobertura: repetirlo en las 4 sesiones se lee
+como 4 × el precio.
+
+En el listado y en `approve-payment` llega `null` a propósito: son las únicas dos consultas que no
+hacen JOIN con `payments`. Por eso los campos `appt_payment_id` / `covered_*` de la fila SQL son
+opcionales en el tipo — declararlos obligatorios era un tipo que miente.
+
+### Sesiones de paquete: la consulta nace pagada
+
+Las consultas 2..N ya no nacen en `pending`: heredan el estado del pago padre
+(`initialPaymentStatus`) con `amount = 0`. Vale para los **tres** caminos que agendan una sesión —
+`schedule-pending-consultation` (especialista), `…-by-token` (paciente desde el correo, que delega
+en el anterior) y `create-immediate-appointment` (que además **reusa** el pago existente vía
+`existingPaymentId` en vez de crear un pago fantasma de $0).
