@@ -3448,8 +3448,22 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
       Importe del PAQUETE, no de esta consulta: se muestra una sola vez, en el
       recuadro de cobertura. Repetir "$120" en las 4 sesiones se lee como $480.
     */
+    /*
+      ¿El paquete ya se COBRÓ? Se mira el estado del pago del paquete, no el de
+      esta consulta: una sesión vieja puede estar en "pendiente" con el paquete
+      ya cobrado, y un paquete reservado por pago móvil sigue pendiente hasta que
+      el especialista lo aprueba, con sus sesiones ya creadas. Afirmar "ya pagado"
+      en ese caso es de las etiquetas que mienten y que ningún test ve.
+    */
+    const coverageIsPaid = coverage?.status === 'approved';
     const ps = coverage
-      ? { label: 'Cubierta', color: 'bg-violet-100 text-violet-700', dot: 'bg-violet-500' }
+      ? coverageIsPaid
+        ? { label: 'Cubierta', color: 'bg-violet-100 text-violet-700', dot: 'bg-violet-500' }
+        : {
+            label: 'Cubierta · por cobrar',
+            color: 'bg-amber-100 text-amber-700',
+            dot: 'bg-amber-500',
+          }
       : PAYMENT_STATUS[report.payment_status];
 
     return (
@@ -5268,38 +5282,77 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                         Cobertura del paquete (sesiones 2..N).
 
                         Reemplaza a TODO el bloque de cobro: monto, método,
-                        referencia, comprobante y estado. Esta consulta ya está
-                        pagada; lo único que falta es decir con qué dinero.
+                        referencia, comprobante y estado. Esta sesión nunca cobra
+                        por su cuenta; lo que falta es decir de dónde sale el dinero.
+
+                        Dos estados, y la diferencia importa: el paquete YA cobrado
+                        (violeta) y el paquete reservado pero AÚN NO cobrado (ámbar),
+                        que existe de verdad — un paquete pagado por pago móvil sigue
+                        pendiente hasta que el especialista lo aprueba, y sus sesiones
+                        ya están creadas. Pintar los dos igual convertía el recuadro
+                        en una etiqueta que miente sobre plata.
                       */}
                       {coverage && (
-                        <div className="rounded-xl bg-violet-50 border border-violet-200 px-3 py-2.5 space-y-1">
-                          <p className="text-[10px] font-semibold text-violet-700 uppercase tracking-wider">
-                            Cubierta por un paquete ya pagado
+                        <div
+                          className={`rounded-xl px-3 py-2.5 space-y-1 border ${
+                            coverageIsPaid
+                              ? 'bg-violet-50 border-violet-200'
+                              : 'bg-amber-50 border-amber-200'
+                          }`}
+                        >
+                          <p
+                            className={`text-[10px] font-semibold uppercase tracking-wider ${
+                              coverageIsPaid ? 'text-violet-700' : 'text-amber-700'
+                            }`}
+                          >
+                            {coverageIsPaid
+                              ? 'Cubierta por un paquete ya pagado'
+                              : 'Cubierta por un paquete SIN cobrar todavía'}
                           </p>
-                          <p className="text-sm font-extrabold text-violet-800">
+                          <p
+                            className={`text-sm font-extrabold ${
+                              coverageIsPaid ? 'text-violet-800' : 'text-amber-800'
+                            }`}
+                          >
                             {format(coverage.amount_usd)}
                             {/* `!= null` y no un truthy suelto: con 0 sesiones, `0 && …`
                                 pinta un "0" pegado al monto. */}
                             {coverage.total_sessions != null && coverage.total_sessions > 1 && (
-                              <span className="font-semibold text-[11px] text-violet-600">
+                              <span
+                                className={`font-semibold text-[11px] ${
+                                  coverageIsPaid ? 'text-violet-600' : 'text-amber-600'
+                                }`}
+                              >
                                 {' '}
                                 por {coverage.total_sessions} consultas
                               </span>
                             )}
                           </p>
                           {bcvRate && (
-                            <p className="text-[10px] text-violet-500">
+                            <p
+                              className={`text-[10px] ${
+                                coverageIsPaid ? 'text-violet-500' : 'text-amber-600'
+                              }`}
+                            >
                               {toBs(coverage.amount_usd)}
                             </p>
                           )}
-                          <p className="text-[10px] text-violet-700 leading-snug">
+                          <p
+                            className={`text-[10px] leading-snug ${
+                              coverageIsPaid ? 'text-violet-700' : 'text-amber-700'
+                            }`}
+                          >
                             {coverage.paid_at
                               ? `Pagado el ${new Date(coverage.paid_at).toLocaleDateString('es-VE')}`
-                              : 'Cobro registrado en la primera consulta del paquete'}
+                              : 'El cobro del paquete se registra en la PRIMERA consulta, y ahí sigue pendiente'}
                             {coverage.method && ` · ${coverage.method.replace(/_/g, ' ')}`}
                             {coverage.reference && ` · ref. ${coverage.reference}`}
                           </p>
-                          <p className="text-[10px] font-semibold text-violet-600 leading-snug">
+                          <p
+                            className={`text-[10px] font-semibold leading-snug ${
+                              coverageIsPaid ? 'text-violet-600' : 'text-amber-600'
+                            }`}
+                          >
                             Esta consulta no genera un cobro nuevo.
                           </p>
                         </div>

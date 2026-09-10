@@ -84,6 +84,8 @@ interface ConsultationEnrichedRow {
    * no tiene cita o no es sesión 2..N (se aplica la condición en toDomainEnriched).
    */
   appt_payment_id?: string | null;
+  /** status del pago del paquete ('pending' | 'approved'). Dice si YA se cobró. */
+  covered_status?: string | null;
   /** amount_usd del pago que cubre la sesión (NUMERIC → string). Null si no hay pago. */
   covered_amount_usd?: string | null;
   /** amount_bs del pago (NUMERIC → string). Null si no aplica. */
@@ -209,6 +211,7 @@ export class SequelizeConsultationRepository implements IConsultationRepository 
            LIMIT 1) AS package_charge_usd,
          /* Campos del pago que cubre esta sesión (sesiones 2..N del paquete).
           * toDomainEnriched solo construye coveredBy cuando a.session_number IS NOT NULL. */
+         pay.status             AS covered_status,
          pay.amount_usd::text   AS covered_amount_usd,
          pay.amount_bs::text    AS covered_amount_bs,
          pay.paid_at::text      AS covered_paid_at,
@@ -1370,6 +1373,10 @@ export class SequelizeConsultationRepository implements IConsultationRepository 
     // que tienen un pago vinculado. La primera sesión (session_number IS NULL) es
     // la que hizo el pago, no la que lo recibe. Si no hay cita (appointment_id IS NULL)
     // tampoco hay cobertura.
+    // Sin status legible se asume NO cobrado: afirmar "ya pagado" de más es el
+    // error caro; decir "pendiente" de más solo manda a revisar el cobro.
+    const coveredStatus: PaymentStatus = row.covered_status === 'approved' ? 'approved' : 'pending';
+
     const coveredBy =
       row.session_number !== null &&
       row.session_number !== undefined &&
@@ -1377,6 +1384,7 @@ export class SequelizeConsultationRepository implements IConsultationRepository 
       row.appt_payment_id !== undefined
         ? {
             paymentId: row.appt_payment_id,
+            status: coveredStatus,
             planName: row.appt_plan_name ?? null,
             sessionNumber: row.session_number,
             totalSessions: row.package_total_sessions ?? null,

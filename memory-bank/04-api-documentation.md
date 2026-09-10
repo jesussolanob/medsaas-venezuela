@@ -1267,7 +1267,12 @@ Dos campos nuevos de solo lectura en la respuesta de consulta:
 `appointments.session_number IS NOT NULL` **y** `appointments.payment_id IS NOT NULL`. La sesión 1
 es la que **hizo** el pago, no la que lo recibe, así que va en `null`. Forma del objeto (snake_case,
 como el resto del envelope): `payment_id`, `plan_name`, `session_number`, `total_sessions`,
-`amount_usd`, `amount_bs`, `paid_at`, `method`, `reference`.
+`status`, `amount_usd`, `amount_bs`, `paid_at`, `method`, `reference`.
+
+`status` es el estado del pago **del paquete**, y no se deriva del `payment_status` de la consulta:
+un paquete reservado por pago móvil sigue `pending` hasta que el especialista lo aprueba, con sus
+sesiones 2..N ya creadas. Sin ese campo la pantalla afirmaba "paquete ya pagado" cuando el cobro
+seguía pendiente.
 
 ⚠️ `amount_usd` es el importe del **paquete completo**, no el de esta consulta — esta no cobra nada.
 La UI lo muestra **una sola vez**, en el recuadro de cobertura: repetirlo en las 4 sesiones se lee
