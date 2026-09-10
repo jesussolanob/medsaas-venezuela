@@ -110,6 +110,11 @@ export type Consultation = {
  */
 export type ConsultationCoverage = {
   payment_id: string;
+  /**
+   * Estado del pago del PAQUETE — si ya se cobró o sigue pendiente.
+   * La pantalla no puede afirmar "ya pagado" sin mirar esto.
+   */
+  status: 'pending' | 'approved';
   plan_name: string | null;
   session_number: number | null;
   total_sessions: number | null;

@@ -10,6 +10,15 @@ import type { ConsultationExtraItem } from './consultation-extra-item.entity';
  */
 export interface PaymentCoverage {
   paymentId: string;
+  /**
+   * Estado del pago del PAQUETE — la verdad sobre si ya se cobró.
+   *
+   * No se deriva del `payment_status` de esta consulta: las sesiones creadas
+   * antes de este lote pueden estar en 'pending' aunque el paquete ya se haya
+   * cobrado. Sin este campo la pantalla afirmaba "paquete ya pagado" también
+   * cuando el cobro seguía pendiente.
+   */
+  status: PaymentStatus;
   planName: string | null;
   sessionNumber: number | null;
   totalSessions: number | null;
