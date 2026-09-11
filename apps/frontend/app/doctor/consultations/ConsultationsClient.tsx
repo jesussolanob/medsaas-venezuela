@@ -7031,6 +7031,19 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                           Por confirmar
                         </span>
                       )}
+                      {/*
+                        Cancelada: la fila NO decía nada al cancelar.
+                        Solo desaparecía la etiqueta ámbar "Por confirmar", así que
+                        el listado quedaba prácticamente igual que antes. Una
+                        especialista canceló una cita, no vio ningún cambio, y
+                        siguió reintentando contra mensajes de error (2026-09-11).
+                        El acuse de recibo de una acción tiene que ser visible.
+                      */}
+                      {c.appointment_status === 'cancelled' && (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-100 text-red-700 border border-red-200 shrink-0">
+                          Cancelada
+                        </span>
+                      )}
                       {sessionLabel(c) && (
                         <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-violet-100 text-violet-700 border border-violet-200 shrink-0">
                           {sessionLabel(c)}
