@@ -243,6 +243,53 @@ describe('SchedulePendingConsultationUseCase', () => {
       );
     });
 
+    it('crea la consulta DESPUÉS del commit, no dentro de la transacción', async () => {
+      // Adentro de la transacción la FK contra `appointments` no ve la cita recién
+      // insertada: Postgres rechaza el INSERT con consultations_appointment_id_fkey
+      // y el error moría en un warn, dejando la cita agendada y SIN consulta —
+      // con la pantalla diciendo que todo salió bien. Verificado en staging el
+      // 2026-09-11 agendando la sesión 3 de un paquete.
+      const pc = makePc({ paymentId: 'pay-001', expiresAt: FUTURE_EXPIRES });
+      const scheduledPc = pc.markScheduled('appt-004', null);
+
+      let transactionClosed = false;
+      const llamadasTrasCommit: boolean[] = [];
+      const mockCreateConsultation = {
+        execute: jest.fn().mockImplementation(() => {
+          llamadasTrasCommit.push(transactionClosed);
+          return Promise.resolve({ id: 'consult-004' });
+        }),
+      };
+      const sequelizeSpy = {
+        transaction: jest.fn().mockImplementation(async (cb: (tx: unknown) => Promise<unknown>) => {
+          const r = await cb({});
+          transactionClosed = true;
+          return r;
+        }),
+      };
+
+      const uc = new SchedulePendingConsultationUseCase(
+        mockPendingRepo,
+        mockAppointmentRepo,
+        sequelizeSpy as never,
+        mockCreateConsultation as never,
+        mockPaymentRepo,
+      );
+
+      mockPendingRepo.findByIdAndDoctor.mockResolvedValue(pc);
+      mockAppointmentRepo.hasOverlap.mockResolvedValue(false);
+      mockAppointmentRepo.save.mockResolvedValue({ id: 'appt-004' } as never);
+      mockAppointmentRepo.updateConsultationId.mockResolvedValue(undefined as never);
+      mockPendingRepo.save.mockResolvedValue(scheduledPc);
+      mockPaymentRepo.findByIdForDoctor.mockResolvedValue(makeApprovedPayment());
+
+      const resultado = await uc.execute({ id: 'pc-001', doctorId: 'doc-001', scheduledAt: SLOT });
+
+      expect(llamadasTrasCommit).toEqual([true]);
+      // Y la preconsulta termina con el vínculo a la consulta, no en null.
+      expect(resultado.consultationId).toBe('consult-004');
+    });
+
     it('creates consultation with amount=null when paymentId is absent (standalone session)', async () => {
       const pc = makePc({ paymentId: undefined, expiresAt: FUTURE_EXPIRES });
       const savedAppt = { id: 'appt-003' };
