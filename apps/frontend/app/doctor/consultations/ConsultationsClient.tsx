@@ -109,6 +109,8 @@ import PatientFichaModal from '@/components/patient/PatientFichaModal';
 import RescheduleModal from '@/components/doctor/RescheduleModal';
 import NoShowModal from '@/components/doctor/NoShowModal';
 import PatientHistoryModal from './PatientHistoryModal';
+import { htmlToPreview } from '@/lib/html-text';
+import { allowedAppointmentTransitions, appointmentStatusLabel } from '@delta/shared-types';
 import { log } from '@/lib/logger';
 import { reportError } from '@/lib/report-error';
 import { useDoctorFeatures } from '@/hooks/useDoctorFeatures';
@@ -3249,6 +3251,25 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
   if (view === 'consultation' && selected) {
     const ps = PAYMENT_STATUS[report.payment_status];
 
+    /*
+      Qué puede hacerse todavía con la CITA vinculada.
+
+      Antes los botones "Atendida" y "No asistió" se ocultaban según el estado de
+      la CONSULTA, no el de la CITA: sobre una cita ya cancelada seguían a la
+      vista y al apretarlos el backend devolvía un error. La tabla sale de
+      @delta/shared-types, la misma que aplica el dominio, así que la pantalla no
+      puede quedar desfasada de la regla.
+
+      Sin cita vinculada no hay transición que validar: la consulta se maneja sola.
+    */
+    const transicionesPosibles = selected.appointment_id
+      ? allowedAppointmentTransitions(selected.appointment_status ?? '')
+      : null;
+    const puedeMarcarAtendida =
+      transicionesPosibles === null || transicionesPosibles.includes('completed');
+    const puedeMarcarNoAsistio =
+      transicionesPosibles === null || transicionesPosibles.includes('no_show');
+
     return (
       <>
         <style>{`@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');* { font-family: 'Inter', sans-serif; }.g-bg{background:linear-gradient(135deg,#00C4CC 0%,#0891b2 100%)}.safari-tab { border-radius: 8px 8px 0 0; padding: 8px 16px; } .safari-tab.active { background: white; border: 1px solid #e2e8f0; border-bottom: none; box-shadow: 0 -2px 8px rgba(0,0,0,0.03); }@keyframes toastSlide { from { opacity: 0; transform: translate(-50%, -8px); } to { opacity: 1; transform: translate(-50%, 0); } }`}</style>
@@ -3339,7 +3360,7 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
               <div className="flex items-center justify-between gap-3 flex-wrap">
                 {/* Grupo izquierdo: cambios de status (solo aparecen si aplican) */}
                 <div className="flex items-center gap-1.5 flex-wrap">
-                  {selected.status !== 'completed' && (
+                  {selected.status !== 'completed' && puedeMarcarAtendida && (
                     <button
                       onClick={() =>
                         updateConsultaStatus(selected.id, 'completed', selected.appointment_id)
@@ -3350,7 +3371,7 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                       <Check className="w-3.5 h-3.5" /> Atendida
                     </button>
                   )}
-                  {selected.status !== 'no_show' && (
+                  {selected.status !== 'no_show' && puedeMarcarNoAsistio && (
                     <button
                       onClick={() => setNoShowTarget(selected)}
                       className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-red-200 rounded-lg text-xs font-semibold text-red-600 hover:bg-red-50 transition-colors"
@@ -3358,6 +3379,15 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                     >
                       <X className="w-3.5 h-3.5" /> No asistió
                     </button>
+                  )}
+                  {/* Una cita en estado final no admite ningún cambio. Decirlo acá
+                      evita que el especialista lo descubra apretando un botón que
+                      solo podía devolver un error. */}
+                  {transicionesPosibles !== null && transicionesPosibles.length === 0 && (
+                    <span className="text-xs text-slate-500 bg-slate-100 border border-slate-200 rounded-lg px-2 py-1">
+                      Cita {appointmentStatusLabel(selected.appointment_status ?? '').toLowerCase()}{' '}
+                      — no admite más cambios
+                    </span>
                   )}
                   {/* El cambio de estado de pago se centralizo en el select del panel derecho
                       "Configuracion de la consulta" (ronda 14). Aqui solo se ven los badges. */}
@@ -6512,6 +6542,7 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
               const isUpcoming = cDate > now;
               const ps = PAYMENT_STATUS[c.payment_status];
               const hasReport = c.diagnosis || c.notes;
+              const chiefComplaintPreview = htmlToPreview(c.chief_complaint);
 
               return (
                 <button
@@ -6560,9 +6591,11 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                       )}
                     </div>
                     <div className="flex flex-col sm:flex-row items-start sm:items-center gap-1 sm:gap-2 text-xs text-slate-400">
-                      <div className="flex items-center gap-1">
+                      {/* `shrink-0` protege la fecha y la hora: el resumen de al lado
+                          puede ser largo y antes las comprimía hasta partirlas. */}
+                      <div className="flex items-center gap-1 shrink-0">
                         <Calendar className="w-3 h-3" />
-                        <span>
+                        <span className="whitespace-nowrap">
                           {cDate.toLocaleDateString('es-VE', { day: 'numeric', month: 'short' })} ·{' '}
                           {cDate.toLocaleTimeString('es-VE', {
                             hour: '2-digit',
@@ -6570,10 +6603,12 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                           })}
                         </span>
                       </div>
-                      {c.chief_complaint && (
+                      {/* El motivo se guarda como HTML (el editor es de texto enriquecido).
+                          Sin aplanarlo, la fila mostraba las etiquetas crudas: "<p>…</p>". */}
+                      {chiefComplaintPreview && (
                         <>
-                          <span className="hidden sm:inline text-slate-200">·</span>
-                          <span className="italic truncate">{c.chief_complaint}</span>
+                          <span className="hidden sm:inline text-slate-200 shrink-0">·</span>
+                          <span className="italic truncate min-w-0">{chiefComplaintPreview}</span>
                         </>
                       )}
                     </div>

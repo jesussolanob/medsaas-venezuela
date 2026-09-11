@@ -224,6 +224,16 @@ export type IncomePageItem = {
   patient_name: string | null;
   patient_id: string | null;
   reference: string | null;
+  /**
+   * Fecha de la consulta que pagó este ingreso; null en los ingresos manuales.
+   *
+   * `date` es cuándo ENTRÓ la plata, casi siempre otro día. Sin esta, dos
+   * cobros iguales del mismo paciente en días seguidos se leen como uno
+   * duplicado: son dos sesiones distintas.
+   */
+  consultation_date: string | null;
+  /** Servicio contratado en esa consulta; null en los manuales. */
+  plan_name: string | null;
 };
 
 /** Tope duro del backend por request (finances.controller). */

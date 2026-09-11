@@ -1,3 +1,4 @@
+import { allowedAppointmentTransitions } from '@delta/shared-types';
 import type { AppointmentStatus, AppointmentMode } from '@delta/shared-types';
 
 /**
@@ -12,15 +13,6 @@ import type { AppointmentStatus, AppointmentMode } from '@delta/shared-types';
  *   - canBeModifiedBy() enforces doctor ownership (anti-IDOR).
  */
 export class Appointment {
-  private static readonly TRANSITIONS: Partial<Record<AppointmentStatus, AppointmentStatus[]>> = {
-    // scheduled: allow clinical outcomes directly — a doctor can mark a patient
-    // as attended or absent without the intermediate "confirmed" administrative step.
-    // completed, no_show, and cancelled are still terminal from all other states.
-    scheduled: ['confirmed', 'cancelled', 'completed', 'no_show'],
-    confirmed: ['completed', 'no_show', 'cancelled'],
-    // completed, cancelled, no_show, pending, accepted: no outgoing transitions
-  };
-
   constructor(
     public readonly id: string,
     public readonly doctorId: string,
@@ -103,8 +95,20 @@ export class Appointment {
    * are allowed from them at the domain level.
    */
   canTransitionTo(newStatus: AppointmentStatus): boolean {
-    const allowed = Appointment.TRANSITIONS[this.status];
-    return allowed?.includes(newStatus) ?? false;
+    return this.allowedTransitions().includes(newStatus);
+  }
+
+  /**
+   * Statuses this appointment can still move to. Empty means a final state.
+   *
+   * Exposed so the error message can tell the specialist what IS possible
+   * instead of only what is not, and so the UI can hide the actions that would
+   * fail. A button that only exists to produce an error is a defect.
+   */
+  allowedTransitions(): AppointmentStatus[] {
+    // La tabla vive en @delta/shared-types para que la UI oculte exactamente las
+    // acciones que el dominio rechazaría, en vez de mantener su propia copia.
+    return allowedAppointmentTransitions(this.status);
   }
 
   /**
