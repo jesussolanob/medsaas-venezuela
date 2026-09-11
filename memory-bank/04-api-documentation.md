@@ -1347,8 +1347,26 @@ así que el selector mostraba **"— Sin especificar —"** y se perdía cómo d
 **La LECTURA sigue entendiendo los valores viejos** — los mapas de labels conservan `cash_usd`/
 `cash_bs` como alias, así que una fila que se escape no se muestra en inglés.
 
-⚠️ El backend **no valida** el vocabulario (`payment_method: z.string()`), así que nada impide
-volver a escribir inglés desde una pantalla nueva. Es una convención, no una restricción.
+**El vocabulario está CERRADO en el DTO** (`libs/shared-types/src/payment-method.ts`), aplicado a los
+nueve esquemas que tocan método de pago. Un valor inventado se rechaza con 422 y un mensaje en
+español que lista los válidos. Tres reglas del esquema, que importan más que el enum:
+
+1. **Los alias viejos se NORMALIZAN, no se rechazan**: `cash_usd` entra y se guarda como `efectivo`.
+   Un cliente en caché o una fila que se escapó de la migración se corrige solo. Rechazar dejaría al
+   especialista sin poder guardar — peor que el problema original. Verificado en staging: una reserva
+   con `cash_usd` devuelve 200 y queda como `efectivo` en las tres tablas.
+2. **`manual` se acepta** aunque ninguna pantalla lo ofrezca: hay consultas de junio y julio con ese
+   valor, y reabrirlas y guardarlas reenvía el método.
+3. **`profiles.payment_methods` usa un esquema más angosto** (`OfferablePaymentMethodSchema`) que no
+   admite `package` ni `insurance`: los pone el sistema y aceptarlos ahí los haría aparecer como
+   botón en la reserva pública.
+
+⚠️ El conjunto salió de mirar la BD **y** el código: `package`/`insurance` los escribe el código y no
+estaban en la BD; `manual` estaba en la BD y no en el código. Omitir cualquiera habría sido un 422 en
+un flujo real. Al agregar un método nuevo, actualizar `PAYMENT_METHODS` **y** la lista de la pantalla.
+
+ℹ️ `libs/shared-types` no tenía forma de correr tests (su spec no lo hubiera ejecutado nadie); se le
+cableó el target de jest copiando el de `shared-utils`.
 
 ### Migración `20260911000001` — va OBLIGATORIAMENTE junto al código
 
