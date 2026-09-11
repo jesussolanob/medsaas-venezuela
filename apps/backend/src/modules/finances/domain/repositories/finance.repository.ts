@@ -52,6 +52,17 @@ export interface UnifiedIncomeItem {
   patient_name: string | null;
   /** Payment/consultation reference code; null for manual rows without one. */
   reference: string | null;
+  /**
+   * Date of the consultation this income paid for; null for manual rows.
+   *
+   * `date` above is when the money came IN, which is often a different day —
+   * and sometimes a different month. Without this, two $45 rows for the same
+   * patient on consecutive days are indistinguishable, and a specialist reads
+   * them as one charge duplicated. They are two different sessions.
+   */
+  consultation_date: Date | null;
+  /** Service contracted for that consultation; null for manual rows. */
+  plan_name: string | null;
 }
 
 export interface UnifiedIncomeListFilters {

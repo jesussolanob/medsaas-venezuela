@@ -52,6 +52,8 @@ interface UnifiedIncomeRow {
   /** AES-256-GCM ciphertext of the patient full name; null when no patient. */
   patient_full_name_enc: string | null;
   reference: string | null;
+  consultation_date: Date | null;
+  plan_name: string | null;
 }
 
 /** Raw row returned by the unified income COUNT query. */
@@ -426,12 +428,35 @@ export class SequelizeFinanceRepository implements IFinanceRepository {
         NULL::text                          AS concept,
         p.patient_id::text                  AS patient_id,
         pt.full_name                        AS patient_full_name_enc,
-        p.payment_code                      AS reference
+        p.payment_code                      AS reference,
+        -- Qué consulta pagó este ingreso. La columna date es cuándo entró la
+        -- plata, que suele ser otro día: sin esto, dos cobros iguales del mismo
+        -- paciente en días seguidos se leen como uno duplicado (reporte real).
+        ap.scheduled_at                     AS consultation_date,
+        ap.plan_name                        AS plan_name
       FROM payments p
       LEFT JOIN patients pt
         ON  pt.id         = p.patient_id
         AND pt.doctor_id  = :doctorId
         AND pt.deleted_at IS NULL
+      -- LATERAL con LIMIT 1, NO un LEFT JOIN simple.
+      --
+      -- Un pago de PAQUETE lo comparten todas las sesiones: con un join plano,
+      -- un paquete de 4 consultas multiplicaría su ingreso por 4. Hoy en
+      -- producción ningún pago tiene más de una cita, así que el join simple
+      -- pasaría la prueba — y rompería el día que se promueva el lote de
+      -- sesiones de paquete, que es justo el que las hace compartir payment_id.
+      --
+      -- Se toma la PRIMERA sesión (session_number NULLS FIRST): es la que lleva
+      -- el precio y la que da sentido al importe cobrado.
+      LEFT JOIN LATERAL (
+        SELECT a2.scheduled_at, a2.plan_name
+          FROM appointments a2
+         WHERE a2.payment_id = p.id
+           AND a2.doctor_id  = :doctorId
+         ORDER BY a2.session_number ASC NULLS FIRST, a2.scheduled_at ASC
+         LIMIT 1
+      ) ap ON TRUE
       WHERE p.doctor_id = :doctorId
         AND p.status = 'approved'
         -- Un pago de $0 no es un ingreso: aparece cuando una inasistencia sin
@@ -456,7 +481,11 @@ export class SequelizeFinanceRepository implements IFinanceRepository {
         ft.description                      AS concept,
         ft.patient_id::text                 AS patient_id,
         pt2.full_name                       AS patient_full_name_enc,
-        NULL::text                          AS reference
+        NULL::text                          AS reference,
+        -- Un ingreso manual no cuelga de ninguna consulta: ambas columnas van
+        -- nulas para que las dos ramas del UNION proyecten la misma forma.
+        NULL::timestamptz                   AS consultation_date,
+        NULL::text                          AS plan_name
       FROM financial_transactions ft
       LEFT JOIN patients pt2
         ON  pt2.id        = ft.patient_id
@@ -509,6 +538,12 @@ export class SequelizeFinanceRepository implements IFinanceRepository {
         patient_id: r.patient_id,
         patient_name: patientName,
         reference: r.reference,
+        consultation_date: r.consultation_date
+          ? r.consultation_date instanceof Date
+            ? r.consultation_date
+            : new Date(r.consultation_date)
+          : null,
+        plan_name: r.plan_name,
       };
     });
 
