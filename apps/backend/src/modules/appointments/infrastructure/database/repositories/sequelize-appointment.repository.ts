@@ -413,6 +413,28 @@ export class SequelizeAppointmentRepository implements IAppointmentRepository {
         ...(paymentId ? { paymentId } : {}),
       };
 
+      /*
+        Monto anterior para el asiento — se lee ANTES de tocar nada, y de la cita
+        PAGADORA (`session_number IS NULL`), no de la que disparó el cambio.
+
+        Al corregir desde una sesión 2..N —que vale 0— el asiento quedaba diciendo
+        "de $0.00 a $160.00": mentía sobre la diferencia de dinero, que es lo único
+        que este registro existe para documentar. Y leerlo después del UPDATE daría
+        el precio NUEVO en los dos lados. Verificado en staging el 2026-09-10.
+      */
+      const payerRows = await this.sequelize.query<{ plan_price: string | null }>(
+        `SELECT a.plan_price
+           FROM appointments a
+          WHERE a.doctor_id = :doctorId AND ${scope} AND a.session_number IS NULL
+          ORDER BY a.scheduled_at ASC
+          LIMIT 1`,
+        { replacements, type: QueryTypes.SELECT, transaction: t },
+      );
+      const oldPriceForAudit =
+        payerRows[0]?.plan_price != null
+          ? parseFloat(payerRows[0].plan_price)
+          : params.oldPlanPriceUsd;
+
       const updatedAppointments = await this.sequelize.query<{ id: string }>(
         `UPDATE appointments a
             SET plan_id    = :planId,
@@ -433,12 +455,20 @@ export class SequelizeAppointmentRepository implements IAppointmentRepository {
       let pendingConsultationsUpdated = false;
       if (paymentId) {
         const updatedPending = await this.sequelize.query<{ id: string }>(
+          /*
+            El estado de una preconsulta por agendar es `pending_scheduling`, NO
+            `pending`. Filtrar por 'pending' no actualizaba NINGUNA fila: las
+            sesiones por agendar seguían ofreciendo el servicio viejo mientras las
+            citas ya decían el nuevo. Verificado en staging el 2026-09-10.
+
+            Las canceladas se dejan como están: son historia.
+          */
           `UPDATE pending_consultations
               SET plan_name = :planName,
                   updated_at = NOW()
             WHERE doctor_id = :doctorId
               AND payment_id = :paymentId
-              AND status = 'pending'
+              AND status <> 'cancelled'
             RETURNING id`,
           {
             replacements: { doctorId: params.doctorId, paymentId, planName: params.newPlanName },
@@ -505,7 +535,7 @@ export class SequelizeAppointmentRepository implements IAppointmentRepository {
           changeType: 'service',
           oldStatus: null,
           newStatus: null,
-          oldValue: formatServiceAuditValue(params.oldPlanName, params.oldPlanPriceUsd),
+          oldValue: formatServiceAuditValue(params.oldPlanName, oldPriceForAudit),
           newValue: formatServiceAuditValue(params.newPlanName, params.newPlanPriceUsd),
         },
         { transaction: t },

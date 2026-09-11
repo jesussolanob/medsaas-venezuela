@@ -279,6 +279,35 @@ function sessionLabel(c: {
  * Vale para TODAS las sesiones, no solo la primera: la 1, la 2 y la 3 de un paquete
  * de 3 son todas "parte del paquete" y las tres deben mostrar el mismo importe.
  */
+/**
+ * Etiqueta legible de un método de pago.
+ *
+ * Hacen falta DOS vocabularios porque en la BD conviven dos: la reserva pública
+ * guarda `cash_usd` / `cash_bs` y el panel del especialista usa `efectivo` /
+ * `efectivo_bs`. Sin este mapeo la pantalla en español mostraba "cash usd".
+ *
+ * Lo de fondo —que el booking y el panel nombren distinto lo mismo— sigue abierto;
+ * esto evita que el usuario lo pague en pantalla.
+ */
+const PAYMENT_METHOD_LABELS: Record<string, string> = {
+  efectivo: 'Efectivo USD',
+  cash_usd: 'Efectivo USD',
+  efectivo_bs: 'Efectivo Bs',
+  cash_bs: 'Efectivo Bs',
+  pago_movil: 'Pago Móvil',
+  transferencia: 'Transferencia',
+  zelle: 'Zelle',
+  binance: 'Binance',
+  pos: 'POS / Punto de venta',
+  seguro: 'Seguro',
+  package: 'Paquete',
+  manual: 'Registrado a mano',
+};
+
+function paymentMethodLabel(method: string): string {
+  return PAYMENT_METHOD_LABELS[method] ?? method.replace(/_/g, ' ');
+}
+
 function isPackageSession(c: { package_total_sessions?: number | null }): boolean {
   const total = c.package_total_sessions;
   return !!total && total > 1;
@@ -5328,13 +5357,24 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                               </span>
                             )}
                           </p>
-                          {bcvRate && (
+                          {/*
+                            Bolívares CONGELADOS del propio pago cuando existen, no
+                            los de hoy: lo ya cobrado no se revalúa (mismo criterio
+                            que Cobros desde el lote del 09/09). Solo se cae a la
+                            tasa de hoy si el pago no guardó su monto en Bs.
+                          */}
+                          {(coverage.amount_bs != null || bcvRate) && (
                             <p
                               className={`text-[10px] ${
                                 coverageIsPaid ? 'text-violet-500' : 'text-amber-600'
                               }`}
                             >
-                              {toBs(coverage.amount_usd)}
+                              {coverage.amount_bs != null
+                                ? `Bs. ${coverage.amount_bs.toLocaleString('es-VE', {
+                                    minimumFractionDigits: 2,
+                                    maximumFractionDigits: 2,
+                                  })}`
+                                : toBs(coverage.amount_usd)}
                             </p>
                           )}
                           <p
@@ -5345,7 +5385,7 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                             {coverage.paid_at
                               ? `Pagado el ${new Date(coverage.paid_at).toLocaleDateString('es-VE')}`
                               : 'El cobro del paquete se registra en la PRIMERA consulta, y ahí sigue pendiente'}
-                            {coverage.method && ` · ${coverage.method.replace(/_/g, ' ')}`}
+                            {coverage.method && ` · ${paymentMethodLabel(coverage.method)}`}
                             {coverage.reference && ` · ref. ${coverage.reference}`}
                           </p>
                           <p

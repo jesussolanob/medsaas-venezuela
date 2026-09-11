@@ -182,6 +182,27 @@ describe('ChangeAppointmentServiceUseCase', () => {
     expect(appointmentRepo.changeService).not.toHaveBeenCalled();
   });
 
+  it('manda el nombre viejo al asiento; el MONTO viejo lo resuelve el repositorio', async () => {
+    // Al corregir desde una sesión 2..N el precio de ESA cita es 0. El asiento no
+    // puede decir "de $0 a $160": el repositorio lee el precio de la cita pagadora.
+    appointmentRepo.findByIdScopedEnriched.mockResolvedValue(
+      makeAppointment({ sessionNumber: 2, planPrice: 0 }),
+    );
+    planRepo.findById.mockImplementation(async (id: string) =>
+      id === NEW_PLAN_ID
+        ? makePlan()
+        : makePlan({ id: OLD_PLAN_ID, name: 'Paquete 4 consultas', priceUsd: 120 }),
+    );
+
+    await useCase.execute(input);
+
+    const args = appointmentRepo.changeService.mock.calls[0]![0];
+    expect(args.oldPlanName).toBe('Paquete 4 consultas');
+    // Viaja el 0 de la cita disparadora sólo como respaldo; el repositorio lo pisa
+    // con el de la pagadora (ver el test de integración del repositorio).
+    expect(args.newPlanPriceUsd).toBe(160);
+  });
+
   it('propaga AppointmentNotFoundError si la cita desaparece durante la escritura', async () => {
     planRepo.findById.mockResolvedValue(makePlan());
     planRepo.findAllByDoctorId.mockResolvedValue([
