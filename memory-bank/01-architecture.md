@@ -1048,6 +1048,51 @@ status='active'` con `QueryTypes.UPDATE` (devuelve `[undefined, affectedCount]`;
   consulta de las 21:00 de Caracas, y convertir una `DATEONLY` (ADR-063) la **corre un día atrás**.
   Por eso `consultationDateInCaracas()` devuelve la cadena tal cual si mide 10 caracteres.
 
+- **ADR-075 (2026-09-11):** **Un mensaje de error de dominio es texto de pantalla.**
+  El `GlobalExceptionFilter` reenvía el mensaje tal cual al navegador: lo lee una especialista,
+  no un desarrollador. Decía `No se puede pasar la cita de 'cancelled' a 'no_show'` — claves
+  internas, en inglés, dentro de una UI en español. Los nombres salen de
+  `appointment-status-names.ts` y la tabla de transiciones de `@delta/shared-types`.
+
+  **Y traducirlo no alcanzaba.** El BFF _reescribía_ el mismo error con un texto genérico
+  —"no se puede cambiar la cita a ese estado desde su estado actual"— que no nombraba **ningún**
+  estado. Dos mensajes distintos para la misma falla, en dos capas distintas. Una especialista
+  canceló una cita, la pantalla no se lo reflejó, y entre los dos mensajes **no pudo deducir que su
+  cancelación ya había funcionado**: siguió reintentando media hora.
+
+  Reglas: (1) el mensaje nombra el estado con las palabras de la pantalla; (2) dice **qué SÍ se
+  puede hacer**, no solo lo que no; (3) el BFF **reenvía** el mensaje del dominio, no lo reescribe;
+  (4) la UI **oculta** las acciones que el dominio rechazaría — un botón que solo puede devolver un
+  error es un defecto, y era el que la tenía dando vueltas.
+
+  ⚠️ Al derivar las salidas posibles, **no las recibas por parámetro con default `[]`**: toda
+  construcción vieja de dos argumentos cae en la rama de "estado final" y afirma que una cita
+  **agendada** ya no se puede cambiar. El error las deriva de su propio estado.
+
+- **ADR-076 (2026-09-11):** **Un ingreso dice DE QUÉ consulta es; la fecha de cobro no alcanza.**
+  Reporte de "ingresos duplicados" que **no lo estaban**: dos consultas distintas del mismo paciente
+  por el mismo monto. La lista mostraba el **día en que entró la plata** —que suele ser otro, y a
+  veces de otro mes— más una referencia opaca (`BK-20260907-784352-D20B`). Dos filas de $45 del
+  mismo paciente en días seguidos se leen como un cobro repetido. Cada fila lleva ahora el servicio
+  y la fecha de su consulta, y la columna se llama **"Fecha de cobro"**.
+
+  ⚠️ **El JOIN va con `LEFT JOIN LATERAL … LIMIT 1`, no con un join plano.** En un paquete, **todas**
+  las sesiones comparten `payment_id` (ADR-070): un join plano multiplica el ingreso por sesión —un
+  paquete de $160 se leería como $640. En producción ningún pago tiene hoy más de una cita, así que
+  el join plano **pasaría la prueba** y rompería al promover el lote de paquetes. Verificado contra
+  staging, donde sí existe un pago compartido por 4 citas: devuelve **una** fila.
+
+- **ADR-077 (2026-09-11):** **El contenido de los bloques es HTML: nunca se pinta como texto plano
+  ni se inyecta sin sanitizar.** Dos caras del mismo error. En el **listado** el motivo salía con las
+  etiquetas a la vista (`<p>…</p>`) y, al ocupar espacio, empujaba la fecha y la hora de la fila:
+  se aplana con `htmlToPreview()` (`apps/frontend/lib/html-text.ts`) y la fecha va `shrink-0`.
+  En el **historial** pasaba lo inverso: `RichTextView` sanitiza bien, pero **no le daba margen a los
+  `<p>`**, así que un informe de cinco párrafos salía como un solo muro de texto.
+
+  Espaciado de párrafos en una vista de texto enriquecido **no es cosmética**: es lo único que separa
+  las ideas. Y cada bloque de la consulta se presenta como su propia sección con superficie — una
+  etiqueta gris de 10px no alcanza para marcar dónde termina el motivo y empieza el tratamiento.
+
 - **ADR-063 (2026-09-08):** **Una columna `DATEONLY` devuelve una CADENA, no un `Date`.**
   Sequelize 6 sanea `DATEONLY` con `moment(v).format('YYYY-MM-DD')` (`data-types.js`), así que al
   LEER llega `'2026-10-08'`, y al ESCRIBIR se le pasa un `Date`. `quotes.valid_until` se declaraba
