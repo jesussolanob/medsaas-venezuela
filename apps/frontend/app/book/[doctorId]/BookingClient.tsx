@@ -756,7 +756,21 @@ export default function BookingClient({
             : additionalSessionDates
                 .map((d) => {
                   if (!d) return null;
-                  const dt = new Date(d);
+                  /*
+                    El horario elegido es del CONSULTORIO (Caracas), no del reloj
+                    del paciente: se fija el offset -04:00 igual que hace la 1.ª
+                    consulta (ver `isSlotUnavailable`).
+
+                    Con `new Date('2026-09-17T08:40')` —sin offset— el navegador lo
+                    interpreta en SU zona. Desde Santiago (UTC-3) las 08:40 elegidas
+                    se guardaban como 07:40 de Caracas: una hora antes, en silencio
+                    si caía dentro del horario de atención, y con un error confuso
+                    si caía fuera ("la sesión de las 07:40 está fuera del horario",
+                    cuando el paciente había elegido 08:40). Verificado en staging
+                    el 2026-09-10.
+                  */
+                  const dt = new Date(`${d}:00-04:00`);
+                  if (Number.isNaN(dt.getTime())) return null;
                   return {
                     scheduled_at: dt.toISOString(),
                     office_id: selectedOffice?.id ?? null,
@@ -850,9 +864,7 @@ export default function BookingClient({
           </h2>
           <p className="text-sm text-slate-500 mb-5">
             Tu consulta con{' '}
-            <strong>
-              {formatProfessionalName(doctor.professional_title, doctor.full_name)}
-            </strong>{' '}
+            <strong>{formatProfessionalName(doctor.professional_title, doctor.full_name)}</strong>{' '}
             fue registrada.
           </p>
           {/* === Resumen completo de la cita agendada === */}
