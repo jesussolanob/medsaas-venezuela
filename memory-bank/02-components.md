@@ -1050,3 +1050,18 @@ backend.
 
 ⚠️ El catálogo que carga `ConsultationsClient` ahora conserva `sessions_count` e `is_active`: sin
 eso el modal no puede filtrar lo equivalente.
+
+## Arreglos del QA del lote de paquete pagado (2026-09-11)
+
+| Pieza                                           | Dónde                                                     | Qué cambió y por qué                                                                                                                                                                        |
+| ----------------------------------------------- | --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `SchedulePendingConsultationUseCase`            | `pending-consultations/application/use-cases/`            | La consulta se crea **después del commit**. Dentro de la transacción la FK contra `appointments` no ve la cita y el INSERT muere; el error caía en un `warn` y la cita quedaba sin consulta |
+| `PendingConsultation.withConsultationId()`      | `pending-consultations/domain/entities/`                  | Completa el vínculo en un segundo paso. No usa `markScheduled` porque esa exige partir de `pending_scheduling`                                                                              |
+| `CreateBookingUseCase` → opción `sessionNumber` | `booking/application/use-cases/booking/`                  | La consulta inmediata sobre un paquete creaba la cita con `session_number` NULL: no se veía como cubierta, decía "consulta 1 de N" y **corrompía el monto del paquete en las hermanas**     |
+| `libs/shared-types/src/payment-method.ts`       | libs                                                      | Vocabulario cerrado de métodos de pago, aplicado a los 9 DTOs. Normaliza alias viejos en vez de rechazarlos                                                                                 |
+| `libs/shared-types` — target `test`             | `jest.config.cts` + `tsconfig.spec.json` + `project.json` | La librería **no tenía forma de correr tests**: un spec ahí no lo ejecutaba nadie. Se copió el cableo de `shared-utils`                                                                     |
+
+⚠️ **Regla que sale de este lote:** hay **TRES** caminos que agendan una sesión de paquete —el especialista
+(`schedule-pending-consultation`), el paciente desde el correo (`…-by-token`, que delega en el anterior) y la
+consulta inmediata (`create-immediate-appointment`)—. Arreglar uno y razonar que los otros "delegan" ya falló
+dos veces en este mismo lote. **Recorrer los tres en el navegador.**

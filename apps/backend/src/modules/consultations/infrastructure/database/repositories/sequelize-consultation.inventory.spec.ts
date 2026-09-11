@@ -34,6 +34,9 @@ const Q_APP_SETTINGS = 'FROM app_settings';
 const Q_INS_MVMT = 'INSERT INTO inventory_movements';
 const Q_STOCK_DECR = 'stock_qty + :qty';
 const Q_UPDATE_PAY = 'UPDATE payments';
+// INSERT used by Step 5b for covered sessions (session_number IS NOT NULL).
+// Distinct from Q_INS_MVMT — this one targets the payments table.
+const Q_INS_EXTRAS_PAY = 'INSERT INTO payments';
 const Q_STEP6 = 'c.patient_id, c.appointment_id';
 
 // Minimal consultation row for Step 6 re-read.
@@ -98,7 +101,17 @@ function makeRepo(opts: MockOptions = {}) {
           return []; // lock acquired
         }
         if (sql.includes(Q_BASE_AMOUNT)) {
-          return [{ base_amount: '30', amount: '30', plan_price: null }];
+          // session_number: null → non-covered session (existing §8 tests).
+          // Step 5b takes the UPDATE payments path, not the INSERT extras payment path.
+          return [
+            {
+              base_amount: '30',
+              amount: '30',
+              plan_price: null,
+              session_number: null,
+              patient_id: DOCTOR_ID,
+            },
+          ];
         }
         if (sql.includes(Q_OLD_MOVEMENTS)) {
           return oldMovements;
@@ -140,6 +153,12 @@ function makeRepo(opts: MockOptions = {}) {
         }
         if (sql.includes(Q_UPDATE_PAY)) {
           return [0, 0];
+        }
+        // Step 5b covered-session INSERT: treated as a no-op here since §8 tests
+        // always run with session_number: null (non-covered path). Included so
+        // the mock doesn't fall through to the catch-all for future tests.
+        if (sql.includes(Q_INS_EXTRAS_PAY)) {
+          return [0, 1];
         }
         if (sql.includes(Q_STEP6)) {
           return [consultationStep6Row];

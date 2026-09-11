@@ -73,6 +73,17 @@ export class PaymentModel extends Model {
   @Column({ type: DataType.UUID, allowNull: true, field: 'package_id' })
   declare packageId: string | null;
 
+  /**
+   * FK to consultations.id — populated ONLY for "extras" payments created when a
+   * covered package session (session 2..N) has additional products/services billed
+   * separately. Null for all regular payments (booking flow and direct approvals).
+   *
+   * This column is the anchor that lets `listForDoctor` surface the consultation
+   * code in Cobros for these standalone extras payments (which have no appointment).
+   */
+  @Column({ type: DataType.UUID, allowNull: true, field: 'consultation_id' })
+  declare consultationId: string | null;
+
   @CreatedAt
   @Column({ field: 'created_at' })
   declare createdAt: Date;

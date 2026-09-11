@@ -176,3 +176,53 @@ pantalla no muestre inglés; unificar el dato de escritura toca filas existentes
 
 🔸 Menor, sin reproducir: una vez la pantalla se quedó en "Abriendo la consulta…" al entrar por
 `?open=` justo después de un deploy. Con clic desde el listado abre siempre.
+
+## Segunda ronda de QA (2026-09-11) — cinco defectos más
+
+Tras arreglar los nueve anteriores, el QA en navegador de los caminos que faltaban destapó:
+
+| #   | Qué pasaba                                                                                                                                                                                                                                                                              | Cómo se encontró                                                                                                          |
+| --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| 10  | **Agendar una preconsulta dejaba la cita SIN consulta.** El MISMO defecto de FK dentro de la transacción que ya se había corregido en el booking, en el otro camino: el del especialista. La pantalla decía que todo salió bien                                                         | Agendando la sesión 3 en staging y mirando la BD: `consultation_code` en null. El log de Cloud Run tenía la causa textual |
+| 11  | **La consulta inmediata sobre un paquete no propagaba `session_number`.** Tres consecuencias: no se mostraba como "Cubierta" (invitaba a cobrar de nuevo), decía "consulta 1 de 4", y **corrompía el monto del paquete en las consultas hermanas** — la que pagó $120 pasó a mostrar $0 | Ejecutando el flujo real y comparando la BD                                                                               |
+| 12  | **La subconsulta `package_charge_usd` no excluye las canceladas.** Una cita cancelada con precio 0 gana la selección de "cita pagadora". Por eso cancelar la cita defectuosa NO limpió el $0                                                                                            | Intentando reparar el defecto 11 a mano                                                                                   |
+| 13  | El vocabulario de método de pago **estaba partido en dos ejes**, no en "booking vs panel": `/doctor/settings` también escribía inglés, y como el selector se FILTRA por `profiles.payment_methods`, la opción "Efectivo" desaparecía                                                    | Mapeando quién escribe qué antes de tocar nada                                                                            |
+| 14  | **Los extras de una sesión cubierta no se pueden agregar.** Al ocultar el panel de cobro se ocultó el único lugar donde se cargan productos e inventario. Incumple la decisión del dueño ("cobro aparte por consulta")                                                                  | Intentando renderizar el bloque "A cobrar aparte" que nadie podía alcanzar                                                |
+
+### Lo que estos cinco tienen en común
+
+Ninguno lo veía la suite. Los defectos 10 y 11 son del mismo tipo que ya se había corregido una vez: **arreglar un camino y dejar el hermano**. La lección operativa es que en este dominio hay TRES caminos que agendan una sesión de paquete (especialista, paciente por token, consulta inmediata) y **hay que recorrer los tres**, no razonar que "delega en el mismo use case".
+
+### Estado de producción (auditado 2026-09-11, solo lectura)
+
+**Cero daño.** No hay ni una cita sin consulta en prod. La feature se usa —hay 6 preconsultas _por agendar_— pero **nadie completó nunca el paso de agendar**, así que el código defectuoso (en `main` desde el 2026-07-23) nunca llegó a ejecutarse hasta el final.
+
+⚠️ Riesgo latente: esas 6 son armas cargadas. El día que un especialista agende cualquiera, con el código que hoy está en `main`, la cita nace sin consulta. **Promover el arreglo antes de que eso pase.**
+
+## Inventario del banco de pruebas en staging (2026-09-11)
+
+Doctor: `lucas.rivas.55@gmail.com` (`193c9dae-30da-47b6-8d1a-83408feb8f51`).
+
+### ✅ SIRVE — paquete limpio, creado ya con los arreglos
+
+Paciente **"Paciente QA Paquete Dos"** (V-99001410), servicio **QA Paquete 4 Premium** ($160, 4 consultas),
+pago **aprobado**:
+
+| Código            | Rol                        | Qué verifica                                                         |
+| ----------------- | -------------------------- | -------------------------------------------------------------------- |
+| `DLT-202609-0004` | sesión 1 — **la que paga** | Panel de cobro completo, método "Efectivo USD"                       |
+| `DLT-202609-0005` | sesión 2 — **cubierta**    | Badge "Cubierta", recuadro violeta, sin controles de cobro           |
+| `DLT-202609-0009` | sesión 3                   | **Reparada** por el script de huérfanas (nació sin consulta)         |
+| `DLT-202609-0007` | sesión 4                   | Agendada desde "por agendar" **después** del arreglo: nació aprobada |
+
+### 🗑️ NO SIRVE — basura de las pruebas, dejar o borrar da igual
+
+- Paciente **"Paciente QA Paquete"** (V-99001409): `DLT-202609-0003` y `DLT-202609-0008`. El paquete se
+  reservó ANTES de los arreglos y la consulta inmediata le rompió el monto: **muestra el paquete en $0.00
+  en vez de $120**. Se conserva como evidencia del defecto 11/12; **no usarlo para probar nada**.
+- Paciente **"Sonda Metodos"** (V-99001413): `DLT-202609-0006`. Sonda de la cadena settings → reserva.
+- Paciente **"Sonda Enum"** (V-99001411 y V-99001412): `DLT-202610-0001` y `DLT-202610-0002`. Sondas del
+  enum de método de pago (una con `efectivo`, otra con `cash_usd` para probar la normalización).
+
+⚠️ Todas las sondas usan correos `lucas.a.rivas.d+<alias>@gmail.com` a propósito: staging **manda correo
+real**, y el alias garantiza que no le pueda llegar a un paciente de verdad del clon de producción.
