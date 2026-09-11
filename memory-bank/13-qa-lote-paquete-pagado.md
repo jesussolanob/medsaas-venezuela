@@ -101,3 +101,43 @@ Lo que hay hoy en el clon, para no perder tiempo buscando:
 
 **Conclusión:** el ítem 2 se prueba hoy. El ítem 1 exige armar el dato — reservar el paquete de
 prueba y aprobar su cobro — porque el caso "ya pagado" no existe en el clon.
+
+## Banco de pruebas armado (2026-09-10, ya verificado en BD)
+
+Reservé el paquete real desde el booking público. Datos listos en staging:
+
+| Qué                        | Valor                                                                                          |
+| -------------------------- | ---------------------------------------------------------------------------------------------- |
+| Especialista               | `lucas.rivas.55@gmail.com` (doctor `193c9dae-30da-47b6-8d1a-83408feb8f51`)                     |
+| Paciente de prueba         | "Paciente QA Paquete Dos", cédula V-99001410                                                   |
+| Servicio                   | QA Paquete 4 — $120, 4 consultas                                                               |
+| **Sesión 1 (la que paga)** | **`DLT-202609-0004`** · mié 16/09 10:00 · `covered_by = null` → panel de cobro COMPLETO        |
+| **Sesión 2 (cubierta)**    | **`DLT-202609-0005`** · jue 17/09 11:20 · `covered_by.status = 'pending'` → recuadro **ÁMBAR** |
+| Sesiones 3 y 4             | preconsultas `pending_scheduling`, con el pago vinculado                                       |
+| Pago del paquete           | $120, **pendiente** (efectivo USD)                                                             |
+
+**Lo que hay que mirar, en orden:**
+
+1. Abrí `DLT-202609-0005`: tiene que decir **"Cubierta · por cobrar"** en ámbar y mandar a la
+   primera consulta. Todavía NO dice "ya pagado", porque el cobro no se aprobó.
+2. Aprobá el cobro del paquete desde `/doctor/cobros` (o desde `DLT-202609-0004`).
+3. Volvé a `DLT-202609-0005`: ahora sí tiene que ponerse **violeta, "Cubierta"**, con la fecha
+   de pago. Y no debe ofrecer ningún control de cobro.
+4. Agendá la sesión 3 desde "por agendar": la consulta nueva tiene que nacer **aprobada**.
+
+⚠️ El paquete anterior (paciente "Paciente QA Paquete", cédula V-99001409, `DLT-202609-0003`)
+se reservó **antes** de los arreglos: su sesión 2 quedó sin consulta y sin pago. Se deja como
+evidencia del bug; **no sirve para probar**.
+
+## Defectos encontrados durante este QA (los cinco, ya arreglados)
+
+| #   | Qué pasaba                                                                                                                                                             | Origen       |
+| --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------ |
+| 1   | La consulta de cada sesión extra **nunca se creaba**: se insertaba dentro de la transacción, la FK contra `appointments` no veía la cita y el error moría en un `warn` | preexistente |
+| 2   | La cita extra no llevaba `payment_id`, así que la sesión nunca se veía cubierta y la aprobación del pago no la alcanzaba                                               | del lote     |
+| 3   | El booking no guardaba `plan_id` en ninguna cita nueva: el backfill arreglaba el pasado y el presente seguía naciendo en NULL                                          | del lote     |
+| 4   | El recuadro afirmaba "paquete ya pagado" sin mirar el estado del pago                                                                                                  | del lote     |
+| 5   | Las sesiones extra se guardaban con la **hora del navegador del paciente**: desde UTC-3, las 10:00 elegidas quedaban 09:00 de Caracas, en silencio                     | preexistente |
+
+Ninguno lo veía la suite (4.367 tests verdes). Los cinco aparecieron al reservar un paquete de
+verdad y **mirar la base de datos, no la pantalla**.
