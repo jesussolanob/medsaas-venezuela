@@ -88,7 +88,10 @@ export class SchedulePendingConsultationUseCase {
       throw new PendingConsultationExpiredError(input.id);
     }
 
-    return this.sequelize.transaction(async (tx: Transaction) => {
+    /** Cita a la que hay que colgarle la consulta una vez commiteada la transacción. */
+    let appointmentToLink: string | null = null;
+
+    const scheduledPending = await this.sequelize.transaction(async (tx: Transaction) => {
       // 2. Overlap check for the doctor's schedule
       const slotDuration = 30;
       const hasConflict = await this.appointmentRepo.hasOverlap({
@@ -141,56 +144,78 @@ export class SchedulePendingConsultationUseCase {
 
       const savedAppointment = await this.appointmentRepo.save(appointment, tx);
 
-      // 4. Auto-create consultation (best-effort)
-      //    For sessions 2..N of a package (entity.paymentId set), the parent payment
-      //    already covers the base price. The consultation is born with amount=0 and
-      //    inherits the parent payment status so it never appears in "Por cobrar".
-      let consultationId: string | null = null;
-      if (this.createConsultationUC && entity.patientId) {
-        try {
-          // Resolve payment state when this session is covered by an existing payment.
-          let initialPaymentStatus: 'pending' | 'approved' | undefined;
-          let inheritedMethod: string | null | undefined;
-          let inheritedReference: string | null | undefined;
-          let coveredAmount: number | null = null;
+      /*
+        4. La consulta se crea DESPUÉS del commit, no acá.
 
-          if (entity.paymentId && this.paymentRepo) {
-            const parentPayment = await this.paymentRepo.findByIdForDoctor(
-              entity.paymentId,
-              entity.doctorId,
-            );
-            if (parentPayment) {
-              initialPaymentStatus = parentPayment.status;
-              inheritedMethod = parentPayment.methodSnapshot;
-              inheritedReference = parentPayment.paymentReference;
-              coveredAmount = 0; // base price already paid in session 1
-            }
-          }
+        `CreateConsultationUseCase` escribe por otra conexión, donde la cita recién
+        insertada todavía no existe, así que Postgres rechazaba el INSERT con
+        `violates foreign key constraint "consultations_appointment_id_fkey"`. El
+        error caía en este mismo `catch`, que solo logueaba un warning: la cita
+        quedaba agendada y SIN consulta, y la pantalla decía que todo salió bien.
+        Verificado en staging el 2026-09-11 agendando la sesión 3 de un paquete.
 
-          const consultation = await this.createConsultationUC.execute({
-            doctorId: entity.doctorId,
-            patientId: entity.patientId,
-            appointmentId: savedAppointment.id,
-            consultationDate: input.scheduledAt,
-            chiefComplaint: null,
-            amount: coveredAmount,
-            initialPaymentStatus,
-            paymentMethod: inheritedMethod,
-            paymentReference: inheritedReference,
-          });
-          consultationId = consultation.id;
-          await this.appointmentRepo.updateConsultationId(savedAppointment.id, consultation.id);
-        } catch (err: unknown) {
-          this.logger.warn(
-            `[schedule-pending] Could not auto-create consultation for pending ` +
-              `${input.id}: ${err instanceof Error ? err.message : String(err)}`,
-          );
-        }
-      }
+        Se anota la cita y se continúa; el enlace se completa fuera de la
+        transacción, igual que en el booking (ver create-booking.use-case).
+      */
+      appointmentToLink = savedAppointment.id;
 
       // 5. Update pending consultation to 'scheduled'
-      const scheduled = entity.markScheduled(savedAppointment.id, consultationId);
+      //    `consultationId` se completa en el paso 6, tras el commit.
+      const scheduled = entity.markScheduled(savedAppointment.id, null);
       return this.pendingRepo.save(scheduled, tx);
     });
+
+    // --- 6. Consulta de la sesión, ya con la cita commiteada -------------------
+    // Best-effort: si falla, la cita igual quedó agendada. Pero ahora la FK sí ve
+    // la fila, así que el camino feliz funciona.
+    if (appointmentToLink && this.createConsultationUC && entity.patientId) {
+      try {
+        // Estado del pago que cubre la sesión (2..N de un paquete): la consulta
+        // nace con amount=0 y hereda ese estado, así no aparece en "Por cobrar".
+        let initialPaymentStatus: 'pending' | 'approved' | undefined;
+        let inheritedMethod: string | null | undefined;
+        let inheritedReference: string | null | undefined;
+        let coveredAmount: number | null = null;
+
+        if (entity.paymentId && this.paymentRepo) {
+          const parentPayment = await this.paymentRepo.findByIdForDoctor(
+            entity.paymentId,
+            entity.doctorId,
+          );
+          if (parentPayment) {
+            initialPaymentStatus = parentPayment.status;
+            inheritedMethod = parentPayment.methodSnapshot;
+            inheritedReference = parentPayment.paymentReference;
+            coveredAmount = 0; // el precio base ya se pagó en la primera sesión
+          }
+        }
+
+        const consultation = await this.createConsultationUC.execute({
+          doctorId: entity.doctorId,
+          patientId: entity.patientId,
+          appointmentId: appointmentToLink,
+          consultationDate: input.scheduledAt,
+          chiefComplaint: null,
+          amount: coveredAmount,
+          initialPaymentStatus,
+          paymentMethod: inheritedMethod,
+          paymentReference: inheritedReference,
+        });
+        await this.appointmentRepo.updateConsultationId(appointmentToLink, consultation.id);
+        // La preconsulta también guarda el vínculo a la consulta.
+        await this.pendingRepo.save(
+          scheduledPending.withConsultationId(consultation.id),
+          undefined,
+        );
+        return scheduledPending.withConsultationId(consultation.id);
+      } catch (err: unknown) {
+        this.logger.warn(
+          `[schedule-pending] Could not auto-create consultation for pending ` +
+            `${input.id}: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
+
+    return scheduledPending;
   }
 }
