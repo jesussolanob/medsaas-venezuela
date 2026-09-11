@@ -251,6 +251,13 @@ export class CreateImmediateAppointmentUseCase {
         // crear un fantasma de $0 y heredar el estado del pago a la consulta.
         existingPaymentId,
         existingPaymentStatus,
+        // Número de sesión real del paquete. Sin esto la cita nace con
+        // session_number = NULL aunque sea la sesión 3 de 4, lo que rompe:
+        //   • covered_by (exige IS NOT NULL para reconocer la sesión como cubierta)
+        //   • sessionLabel() en el frontend (devuelve "sesión 1" en lugar del real)
+        //   • package_charge_usd (la subconsulta toma esta cita como "pagadora"
+        //     por ser NULL y más temprana → muestra $0 en las sesiones hermanas)
+        sessionNumber: pendingConsultation?.sessionNumber,
       },
     );
 

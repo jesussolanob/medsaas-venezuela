@@ -493,6 +493,54 @@ describe('CreateImmediateAppointmentUseCase', () => {
       });
     });
 
+    describe('sessionNumber propagation — bug: cita nacía con session_number NULL', () => {
+      /**
+       * REGRESIÓN: antes de este fix la opción sessionNumber no existía en
+       * CreateBookingUseCase y la cita siempre nacía con session_number = NULL.
+       * Consecuencia: covered_by no reconocía la sesión como cubierta, el
+       * especialista veía el panel de cobro completo y package_charge_usd
+       * tomaba esta cita (NULL, más temprana) como "pagadora" → $0 en hermanas.
+       */
+      it('pasa sessionNumber de la preconsulta a las opciones de CreateBookingUseCase', async () => {
+        patientRepoMock.findById.mockResolvedValueOnce(makePatient());
+        // sessionNumber=3: esta es la tercera sesión de un paquete de 4
+        const pending = makePending({ sessionNumber: 3 });
+        const markedScheduled = makePending({ status: 'scheduled' as never });
+        pending.markScheduled.mockReturnValue(markedScheduled as unknown as PendingConsultation);
+        pendingRepoMock.findByIdAndDoctor.mockResolvedValueOnce(pending);
+        pendingRepoMock.save.mockResolvedValueOnce(
+          markedScheduled as unknown as PendingConsultation,
+        );
+        getWindowMock.execute.mockResolvedValueOnce(makeWindowResult({ now: NOW }));
+        createBookingMock.execute.mockResolvedValueOnce(
+          makeBookingResult(makeSavedAppt({ scheduledAt: NOW }), makePatient()),
+        );
+
+        await useCase.execute(DOCTOR_ID, makeBaseDto({ pending_consultation_id: 'pending-uuid' }));
+
+        const [, options] = createBookingMock.execute.mock.calls[0]!;
+        // El número de sesión DEBE viajar al CreateBookingUseCase para que la cita
+        // no nazca con session_number = NULL (que rompería covered_by y el precio).
+        expect(options?.sessionNumber).toBe(3);
+      });
+
+      it('pasa sessionNumber=undefined cuando NO hay preconsulta (cita directa)', async () => {
+        patientRepoMock.findById.mockResolvedValueOnce(makePatient());
+        getWindowMock.execute.mockResolvedValueOnce(makeWindowResult({ now: NOW }));
+        createBookingMock.execute.mockResolvedValueOnce(
+          makeBookingResult(makeSavedAppt({ scheduledAt: NOW }), makePatient()),
+        );
+
+        // Sin pending_consultation_id → cita directa sin paquete
+        await useCase.execute(DOCTOR_ID, makeBaseDto());
+
+        const [, options] = createBookingMock.execute.mock.calls[0]!;
+        // Para citas sin preconsulta el sessionNumber debe ser undefined
+        // (CreateBookingUseCase lo resolverá a null en la BD).
+        expect(options?.sessionNumber).toBeUndefined();
+      });
+    });
+
     describe('booking failure — pending stays in pending_scheduling', () => {
       it('does NOT mark pending as scheduled if CreateBookingUseCase throws', async () => {
         patientRepoMock.findById.mockResolvedValueOnce(makePatient());
