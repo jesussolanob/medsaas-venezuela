@@ -4,6 +4,44 @@
 > ⚠️ Orden: **la entrada más nueva va ARRIBA**. La del 2026-08-11 quedó al final
 > del archivo por error; no se movió para no ensuciar el diff.
 
+## 2026-09-11 — Lote de paquete pagado: cerrado y verificado en staging (**14 defectos**)
+
+> Todo en `staging`, desplegado y probado en navegador. `staging` quedó **208 commits por delante de
+> `main`**. ADR-070 a ADR-074. Guion y banco de pruebas: `memory-bank/13-qa-lote-paquete-pagado.md`.
+
+Cuatro unidades entraron juntas: **sesión de paquete ya pagado** (ADR-070), **cambiar el servicio de
+una consulta** (ADR-071), **vocabulario único de método de pago** (ADR-072) y **escritura única de las
+consultas** (ADR-073).
+
+**Catorce defectos**, casi todos invisibles para más de 4.300 tests en verde. La causa recurrente fue
+siempre la misma: **arreglar un camino y dejar el hermano**. La FK dentro de la transacción apareció
+**dos veces**, en los dos caminos que agendan una sesión extra.
+
+Los más caros, por lo que enseñan:
+
+1. **La consulta de cada sesión extra nunca se creaba.** Se insertaba dentro de la transacción, la FK
+   contra `appointments` no veía la cita todavía, y el error moría en un `warn`. Preexistente en
+   producción.
+2. **Las sesiones extra se guardaban con la hora del navegador del paciente.** Desde UTC-3, las 10:00
+   elegidas quedaban 09:00 de Caracas. En silencio. También preexistente.
+3. **El booking no guardaba `plan_id`** en ninguna cita nueva: el backfill arreglaba el pasado y el
+   presente seguía naciendo NULL — mismo patrón que `sold_by_source`.
+4. **El contenido clínico se guardaba con dos peticiones** y tres sitios descartaban el error
+   (ADR-073). En producción: 3 consultas de una especialista, una con **6.930 caracteres invisibles**.
+5. **El panel de historial mostraba consultas del futuro** como "anteriores" (ADR-074).
+
+Los defectos 4 y 5 los reportó una especialista con una paciente real, y fueron **a producción por
+hotfix desde `main`**, aparte del lote.
+
+**Verificado en staging (navegador + BD):** ámbar→violeta al aprobar un pago cubierto; cascada del
+cambio de servicio al paquete entero y a las preconsultas; pago ajustado que sigue aprobado con sus
+bolívares congelados; asiento de auditoría con el monto del paquete; reserva real que guarda
+`efectivo`; texto escrito en un bloque que **el backend deriva solo** a la columna; y el panel de
+historial que ya no lista las tres sesiones futuras de un paquete.
+
+**Pendiente del lote:** el botón para agregar extras en una sesión cubierta — el backend está hecho y
+verificado, falta la pantalla.
+
 ## 2026-09-09 — QA en navegador del lote: **ocho defectos que 4.347 tests no vieron**
 
 > Todo en `staging`, **nada en `main`** (92 commits de atraso). ADR-066 a ADR-069.
@@ -27,7 +65,7 @@ en verde con los ocho defectos adentro.**
 5. **La búsqueda: se barrieron los que ESCRIBEN, no los que LEEN.** Al cambiar la huella a la forma
    canónica se actualizaron los tres puntos de alta y el **buscador** quedó afuera. Y **el test que
    debía atraparlo afirmaba el comportamiento roto**: exigía que se buscara con el texto crudo. La
-   suite estaba verde *gracias* al bug. El buscador tampoco encontraba por teléfono, aunque su
+   suite estaba verde _gracias_ al bug. El buscador tampoco encontraba por teléfono, aunque su
    etiqueta lo prometiera.
 6. **El servidor se pedía la tasa a sí mismo por HTTP** (ADR-069). Lo destapó el re-test: tras el
    primer arreglo el PDF salió **sin** bolívares, lo que probó que la petición no fallaba a veces sino
@@ -104,8 +142,8 @@ anfitrión: ese ya estuvo pausado semanas sin que nadie se enterara.
 Ventana de 3 días y no día exacto: si el cron falla un día, un "exactamente 3 días antes" perdería
 el aviso para siempre; la ventana lo recupera al día siguiente y la columna evita el duplicado.
 
-⚠️ **Limitación conocida:** el correo del destinatario se resuelve de la ficha *en el momento del
-aviso*. Si el especialista escribió otra dirección a mano al enviar, esa no se persiste hoy.
+⚠️ **Limitación conocida:** el correo del destinatario se resuelve de la ficha _en el momento del
+aviso_. Si el especialista escribió otra dirección a mano al enviar, esa no se persiste hoy.
 Guardarla sería dejar una copia **sin cifrar** de un correo que hoy está cifrado.
 
 ### La vigencia pasó a pedirse en días (decisión del dueño)

@@ -938,6 +938,7 @@ status='active'` con `QueryTypes.UPDATE` (devuelve `[undefined, affectedCount]`;
 
   Hermana de `normalizeCedulaForSearch` (@delta/shared-crypto), que hace lo mismo **sin** el guion
   porque se usa para la huella. Las dos tienen que coincidir en qué consideran "la misma cédula".
+
 - **ADR-067 (2026-09-09):** **El título profesional NO se infiere.**
   `getProfessionalTitle` derivaba el título de la especialidad (psicología → "Psic.") y, si no la
   reconocía, caía en **"Dr." fijo**. La app le adjudicaba credenciales a quien nunca las declaró.
@@ -945,6 +946,7 @@ status='active'` con `QueryTypes.UPDATE` (devuelve `[undefined, affectedCount]`;
   No es cosmético: el título aparece en presupuestos, facturas y la página pública de reservas —
   documentos que ve el paciente. Sin título cargado va **solo el nombre**, vía
   `formatProfessionalName(title, fullName)`, que además resuelve el espacio sobrante en un solo lugar.
+
 - **ADR-068 (2026-09-09):** **Bolívares: se congela lo PAGADO, se recalcula lo pendiente.**
   Regla del dueño. Lo que se pacta y queda fijo es el monto en **divisa**; los bolívares son una
   conversión referencial. Pero **una vez cobrado**, el monto en Bs y su tasa son un hecho histórico y
@@ -957,6 +959,7 @@ status='active'` con `QueryTypes.UPDATE` (devuelve `[undefined, affectedCount]`;
     vale para la **columna**, el **total** y la **exportación a Excel** — los tres estaban mal.
 
   Un aprobado sin `amount_bs` cae al cálculo en vivo: es lo único que se puede mostrar.
+
 - **ADR-069 (2026-09-09):** **El servidor NO se pide cosas a sí mismo por HTTP.**
   `fetch(new URL('/api/admin/bcv-rate', req.url))` — la app pidiéndose la tasa a su propia URL
   pública— **falla siempre en el contenedor desplegado**, y en local funciona. Un defecto que solo
@@ -974,6 +977,77 @@ status='active'` con `QueryTypes.UPDATE` (devuelve `[undefined, affectedCount]`;
   con `bcv_rate` en NULL. De 54 cobros aprobados, 17 tienen su `amount_bs` (los cobrados desde la
   pantalla, otro camino que nunca estuvo roto) y 37 no. **Ningún monto cobrado se vio afectado** — el
   dólar, que es lo que se pacta, siempre estuvo bien.
+
+- **ADR-070 (2026-09-11):** **Una sesión de un paquete ya cobrado no vuelve a pedir pago.**
+  Las consultas 2..N de un paquete nacen con `amount = 0`, heredan el estado del pago padre y
+  comparten su `payment_id`; `GET /consultations/:id` devuelve `covered_by` (plan, monto, fecha,
+  referencia). La pantalla muestra el badge **"Cubierta"** y oculta el selector de estado y
+  "Guardar pago" — ese botón dispara `approve-payment` y **recalcularía** el total de algo ya pagado.
+
+  Son **tres** los caminos que agendan una sesión de paquete: `schedule-pending-consultation`,
+  `…-by-token` (delega en el anterior, sale gratis) y `create-immediate-appointment`. Arreglar uno y
+  dejar el hermano fue la causa recurrente del lote; la FK dentro de la transacción apareció **dos
+  veces**. Regla: al tocar el ciclo de vida de una sesión de paquete, enumerar los tres antes de tocar
+  el primero.
+
+  ⚠️ El badge debe mirar el **estado del pago**, no la mera existencia del paquete: "Cubierta" (violeta)
+  solo si el pago está aprobado; si no, "Cubierta · por cobrar" (ámbar).
+
+- **ADR-071 (2026-09-11):** **Cambiar el servicio arrastra el paquete entero, en una transacción.**
+  `PATCH /api/appointments/:id/service`, solo entre servicios con el mismo `sessions_count`. Toca
+  cinco tablas: el paquete, todas sus citas, sus consultas, sus preconsultas y el pago. El pago se
+  **ajusta de monto y sigue aprobado**, con sus bolívares recalculados a la tasa **congelada del propio
+  pago** (ADR-068), nunca a la de hoy.
+
+  Se agregó `appointments.plan_id`: el vínculo con el servicio era **por nombre**, y dos servicios
+  homónimos devolvían el equivocado. El backfill arregló el pasado, pero el booking seguía guardando
+  NULL — arreglar solo el backfill deja el presente roto (ver [`sold_by_source`], mismo patrón).
+
+  El asiento en `appointment_changes_log` registra el monto **del paquete**, no el de la cita
+  disparadora: en una sesión cubierta esa cita vale 0 y la auditoría decía "$0.00 → $160.00".
+
+- **ADR-072 (2026-09-11):** **Un solo vocabulario de método de pago, blindado en el DTO.**
+  Convivían dos: la reserva pública y `/doctor/settings` escribían `cash_usd`/`cash_bs`; Consultas,
+  Agenda y Pacientes leían `efectivo`/`efectivo_bs`. Unificado en **español** (migración
+  `20260911000001`) y validado con enum en los nueve DTOs (`libs/shared-types/src/payment-method.ts`):
+  un vocabulario inventado ahora devuelve 422. Los alias viejos se **normalizan** (`cash_usd` →
+  `efectivo`) en vez de rechazarse, así que un cliente en caché se corrige solo.
+
+  La causa real del **"— Sin especificar —"** no era el texto en inglés: el selector al cobrar se
+  **filtra por `profiles.payment_methods`**. Con el perfil en `cash_usd` la opción "Efectivo"
+  desaparecía. Al tocar métodos de pago hay que mirar los **dos** lados: quién escribe y quién filtra.
+
+  Dos trampas de datos: `payment_details` es **JSONB indexado por método** (renombrar solo la lista
+  deja huérfanos banco/teléfono/titular) y `payment_methods` es **`TEXT[]`, no JSONB**, y hay que
+  deduplicar tras el reemplazo.
+
+- **ADR-073 (2026-09-11):** **`blocks_snapshot` es el ÚNICO origen; las columnas se DERIVAN en la
+  misma escritura.** El contenido de una consulta vive en `blocks_snapshot` (bloques dinámicos, cada
+  especialista arma su plantilla), pero cuatro campos —`chief_complaint`, `diagnosis`, `treatment`,
+  `notes`— se copiaban además a columnas sueltas con una **segunda petición desde el cliente**, y
+  **tres de los cuatro sitios** hacían `updateConsultation(...).catch(() => {})`. Si esa petición
+  fallaba, la pantalla decía "guardado" y la columna quedaba vacía **sin ningún síntoma**.
+
+  Las columnas **no se borran**: las leen ~25 lugares (PDF del informe, historia clínica, portal del
+  paciente, transcripción con IA, agenda, finanzas). Pasan a ser una **proyección derivada**: el
+  backend las calcula del snapshot en `update-consultation.use-case`. Una sola escritura, imposible
+  que discrepen.
+
+  ⚠️ **La regla que evita destruir datos:** clave **ausente** del snapshot ⇒ **no tocar la columna**
+  (`undefined` = "no modificar"). Derivar todo ⇒ "lo que no está, a null" **borraría el motivo que
+  escribe el paciente al reservar** en las plantillas sin bloque `chief_complaint`; ese caso existe en
+  producción. Clave presente con string vacío sí ⇒ `null` (el usuario borró el contenido).
+
+- **ADR-074 (2026-09-11):** **El historial del paciente lee el snapshot y excluye el futuro.**
+  El panel lateral de "consultas anteriores" leía solo las columnas sueltas y **no filtraba por
+  fecha**. Dos síntomas para una especialista real: consultas con 6.930 caracteres que se veían **en
+  blanco**, y una cita **de octubre** listada como "anterior" en septiembre.
+
+  Ahora cae al `blocks_snapshot` cuando `blocks_structure` es NULL, y filtra por fecha **en hora de
+  Caracas**. La conversión tiene trampa en las dos direcciones: `slice(0,10)` sobre UTC **esconde** una
+  consulta de las 21:00 de Caracas, y convertir una `DATEONLY` (ADR-063) la **corre un día atrás**.
+  Por eso `consultationDateInCaracas()` devuelve la cadena tal cual si mide 10 caracteres.
+
 - **ADR-063 (2026-09-08):** **Una columna `DATEONLY` devuelve una CADENA, no un `Date`.**
   Sequelize 6 sanea `DATEONLY` con `moment(v).format('YYYY-MM-DD')` (`data-types.js`), así que al
   LEER llega `'2026-10-08'`, y al ESCRIBIR se le pasa un `Date`. `quotes.valid_until` se declaraba
@@ -994,6 +1068,7 @@ status='active'` con `QueryTypes.UPDATE` (devuelve `[undefined, affectedCount]`;
 
   ⚠️ Los tests no lo ven: construyen las entidades con `Date` de verdad. Un test que cubra una
   columna `DATEONLY` tiene que pasarle **la cadena cruda**, que es lo que devuelve el driver.
+
 - **ADR-064 (2026-09-08):** **El día de vencimiento termina en Caracas, no en UTC.**
   `valid_until` es un día calendario sin hora. Cortar a las 23:59:59 **UTC** hacía que un presupuesto
   "válido hasta el 8 de octubre" muriera a las **19:59 del 8 en Caracas**: el paciente perdía las
@@ -1006,6 +1081,7 @@ status='active'` con `QueryTypes.UPDATE` (devuelve `[undefined, affectedCount]`;
 
   `VENEZUELA_UTC_OFFSET_HOURS = 4` es un número fijo y no una conversión de zona a propósito:
   Venezuela no aplica horario de verano desde 2016, así que el desfase no depende de la fecha.
+
 - **ADR-065 (2026-09-08):** **El texto de error del proveedor de correo NO va en `message`.**
   Resend devuelve la dirección rechazada dentro del mensaje ("The <dirección> address is not
   verified"). El adapter lo relanzaba crudo y los use cases lo interpolan en sus logs: el correo de
@@ -1016,6 +1092,7 @@ status='active'` con `QueryTypes.UPDATE` (devuelve `[undefined, affectedCount]`;
   únicamente en `email_send_log`. Aplica a **todo** envío, no solo al cron — pero fue el cron el que
   lo volvió urgente: pasó de dispararse cuando alguien apretaba "enviar" a correr solo cada 15
   minutos sobre todos los presupuestos de todos los especialistas.
+
 - **ADR-025 rev.2 (2026-09-03):** **El precio del paquete es el TOTAL; no se multiplica.**
   `pricing_plans.price_usd` pasa de significar precio de UNA sesión a precio de TODO el paquete.
   Un paquete de 4 consultas guarda **120**, no 30.
