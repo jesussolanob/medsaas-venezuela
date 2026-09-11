@@ -439,6 +439,10 @@ export class CreateBookingUseCase {
           : 'scheduled',
       appointmentMode: dto.appointment_mode,
       source: 'booking',
+      // Identidad del servicio. Sin esto la cita solo guarda el NOMBRE y todo lo
+      // que necesite saber de qué servicio salió tiene que unir por texto, que es
+      // ambiguo con dos servicios homónimos.
+      planId: dto.plan_id ?? null,
       planName: dto.plan_name,
       planPrice: dto.plan_price,
       paymentMethod: dto.package_id ? 'package' : (dto.payment_method ?? null),
@@ -458,6 +462,24 @@ export class CreateBookingUseCase {
       createdAt: now,
       updatedAt: now,
     });
+
+    /*
+      Sesiones adicionales agendadas EN EL ACTO, para crearles la consulta
+      DESPUÉS del commit.
+
+      Dentro de la transacción no se puede: `CreateConsultationUseCase` escribe por
+      otra conexión, donde la cita recién insertada todavía no existe, y Postgres
+      rechazaba el INSERT con
+      `violates foreign key constraint "consultations_appointment_id_fkey"`.
+      El error caía en un `catch` que solo logueaba un warning, así que cada sesión
+      extra quedaba SIN consulta y sin que nadie se enterara. Verificado en staging
+      el 2026-09-10: la sesión 2 de un paquete recién reservado no existía en
+      /doctor/consultations.
+
+      La cita principal ya resolvía esto creando su consulta tras el commit; las
+      extras ahora siguen el mismo camino.
+    */
+    const extraSessionsToLink: Array<{ appointmentId: string; scheduledAt: Date }> = [];
 
     const savedAppointment = await this.sequelize.transaction(async (t) => {
       // Create payment record first so we have the paymentId for the appointment link.
@@ -600,8 +622,19 @@ export class CreateBookingUseCase {
               status: 'scheduled',
               appointmentMode: extra.appointment_mode ?? dto.appointment_mode,
               source: 'booking',
+              planId: dto.plan_id ?? null,
               planName: dto.plan_name,
               planPrice: 0, // Price is paid upfront on the first session; extras cost 0.
+              /*
+                El pago del paquete es UNO SOLO y cubre las N sesiones: la sesión
+                extra se cuelga del mismo `payment_id` que la primera.
+
+                Sin esto la sesión quedaba huérfana de pago, así que la pantalla no
+                podía saber que ya estaba cubierta —volvía a pedir el cobro— y la
+                aprobación del pago tampoco la alcanzaba, porque sincroniza las
+                consultas hermanas justamente POR `payment_id`.
+              */
+              paymentId,
               paymentMethod: null,
               paymentReference: null,
               paymentReceiptUrl: null,
@@ -621,28 +654,10 @@ export class CreateBookingUseCase {
             nextSessionNumber++;
 
             // Corrección 2: ADR-021 — toda cita con paciente auto-crea su consulta.
-            // Best-effort dentro de la transacción: un fallo no aborta el booking.
-            if (this.createConsultationUC) {
-              try {
-                const extraConsultation = await this.createConsultationUC.execute({
-                  doctorId: dto.doctor_id,
-                  patientId: patient.id,
-                  appointmentId: savedExtra.id,
-                  consultationDate: extraAt,
-                  chiefComplaint: null,
-                  amount: 0, // Price already collected on the first session.
-                });
-                await this.appointmentRepo.updateConsultationId(
-                  savedExtra.id,
-                  extraConsultation.id,
-                );
-              } catch (err: unknown) {
-                const detail = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
-                this.logger.warn(
-                  `[booking] auto-create consultation for extra session failed (non-fatal): ${detail}`,
-                );
-              }
-            }
+            // Se anota acá y se crea DESPUÉS del commit: adentro de la transacción
+            // la FK contra `appointments` no ve la fila y el INSERT muere (ver el
+            // comentario de `extraSessionsToLink`).
+            extraSessionsToLink.push({ appointmentId: savedExtra.id, scheduledAt: extraAt });
           }
 
           // Create pending_consultation rows for deferred sessions.
@@ -748,6 +763,34 @@ export class CreateBookingUseCase {
         // poder diagnosticar por qué no se creó la consulta.
         const detail = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
         this.logger.warn(`[booking] auto-create consultation failed (non-fatal): ${detail}`);
+      }
+    }
+
+    // --- Step 8b: consultas de las sesiones adicionales agendadas en el acto ---
+    // Acá, con la transacción YA commiteada, la FK contra `appointments` sí ve las
+    // filas. Nacen en 0: el paquete se cobra entero en la primera sesión, y heredan
+    // su estado del pago compartido para no aparecer en "Por cobrar".
+    if (this.createConsultationUC && extraSessionsToLink.length > 0) {
+      for (const extra of extraSessionsToLink) {
+        try {
+          const extraConsultation = await this.createConsultationUC.execute({
+            doctorId: dto.doctor_id,
+            patientId: patient.id,
+            appointmentId: extra.appointmentId,
+            consultationDate: extra.scheduledAt,
+            chiefComplaint: null,
+            amount: 0,
+          });
+          await this.appointmentRepo.updateConsultationId(
+            extra.appointmentId,
+            extraConsultation.id,
+          );
+        } catch (err: unknown) {
+          const detail = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
+          this.logger.warn(
+            `[booking] auto-create consultation for extra session failed (non-fatal): ${detail}`,
+          );
+        }
       }
     }
 
