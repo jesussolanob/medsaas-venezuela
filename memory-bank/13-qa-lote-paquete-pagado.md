@@ -141,3 +141,38 @@ evidencia del bug; **no sirve para probar**.
 
 Ninguno lo veía la suite (4.367 tests verdes). Los cinco aparecieron al reservar un paquete de
 verdad y **mirar la base de datos, no la pantalla**.
+
+## Resultado del QA en navegador (2026-09-11) — los dos ítems FUNCIONAN
+
+Ejecutado de punta a punta contra staging con la cuenta `lucas.rivas.55@gmail.com`.
+
+**Ítem 1 — verificado en pantalla:** `DLT-202609-0005` abre con badge **"Cubierta · por cobrar"**
+(ámbar), monto del paquete UNA vez, sin ningún control de cobro, con "Servicio:" y el rótulo
+"Consulta 2 de 4" intactos. Al aprobar el cobro de `DLT-202609-0004` pasa sola a **violeta
+"Cubierta por un paquete ya pagado · Pagado el … · Efectivo USD"**. La sesión 1 sí conserva el
+panel de cobro completo.
+
+**Ítem 2 — verificado en pantalla y en BD:** el modal solo ofrece servicios de 4 consultas, avisa
+**$120 → $160** antes de confirmar, y al aceptar arrastra las dos citas, **las dos preconsultas por
+agendar**, el pago (monto nuevo, **sigue aprobado**, bolívares recalculados con su tasa congelada)
+y deja asiento `service` con `"QA Paquete 4 Premium · $160.00" → "QA Paquete 4 · $120.00"`.
+
+### Cuatro defectos MÁS que encontró este QA (ya arreglados y re-verificados)
+
+| #   | Qué pasaba                                                                                                                                                        | Cómo se comprobó el arreglo                                                                   |
+| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| 6   | La cascada **no tocaba las preconsultas**: el filtro decía `status='pending'` y el estado real es `pending_scheduling`, así que no actualizaba ninguna fila       | Cambiando a un servicio de nombre distinto: las preconsultas pasaron a "QA Paquete 4 Premium" |
+| 7   | El asiento registraba el monto de la cita **disparadora**: desde una sesión 2..N quedaba `"$0.00 → $160.00"`, mintiendo sobre la diferencia de dinero             | El asiento nuevo dice `$160.00 → $120.00`                                                     |
+| 8   | Al aprobar el pago, **las consultas hermanas seguían "pendiente"**: el listado mostraba "Pendiente" lo que el detalle llamaba "Cubierta por un paquete ya pagado" | Tras re-aprobar, la sesión 2 pasó a `approved` y el listado dice "Pagado"                     |
+| 9   | El recuadro mostraba bolívares **a la tasa de hoy** (el error ya corregido en Cobros) y el método crudo en inglés: "cash usd"                                     | Ahora "Bs. 132.437,94" (congelados) y "Efectivo USD"                                          |
+
+### Lo que queda ABIERTO (decisión del dueño)
+
+⚠️ **Conviven dos vocabularios de método de pago en la BD.** La reserva pública guarda
+`cash_usd`/`cash_bs`; el panel del especialista usa `efectivo`/`efectivo_bs`. Consecuencia real: al
+abrir una consulta reservada con efectivo, el selector muestra **"— Sin especificar —"**, o sea que
+el especialista **no ve cómo dijo pagar el paciente**. Se puso un mapeo de LECTURA para que la
+pantalla no muestre inglés; unificar el dato de escritura toca filas existentes y no se hizo.
+
+🔸 Menor, sin reproducir: una vez la pantalla se quedó en "Abriendo la consulta…" al entrar por
+`?open=` justo después de un deploy. Con clic desde el listado abre siempre.
