@@ -2845,19 +2845,19 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
       .catch(() => {
         setAutoSaving(false);
       });
-    // Sync legacy columns for chief_complaint/diagnosis/treatment/notes
-    const legacyKeys = ['chief_complaint', 'diagnosis', 'treatment', 'notes'] as const;
-    const legacyUpdates: Record<string, string | null> = {};
-    let hasLegacy = false;
-    for (const k of legacyKeys) {
-      if (k in bd && typeof bd[k] === 'string') {
-        legacyUpdates[k] = (bd[k] as string) || null;
-        hasLegacy = true;
-      }
-    }
-    if (hasLegacy) {
-      updateConsultation(cur.id, legacyUpdates).catch(() => {});
-    }
+    /*
+      Ya no se sincronizan las columnas legacy desde el cliente.
+
+      Antes esto era una SEGUNDA petición (`updateConsultation`) que corría después
+      de guardar `blocks_data`, con el error descartado. Si fallaba, el snapshot
+      quedaba guardado, la pantalla decía "guardado" y las columnas quedaban vacías
+      en silencio — así una especialista terminó viendo su historial en blanco, con
+      el contenido intacto pero invisible (3 consultas en producción).
+
+      Desde `refactor(consultas): derivan columnas texto del snapshot`, el backend
+      deriva `chief_complaint`/`diagnosis`/`treatment`/`notes` del snapshot en la
+      MISMA escritura. Una sola petición, imposible que se desincronicen.
+    */
   }, []);
 
   /**
@@ -2897,17 +2897,7 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id: cur.id, blocks_data: bd }),
       });
-      // Sync de columnas legacy (chief_complaint/diagnosis/treatment/notes).
-      const legacyKeys = ['chief_complaint', 'diagnosis', 'treatment', 'notes'] as const;
-      const legacyUpdates: Record<string, string | null> = {};
-      let hasLegacy = false;
-      for (const k of legacyKeys) {
-        if (k in bd && typeof bd[k] === 'string') {
-          legacyUpdates[k] = (bd[k] as string) || null;
-          hasLegacy = true;
-        }
-      }
-      if (hasLegacy) await updateConsultation(cur.id, legacyUpdates);
+      // Las columnas legacy las deriva el backend del snapshot (ver nota arriba).
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } catch {
@@ -3375,17 +3365,7 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
         else if (blockKey === 'notes' || blockKey === 'informe')
           setReport((p) => ({ ...p, notes: value as string }));
       }
-      // Persist: update clinical fields + blocks_data via PATCH BFF (non-blocking)
-      const legacyUpdates: Record<string, string | null> = {};
-      if (
-        typeof value === 'string' &&
-        ['chief_complaint', 'diagnosis', 'treatment', 'notes'].includes(blockKey)
-      ) {
-        legacyUpdates[blockKey] = value;
-      }
-      if (Object.keys(legacyUpdates).length > 0) {
-        updateConsultation(selected.id, legacyUpdates).catch(() => {});
-      }
+      // Persist: solo blocks_data. Las columnas legacy las deriva el backend.
       // Persist blocks_data: fire immediately AND schedule a debounced save so that
       // if the immediate fetch fails silently, the next timer fires with fresh data.
       fetch('/api/doctor/consultations', {
@@ -4227,26 +4207,7 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                                   setTimeout(() => setSaved(false), 2000);
                                 })
                                 .catch(() => setAutoSaving(false));
-                              // Sync legacy columns
-                              const legacyKeys = [
-                                'chief_complaint',
-                                'diagnosis',
-                                'treatment',
-                                'notes',
-                              ] as const;
-                              const legacyUpdates: Record<string, string | null> = {};
-                              let hasLegacy = false;
-                              for (const k of legacyKeys) {
-                                if (k in latestBd && typeof latestBd[k] === 'string') {
-                                  legacyUpdates[k] = (latestBd[k] as string) || null;
-                                  hasLegacy = true;
-                                }
-                              }
-                              if (hasLegacy) {
-                                updateConsultation(selectedRef.current.id, legacyUpdates).catch(
-                                  () => {},
-                                );
-                              }
+                              // Columnas legacy: las deriva el backend del snapshot.
                             }, 1500);
                           }}
                           lockedKeys={LOCKED_BLOCK_KEYS}
