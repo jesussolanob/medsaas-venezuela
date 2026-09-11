@@ -111,6 +111,26 @@ function isValueEmpty(value: unknown): boolean {
   return false;
 }
 
+/**
+ * Devuelve la fecha calendario (YYYY-MM-DD) de `iso` en la zona America/Caracas.
+ *
+ * Hay dos formatos posibles que puede emitir el backend:
+ *
+ * - DATEONLY  ('2026-08-11', 10 chars): `new Date()` lo parsea como medianoche UTC,
+ *   que en Caracas (UTC-4) retrocede al día anterior. Se devuelve tal cual para
+ *   evitar el desplazamiento.
+ *
+ * - Timestamp ('2026-09-11T23:00:00.000Z'): el backend siempre emite .toISOString()
+ *   sobre un Date de Sequelize DataType.DATE (= TIMESTAMPTZ en Postgres). Para este
+ *   formato sí hace falta convertir: una consulta a las 21:00 Caracas se almacena
+ *   como 01:00 UTC del día siguiente; `slice(0,10)` daría la fecha UTC incorrecta y
+ *   ocultaría la consulta al comparar con hoy.
+ */
+function consultationDateInCaracas(iso: string): string {
+  if (iso.length === 10) return iso; // DATEONLY — usar directamente
+  return new Date(iso).toLocaleDateString('en-CA', { timeZone: 'America/Caracas' });
+}
+
 // ---------------------------------------------------------------------------
 // Sub-componentes
 // ---------------------------------------------------------------------------
@@ -472,13 +492,10 @@ export default function PatientHistoryModal({
         if (!active) return;
 
         /*
-         * Obtenemos la fecha de HOY en la zona horaria del consultorio (Venezuela,
-         * America/Caracas = UTC-4 fijo). Usamos 'en-CA' porque ese locale formatea
-         * fechas como YYYY-MM-DD, compatible con comparación lexicográfica de ISO.
-         *
-         * Comparamos solo los primeros 10 caracteres de consultation_date para que
-         * funcione tanto con DATEONLY ('2026-10-08') como con timestamps completos
-         * ('2026-10-08T14:00:00Z'). Una consulta de HOY siempre es visible (<=).
+         * Filtramos solo consultas que ya ocurrieron. Comparamos fechas calendario
+         * en la zona America/Caracas para evitar que una consulta de hoy a las
+         * 21:00–23:59 Caracas (que en UTC cae el día siguiente) quede excluida.
+         * Ver `consultationDateInCaracas` para el detalle por formato.
          */
         const todayStr = new Date().toLocaleDateString('en-CA', {
           timeZone: 'America/Caracas',
@@ -487,8 +504,9 @@ export default function PatientHistoryModal({
         const filtered = all
           .filter((c) => {
             if (c.id === currentConsultationId) return false;
-            const datePart = c.consultation_date?.slice(0, 10) ?? '';
-            // Excluir fechas malformadas y consultas futuras.
+            const iso = c.consultation_date ?? '';
+            if (!iso) return false;
+            const datePart = consultationDateInCaracas(iso);
             return datePart.length === 10 && datePart <= todayStr;
           })
           .sort(
