@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { OfferablePaymentMethodSchema } from '../payment-method';
 
 /**
  * ISO 8601 date string validator (YYYY-MM-DD).
@@ -17,7 +18,12 @@ export const UpdateDoctorProfileDtoSchema = z
     full_name: z.string().min(1).max(200).optional(),
     specialty: z.string().nullable().optional(),
     professional_title: z.string().nullable().optional(),
-    payment_methods: z.array(z.string()).optional(),
+    /**
+     * Métodos que el especialista declara aceptar. Solo los OFRECIBLES: `package`
+     * e `insurance` los pone el sistema y aceptarlos acá los haría aparecer como
+     * botón en la reserva pública.
+     */
+    payment_methods: z.array(OfferablePaymentMethodSchema).optional(),
     payment_details: z.record(z.string(), z.unknown()).optional(),
     allows_online: z.boolean().optional(),
     office_address: z.string().nullable().optional(),

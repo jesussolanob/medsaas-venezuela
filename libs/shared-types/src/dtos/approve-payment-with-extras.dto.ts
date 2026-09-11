@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { PaymentMethodSchema } from '../payment-method';
 
 /**
  * Schema for a single extra service item attached to a consultation payment.
@@ -49,7 +50,7 @@ export const ApprovePaymentWithExtrasDtoSchema = z
   .object({
     extras: z.array(ConsultationExtraItemSchema).default([]),
     product_extras: z.array(ProductExtraItemForApprovalSchema).default([]),
-    method: z.string().min(1).max(100).optional(),
+    method: PaymentMethodSchema.optional(),
   })
   .strict();
 
