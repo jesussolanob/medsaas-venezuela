@@ -81,9 +81,20 @@ type Props = {
   existingExtras: ExistingExtraItem[];
   /** Método de pago activo en el panel (se envía al backend si está disponible). */
   paymentMethod?: string;
+  /**
+   * Cuando es true la sesión ya está cubierta por el paquete: el monto base no
+   * se cobra de nuevo y el modal muestra su propio selector de método de pago
+   * (el del panel está oculto para impedir un doble cobro).
+   */
+  coveredSession?: boolean;
+  /** Opciones de método disponibles para el doctor. Requeridas en sesiones cubiertas. */
+  methodOptions?: Array<{ value: string; label: string }>;
   onClose: () => void;
-  /** Llamado con el total y los nuevos extra_items tras aprobar exitosamente. */
-  onApproved: (total: number, extras: ExistingExtraItem[]) => void;
+  /**
+   * Llamado con el total y los nuevos extra_items tras aprobar exitosamente.
+   * Puede devolver una promesa — el modal la espera antes de cerrarse.
+   */
+  onApproved: (total: number, extras: ExistingExtraItem[]) => void | Promise<void>;
 };
 
 let keyCounter = 0;
@@ -135,11 +146,17 @@ export default function ApprovePaymentModal({
   baseAmount,
   existingExtras,
   paymentMethod,
+  coveredSession = false,
+  methodOptions = [],
   onClose,
   onApproved,
 }: Props) {
   const [rows, setRows] = useState<ExtraRow[]>([]);
   const [saving, setSaving] = useState(false);
+  // Método de pago capturado dentro del modal para sesiones cubiertas.
+  // En esas sesiones el selector del panel está oculto; sin este campo el
+  // backend rechaza el request con PaymentMethodRequiredError.
+  const [coveredMethod, setCoveredMethod] = useState('');
   const overlayRef = useRef<HTMLDivElement>(null);
   const { format, rate: bcvRate } = useBcvRate();
 
@@ -160,6 +177,10 @@ export default function ApprovePaymentModal({
       setRows(buildRows(textExtras));
       setProductRows([]);
       setSelectedProductId('');
+      // Preload the method already stored on the consultation. On a re-edit
+      // (charging extras a second time) it is the one the patient already used,
+      // so the specialist does not have to pick it again.
+      setCoveredMethod(paymentMethod ?? '');
       setInventoryLoadError(false);
 
       // Fetch active inventory products for the product-extras selector.
@@ -233,7 +254,7 @@ export default function ApprovePaymentModal({
         })
         .finally(() => setLoadingInventory(false));
     }
-  }, [open, existingExtras]);
+  }, [open, existingExtras, paymentMethod]);
 
   // Cerrar con Escape
   useEffect(() => {
@@ -334,7 +355,17 @@ export default function ApprovePaymentModal({
   const productExtrasTotal = validProductLines.reduce((acc, l) => acc + l.amount, 0);
   const hasVesProducts = validProductLines.some((l) => l.isApprox);
   const extrasTotal = textExtrasTotal; // kept for breakdown display
-  const grandTotal = baseAmount + textExtrasTotal + productExtrasTotal;
+  /**
+   * The backend always resolves the base to 0 on a covered session (the package
+   * was already charged in session 1). Pinning it here too keeps the screen and
+   * the DB in agreement BY CONSTRUCTION rather than by luck: a stale
+   * `base_amount` in memory — which happens whenever the post-approval refresh
+   * fails — would otherwise resolve to the extras total and show it twice. And
+   * since a covered session never prints the base, the doubled total would carry
+   * no visible hint of where it came from.
+   */
+  const effectiveBase = coveredSession ? 0 : baseAmount;
+  const grandTotal = effectiveBase + textExtrasTotal + productExtrasTotal;
 
   /**
    * Confirmar el cobro PERSISTE de una vez (decisión del dueño, 2026-08-17).
@@ -368,13 +399,16 @@ export default function ApprovePaymentModal({
         .filter((r) => r.product_id && parseFloat(r.qty) > 0)
         .map((r) => ({ product_id: r.product_id, quantity: parseFloat(r.qty) }));
 
+      // Sesiones cubiertas tienen su propio selector de método dentro del modal
+      // (el del panel está oculto). Sesiones regulares usan el del panel.
+      const effectiveMethod = coveredSession ? coveredMethod.trim() : (paymentMethod?.trim() ?? '');
       const res = await fetch(`/api/doctor/consultations/${consultationId}/approve-payment`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           extras: validExtras(),
           product_extras: validProductExtras,
-          ...(paymentMethod?.trim() ? { method: paymentMethod.trim() } : {}),
+          ...(effectiveMethod ? { method: effectiveMethod } : {}),
         }),
       });
 
@@ -393,7 +427,9 @@ export default function ApprovePaymentModal({
       }
 
       // El total y los extras vuelven del servidor con sus ids reales.
-      onApproved(
+      // Se espera la promesa: onApproved refresca base_amount desde el servidor,
+      // y cerrar antes hace que la próxima apertura calcule un total incorrecto.
+      await onApproved(
         typeof json.data?.amount === 'number' ? json.data.amount : grandTotal,
         json.data?.extra_items ?? [],
       );
@@ -434,10 +470,12 @@ export default function ApprovePaymentModal({
                 id="approve-payment-title"
                 className="text-sm font-bold text-slate-800 leading-tight"
               >
-                Aprobar pago
+                {coveredSession ? 'Cobrar aparte' : 'Aprobar pago'}
               </h2>
               <p className="text-[11px] text-slate-400 mt-0.5">
-                Confirma el cobro de esta consulta
+                {coveredSession
+                  ? 'Extras de una sesión que ya cubre el paquete'
+                  : 'Confirma el cobro de esta consulta'}
               </p>
             </div>
           </div>
@@ -460,9 +498,46 @@ export default function ApprovePaymentModal({
             </p>
             <div className="flex items-center justify-between">
               <span className="text-sm text-slate-600">Monto base</span>
-              <span className="text-sm font-bold text-slate-800">{format(baseAmount)}</span>
+              {coveredSession ? (
+                <span className="text-xs text-slate-500 italic">
+                  Paquete ya pagado — no se vuelve a cobrar
+                </span>
+              ) : (
+                <span className="text-sm font-bold text-slate-800">{format(baseAmount)}</span>
+              )}
             </div>
           </div>
+
+          {/* Método de pago — solo en sesiones cubiertas, donde el selector del panel
+              está oculto. Sin este campo el backend rechaza con PaymentMethodRequiredError
+              y el cobro no se registra. */}
+          {coveredSession && (
+            <div>
+              <label
+                htmlFor="covered-method"
+                className="flex items-center gap-1.5 text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1"
+              >
+                Método de pago
+                <span className="text-[9px] font-semibold text-amber-600 normal-case tracking-normal">
+                  Obligatorio
+                </span>
+              </label>
+              <select
+                id="covered-method"
+                value={coveredMethod}
+                onChange={(e) => setCoveredMethod(e.target.value)}
+                disabled={saving}
+                className="w-full text-xs border border-slate-200 rounded-lg py-2 px-3 outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-400 transition-all bg-white text-slate-700 disabled:opacity-60"
+              >
+                <option value="">— Seleccionar método —</option>
+                {methodOptions.map((m) => (
+                  <option key={m.value} value={m.value}>
+                    {m.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
           {/* Servicios adicionales */}
           <div>
@@ -483,7 +558,9 @@ export default function ApprovePaymentModal({
 
             {rows.length === 0 ? (
               <p className="text-xs text-slate-400 italic py-2">
-                Sin servicios adicionales. El total es solo el monto base.
+                {coveredSession
+                  ? 'Agregá al menos un servicio o producto para cobrar aparte.'
+                  : 'Sin servicios adicionales. El total es solo el monto base.'}
               </p>
             ) : (
               <div className="space-y-2">
@@ -650,7 +727,9 @@ export default function ApprovePaymentModal({
           {/* Total */}
           <div className="rounded-xl border-2 border-teal-200 bg-teal-50 px-4 py-3">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-teal-700">Total a cobrar</span>
+              <span className="text-xs font-semibold text-teal-700">
+                {coveredSession ? 'Total a cobrar aparte' : 'Total a cobrar'}
+              </span>
               <span className="text-lg font-extrabold text-teal-700">
                 {hasVesProducts && '≈ '}
                 {format(grandTotal)}
@@ -658,7 +737,10 @@ export default function ApprovePaymentModal({
             </div>
             {(extrasTotal > 0 || productExtrasTotal > 0) && (
               <p className="text-[10px] text-teal-500 mt-1">
-                Base {format(baseAmount)}
+                {/* En una sesión cubierta no hay base que desglosar: el paquete se
+                    cobró aparte. Imprimir "Base $0.00" invita a leer la consulta
+                    como gratis, que es justo lo que el recuadro de arriba desmiente. */}
+                {coveredSession ? 'Solo extras' : `Base ${format(baseAmount)}`}
                 {extrasTotal > 0 && ` + servicios ${format(extrasTotal)}`}
                 {productExtrasTotal > 0 &&
                   ` + productos ${hasVesProducts ? '≈ ' : ''}${format(productExtrasTotal)}`}
@@ -686,7 +768,18 @@ export default function ApprovePaymentModal({
           <button
             type="button"
             onClick={handleConfirm}
-            disabled={saving || hasIncompleteRows()}
+            disabled={
+              saving ||
+              hasIncompleteRows() ||
+              // No dejar confirmar con total 0 en una sesión cubierta: el backend
+              // crearía una fila de $0 en payments que marca la consulta como aprobada
+              // sin que se haya cobrado nada real.
+              (coveredSession && grandTotal === 0) ||
+              // Sin método el backend responde PaymentMethodRequiredError: el
+              // especialista perdía lo cargado contra un error rojo, sin que la
+              // pantalla hubiera dicho nunca que el campo era obligatorio.
+              (coveredSession && !coveredMethod.trim())
+            }
             className="flex items-center gap-2 px-4 py-2 text-xs font-semibold text-white bg-teal-500 rounded-lg hover:bg-teal-600 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
           >
             {saving ? (
@@ -697,7 +790,7 @@ export default function ApprovePaymentModal({
             ) : (
               <>
                 <CheckCircle className="w-3.5 h-3.5" />
-                Confirmar cobro
+                {coveredSession ? 'Cobrar extras' : 'Confirmar cobro'}
               </>
             )}
           </button>

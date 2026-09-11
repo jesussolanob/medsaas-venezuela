@@ -306,6 +306,22 @@ function paymentMethodLabel(method: string): string {
   return PAYMENT_METHOD_LABELS[method] ?? method.replace(/_/g, ' ');
 }
 
+/**
+ * All supported payment methods in a single array. Defined once so the panel
+ * selector and the covered-session modal both draw from the same list — no
+ * silent divergence if someone adds a method to one but forgets the other.
+ */
+const PAYMENT_METHOD_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: 'efectivo', label: 'Efectivo USD' },
+  { value: 'efectivo_bs', label: 'Efectivo Bs' },
+  { value: 'pago_movil', label: 'Pago Móvil' },
+  { value: 'transferencia', label: 'Transferencia' },
+  { value: 'zelle', label: 'Zelle' },
+  { value: 'binance', label: 'Binance' },
+  { value: 'pos', label: 'POS / Punto de venta' },
+  { value: 'seguro', label: 'Seguro' },
+];
+
 function isPackageSession(c: { package_total_sessions?: number | null }): boolean {
   const total = c.package_total_sessions;
   return !!total && total > 1;
@@ -1571,8 +1587,9 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
    * Callback invocado por ApprovePaymentModal cuando el pago fue aprobado
    * exitosamente. Actualiza el estado local con el total y los extras devueltos.
    */
-  function handlePaymentApproved(total: number, extras: ExistingExtraItem[]) {
+  async function handlePaymentApproved(total: number, extras: ExistingExtraItem[]) {
     if (!selected) return;
+    // Parcheo optimista — da respuesta inmediata en pantalla.
     const updated: Partial<Consultation> = {
       payment_status: 'approved',
       amount: total,
@@ -1585,6 +1602,11 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
         x.id === selected.id ? { ...x, payment_status: 'approved', amount: total } : x,
       ),
     );
+    // Refresca base_amount desde el servidor. Sin este paso, la próxima apertura
+    // del modal calcula el total como (amount + extras) en vez de (base + extras):
+    // una aprobación de $100 base + $20 extras dejaría base_amount en null y la
+    // siguiente apertura mostraría $140 en pantalla vs $120 en la BD.
+    await refreshSelectedConsultation(selected.id);
   }
 
   /**
@@ -5381,26 +5403,10 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                               >
                                 <option value="">— Sin especificar —</option>
                                 {(doctorPaymentMethods.length > 0
-                                  ? [
-                                      { value: 'efectivo', label: 'Efectivo USD' },
-                                      { value: 'efectivo_bs', label: 'Efectivo Bs' },
-                                      { value: 'pago_movil', label: 'Pago Móvil' },
-                                      { value: 'transferencia', label: 'Transferencia' },
-                                      { value: 'zelle', label: 'Zelle' },
-                                      { value: 'binance', label: 'Binance' },
-                                      { value: 'pos', label: 'POS / Punto de venta' },
-                                      { value: 'seguro', label: 'Seguro' },
-                                    ].filter((m) => doctorPaymentMethods.includes(m.value))
-                                  : [
-                                      { value: 'efectivo', label: 'Efectivo USD' },
-                                      { value: 'efectivo_bs', label: 'Efectivo Bs' },
-                                      { value: 'pago_movil', label: 'Pago Móvil' },
-                                      { value: 'transferencia', label: 'Transferencia' },
-                                      { value: 'zelle', label: 'Zelle' },
-                                      { value: 'binance', label: 'Binance' },
-                                      { value: 'pos', label: 'POS / Punto de venta' },
-                                      { value: 'seguro', label: 'Seguro' },
-                                    ]
+                                  ? PAYMENT_METHOD_OPTIONS.filter((m) =>
+                                      doctorPaymentMethods.includes(m.value),
+                                    )
+                                  : PAYMENT_METHOD_OPTIONS
                                 ).map((m) => (
                                   <option key={m.value} value={m.value}>
                                     {m.label}
@@ -5655,6 +5661,23 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                             No incluye el paquete, que ya está pagado.
                           </p>
                         </div>
+                      )}
+
+                      {/* Botón para cobrar extras en una sesión cubierta.
+                          Siempre visible cuando hay cobertura: permite tanto agregar
+                          los primeros extras como editar los ya guardados sin necesidad
+                          de abrir el selector "Estado del pago" (que está oculto). */}
+                      {coverage && (
+                        <button
+                          type="button"
+                          onClick={() => setShowApprovePaymentModal(true)}
+                          className="w-full flex items-center justify-center gap-1.5 border border-emerald-300 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 text-xs font-semibold rounded-lg py-2 transition-colors"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          {selected.extra_items && selected.extra_items.length > 0
+                            ? 'Editar lo que se cobra aparte'
+                            : 'Cobrar aparte'}
+                        </button>
                       )}
 
                       {/*
@@ -6549,6 +6572,12 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
             baseAmount={selected.base_amount ?? selected.amount ?? 0}
             existingExtras={selected.extra_items ?? []}
             paymentMethod={pagoMethod || undefined}
+            coveredSession={!!selected.covered_by}
+            methodOptions={
+              doctorPaymentMethods.length > 0
+                ? PAYMENT_METHOD_OPTIONS.filter((m) => doctorPaymentMethods.includes(m.value))
+                : PAYMENT_METHOD_OPTIONS
+            }
             onClose={() => setShowApprovePaymentModal(false)}
             onApproved={handlePaymentApproved}
           />
@@ -7734,6 +7763,12 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
             baseAmount={selected.base_amount ?? selected.amount ?? 0}
             existingExtras={selected.extra_items ?? []}
             paymentMethod={pagoMethod || undefined}
+            coveredSession={!!selected.covered_by}
+            methodOptions={
+              doctorPaymentMethods.length > 0
+                ? PAYMENT_METHOD_OPTIONS.filter((m) => doctorPaymentMethods.includes(m.value))
+                : PAYMENT_METHOD_OPTIONS
+            }
             onClose={() => setShowApprovePaymentModal(false)}
             onApproved={handlePaymentApproved}
           />
