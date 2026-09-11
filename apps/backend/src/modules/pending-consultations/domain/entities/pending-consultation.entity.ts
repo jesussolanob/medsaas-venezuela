@@ -47,6 +47,37 @@ export class PendingConsultation {
   }
 
   /**
+   * Devuelve una copia con el vínculo a la consulta ya creada.
+   *
+   * Existe porque la consulta se crea DESPUÉS de commitear la cita (dentro de la
+   * transacción la FK contra `appointments` no ve la fila), así que la preconsulta
+   * nace 'scheduled' sin `consultationId` y se completa en un segundo paso.
+   * No usa `markScheduled` porque esa exige partir de 'pending_scheduling'.
+   */
+  withConsultationId(consultationId: string): PendingConsultation {
+    return new PendingConsultation(
+      this.id,
+      this.doctorId,
+      this.patientId,
+      this.authUserId,
+      this.packageId,
+      this.paymentId,
+      this.planName,
+      this.officeId,
+      this.appointmentMode,
+      this.sessionNumber,
+      this.status,
+      this.expiresAt,
+      this.scheduledAppointmentId,
+      consultationId,
+      this.reminderStage,
+      this.lastReminderAt,
+      this.createdAt,
+      new Date(),
+    );
+  }
+
+  /**
    * Returns a new PendingConsultation with status='scheduled' and the linked
    * appointment/consultation IDs set.
    * Does NOT mutate — returns an immutable copy.
