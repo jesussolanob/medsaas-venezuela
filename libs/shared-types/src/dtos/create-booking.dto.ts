@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { PaymentMethodSchema } from '../payment-method';
 import { AppointmentModeSchema } from '../enums';
 
 export const CreateBookingDtoSchema = z
@@ -54,7 +55,8 @@ export const CreateBookingDtoSchema = z
     chief_complaint: z.string().max(1000).nullable().optional(),
 
     // Payment fields (skipped if using package)
-    payment_method: z.string().nullable().optional(),
+    // Vocabulario cerrado: ver libs/shared-types/src/payment-method.ts
+    payment_method: PaymentMethodSchema.nullable().optional(),
     payment_reference: z.string().nullable().optional(),
     bcv_rate: z.number().positive().nullable().optional(),
 

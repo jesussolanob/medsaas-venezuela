@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { PaymentMethodSchema } from '../payment-method';
 
 /**
  * DTO for POST /api/doctor/payments — register a new consultation payment.
@@ -12,7 +13,7 @@ export const RegisterPaymentDtoSchema = z
     patient_id: z.string().uuid({ message: 'patient_id must be a valid UUID' }),
     amount: z.number().positive({ message: 'El monto debe ser mayor a cero' }),
     currency: z.string().min(1).max(10).default('USD'),
-    payment_method: z.string().min(1).max(100),
+    payment_method: PaymentMethodSchema,
     reference_number: z.string().max(200).nullable().optional(),
     receipt_url: z.string().url().nullable().optional(),
     notes: z.string().max(1000).nullable().optional(),

@@ -9,6 +9,14 @@
       "options": {
         "command": "tsc -p libs/shared-types/tsconfig.json"
       }
+    },
+    "test": {
+      "executor": "@nx/jest:jest",
+      "outputs": ["{workspaceRoot}/coverage/libs/shared-types"],
+      "options": {
+        "jestConfig": "libs/shared-types/jest.config.cts",
+        "passWithNoTests": true
+      }
     }
   }
 }

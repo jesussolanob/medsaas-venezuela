@@ -51,7 +51,9 @@ const makeDto = (overrides: Record<string, unknown> = {}) => ({
   appointment_mode: 'presencial' as const,
   plan_name: 'Consulta General',
   plan_price: 30,
-  payment_method: 'pago_movil',
+  // `as const`: desde que el DTO cierra el vocabulario, un `string` suelto ya no
+  // encaja en el tipo del método. Es el enum haciendo su trabajo.
+  payment_method: 'pago_movil' as const,
   ...overrides,
 });
 

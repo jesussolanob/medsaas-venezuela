@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { PaymentMethodSchema } from '../payment-method';
 import { AppointmentModeSchema } from '../enums';
 
 /**
@@ -41,7 +42,7 @@ export const CreateImmediateAppointmentDtoSchema = z
     duration_minutes: z.number().int().min(5).max(480),
 
     // Payment fields
-    payment_method: z.string().nullable().optional(),
+    payment_method: PaymentMethodSchema.nullable().optional(),
     payment_reference: z.string().nullable().optional(),
     bcv_rate: z.number().positive().nullable().optional(),
 
