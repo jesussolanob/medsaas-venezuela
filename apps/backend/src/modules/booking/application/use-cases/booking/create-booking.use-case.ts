@@ -272,6 +272,25 @@ export class CreateBookingUseCase {
        * Ignorado cuando `existingPaymentId` está ausente.
        */
       existingPaymentStatus?: 'pending' | 'approved';
+      /**
+       * Número de sesión del paquete que consume esta cita inmediata.
+       *
+       * Sin este valor la cita nace con `session_number = NULL`, lo que rompe
+       * tres cosas en cascada:
+       *   1. `covered_by` (repositorio de consultas) exige `session_number IS NOT NULL`
+       *      para reconocer la cita como cubierta — sin él el especialista ve el panel
+       *      de cobro completo y puede intentar cobrar otra vez.
+       *   2. `sessionLabel()` en el frontend devuelve "sesión 1 de N" en lugar del
+       *      número real.
+       *   3. La subconsulta `package_charge_usd` en findById busca la cita "pagadora"
+       *      con `session_number IS NULL ORDER BY scheduled_at ASC LIMIT 1`. Si la
+       *      cita inmediata también es NULL y es más temprana, gana ella (precio 0)
+       *      y todas las consultas hermanas muestran el paquete como $0.
+       *
+       * Solo debe usarlo `CreateImmediateAppointmentUseCase` cuando consume una
+       * preconsulta pendiente.
+       */
+      sessionNumber?: number;
     },
   ): Promise<CreateBookingResult> {
     // --- Step 1: Turnstile validation (STUB — Etapa 1) ---
@@ -452,7 +471,10 @@ export class CreateBookingUseCase {
       bcvRate: dto.bcv_rate ?? null,
       amountBs: null,
       packageId: dto.package_id ?? null,
-      sessionNumber: null,
+      // Número de sesión: proviene de las opciones cuando se consume una
+      // preconsulta de paquete (flujo de consulta inmediata). Sin este valor la
+      // cita nace NULL y rompe el panel `covered_by` y la subconsulta de precio.
+      sessionNumber: options?.sessionNumber ?? null,
       chiefComplaint: dto.chief_complaint ?? null,
       appointmentCode,
       durationMinutes: officeDuration,
