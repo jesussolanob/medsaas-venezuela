@@ -67,7 +67,11 @@ export class UpdateAppointmentStatusUseCase {
 
     // 3. Guard transition rules
     if (!appointment.canTransitionTo(dto.status)) {
-      throw new AppointmentInvalidTransitionError(appointment.status, dto.status);
+      throw new AppointmentInvalidTransitionError(
+        appointment.status,
+        dto.status,
+        appointment.allowedTransitions(),
+      );
     }
 
     // 3.5. Business rule: an appointment whose linked consultation already has

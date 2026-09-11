@@ -14,6 +14,8 @@ const makeItem = (overrides: Partial<UnifiedIncomeItem> = {}): UnifiedIncomeItem
   patient_id: 'patient-uuid-1',
   patient_name: 'Ana López',
   reference: 'PAY-001',
+  consultation_date: new Date('2026-06-10T14:00:00Z'),
+  plan_name: 'Consulta Individual',
   ...overrides,
 });
 

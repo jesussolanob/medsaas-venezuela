@@ -21,13 +21,19 @@ import { backendPut } from '@/lib/api-client.server';
 
 export const dynamic = 'force-dynamic';
 
-/** Maps backend domain error codes to Spanish (es-VE) messages for the UI. */
+/**
+ * Maps backend domain error codes to Spanish (es-VE) messages for the UI.
+ *
+ * APPOINTMENT_INVALID_TRANSITION is deliberately NOT rewritten here. It used to
+ * be replaced with "No se puede cambiar la cita a ese estado desde su estado
+ * actual", which names neither state — so a specialist whose cancellation had
+ * already gone through read it as "the cancellation failed" and kept retrying.
+ * The backend message names both states and what is still possible; forward it.
+ */
 function spanishError(code: string, fallback: string): string {
   switch (code) {
     case 'APPOINTMENT_NOT_FOUND':
       return 'Cita no encontrada';
-    case 'APPOINTMENT_INVALID_TRANSITION':
-      return 'No se puede cambiar la cita a ese estado desde su estado actual';
     default:
       return fallback;
   }

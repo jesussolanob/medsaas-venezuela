@@ -271,6 +271,53 @@ describe('UpdateAppointmentStatusUseCase', () => {
       await expect(useCase.execute(dto)).rejects.toBeInstanceOf(AppointmentInvalidTransitionError);
     });
 
+    /**
+     * The message is read verbatim by the specialist. A real report (2026-09-11):
+     * she was shown "No se puede pasar la cita de 'cancelled' a 'no_show'" —
+     * words that appear nowhere on her screen — right after a different screen
+     * had told her only that the change was not possible "desde su estado
+     * actual", naming neither state. Between the two she could not tell that her
+     * cancellation had already succeeded.
+     */
+    /** Devuelve el mensaje del error, o falla si la llamada no lanzó. */
+    const messageOf = async (
+      from: 'cancelled' | 'confirmed' | 'completed',
+      to: UpdateAppointmentStatusDto['status'],
+    ): Promise<string> => {
+      repo = makeRepo(makeAppointment({ status: from }));
+      useCase = new UpdateAppointmentStatusUseCase(repo);
+      try {
+        await useCase.execute({ id: APPT_ID, status: to, actor_id: DOCTOR_ID });
+      } catch (e: unknown) {
+        return (e as Error).message;
+      }
+      throw new Error(`Se esperaba que ${from} → ${to} fuera rechazada`);
+    };
+
+    it('names both states in Spanish and never leaks the raw enum value', async () => {
+      const message = await messageOf('cancelled', 'no_show');
+
+      expect(message).toContain('Cancelada');
+      expect(message).toContain('No asistió');
+      // Ningún identificador interno puede llegar a la pantalla.
+      expect(message).not.toMatch(/cancelled|no_show|scheduled|confirmed|completed/);
+    });
+
+    it('tells the specialist what IS still possible when the state is not final', async () => {
+      // confirmed → completed | no_show | cancelled
+      const message = await messageOf('confirmed', 'scheduled');
+
+      expect(message).toContain('Atendida');
+      expect(message).toContain('No asistió');
+      expect(message).toContain('Cancelada');
+    });
+
+    it('says a final state admits no changes instead of listing nothing', async () => {
+      const message = await messageOf('cancelled', 'confirmed');
+
+      expect(message).toContain('estado final');
+    });
+
     it('throws AppointmentNotFoundError (anti-enumeration) when actor is not the owning doctor', async () => {
       const appt = makeAppointment({ doctorId: 'doctor-uuid-1' });
       repo = makeRepo(appt);
