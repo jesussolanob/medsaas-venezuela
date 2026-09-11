@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { PaymentMethodSchema } from '../payment-method';
 
 /**
  * DTO for PATCH /finances/payments/:id/details
@@ -9,7 +10,8 @@ import { z } from 'zod';
  *
  * Fields:
  *   paid_at        — ISO date string for the payment date.
- *   method         — payment method label (e.g. 'Transferencia', 'Efectivo').
+ *   method         — método de pago del vocabulario cerrado ('transferencia',
+ *                    'efectivo'…), NO su etiqueta. Ver src/payment-method.ts.
  *   reference      — bank reference number or transfer ID (max 200 chars).
  *   bcv_rate       — USD/VES exchange rate at the time of payment.
  *   amount_bs      — equivalent amount in bolivares at the given rate.
@@ -21,12 +23,8 @@ export const UpdatePaymentDetailsCobrosSchema = z
       .datetime({ error: 'La fecha de pago no tiene un formato válido' })
       .nullable()
       .optional(),
-    method: z
-      .string()
-      .min(1, { error: 'El método de pago no puede estar vacío' })
-      .max(100, { error: 'El método de pago no puede superar los 100 caracteres' })
-      .nullable()
-      .optional(),
+    // Vocabulario cerrado: ver libs/shared-types/src/payment-method.ts
+    method: PaymentMethodSchema.nullable().optional(),
     reference: z
       .string()
       .min(1, { error: 'La referencia no puede estar vacía' })

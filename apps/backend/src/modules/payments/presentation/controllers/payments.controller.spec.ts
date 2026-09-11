@@ -135,7 +135,9 @@ describe('PaymentsController', () => {
       patient_id: PATIENT_ID,
       amount: 100,
       currency: 'USD',
-      payment_method: 'zelle',
+      // `as const`: desde que el DTO cierra el vocabulario, un `string` suelto ya
+      // no encaja en el tipo del método. Es el enum haciendo su trabajo.
+      payment_method: 'zelle' as const,
     };
 
     it('registers a payment and returns it', async () => {

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { PaymentMethodSchema } from '../payment-method';
 
 /**
  * DTO for PATCH /consultations/:id/payment-details.
@@ -18,7 +19,7 @@ import { z } from 'zod';
 export const UpdatePaymentDetailsDtoSchema = z
   .object({
     payment_status: z.enum(['pending', 'approved']).optional(),
-    payment_method: z.string().min(1).max(100).nullable().optional(),
+    payment_method: PaymentMethodSchema.nullable().optional(),
     payment_reference: z.string().min(1).max(200).nullable().optional(),
     payment_receipt_url: z.string().min(1).max(500).nullable().optional(),
     amount: z.number().nonnegative().nullable().optional(),

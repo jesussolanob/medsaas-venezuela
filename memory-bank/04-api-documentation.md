@@ -1330,3 +1330,40 @@ NULL a propósito, y el caso de uso tampoco adivina: sin plan resoluble asume 1 
 `appointment_changes_log` gana `change_type` ('status' | 'service'), `old_value` y `new_value`, y
 `new_status` pasa a aceptar NULL — en un cambio de servicio el estado no se mueve, lo que se mueve
 es el dinero.
+
+## Un solo vocabulario de método de pago (2026-09-11)
+
+Convivían dos: la reserva pública y `/doctor/settings` escribían `cash_usd`/`cash_bs`; Consultas,
+Agenda y Pacientes usaban `efectivo`/`efectivo_bs`. **El vocabulario vigente es el español.**
+
+El daño no era cosmético. El selector de método al cobrar se **filtra** por
+`profiles.payment_methods`, que lo escribe `/doctor/settings`: con el perfil en `cash_usd`, la
+opción "Efectivo" desaparecía del selector. Y aunque el especialista no tuviera métodos
+configurados (se listan todos), el valor guardado `cash_usd` no casaba con la opción `efectivo`,
+así que el selector mostraba **"— Sin especificar —"** y se perdía cómo dijo pagar el paciente.
+
+**Escriben español** (cambiado): `PaymentDetailsEditor` (usado por `/doctor/settings` y
+`/seller/cobros`), la reserva pública y el editor de `/doctor/cobros`.
+**La LECTURA sigue entendiendo los valores viejos** — los mapas de labels conservan `cash_usd`/
+`cash_bs` como alias, así que una fila que se escape no se muestra en inglés.
+
+⚠️ El backend **no valida** el vocabulario (`payment_method: z.string()`), así que nada impide
+volver a escribir inglés desde una pantalla nueva. Es una convención, no una restricción.
+
+### Migración `20260911000001` — va OBLIGATORIAMENTE junto al código
+
+Convierte las **seis** columnas que guardan método: `appointments.payment_method`,
+`consultations.payment_method`, `payments.method_snapshot`,
+`consultation_payments.payment_method`, `profiles.payment_methods` (**`TEXT[]`**, no JSONB) y
+`profiles.payment_details` (**JSONB indexado POR método**: renombrar solo la lista dejaba
+huérfanos el banco/teléfono/titular que cargó el especialista).
+
+`payment_methods` se deduplica tras el reemplazo —un perfil con `cash_usd` **y** `efectivo` habría
+quedado con "efectivo" repetido en el selector— conservando el orden original, que es el que decide
+cómo se listan los métodos en la reserva pública.
+
+Sin la migración, un especialista cuyo perfil siga en `cash_usd` ve en su reserva pública un botón
+con el texto crudo "cash_usd", y `requiresReceipt` le exige comprobante a un pago en efectivo.
+
+El `down()` está **vacío a propósito**: antes de esto los dos valores convivían de verdad, así que
+revertir en bloque marcaría como `cash_usd` filas que nacieron en español, inventando historia.

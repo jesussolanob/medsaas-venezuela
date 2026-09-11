@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { PaymentMethodSchema } from '../payment-method';
 import { AppointmentModeSchema } from '../enums';
 
 // Strict DTO for creating a new appointment via /api/book.
@@ -16,7 +17,7 @@ export const CreateAppointmentDtoSchema = z
     appointment_mode: AppointmentModeSchema.default('presencial'),
     plan_name: z.string().min(1),
     plan_price: z.number().positive(),
-    payment_method: z.string().optional(),
+    payment_method: PaymentMethodSchema.optional(),
     payment_reference: z.string().nullable().optional(),
     package_id: z.string().uuid().nullable().optional(),
     chief_complaint: z.string().max(1000).nullable().optional(),
