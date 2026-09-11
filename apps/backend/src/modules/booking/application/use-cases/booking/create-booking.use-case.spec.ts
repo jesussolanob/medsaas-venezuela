@@ -1241,6 +1241,112 @@ describe('CreateBookingUseCase', () => {
       expect(mockCreatePendingUC.execute).not.toHaveBeenCalled();
     });
 
+    it('cuelga la sesión extra del MISMO pago que la primera y le pone plan_id', async () => {
+      // El paquete se cobra UNA vez: si la sesión extra no queda atada a ese pago,
+      // la pantalla no puede saber que ya está cubierta —vuelve a pedir el cobro— y
+      // la aprobación del pago tampoco la alcanza, porque sincroniza por payment_id.
+      const mockPricingPlanRepo = { findById: jest.fn().mockResolvedValue(makePricingPlan(3)) };
+      const mockCreatePendingUC = { execute: jest.fn().mockResolvedValue([]) };
+      const mockPaymentRepo = { create: jest.fn().mockResolvedValue({ id: 'pago-del-paquete' }) };
+      const mockCreateConsultationUC = {
+        execute: jest.fn().mockResolvedValue({ id: 'consulta-extra', consultationCode: 'DLT-1' }),
+      };
+
+      const uc = new CreateBookingUseCase(
+        mockAppointmentRepo,
+        mockPatientRepo,
+        mockDoctorLoader,
+        mockConsumeUseCase,
+        mockCrypto as unknown as import('../../../../../infrastructure/crypto/crypto.service').CryptoService,
+        mockSequelize as unknown as import('sequelize-typescript').Sequelize,
+        mockPaymentRepo as never,
+        mockResolveIdentity,
+        null,
+        null,
+        null,
+        null,
+        mockCreateConsultationUC as never,
+        mockPricingPlanRepo as unknown as import('../../../../packages/domain/repositories/pricing-plan.repository').IPricingPlanRepository,
+        mockCreatePendingUC as unknown as import('../../../../pending-consultations/application/use-cases/create-pending-consultations.use-case').CreatePendingConsultationsUseCase,
+      );
+
+      await uc.execute(
+        makeDto({
+          plan_id: PLAN_ID,
+          additional_sessions: [{ scheduled_at: '2026-08-08T10:00:00Z' }],
+        }),
+      );
+
+      const extraAppt = mockAppointmentRepo.save.mock.calls[1]![0];
+      expect(extraAppt.paymentId).toBe('pago-del-paquete');
+      expect(extraAppt.sessionNumber).toBe(2);
+      expect(extraAppt.planPrice).toBe(0);
+      // plan_id en las DOS: la cita principal y la extra.
+      expect(mockAppointmentRepo.save.mock.calls[0]![0].planId).toBe(PLAN_ID);
+      expect(extraAppt.planId).toBe(PLAN_ID);
+    });
+
+    it('crea la consulta de la sesión extra DESPUÉS del commit, no dentro', async () => {
+      // Adentro de la transacción la FK contra appointments no ve la fila recién
+      // insertada y el INSERT muere con consultations_appointment_id_fkey. El error
+      // caía en un warning, así que cada sesión extra quedaba sin consulta y nadie
+      // se enteraba. Verificado en staging el 2026-09-10.
+      const mockPricingPlanRepo = { findById: jest.fn().mockResolvedValue(makePricingPlan(3)) };
+      const mockCreatePendingUC = { execute: jest.fn().mockResolvedValue([]) };
+      const mockPaymentRepo = { create: jest.fn().mockResolvedValue({ id: 'pago-del-paquete' }) };
+
+      // El mock de transacción resuelve cuando el callback termina: todo lo llamado
+      // después de ese punto ocurre, por definición, con el commit ya hecho.
+      let transactionClosed = false;
+      const createCallsAfterCommit: boolean[] = [];
+      const mockCreateConsultationUC = {
+        execute: jest.fn().mockImplementation(() => {
+          createCallsAfterCommit.push(transactionClosed);
+          return Promise.resolve({ id: 'consulta-x', consultationCode: 'DLT-1' });
+        }),
+      };
+      const sequelizeSpy = {
+        transaction: jest.fn().mockImplementation(async (cb: (t: unknown) => Promise<unknown>) => {
+          const result = await cb({});
+          transactionClosed = true;
+          return result;
+        }),
+      };
+
+      const uc = new CreateBookingUseCase(
+        mockAppointmentRepo,
+        mockPatientRepo,
+        mockDoctorLoader,
+        mockConsumeUseCase,
+        mockCrypto as unknown as import('../../../../../infrastructure/crypto/crypto.service').CryptoService,
+        sequelizeSpy as unknown as import('sequelize-typescript').Sequelize,
+        mockPaymentRepo as never,
+        mockResolveIdentity,
+        null,
+        null,
+        null,
+        null,
+        mockCreateConsultationUC as never,
+        mockPricingPlanRepo as unknown as import('../../../../packages/domain/repositories/pricing-plan.repository').IPricingPlanRepository,
+        mockCreatePendingUC as unknown as import('../../../../pending-consultations/application/use-cases/create-pending-consultations.use-case').CreatePendingConsultationsUseCase,
+      );
+
+      await uc.execute(
+        makeDto({
+          plan_id: PLAN_ID,
+          additional_sessions: [{ scheduled_at: '2026-08-08T10:00:00Z' }],
+        }),
+      );
+
+      // Dos consultas: la de la cita principal y la de la sesión extra. NINGUNA
+      // se crea dentro de la transacción.
+      expect(createCallsAfterCommit).toHaveLength(2);
+      expect(createCallsAfterCommit.every((afterCommit) => afterCommit)).toBe(true);
+      // La de la sesión extra nace en 0: el paquete ya se cobró en la primera.
+      const extraCall = mockCreateConsultationUC.execute.mock.calls[1]![0] as { amount: number };
+      expect(extraCall.amount).toBe(0);
+    });
+
     it('skips multi-session path when pricingPlanRepo is null (backward compat)', async () => {
       // Passing null for pricingPlanRepo simulates legacy context (no plan repo injected).
       const ucWithoutPlanRepo = new CreateBookingUseCase(
