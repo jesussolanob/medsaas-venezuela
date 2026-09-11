@@ -88,8 +88,13 @@ const PAYMENT_METHODS: PaymentMethodData[] = [
       { key: 'email', label: 'Email', placeholder: 'correo@email.com' },
     ],
   },
-  { id: 'cash_usd', label: 'Efectivo USD', emoji: '💵', fields: [] },
-  { id: 'cash_bs', label: 'Efectivo Bs', emoji: '💵', fields: [] },
+  // `efectivo` / `efectivo_bs` y NO `cash_usd` / `cash_bs`: este editor escribe
+  // `profiles.payment_methods`, que es lo que FILTRA el selector de método en
+  // Consultas, Agenda y Pacientes. Esas pantallas siempre usaron el vocabulario
+  // en español, así que guardar el inglés acá dejaba al especialista sin la opción
+  // "Efectivo" al cobrar — el famoso "— Sin especificar —" (ADR del 2026-09-11).
+  { id: 'efectivo', label: 'Efectivo USD', emoji: '💵', fields: [] },
+  { id: 'efectivo_bs', label: 'Efectivo Bs', emoji: '💵', fields: [] },
   {
     id: 'pos',
     label: 'Punto de venta',

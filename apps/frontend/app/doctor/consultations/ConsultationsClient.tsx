@@ -282,12 +282,10 @@ function sessionLabel(c: {
 /**
  * Etiqueta legible de un método de pago.
  *
- * Hacen falta DOS vocabularios porque en la BD conviven dos: la reserva pública
- * guarda `cash_usd` / `cash_bs` y el panel del especialista usa `efectivo` /
- * `efectivo_bs`. Sin este mapeo la pantalla en español mostraba "cash usd".
- *
- * Lo de fondo —que el booking y el panel nombren distinto lo mismo— sigue abierto;
- * esto evita que el usuario lo pague en pantalla.
+ * El vocabulario vigente es el español (`efectivo`, `efectivo_bs`): lo unificó la
+ * migración 20260911000001. Los `cash_usd` / `cash_bs` de este mapa son ALIAS DE
+ * LECTURA para filas anteriores a esa fecha que se hayan escapado —ninguna pantalla
+ * los escribe ya—. Sin ellos, una fila vieja se mostraría como "cash usd".
  */
 const PAYMENT_METHOD_LABELS: Record<string, string> = {
   efectivo: 'Efectivo USD',

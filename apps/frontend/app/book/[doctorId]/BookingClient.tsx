@@ -67,13 +67,22 @@ type PricingPlan = {
   description?: string | null;
 };
 type Slot = { date: string; time: string; label: string };
+/**
+ * Vocabulario ÚNICO de métodos de pago, en español.
+ *
+ * Antes la reserva pública guardaba `cash_usd`/`cash_bs` mientras el panel del
+ * especialista (Consultas, Agenda, Pacientes) usaba `efectivo`/`efectivo_bs`.
+ * Como el selector de método al cobrar se filtra por `profiles.payment_methods`,
+ * el especialista abría una consulta pagada en efectivo y no tenía la opción:
+ * veía "— Sin especificar —" y perdía cómo dijo pagar el paciente.
+ */
 type PaymentMethod =
   | 'pago_movil'
   | 'transferencia'
   | 'zelle'
   | 'binance'
-  | 'cash_usd'
-  | 'cash_bs'
+  | 'efectivo'
+  | 'efectivo_bs'
   | 'pos';
 type ActivePackage = {
   id: string;
@@ -237,12 +246,13 @@ const PAYMENT_LABELS: Record<PaymentMethod, string> = {
   transferencia: '🏦 Transferencia',
   zelle: '💳 Zelle',
   binance: '₿ Binance',
-  cash_usd: '💵 Efectivo (USD)',
-  cash_bs: '💵 Efectivo (Bs)',
+  efectivo: '💵 Efectivo (USD)',
+  efectivo_bs: '💵 Efectivo (Bs)',
   pos: '🛒 Punto de venta',
 };
 
-const requiresReceipt = (method: PaymentMethod) => !['cash_usd', 'cash_bs', 'pos'].includes(method);
+const requiresReceipt = (method: PaymentMethod) =>
+  !['efectivo', 'efectivo_bs', 'pos'].includes(method);
 
 // ── Accordion Section Component ─────────────────────────────────────────────
 function AccordionSection({
@@ -2505,7 +2515,7 @@ export default function BookingClient({
                   <div className="grid grid-cols-2 gap-2">
                     {(paymentMethods.length > 0
                       ? paymentMethods
-                      : ['pago_movil', 'transferencia', 'zelle', 'cash_usd']
+                      : ['pago_movil', 'transferencia', 'zelle', 'efectivo']
                     ).map((method) => (
                       <button
                         key={method}

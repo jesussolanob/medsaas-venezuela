@@ -84,8 +84,10 @@ const PAYMENT_METHOD_OPTIONS: Array<{ value: string; label: string }> = [
   { value: 'transferencia', label: 'Transferencia' },
   { value: 'zelle', label: 'Zelle' },
   { value: 'binance', label: 'Binance' },
-  { value: 'cash_usd', label: 'Efectivo USD' },
-  { value: 'cash_bs', label: 'Efectivo Bs' },
+  // Vocabulario único en español (ver PaymentDetailsEditor). El mapa de labels
+  // de más abajo sigue entendiendo `cash_usd`/`cash_bs` para las filas viejas.
+  { value: 'efectivo', label: 'Efectivo USD' },
+  { value: 'efectivo_bs', label: 'Efectivo Bs' },
   { value: 'pos', label: 'POS' },
 ];
 
@@ -806,6 +808,9 @@ export default function CobrosPage() {
       transferencia: 'Transferencia Bancaria',
       zelle: 'Zelle',
       binance: 'Binance Pay',
+      efectivo: 'Efectivo USD',
+      efectivo_bs: 'Efectivo Bs',
+      // Alias de lectura: filas anteriores a la unificación del 2026-09-11.
       cash_usd: 'Efectivo USD',
       cash_bs: 'Efectivo Bs',
       pos: 'Punto de venta (POS)',
@@ -1129,9 +1134,7 @@ export default function CobrosPage() {
                     viejos anteriores a que se guardara ese campo.
                   */}
                   <span className="text-xs text-slate-500">
-                    {p.status === 'approved' &&
-                    typeof p.amount_bs === 'number' &&
-                    p.amount_bs > 0
+                    {p.status === 'approved' && typeof p.amount_bs === 'number' && p.amount_bs > 0
                       ? formatBs(p.amount_bs)
                       : bcvRate
                         ? formatBs((p.plan_price || 0) * bcvRate)
