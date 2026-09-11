@@ -192,6 +192,45 @@ function ReposoView({ data }: { data: ReposoSnapshot }) {
   );
 }
 
+/**
+ * Un bloque de la consulta, presentado como su propia mini-sección.
+ *
+ * Antes cada bloque era una etiqueta gris diminuta seguida del contenido, todos
+ * apilados con la misma separación: la especialista veía un solo corrido de
+ * texto y no distinguía dónde terminaba el motivo y empezaba el tratamiento.
+ * La superficie propia y la barra de color a la izquierda hacen visible el
+ * límite sin agregar ruido.
+ *
+ * `highlight` reserva el tono teal para el diagnóstico, que es el bloque que
+ * se busca primero al abrir una consulta anterior.
+ */
+function HistoryBlock({
+  label,
+  highlight = false,
+  children,
+}: {
+  label: string;
+  highlight?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <section
+      className={`rounded-lg border-l-[3px] px-3 py-2 ${
+        highlight ? 'border-l-teal-400 bg-teal-50/70' : 'border-l-slate-200 bg-slate-50/70'
+      }`}
+    >
+      <h4
+        className={`text-[10px] font-bold uppercase tracking-wider mb-1 ${
+          highlight ? 'text-teal-700' : 'text-slate-500'
+        }`}
+      >
+        {label}
+      </h4>
+      {children}
+    </section>
+  );
+}
+
 function ConsultationCard({
   consultation,
   defaultExpanded = false,
@@ -317,17 +356,14 @@ function ConsultationCard({
             no duplicarlo.
           */}
           {structure.length > 0 && !hasDiagnosisBlock && consultation.diagnosis && (
-            <div className="px-3 py-2 bg-teal-50 border border-teal-100 rounded-lg">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-teal-600 mb-0.5">
-                Diagnóstico
-              </p>
+            <HistoryBlock label="Diagnóstico" highlight>
               {/* El editor guarda HTML; pintarlo como texto mostraba los <p> y <br>
                   crudos al paciente. RichTextView sanitiza con DOMPurify. */}
               <RichTextView
                 value={consultation.diagnosis}
                 className="text-xs text-slate-800 leading-relaxed"
               />
-            </div>
+            </HistoryBlock>
           )}
 
           {/* Bloques dinámicos desde blocks_structure */}
@@ -341,12 +377,9 @@ function ConsultationCard({
                   const items = parseParaclinicalValue(raw);
                   if (items.length === 0) return null;
                   return (
-                    <div key={block.key}>
-                      <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
-                        {block.label}
-                      </p>
+                    <HistoryBlock key={block.key} label={block.label}>
                       <ParaclinicalList items={items} />
-                    </div>
+                    </HistoryBlock>
                   );
                 }
 
@@ -354,29 +387,18 @@ function ConsultationCard({
                 if (!strValue) return null;
 
                 // Diagnóstico dentro de bloques: mostrar destacado
-                if (block.key === 'diagnosis') {
-                  return (
-                    <div
-                      key={block.key}
-                      className="px-3 py-2 bg-teal-50 border border-teal-100 rounded-lg"
-                    >
-                      <p className="text-[10px] font-bold uppercase tracking-wider text-teal-600 mb-0.5">
-                        {block.label}
-                      </p>
-                      {/* WP-E: use RichTextView to handle HTML from TipTap editor */}
-                      <RichTextView value={strValue} className="text-xs text-slate-800" />
-                    </div>
-                  );
-                }
-
                 return (
-                  <div key={block.key}>
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-0.5">
-                      {block.label}
-                    </p>
-                    {/* WP-E: use RichTextView to handle HTML or plain text */}
-                    <RichTextView value={strValue} className="text-xs" />
-                  </div>
+                  <HistoryBlock
+                    key={block.key}
+                    label={block.label}
+                    highlight={block.key === 'diagnosis'}
+                  >
+                    {/* RichTextView resuelve HTML del editor y texto plano legacy. */}
+                    <RichTextView
+                      value={strValue}
+                      className={block.key === 'diagnosis' ? 'text-xs text-slate-800' : 'text-xs'}
+                    />
+                  </HistoryBlock>
                 );
               })}
             </div>
@@ -391,48 +413,28 @@ function ConsultationCard({
               {fallbackEntries.map((entry) => {
                 if (entry.kind === 'list') {
                   return (
-                    <div key={entry.label}>
-                      <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
-                        {entry.label}
-                      </p>
+                    <HistoryBlock key={entry.label} label={entry.label}>
                       <ParaclinicalList items={entry.items} />
-                    </div>
+                    </HistoryBlock>
                   );
                 }
 
                 if (entry.kind === 'reposo') {
                   return (
-                    <div key={entry.label}>
-                      <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-0.5">
-                        {entry.label}
-                      </p>
+                    <HistoryBlock key={entry.label} label={entry.label}>
                       <ReposoView data={entry.data} />
-                    </div>
+                    </HistoryBlock>
                   );
                 }
 
                 // kind === 'text'
                 return (
-                  <div
-                    key={entry.label}
-                    className={
-                      entry.isDiagnosis
-                        ? 'px-3 py-2 bg-teal-50 border border-teal-100 rounded-lg'
-                        : undefined
-                    }
-                  >
-                    <p
-                      className={`text-[10px] font-bold uppercase tracking-wider mb-0.5 ${
-                        entry.isDiagnosis ? 'text-teal-600' : 'text-slate-400'
-                      }`}
-                    >
-                      {entry.label}
-                    </p>
+                  <HistoryBlock key={entry.label} label={entry.label} highlight={entry.isDiagnosis}>
                     <RichTextView
                       value={entry.value}
                       className="text-xs text-slate-700 leading-relaxed"
                     />
-                  </div>
+                  </HistoryBlock>
                 );
               })}
             </div>

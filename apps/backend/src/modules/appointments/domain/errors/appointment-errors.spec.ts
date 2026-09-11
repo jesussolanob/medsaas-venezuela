@@ -62,7 +62,24 @@ describe('Mensajes de error de citas (los ve el especialista)', () => {
     it('nombra ambos estados en español cuando la cita sigue abierta', () => {
       const err = new AppointmentInvalidTransitionError('scheduled', 'completed');
 
-      expect(err.message).toBe('Una cita agendada no se puede pasar a atendida.');
+      expect(err.message).toContain('Una cita agendada no se puede pasar a atendida.');
+      noFiltraClavesInternas(err.message);
+    });
+
+    /**
+     * Decir sólo "no se puede" dejaba a la especialista probando botones. En
+     * producción (2026-09-11) una canceló una cita, la pantalla no se lo
+     * reflejó, y al reintentar no pudo deducir de los mensajes que su
+     * cancelación ya había funcionado.
+     */
+    it('dice qué se puede hacer todavía, no sólo lo que no', () => {
+      const err = new AppointmentInvalidTransitionError('confirmed', 'scheduled');
+
+      // confirmed → completed | no_show | cancelled
+      expect(err.message).toContain('atendida');
+      expect(err.message).toContain('no asistió');
+      expect(err.message).toContain('cancelada');
+      noFiltraClavesInternas(err.message);
     });
   });
 

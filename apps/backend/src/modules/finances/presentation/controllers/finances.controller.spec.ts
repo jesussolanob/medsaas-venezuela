@@ -493,6 +493,9 @@ describe('FinancesController', () => {
       patient_id: 'p-1',
       patient_name: 'Ana López',
       reference: source === 'consultation' ? 'PAY-001' : null,
+      // Un ingreso manual no cuelga de ninguna consulta: ambas van nulas.
+      consultation_date: source === 'consultation' ? new Date('2026-06-10T14:00:00Z') : null,
+      plan_name: source === 'consultation' ? 'Consulta Individual' : null,
     });
 
     it('returns paginated income list with meta', async () => {

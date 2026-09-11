@@ -75,6 +75,14 @@ export default function RichTextView({
       className={[
         'text-sm text-slate-700 leading-relaxed',
         // Minimal prose styles so bullet lists, blockquotes etc. render correctly
+        //
+        // Paragraph spacing is NOT cosmetic: the editor wraps every paragraph in
+        // <p>, and with no margin they render edge to edge — a report written in
+        // five paragraphs came out as one unbroken wall of text. The last-child
+        // reset keeps the block from adding trailing space inside its section.
+        '[&_p]:mb-2 [&_p:last-child]:mb-0',
+        '[&_h3]:mt-3 [&_h3]:mb-1 [&_h4]:mt-2 [&_h4]:mb-1',
+        '[&_ul]:mb-2 [&_ol]:mb-2 [&_blockquote]:mb-2',
         '[&_ul]:list-disc [&_ul]:pl-5 [&_ul]:space-y-0.5',
         '[&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:space-y-0.5',
         '[&_blockquote]:border-l-2 [&_blockquote]:border-slate-300 [&_blockquote]:pl-3 [&_blockquote]:text-slate-500 [&_blockquote]:italic',

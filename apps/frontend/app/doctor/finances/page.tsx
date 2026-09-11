@@ -2115,8 +2115,10 @@ export default function FinancesPage() {
                     <table className="w-full md:min-w-[600px]">
                       <thead>
                         <tr className="bg-slate-50 border-b border-slate-100">
+                          {/* "Fecha de cobro", no "Fecha": es el día en que entró
+                              la plata, que rara vez coincide con el de la consulta. */}
                           <th className="text-left px-5 py-3 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
-                            Fecha
+                            Fecha de cobro
                           </th>
                           <th className="text-left px-5 py-3 text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
                             Paciente
@@ -2159,7 +2161,29 @@ export default function FinancesPage() {
                               >
                                 {item.source === 'consultation' ? 'Consulta' : 'Manual'}
                               </span>
-                              {item.concept ?? (item.reference ? `Ref: ${item.reference}` : '—')}
+                              {/*
+                                Un ingreso de consulta muestra DE QUÉ consulta es.
+                                Antes decía "Ref: BK-20260907-784352-D20B", que no
+                                distingue nada: dos cobros iguales del mismo paciente
+                                en días seguidos se leían como uno duplicado cuando
+                                eran dos sesiones distintas (reporte real, 11/09).
+                              */}
+                              {item.source === 'consultation' ? (
+                                <span className="text-slate-600">
+                                  {item.plan_name ?? 'Consulta'}
+                                  {item.consultation_date && (
+                                    <span className="text-slate-400">
+                                      {' · del '}
+                                      {new Intl.DateTimeFormat('es-VE', {
+                                        day: 'numeric',
+                                        month: 'short',
+                                      }).format(parseDateLocal(item.consultation_date))}
+                                    </span>
+                                  )}
+                                </span>
+                              ) : (
+                                (item.concept ?? '—')
+                              )}
                             </td>
                             <td className="px-5 py-3 text-xs">
                               {item.status ? (
