@@ -35,6 +35,24 @@ import RichTextView from '@/components/consultation/RichTextView';
 
 type BlockStructure = NonNullable<NonNullable<Consultation['blocks_structure']>[number]>;
 
+/** Shape del bloque "reposo" guardado en blocks_snapshot. */
+type ReposoSnapshot = {
+  diagnosis?: string;
+  days?: number;
+  from?: string;
+  to?: string;
+};
+
+/**
+ * Entrada normalizada para mostrar contenido cuando no hay blocks_structure.
+ * Permite renderizar texto enriquecido, listas y el objeto de reposo médico
+ * con un único switch en el render, sin replicar la lógica de tipo en el JSX.
+ */
+type FallbackEntry =
+  | { kind: 'text'; label: string; value: string; isDiagnosis: boolean }
+  | { kind: 'list'; label: string; items: string[] }
+  | { kind: 'reposo'; label: string; data: ReposoSnapshot };
+
 interface Props {
   patientId: string;
   currentConsultationId: string;
@@ -93,6 +111,26 @@ function isValueEmpty(value: unknown): boolean {
   return false;
 }
 
+/**
+ * Devuelve la fecha calendario (YYYY-MM-DD) de `iso` en la zona America/Caracas.
+ *
+ * Hay dos formatos posibles que puede emitir el backend:
+ *
+ * - DATEONLY  ('2026-08-11', 10 chars): `new Date()` lo parsea como medianoche UTC,
+ *   que en Caracas (UTC-4) retrocede al día anterior. Se devuelve tal cual para
+ *   evitar el desplazamiento.
+ *
+ * - Timestamp ('2026-09-11T23:00:00.000Z'): el backend siempre emite .toISOString()
+ *   sobre un Date de Sequelize DataType.DATE (= TIMESTAMPTZ en Postgres). Para este
+ *   formato sí hace falta convertir: una consulta a las 21:00 Caracas se almacena
+ *   como 01:00 UTC del día siguiente; `slice(0,10)` daría la fecha UTC incorrecta y
+ *   ocultaría la consulta al comparar con hoy.
+ */
+function consultationDateInCaracas(iso: string): string {
+  if (iso.length === 10) return iso; // DATEONLY — usar directamente
+  return new Date(iso).toLocaleDateString('en-CA', { timeZone: 'America/Caracas' });
+}
+
 // ---------------------------------------------------------------------------
 // Sub-componentes
 // ---------------------------------------------------------------------------
@@ -129,6 +167,31 @@ function ParaclinicalList({ items }: { items: string[] }) {
   );
 }
 
+/**
+ * Renderiza el objeto de reposo médico como una lista legible.
+ * Formato de `blocks_snapshot['reposo']`: { diagnosis?, days?, from?, to? }.
+ */
+function ReposoView({ data }: { data: ReposoSnapshot }) {
+  const parts: string[] = [];
+  if (data.diagnosis?.trim()) parts.push(`Diagnóstico: ${data.diagnosis.trim()}`);
+  if (data.days !== undefined) parts.push(`Días de reposo: ${data.days}`);
+  if (data.from) {
+    parts.push(`Desde: ${new Date(data.from).toLocaleDateString('es-VE')}`);
+  }
+  if (data.to) {
+    parts.push(`Hasta: ${new Date(data.to).toLocaleDateString('es-VE')}`);
+  }
+  return (
+    <ul className="mt-1 space-y-0.5 pl-3 text-xs text-slate-700">
+      {parts.map((p, i) => (
+        <li key={i} className="list-disc list-inside">
+          {p}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 function ConsultationCard({
   consultation,
   defaultExpanded = false,
@@ -144,22 +207,80 @@ function ConsultationCard({
 
   const snapshot = consultation.blocks_snapshot ?? {};
 
-  // Collect block keys that are NOT in structure (legacy top-level fields)
-  // so we don't duplicate diagnosis/chief_complaint etc if they're already blocks.
   const structureKeys = new Set(structure.map((b) => b.key));
-
-  // Legacy fields to show when no blocks_structure is available
-  const legacyFields: Array<{ label: string; value: string | null | undefined }> =
-    structure.length === 0
-      ? [
-          { label: 'Motivo de consulta', value: consultation.chief_complaint },
-          { label: 'Diagnóstico', value: consultation.diagnosis },
-          { label: 'Tratamiento', value: consultation.treatment },
-          { label: 'Notas', value: consultation.notes },
-        ]
-      : [];
-
   const hasDiagnosisBlock = structureKeys.has('diagnosis');
+
+  /**
+   * Cuando no hay blocks_structure, construimos entradas normalizadas para el render
+   * combinando columnas sueltas (priority) y blocks_snapshot (fallback).
+   *
+   * Esto resuelve el caso de consultas que tienen el contenido clínico SOLO en
+   * blocks_snapshot (clave chief_complaint, reposo, etc.) y NULL en las columnas
+   * legacy — sin esta lógica el panel mostraba la consulta vacía.
+   */
+  const fallbackEntries: FallbackEntry[] = [];
+
+  if (structure.length === 0) {
+    // Campos de texto: primero la columna, luego el snapshot con la misma clave.
+    const textDefs: Array<{
+      snapshotKey: string;
+      colVal: string | null | undefined;
+      label: string;
+      isDiagnosis?: boolean;
+    }> = [
+      {
+        snapshotKey: 'chief_complaint',
+        colVal: consultation.chief_complaint,
+        label: 'Motivo de consulta',
+      },
+      {
+        snapshotKey: 'diagnosis',
+        colVal: consultation.diagnosis,
+        label: 'Diagnóstico',
+        isDiagnosis: true,
+      },
+      { snapshotKey: 'treatment', colVal: consultation.treatment, label: 'Tratamiento' },
+      { snapshotKey: 'notes', colVal: consultation.notes, label: 'Notas' },
+    ];
+
+    for (const def of textDefs) {
+      let value: string | null = def.colVal?.trim() || null;
+      if (!value) {
+        const snap = snapshot[def.snapshotKey];
+        if (typeof snap === 'string') value = snap.trim() || null;
+      }
+      // 'notas' puede vivir también bajo la clave 'informe' en el snapshot.
+      if (!value && def.snapshotKey === 'notes') {
+        const informe = snapshot['informe'];
+        if (typeof informe === 'string') value = informe.trim() || null;
+      }
+      if (value) {
+        fallbackEntries.push({
+          kind: 'text',
+          label: def.label,
+          value,
+          isDiagnosis: def.isDiagnosis ?? false,
+        });
+      }
+    }
+
+    // Paraclínico: array o string en snapshot (sin columna equivalente).
+    if (!isValueEmpty(snapshot['paraclinical'])) {
+      const items = parseParaclinicalValue(snapshot['paraclinical']);
+      if (items.length > 0) {
+        fallbackEntries.push({ kind: 'list', label: 'Paraclínico', items });
+      }
+    }
+
+    // Reposo médico: objeto con shape { diagnosis?, days?, from?, to? }.
+    const reposoRaw = snapshot['reposo'];
+    if (reposoRaw && typeof reposoRaw === 'object' && !Array.isArray(reposoRaw)) {
+      const r = reposoRaw as ReposoSnapshot;
+      if (r.diagnosis?.trim() || r.days !== undefined || r.from?.trim()) {
+        fallbackEntries.push({ kind: 'reposo', label: 'Reposo médico', data: r });
+      }
+    }
+  }
 
   return (
     <article className="bg-white border border-slate-200 rounded-xl overflow-hidden">
@@ -189,8 +310,13 @@ function ConsultationCard({
       {/* Cuerpo colapsable */}
       {expanded && (
         <div className="px-4 pb-4 space-y-3">
-          {/* Diagnóstico destacado — solo si no está ya en blocks_structure */}
-          {!hasDiagnosisBlock && consultation.diagnosis && (
+          {/*
+            Diagnóstico destacado — solo cuando blocks_structure existe pero no
+            incluye un bloque 'diagnosis'. Si no hay estructura, el diagnóstico
+            se renderiza dentro de fallbackEntries con el mismo estilo teal, para
+            no duplicarlo.
+          */}
+          {structure.length > 0 && !hasDiagnosisBlock && consultation.diagnosis && (
             <div className="px-3 py-2 bg-teal-50 border border-teal-100 rounded-lg">
               <p className="text-[10px] font-bold uppercase tracking-wider text-teal-600 mb-0.5">
                 Diagnóstico
@@ -256,33 +382,54 @@ function ConsultationCard({
             </div>
           )}
 
-          {/* Fallback: campos legacy cuando no hay blocks_structure */}
-          {legacyFields.length > 0 && (
+          {/*
+            Fallback cuando no hay blocks_structure: columnas sueltas + blocks_snapshot.
+            Ver construcción de fallbackEntries arriba para la lógica de prioridad.
+          */}
+          {fallbackEntries.length > 0 && (
             <div className="space-y-2.5">
-              {legacyFields.map(({ label, value }) => {
-                if (!value?.trim()) return null;
-                const isdiag = label === 'Diagnóstico';
+              {fallbackEntries.map((entry) => {
+                if (entry.kind === 'list') {
+                  return (
+                    <div key={entry.label}>
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+                        {entry.label}
+                      </p>
+                      <ParaclinicalList items={entry.items} />
+                    </div>
+                  );
+                }
+
+                if (entry.kind === 'reposo') {
+                  return (
+                    <div key={entry.label}>
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-0.5">
+                        {entry.label}
+                      </p>
+                      <ReposoView data={entry.data} />
+                    </div>
+                  );
+                }
+
+                // kind === 'text'
                 return (
                   <div
-                    key={label}
+                    key={entry.label}
                     className={
-                      isdiag ? 'px-3 py-2 bg-teal-50 border border-teal-100 rounded-lg' : undefined
+                      entry.isDiagnosis
+                        ? 'px-3 py-2 bg-teal-50 border border-teal-100 rounded-lg'
+                        : undefined
                     }
                   >
                     <p
                       className={`text-[10px] font-bold uppercase tracking-wider mb-0.5 ${
-                        isdiag ? 'text-teal-600' : 'text-slate-400'
+                        entry.isDiagnosis ? 'text-teal-600' : 'text-slate-400'
                       }`}
                     >
-                      {label}
+                      {entry.label}
                     </p>
-                    {/* Este era el camino roto que se veía en el historial: los campos
-                        legacy (motivo, diagnóstico, tratamiento, notas) se pintaban como
-                        texto plano, así que una consulta escrita con el editor mostraba
-                        "<p>Motivo de...</p><br>" tal cual. RichTextView renderiza el HTML
-                        sanitizado y deja el texto plano intacto (respeta los saltos). */}
                     <RichTextView
-                      value={value}
+                      value={entry.value}
                       className="text-xs text-slate-700 leading-relaxed"
                     />
                   </div>
@@ -344,9 +491,24 @@ export default function PatientHistoryModal({
         const all = await getPatientConsultations(patientId);
         if (!active) return;
 
-        // Excluir la consulta en edición y ordenar por fecha DESC.
+        /*
+         * Filtramos solo consultas que ya ocurrieron. Comparamos fechas calendario
+         * en la zona America/Caracas para evitar que una consulta de hoy a las
+         * 21:00–23:59 Caracas (que en UTC cae el día siguiente) quede excluida.
+         * Ver `consultationDateInCaracas` para el detalle por formato.
+         */
+        const todayStr = new Date().toLocaleDateString('en-CA', {
+          timeZone: 'America/Caracas',
+        });
+
         const filtered = all
-          .filter((c) => c.id !== currentConsultationId)
+          .filter((c) => {
+            if (c.id === currentConsultationId) return false;
+            const iso = c.consultation_date ?? '';
+            if (!iso) return false;
+            const datePart = consultationDateInCaracas(iso);
+            return datePart.length === 10 && datePart <= todayStr;
+          })
           .sort(
             (a, b) =>
               new Date(b.consultation_date).getTime() - new Date(a.consultation_date).getTime(),
