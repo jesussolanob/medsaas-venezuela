@@ -1116,6 +1116,36 @@ export class SequelizeConsultationRepository implements IConsultationRepository 
         { replacements: paymentSyncReplacements, type: QueryTypes.UPDATE, transaction: t },
       );
 
+      // Step 5c — Sincronizar las consultas HERMANAS del paquete.
+      //
+      // Un paquete se cobra UNA vez, en su primera sesión, pero cubre a todas.
+      // Sin esto las sesiones 2..N se quedaban en 'pending' con el paquete ya
+      // cobrado, y el listado de consultas las mostraba como "Pendiente" — la
+      // misma consulta que en su detalle decía "Cubierta por un paquete ya
+      // pagado". Verificado en staging el 2026-09-10.
+      //
+      // Se limita a las que valen 0 (`amount = 0`): son las cubiertas. Una
+      // consulta hermana con importe propio se cobra por su cuenta.
+      await this.sequelize.query(
+        `UPDATE consultations c
+            SET payment_status = :approvedStatus,
+                updated_at = now()
+           FROM appointments a
+          WHERE a.consultation_id = c.id
+            AND c.doctor_id       = :doctorId
+            AND c.id             <> :consultationId
+            AND COALESCE(c.amount, 0) = 0
+            AND a.payment_id = (
+              SELECT ap2.payment_id FROM appointments ap2
+               WHERE ap2.consultation_id = :consultationId
+            )`,
+        {
+          replacements: { consultationId: id, doctorId, approvedStatus: 'approved' },
+          type: QueryTypes.UPDATE,
+          transaction: t,
+        },
+      );
+
       // Step 6 — Re-read the updated consultation inside the transaction.
       const updatedRows = await this.sequelize.query<ConsultationEnrichedRow>(
         `SELECT
