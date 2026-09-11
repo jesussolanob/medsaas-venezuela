@@ -198,3 +198,31 @@ Ninguno lo veía la suite. Los defectos 10 y 11 son del mismo tipo que ya se hab
 **Cero daño.** No hay ni una cita sin consulta en prod. La feature se usa —hay 6 preconsultas _por agendar_— pero **nadie completó nunca el paso de agendar**, así que el código defectuoso (en `main` desde el 2026-07-23) nunca llegó a ejecutarse hasta el final.
 
 ⚠️ Riesgo latente: esas 6 son armas cargadas. El día que un especialista agende cualquiera, con el código que hoy está en `main`, la cita nace sin consulta. **Promover el arreglo antes de que eso pase.**
+
+## Inventario del banco de pruebas en staging (2026-09-11)
+
+Doctor: `lucas.rivas.55@gmail.com` (`193c9dae-30da-47b6-8d1a-83408feb8f51`).
+
+### ✅ SIRVE — paquete limpio, creado ya con los arreglos
+
+Paciente **"Paciente QA Paquete Dos"** (V-99001410), servicio **QA Paquete 4 Premium** ($160, 4 consultas),
+pago **aprobado**:
+
+| Código            | Rol                        | Qué verifica                                                         |
+| ----------------- | -------------------------- | -------------------------------------------------------------------- |
+| `DLT-202609-0004` | sesión 1 — **la que paga** | Panel de cobro completo, método "Efectivo USD"                       |
+| `DLT-202609-0005` | sesión 2 — **cubierta**    | Badge "Cubierta", recuadro violeta, sin controles de cobro           |
+| `DLT-202609-0009` | sesión 3                   | **Reparada** por el script de huérfanas (nació sin consulta)         |
+| `DLT-202609-0007` | sesión 4                   | Agendada desde "por agendar" **después** del arreglo: nació aprobada |
+
+### 🗑️ NO SIRVE — basura de las pruebas, dejar o borrar da igual
+
+- Paciente **"Paciente QA Paquete"** (V-99001409): `DLT-202609-0003` y `DLT-202609-0008`. El paquete se
+  reservó ANTES de los arreglos y la consulta inmediata le rompió el monto: **muestra el paquete en $0.00
+  en vez de $120**. Se conserva como evidencia del defecto 11/12; **no usarlo para probar nada**.
+- Paciente **"Sonda Metodos"** (V-99001413): `DLT-202609-0006`. Sonda de la cadena settings → reserva.
+- Paciente **"Sonda Enum"** (V-99001411 y V-99001412): `DLT-202610-0001` y `DLT-202610-0002`. Sondas del
+  enum de método de pago (una con `efectivo`, otra con `cash_usd` para probar la normalización).
+
+⚠️ Todas las sondas usan correos `lucas.a.rivas.d+<alias>@gmail.com` a propósito: staging **manda correo
+real**, y el alias garantiza que no le pueda llegar a un paciente de verdad del clon de producción.

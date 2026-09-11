@@ -174,7 +174,14 @@ export class SequelizePaymentRepository implements IPaymentRepository {
          c.consultation_code
        FROM payments p
        LEFT JOIN appointments a ON a.payment_id = p.id
-       LEFT JOIN consultations c ON c.id = a.consultation_id
+       /*
+        * Extras payments for covered sessions (session 2..N) have no appointment
+        * link — the appointment's payment_id already points to the package payment.
+        * They carry payments.consultation_id instead (set by approveWithExtras when
+        * a.session_number IS NOT NULL). COALESCE falls back to p.consultation_id so
+        * these payments still surface c.consultation_code in the Cobros list.
+        */
+       LEFT JOIN consultations c ON c.id = COALESCE(a.consultation_id, p.consultation_id)
        WHERE ${where}
        ${unionSql}
        ORDER BY created_at DESC`,
