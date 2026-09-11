@@ -129,6 +129,48 @@ interface ConsultationWithAppointmentRaw {
 }
 
 /**
+ * Scalar subquery that resolves the USD amount charged for a patient package.
+ * Embedded into the SELECT list of findById(), list(), and the approveWithExtras
+ * step-6 re-read. Outer query aliases assumed: `c` = consultations, `a` = appointments.
+ *
+ * WHY IT EXISTS
+ * Only the first session (session_number IS NULL) carries the charge: sessions 2..N
+ * are saved at $0 because the package is paid up-front. Without this subquery,
+ * session 2 of 3 showed "$0" (looked free) and session 1 showed the full amount
+ * without indicating it covered all three sessions.
+ *
+ * WHY WE JOIN BY (doctor, patient, plan_name)
+ * appointments.package_id is NULL in real data and patient_packages is empty.
+ * The service name is the only stable key available for linking sessions.
+ *
+ * KNOWN LIMITATION
+ * If the SAME patient buys the SAME package TWICE and the price changed between
+ * purchases, sessions of the second purchase show the price of the first. Today
+ * this never occurs (no patient has the same package twice). Resolves when
+ * appointments.package_id is populated.
+ *
+ * WHY WE EXCLUDE 'cancelled'
+ * A cancelled appointment can have session_number IS NULL and a stale or zero
+ * plan_price. If it is also the earliest by scheduled_at, it wins the LIMIT 1
+ * and masks the real charge. Verified in staging 2026-09-10: a $120 package
+ * showed as $0.00 because a cancelled appointment beat the active one. We do NOT
+ * use ACTIVE_STATUSES (['scheduled','confirmed','pending','accepted']) here
+ * because that set also excludes 'completed' and 'no_show' — both of which ARE
+ * valid paying appointments (the session happened or the patient did not show,
+ * but the booking and charge were real). Only 'cancelled' must be excluded.
+ */
+const PACKAGE_CHARGE_SUBQUERY =
+  '(SELECT a1.plan_price\n' +
+  '            FROM appointments a1\n' +
+  '           WHERE a1.doctor_id      = c.doctor_id\n' +
+  '             AND a1.patient_id     = c.patient_id\n' +
+  '             AND a1.plan_name      = a.plan_name\n' +
+  '             AND a1.session_number IS NULL\n' +
+  "             AND a1.status        <> 'cancelled'\n" +
+  '           ORDER BY a1.scheduled_at ASC\n' +
+  '           LIMIT 1) AS package_charge_usd';
+
+/**
  * Sequelize implementation of IConsultationRepository.
  *
  * ENCRYPTION BOUNDARY: all PHI encryption and decryption happens here.
@@ -178,37 +220,8 @@ export class SequelizeConsultationRepository implements IConsultationRepository 
              ORDER BY pp.is_active DESC, pp.created_at DESC
              LIMIT 1)
          ) AS package_total_sessions,
-         /*
-          * Importe cobrado por el PAQUETE completo.
-          *
-          * Solo la primera sesión lleva el importe: las sesiones 2..N se guardan en 0
-          * porque el paquete se paga entero por adelantado. Sin este dato, la consulta
-          * 2 de 3 mostraba "$0" y parecía regalada, y la 1 de 3 mostraba el total sin
-          * decir que cubría las tres.
-          *
-          * Se toma de la PRIMERA sesión del mismo paquete (session_number IS NULL, que
-          * es como el backend guarda la sesión 1) del mismo paciente y servicio — es
-          * decir, lo que REALMENTE se cobró, no el precio de lista del catálogo, que
-          * pudo cambiar después. Para la propia sesión 1 devuelve su mismo importe.
-          *
-          * Se une por (doctor, paciente, plan_name) porque en los datos reales
-          * appointments.package_id viene NULL y patient_packages está vacía.
-          *
-          * LIMITACIÓN CONOCIDA: si el MISMO paciente compra DOS VECES el mismo
-          * paquete y el precio cambió entre una compra y otra, las sesiones de la
-          * segunda compra muestran el precio de la primera. Hoy no ocurre en los
-          * datos (no hay ningún paciente con el mismo paquete repetido). Se resuelve
-          * cuando appointments.package_id se empiece a poblar: ahí el vínculo deja
-          * de ser por nombre y pasa a ser por identidad del paquete.
-          */
-         (SELECT a1.plan_price
-            FROM appointments a1
-           WHERE a1.doctor_id      = c.doctor_id
-             AND a1.patient_id     = c.patient_id
-             AND a1.plan_name      = a.plan_name
-             AND a1.session_number IS NULL
-           ORDER BY a1.scheduled_at ASC
-           LIMIT 1) AS package_charge_usd,
+         /* See PACKAGE_CHARGE_SUBQUERY for full rationale. Excludes 'cancelled'. */
+         ${PACKAGE_CHARGE_SUBQUERY},
          /* Campos del pago que cubre esta sesión (sesiones 2..N del paquete).
           * toDomainEnriched solo construye coveredBy cuando a.session_number IS NOT NULL. */
          pay.status             AS covered_status,
@@ -651,37 +664,8 @@ export class SequelizeConsultationRepository implements IConsultationRepository 
              ORDER BY pp.is_active DESC, pp.created_at DESC
              LIMIT 1)
          ) AS package_total_sessions,
-         /*
-          * Importe cobrado por el PAQUETE completo.
-          *
-          * Solo la primera sesión lleva el importe: las sesiones 2..N se guardan en 0
-          * porque el paquete se paga entero por adelantado. Sin este dato, la consulta
-          * 2 de 3 mostraba "$0" y parecía regalada, y la 1 de 3 mostraba el total sin
-          * decir que cubría las tres.
-          *
-          * Se toma de la PRIMERA sesión del mismo paquete (session_number IS NULL, que
-          * es como el backend guarda la sesión 1) del mismo paciente y servicio — es
-          * decir, lo que REALMENTE se cobró, no el precio de lista del catálogo, que
-          * pudo cambiar después. Para la propia sesión 1 devuelve su mismo importe.
-          *
-          * Se une por (doctor, paciente, plan_name) porque en los datos reales
-          * appointments.package_id viene NULL y patient_packages está vacía.
-          *
-          * LIMITACIÓN CONOCIDA: si el MISMO paciente compra DOS VECES el mismo
-          * paquete y el precio cambió entre una compra y otra, las sesiones de la
-          * segunda compra muestran el precio de la primera. Hoy no ocurre en los
-          * datos (no hay ningún paciente con el mismo paquete repetido). Se resuelve
-          * cuando appointments.package_id se empiece a poblar: ahí el vínculo deja
-          * de ser por nombre y pasa a ser por identidad del paquete.
-          */
-         (SELECT a1.plan_price
-            FROM appointments a1
-           WHERE a1.doctor_id      = c.doctor_id
-             AND a1.patient_id     = c.patient_id
-             AND a1.plan_name      = a.plan_name
-             AND a1.session_number IS NULL
-           ORDER BY a1.scheduled_at ASC
-           LIMIT 1) AS package_charge_usd
+         /* See PACKAGE_CHARGE_SUBQUERY for full rationale. Excludes 'cancelled'. */
+         ${PACKAGE_CHARGE_SUBQUERY}
        FROM consultations c
        LEFT JOIN patients         p   ON p.id  = c.patient_id
        LEFT JOIN appointments     a   ON a.id  = c.appointment_id
@@ -780,12 +764,23 @@ export class SequelizeConsultationRepository implements IConsultationRepository 
       );
 
       // Step 1 — Resolve base amount inside the transaction for a consistent read.
+      // Also fetch session_number (non-null ↔ covered session 2..N) and patient_id
+      // for the extras payment INSERT that Step 5b creates for covered sessions.
       const baseRows = await this.sequelize.query<{
         base_amount: string | null;
         amount: string | null;
         plan_price: string | null;
+        /**
+         * Non-null when this appointment is session 2..N of a package (covered).
+         * Null for the first session or for consultations without a package.
+         * Used in Step 5b to choose between the "extras payment" path and the
+         * "sync package payment" path.
+         */
+        session_number: number | null;
+        /** Needed to create the extras payment row in Step 5b. */
+        patient_id: string;
       }>(
-        `SELECT c.base_amount, c.amount, a.plan_price
+        `SELECT c.base_amount, c.amount, a.plan_price, a.session_number, c.patient_id
            FROM consultations c
            LEFT JOIN appointments a ON a.id = c.appointment_id
            WHERE c.id = :id AND c.doctor_id = :doctorId
@@ -1085,36 +1080,102 @@ export class SequelizeConsultationRepository implements IConsultationRepository 
         transaction: t,
       });
 
-      // Step 5b — Sync the linked payments row so Cobros stays consistent.
-      // Locate via: appointments.payment_id WHERE appointments.consultation_id = id.
-      // No-op when no linked payment exists (consultation created directly).
-      // SECURITY: AND pp.doctor_id = :doctorId ensures the UPDATE is always scoped to the owner.
-      const paymentSyncFields: string[] = [
-        'status = :approvedStatus',
-        'paid_at = COALESCE(paid_at, now())',
-        'amount_usd = :total',
-        'updated_at = now()',
-      ];
-      const paymentSyncReplacements: Record<string, unknown> = {
-        consultationId: id,
-        doctorId,
-        approvedStatus: 'approved',
-        total,
-      };
-      if (paymentMethod !== undefined) {
-        paymentSyncFields.push('method_snapshot = :methodSnapshot');
-        paymentSyncReplacements['methodSnapshot'] = paymentMethod;
-      }
+      // Step 5b — Sync the payments table so Cobros stays consistent.
+      //
+      // TWO PATHS based on whether this is a covered session (session 2..N of a
+      // package whose base cost was paid in session 1):
+      //
+      //   COVERED (session_number IS NOT NULL):
+      //     The appointment's `payment_id` points to the PACKAGE payment — which
+      //     must NEVER be modified here. Its `amount_usd` represents the total
+      //     package price (e.g. $160) and overwriting it with the extras total
+      //     (e.g. $20) would destroy the financial record. Instead we INSERT a
+      //     brand-new payment row anchored to this consultation via
+      //     `payments.consultation_id`. ON CONFLICT keeps it idempotent.
+      //
+      //   NON-COVERED (session_number IS NULL or consultation has no appointment):
+      //     The existing behaviour: UPDATE the payment linked via
+      //     `appointments.payment_id → payments.id`. This is the regular approval
+      //     path for session-1 and for standalone (non-package) consultations.
+      //
+      // INVARIANT: approving extras on a covered session NEVER changes
+      // `amount_usd`, `status`, or `paid_at` of the package payment row.
 
-      await this.sequelize.query(
-        `UPDATE payments pp
-           SET ${paymentSyncFields.join(', ')}
-           FROM appointments ap
-           WHERE ap.payment_id      = pp.id
-             AND ap.consultation_id = :consultationId
-             AND pp.doctor_id       = :doctorId`,
-        { replacements: paymentSyncReplacements, type: QueryTypes.UPDATE, transaction: t },
-      );
+      const sessionNumber: number | null = baseRow.session_number ?? null;
+      const patientId: string = baseRow.patient_id;
+
+      if (sessionNumber !== null) {
+        // --- Covered session: create / update the standalone extras payment ---
+        //
+        // `consultation_id` UNIQUE partial index (migration 20260911000002) makes
+        // this idempotent: the second call updates the existing row rather than
+        // inserting a duplicate. `paid_at` is preserved across re-approvals
+        // (COALESCE keeps the first timestamp).
+        //
+        // SECURITY: doctorId is included in every column so a compromised
+        // consultation_id cannot be used to create a payment under another doctor.
+        const newExtrasPaymentId = randomUUID();
+        await this.sequelize.query(
+          `INSERT INTO payments (
+             id, doctor_id, patient_id, amount_usd, status,
+             method_snapshot, consultation_id, paid_at, created_at, updated_at
+           )
+           VALUES (
+             :newId, :doctorId, :patientId, :total, 'approved',
+             :methodSnapshot, :consultationId, now(), now(), now()
+           )
+           ON CONFLICT (consultation_id) WHERE consultation_id IS NOT NULL
+           DO UPDATE SET
+             amount_usd      = EXCLUDED.amount_usd,
+             status          = 'approved',
+             method_snapshot = EXCLUDED.method_snapshot,
+             paid_at         = COALESCE(payments.paid_at, now()),
+             updated_at      = now()`,
+          {
+            replacements: {
+              newId: newExtrasPaymentId,
+              doctorId,
+              patientId,
+              total,
+              methodSnapshot: paymentMethod ?? null,
+              consultationId: id,
+            },
+            type: QueryTypes.INSERT,
+            transaction: t,
+          },
+        );
+      } else {
+        // --- Non-covered session: sync the appointment's linked payment ---
+        //
+        // No-op when no linked payment exists (consultation created directly).
+        // SECURITY: AND pp.doctor_id = :doctorId scopes the UPDATE to the owner.
+        const paymentSyncFields: string[] = [
+          'status = :approvedStatus',
+          'paid_at = COALESCE(paid_at, now())',
+          'amount_usd = :total',
+          'updated_at = now()',
+        ];
+        const paymentSyncReplacements: Record<string, unknown> = {
+          consultationId: id,
+          doctorId,
+          approvedStatus: 'approved',
+          total,
+        };
+        if (paymentMethod !== undefined) {
+          paymentSyncFields.push('method_snapshot = :methodSnapshot');
+          paymentSyncReplacements['methodSnapshot'] = paymentMethod;
+        }
+
+        await this.sequelize.query(
+          `UPDATE payments pp
+             SET ${paymentSyncFields.join(', ')}
+             FROM appointments ap
+             WHERE ap.payment_id      = pp.id
+               AND ap.consultation_id = :consultationId
+               AND pp.doctor_id       = :doctorId`,
+          { replacements: paymentSyncReplacements, type: QueryTypes.UPDATE, transaction: t },
+        );
+      }
 
       // Step 5c — Sincronizar las consultas HERMANAS del paquete.
       //
@@ -1167,37 +1228,8 @@ export class SequelizeConsultationRepository implements IConsultationRepository 
                ORDER BY pp.is_active DESC, pp.created_at DESC
                LIMIT 1)
            ) AS package_total_sessions,
-         /*
-          * Importe cobrado por el PAQUETE completo.
-          *
-          * Solo la primera sesión lleva el importe: las sesiones 2..N se guardan en 0
-          * porque el paquete se paga entero por adelantado. Sin este dato, la consulta
-          * 2 de 3 mostraba "$0" y parecía regalada, y la 1 de 3 mostraba el total sin
-          * decir que cubría las tres.
-          *
-          * Se toma de la PRIMERA sesión del mismo paquete (session_number IS NULL, que
-          * es como el backend guarda la sesión 1) del mismo paciente y servicio — es
-          * decir, lo que REALMENTE se cobró, no el precio de lista del catálogo, que
-          * pudo cambiar después. Para la propia sesión 1 devuelve su mismo importe.
-          *
-          * Se une por (doctor, paciente, plan_name) porque en los datos reales
-          * appointments.package_id viene NULL y patient_packages está vacía.
-          *
-          * LIMITACIÓN CONOCIDA: si el MISMO paciente compra DOS VECES el mismo
-          * paquete y el precio cambió entre una compra y otra, las sesiones de la
-          * segunda compra muestran el precio de la primera. Hoy no ocurre en los
-          * datos (no hay ningún paciente con el mismo paquete repetido). Se resuelve
-          * cuando appointments.package_id se empiece a poblar: ahí el vínculo deja
-          * de ser por nombre y pasa a ser por identidad del paquete.
-          */
-         (SELECT a1.plan_price
-            FROM appointments a1
-           WHERE a1.doctor_id      = c.doctor_id
-             AND a1.patient_id     = c.patient_id
-             AND a1.plan_name      = a.plan_name
-             AND a1.session_number IS NULL
-           ORDER BY a1.scheduled_at ASC
-           LIMIT 1) AS package_charge_usd
+         /* See PACKAGE_CHARGE_SUBQUERY for full rationale. Excludes 'cancelled'. */
+         ${PACKAGE_CHARGE_SUBQUERY}
          FROM consultations c
          LEFT JOIN patients         p   ON p.id  = c.patient_id
          LEFT JOIN appointments     a   ON a.id  = c.appointment_id

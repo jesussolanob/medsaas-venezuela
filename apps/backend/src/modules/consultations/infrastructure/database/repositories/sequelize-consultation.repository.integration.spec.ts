@@ -318,3 +318,118 @@ describe('SequelizeConsultationRepository.safeDecrypt (unit)', () => {
     expect(cryptoSpy.decrypt).not.toHaveBeenCalled();
   });
 });
+
+// ---------------------------------------------------------------------------
+// Integration test — package_charge_usd excludes cancelled appointments
+//
+// Requires real Postgres (same Docker instance as the block above).
+// Run with: pnpm nx run backend:test-integration
+//
+// SCENARIO (reproduced from staging 2026-09-10):
+//   - Cancelled appointment: session_number IS NULL, plan_price = 0, earlier date.
+//   - Active appointment:    session_number IS NULL, plan_price = 120, later date.
+//   The subquery must skip the cancelled one and return 120, not 0.
+// ---------------------------------------------------------------------------
+describe('SequelizeConsultationRepository — package_charge_usd excludes cancelled (integration)', () => {
+  const DOCTOR_ID_PKG = 'f0000000-0000-0000-0000-000000000001'; // matches the seeded profile above
+  const PATIENT_ID_PKG = 'f0000000-0000-0000-0000-000000000002'; // matches the seeded patient above
+  const PLAN_NAME = 'Paquete integración test excl-cancelled';
+  const cancelledApptId = randomUUID();
+  const activeApptId = randomUUID();
+  const consultationId = randomUUID();
+
+  let sequelize: Sequelize;
+  let repo: SequelizeConsultationRepository;
+
+  beforeAll(async () => {
+    sequelize = new Sequelize(TEST_DB_URL, {
+      dialect: 'postgres',
+      models: [ConsultationModel],
+      logging: false,
+      dialectOptions: { ssl: false },
+    });
+    await sequelize.authenticate();
+
+    repo = new SequelizeConsultationRepository(
+      ConsultationModel as never,
+      ConsultationExtraItemModel as never,
+      fakeCrypto as never,
+      sequelize,
+    );
+
+    // Cancelled appointment — earlier date, plan_price = 0.
+    await sequelize.query(
+      `INSERT INTO appointments
+         (id, doctor_id, patient_id, scheduled_at, status, session_number, plan_name, plan_price, created_at, updated_at)
+       VALUES
+         (:id, :doctorId, :patientId, '2026-01-01 09:00:00+00', 'cancelled', NULL, :planName, 0, now(), now())
+       ON CONFLICT (id) DO NOTHING`,
+      {
+        replacements: {
+          id: cancelledApptId,
+          doctorId: DOCTOR_ID_PKG,
+          patientId: PATIENT_ID_PKG,
+          planName: PLAN_NAME,
+        },
+        type: QueryTypes.INSERT,
+      },
+    );
+
+    // Active appointment — later date, plan_price = 120, status = 'completed'.
+    await sequelize.query(
+      `INSERT INTO appointments
+         (id, doctor_id, patient_id, scheduled_at, status, session_number, plan_name, plan_price, created_at, updated_at)
+       VALUES
+         (:id, :doctorId, :patientId, '2026-02-01 09:00:00+00', 'completed', NULL, :planName, 120, now(), now())
+       ON CONFLICT (id) DO NOTHING`,
+      {
+        replacements: {
+          id: activeApptId,
+          doctorId: DOCTOR_ID_PKG,
+          patientId: PATIENT_ID_PKG,
+          planName: PLAN_NAME,
+        },
+        type: QueryTypes.INSERT,
+      },
+    );
+
+    // Consultation linked to the active appointment.
+    await sequelize.query(
+      `INSERT INTO consultations
+         (id, doctor_id, patient_id, appointment_id, consultation_code,
+          consultation_date, payment_status, created_at, updated_at)
+       VALUES
+         (:id, :doctorId, :patientId, :apptId, 'DLT-TEST-EXCL-0001',
+          now(), 'approved', now(), now())
+       ON CONFLICT (id) DO NOTHING`,
+      {
+        replacements: {
+          id: consultationId,
+          doctorId: DOCTOR_ID_PKG,
+          patientId: PATIENT_ID_PKG,
+          apptId: activeApptId,
+        },
+        type: QueryTypes.INSERT,
+      },
+    );
+  });
+
+  afterAll(async () => {
+    await sequelize.query('DELETE FROM consultations WHERE id = :id', {
+      replacements: { id: consultationId },
+      type: QueryTypes.DELETE,
+    });
+    await sequelize.query('DELETE FROM appointments WHERE id IN (:ids)', {
+      replacements: { ids: [cancelledApptId, activeApptId] },
+      type: QueryTypes.DELETE,
+    });
+    await sequelize.close();
+  });
+
+  it('returns the active appointment plan_price (120), not the cancelled one (0)', async () => {
+    const consultation = await repo.findById(consultationId, DOCTOR_ID_PKG);
+    expect(consultation).not.toBeNull();
+    // packageChargeUsd must be 120 (active appointment), never 0 (cancelled one).
+    expect(consultation?.packageChargeUsd).toBe(120);
+  });
+});
