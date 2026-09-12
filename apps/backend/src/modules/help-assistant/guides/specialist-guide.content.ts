@@ -125,14 +125,19 @@ El menu lateral esta organizado en items superiores y secciones colapsables. Pue
 - **Consultas** — /doctor/consultations
 - **Consultorios** — /doctor/offices
 - **Plantillas** — /doctor/templates
+- **Consultas por agendar** — /doctor/pending-consultations (siempre visible, sin candado de plan)
+- **Solicitudes** — /doctor/patient-requests (siempre visible, sin candado de plan)
 
 **Seccion 'Finanzas':**
 - **Finanzas** — /doctor/finances
 - **Cobros** — /doctor/cobros
 - **Servicios** — /doctor/services
+- **Inventario** — /doctor/inventory (requiere plan con modulo 'inventory'; con candado si no esta habilitado)
+- **Presupuestos** — /doctor/quotes (requiere plan con modulo 'quotes'; con candado si no esta habilitado)
 
 **Seccion 'Marketing':**
 - **Recordatorios** — /doctor/reminders
+- **CRM** — /doctor/crm (requiere plan Base o Plus)
 
 **Al pie del menu:**
 - **Sugerencias** — /doctor/suggestions
@@ -202,6 +207,12 @@ Listado de todas tus consultas.
 - Cada consulta tiene un **codigo unico** con formato DLT-AAAAMM-XXXX generado automaticamente.
 - **Abrir/Editar** lleva a la pantalla de detalle de la consulta.
 
+**Iconos del listado (que significa cada uno):**
+- **Estetoscopio sobre fondo turquesa:** la consulta es **HOY**. Tambien aparece una etiqueta 'Hoy' en azul verdoso.
+- **Reloj sobre fondo azul claro:** la consulta es **FUTURA** (tiene fecha posterior a hoy).
+- **Check gris sobre fondo gris:** la consulta es **PASADA** (fecha anterior a hoy).
+- Estos iconos indican solo la fecha relativa, NO el estado del pago ni si el paciente asistio.
+
 ### 6.5 Detalle de consulta — /doctor/consultations/[id]
 
 Es el editor completo de una consulta. Contiene:
@@ -212,7 +223,29 @@ Es el editor completo de una consulta. Contiene:
 - **Bloques dinamicos de la consulta:** son los campos clinicos (por ejemplo Motivo de consulta, Diagnostico, Tratamiento, Plan de tratamiento, Evaluacion actual, Observaciones, Reposo, etc.). Los bloques que aparecen los defines tu en Configuracion (ver seccion de bloques de consulta). Cada bloque es un area de texto editable. El bloque que antes se llamaba **'Indicaciones'** ahora se llama **'Evaluacion actual'**, y su contenido **se integra al informe** (ya no genera un documento aparte).
 - **Botones de IA en cada bloque** (solo plan Delta Plus): **Mejorar con IA** (mejora la redaccion del bloque), **Resumen del informe** (genera un resumen) y **Resumir historial del paciente** / **Historial del paciente** (trae contexto de consultas anteriores). Tras usar la IA puedes **Copiar texto** o aplicar el resultado. Si no tienes plan Plus, estos botones no estan disponibles.
 - **Grabadora de voz / transcripcion** (solo plan Plus): boton **Grabar la consulta** (o 'Grabar consulta'). Mientras procesa veras 'Transcribiendo audio...' y 'Procesando con IA — no cierres esta pagina...'. La IA transcribe el audio y sugiere que bloques llenar. Puedes **Grabar otra vez**.
-- **Informacion del pago:** monto en USD y bolivares, metodo de pago y estado. Boton **Marcar pago como aprobado** (al aplicarlo se muestra como 'Pago aprobado ✓'). El estado actual se indica como Pendiente o Aprobado.
+- **Informacion del pago:** monto en USD y bolivares, metodo de pago y estado. Boton **Marcar pago como aprobado** (al aplicarlo se muestra como 'Pago aprobado'). El estado actual se indica como Pendiente o Aprobado.
+
+**Sesion cubierta por paquete pagado (sesiones 2..N de un paquete):**
+Las consultas 2, 3, N de un paquete no generan cobro propio — el paquete se cobro una sola vez en la primera sesion. Estas consultas muestran:
+- **Badge 'Cubierta' (violeta):** el paquete YA fue pagado. No se muestra selector de metodo de pago ni monto para esta consulta.
+- **Badge 'Cubierta - por cobrar' (ambar/amarillo):** el paquete aun tiene el pago pendiente. La consulta sigue cubierta pero el cobro del paquete todavia no fue aprobado.
+En ambos casos la pantalla te dice de que paquete proviene, la sesion (ej. 'Sesion 2 de 3') y el monto del paquete completo.
+
+**Boton 'Cobrar aparte' (en sesiones cubiertas):**
+Aparece cuando la consulta esta cubierta por un paquete. Sirve para cobrar extras (productos del inventario u otros servicios adicionales) SIN tocar el paquete. Al pulsarlo abre un modal donde:
+- Puedes agregar productos del inventario o items extra con su monto.
+- Debes elegir un metodo de pago (obligatorio).
+- No puedes confirmar con total $0 — debe haber al menos un item con monto mayor que cero.
+Este cobro aparte queda registrado de forma independiente del paquete.
+
+**Boton 'Cambiar servicio':**
+Aparece en la consulta para corregir el servicio contratado (si el paciente eligio el plan equivocado al reservar). Reglas:
+- Solo se ofrecen servicios con la **misma cantidad de sesiones** que el servicio actual. Cambiar entre paquetes de tamano distinto no esta permitido.
+- El cambio arrastra todo el paquete y ajusta el monto del cobro. El estado del pago (aprobado o pendiente) se mantiene.
+- El modal muestra el precio actual y el nuevo precio antes de confirmar.
+
+**Boton 'Revisar historial':**
+Aparece debajo del nombre del paciente en el panel lateral derecho de la consulta. Al pulsarlo abre un **panel deslizante desde la derecha** con el historial de consultas ANTERIORES del mismo paciente (no las futuras), sin sacarte de la consulta en curso. Cada consulta anterior aparece en su propia seccion con sus bloques de contenido clinico.
 - **Paraclinico:** hay un bloque **Paraclinico** para registrar de forma estructurada los examenes/estudios solicitados o sus resultados; se puede incluir tanto en el documento generado como al compartir.
 - **Generar Documento:** boton **Generar Documento** que abre un modal para producir un PDF branded (con tu logo/firma) de uno de **5 tipos**: **Receta**, **Paraclinicos**, **Historia clinica**, **Reposo** o **Informe**. El sistema **detecta automaticamente** cuales tienes disponibles segun el contenido de la consulta (por ejemplo, 'Historia clinica' se habilita si el paciente tiene historia; el 'Reposo' solo si tiene dias > 0). Es el mismo PDF que recibe el paciente al compartir.
 - **Compartir documentos:** boton **Compartir** (abre el modal 'Compartir documentos'; ver flujo en la seccion 7).
@@ -220,6 +253,13 @@ Es el editor completo de una consulta. Contiene:
   - **PDF de 2 hojas del recipe:** al generar un recipe se produce un PDF de **dos hojas**. La **hoja 1 ('Recipe')** lista el medicamento y la dosis; la **hoja 2 ('Indicaciones')** lista el medicamento, la dosis, las indicaciones, la frecuencia, la duracion y la presentacion. Este formato de 2 hojas aplica al **generar, descargar y compartir por enlace** el recipe.
 - **Reposo:** solo puedes **generar o compartir el reposo si tiene dias configurados (mayor que 0)**. Si el reposo tiene 0 dias, no se genera ni se comparte.
 - **Acciones principales:** **Guardar consulta**, **Marcar como atendida** (completa la cita) y **No asistio**.
+
+**Estados de la cita y transiciones permitidas:**
+- **Agendada** puede pasar a: Confirmada, Cancelada, Atendida o No asistio.
+- **Confirmada** puede pasar a: Atendida, No asistio o Cancelada.
+- **Atendida**, **Cancelada** y **No asistio** son estados FINALES: no admiten ningun cambio posterior.
+- Una cita con el pago ya aprobado NO se cancela — si el paciente necesita otro dia, se REAGENDA (el pago viaja con la nueva fecha, no se pierde).
+- Los botones de accion se muestran u ocultan segun el estado actual para que no puedas elegir una transicion invalida.
 
 ### 6.6 Cobros — /doctor/cobros
 
@@ -230,6 +270,11 @@ Gestion de los pagos de tus consultas. (Requiere plan Base o Plus.)
 - **Detalle del cobro:** abre el detalle; puedes **Anadir al cobro** lineas de servicio. Si se subio comprobante se muestra; si no, 'Sin comprobante adjunto'.
 - **Exportar** la informacion.
 - Estados de pago: solo existen **Pendiente** y **Aprobado**. No existe 'rechazado' ni 'cancelado'; un pago simplemente sigue pendiente hasta que lo apruebas.
+
+**Bolivares congelados en cobros:**
+- Los cobros que ya estan **Aprobados** muestran el monto en bolivares del DIA en que se aprobaron (tasa congelada). No se recalculan aunque la tasa BCV haya cambiado despues.
+- Los cobros que siguen **Pendientes** muestran el monto en bolivares calculado con la tasa BCV de HOY, que puede variar cada dia.
+- Esto es intencional: garantiza que el historial de ingresos aprobados refleje exactamente lo que entraste ese dia.
 
 ### 6.7 Finanzas — /doctor/finances
 
@@ -285,6 +330,7 @@ Perfil, metodos de pago, notificaciones y mas. Incluye:
 - **Compartir por WhatsApp:** mensaje de WhatsApp/Correo configurable (con emojis), para enviar tu link a tus contactos. La integracion plena con WhatsApp Business API esta en desarrollo.
 - **Google Calendar:** boton **Conectar Google Calendar y Meet** (inicia el permiso de Google). Una vez conectado, se muestra la cuenta conectada y el boton **Desconectar**. Si lo conectas, tus citas online crean automaticamente un evento con link de Google Meet y un recordatorio 30 minutos antes. Si NO lo conectas, se usa una videollamada alternativa (Jitsi) y un correo. Si hay un problema: 'Error al conectar Google'.
 - **Tasa de cambio:** la configuras DENTRO de **Metodos de pago** (BCV USD, BCV EUR o una tasa personalizada). Es la tasa con la que se convierten los montos a bolivares para cobrar. Ya NO es una pantalla/seccion aparte.
+- **Dar de baja mi cuenta:** al final de la pagina de Configuracion (y tambien al final de /doctor/upgrade) hay una tarjeta **'Dar de baja mi cuenta'**. Esta es una DESACTIVACION, no un borrado: tus pacientes, consultas e historia clinica quedan guardados. Al confirmar, tu enlace publico deja de aceptar reservas y pierdes el acceso al portal. Para reactivarla debes contactar al soporte de Delta Salud. Restricciones: el backend rechaza la baja si tienes citas agendadas a futuro (te dice cuantas son). Confirmacion: debes escribir exactamente 'DAR DE BAJA' para habilitar el boton. Si tienes un plan pagado vigente, la baja queda PROGRAMADA para el final de ese periodo (conservas el acceso completo hasta entonces); si no, la cuenta se desactiva de inmediato y se cierra tu sesion.
 
 ### 6.13 Bloques de consulta — /doctor/settings/consultation-blocks
 
@@ -299,7 +345,128 @@ Aqui defines los bloques que apareceran al registrar una consulta. Puedes crear,
 - **Sugerencias** — /doctor/suggestions: envia comentarios o ideas al equipo Delta y ve el historial con el estado (Nuevo, En progreso, Resuelto, Rechazado) y la respuesta del administrador.
 - **Historia clinica (EHR)** — /doctor/ehr: diagnosticos y planes de tratamiento cifrados por paciente.
 - **Facturacion** — /doctor/billing: documentos fiscales (factura, recibo, comprobante) con IVA e IGTF.
-- **Reportes** — /doctor/reports y **CRM de leads** — /doctor/crm y **Mensajes** — /doctor/messages: funciones complementarias, algunas en desarrollo. No todas aparecen en el menu lateral.
+- **Reportes** — /doctor/reports y **Mensajes** — /doctor/messages: funciones complementarias, algunas en desarrollo.
+- **CRM** — /doctor/crm: gestion de prospectos (leads) que aun no son pacientes.
+
+### 6.15 Inventario — /doctor/inventory
+
+(Requiere plan con modulo 'inventory' habilitado; si no, aparece con candado en el menu.)
+
+Tu catalogo de productos vendibles (cremas, lentes, suplementos, insumos, etc.) con control de stock.
+
+**Pantalla principal (lista de productos):**
+- Busqueda por nombre o proveedor.
+- Cada producto muestra nombre, descripcion, proveedor, precio de venta (en USD o Bs), stock actual y si tiene alerta de stock bajo.
+- **Alerta de stock bajo:** si el stock actual es menor o igual al umbral configurado, aparece un aviso visual.
+- Boton **Nuevo producto** para agregar.
+- Por producto: editar, ver movimientos y desactivar (borrado suave — el producto queda inactivo pero no se elimina).
+
+**Campos al crear o editar un producto:**
+- Nombre (obligatorio), Descripcion, Proveedor, Foto (imagen opcional), Precio de venta y su moneda (USD o Bs), Cantidad en stock inicial, Umbral de stock bajo (opcional — cuando el stock llega a este numero o menos, aparece la alerta).
+
+**Movimientos de stock:**
+- Desde el detalle de un producto puedes ver su historial de movimientos (entradas, salidas, ajustes).
+- Tipos de movimiento: Compra (entrada), Ajuste manual y Perdida (salida manual). Las ventas se registran automaticamente cuando se aprueba una consulta que incluyo ese producto como extra.
+- Puedes revertir un movimiento manual (no los de venta).
+- **Compra masiva:** boton para registrar la entrada de varios productos en una sola operacion.
+
+**Venta de productos en una consulta:**
+Desde el detalle de la consulta, al usar **Cobrar aparte**, puedes agregar productos del inventario. Al aprobar ese cobro, el sistema descuenta automaticamente la cantidad del stock del producto y registra el movimiento de venta.
+
+### 6.16 Presupuestos — /doctor/quotes y /doctor/quotes/[id]
+
+(Requiere plan con modulo 'quotes' habilitado; si no, aparece con candado en el menu.)
+
+Crea y envia cotizaciones a tus pacientes o prospectos (leads del CRM).
+
+**Lista de presupuestos (/doctor/quotes):**
+- Muestra todos tus presupuestos con numero, destinatario, total en USD, estado y fecha.
+- Filtros por estado y por nombre del producto/servicio.
+- Boton **Nuevo presupuesto** para crear uno.
+- Al tocar una fila abre el detalle del presupuesto.
+
+**Estados de un presupuesto:**
+- **Borrador:** recien creado, aun no enviado. Puedes editarlo y eliminarlo.
+- **Enviado:** ya lo enviaste al paciente. Solo puedes cambiar su estado (a Aceptado, Rechazado o Vencido). No se puede editar.
+- **Aceptado:** el destinatario acepto la cotizacion desde el enlace publico. ACEPTAR NO ES PAGAR: el especialista aun debe aprobar el pago por separado cuando el paciente lo abone.
+- **Rechazado:** el destinatario rechazo la cotizacion.
+- **Vencido:** paso la fecha de validez sin que se aceptara.
+
+**Crear un presupuesto (Borrador):**
+- Elige el destinatario: un paciente existente o un prospecto (lead) del CRM.
+- Agrega items: cada item tiene nombre, cantidad, precio unitario y monto total (calculado).
+- Descuento opcional: por monto fijo en USD o por porcentaje del subtotal.
+- El total y el descuento los calcula el backend — no los puedes manipular manualmente.
+- Fecha de validez ('Valido hasta'): opcional. Si la configuras, el presupuesto vence automaticamente al final de ese dia (hora Venezuela).
+- Notas internas: visibles en el PDF.
+
+**Enviar un presupuesto:**
+Al pulsar **Enviar**, el sistema:
+1. Congela la tasa BCV del momento y calcula el total en bolivares. Esos bolivares ya NO se recalculan despues aunque la tasa cambie: el PDF siempre muestra los bolivares de cuando se envio.
+2. Crea un enlace publico y lo muestra junto a la URL copiable.
+3. Envia por correo al destinatario (si tiene email registrado) con el enlace para ver y responder el presupuesto.
+Una vez enviado, el presupuesto pasa a estado 'Enviado' y ya no se puede editar.
+
+**Enlace publico del presupuesto:**
+El destinatario puede abrir el presupuesto sin login, ver el PDF y elegir Aceptar o Rechazar. Al aceptar o rechazar, el estado cambia automaticamente. Aceptar NO genera un pago automatico.
+
+**Recordatorio de vencimiento:**
+El sistema envia automaticamente un correo de aviso cuando el presupuesto esta proximo a vencer (en la ventana configurada). Solo se envia una vez por presupuesto.
+
+### 6.17 Consultas por agendar (preconsultas) — /doctor/pending-consultations
+
+Siempre visible en el menu, sin candado de plan.
+
+Son las sesiones 2..N de un paquete de varias consultas que el paciente ya pago pero que todavia no tienen fecha asignada.
+
+**Como se crean:**
+Al reservar o crear una consulta para un plan de paquete (ej. 3 sesiones), la primera sesion se agenda normalmente. Las sesiones restantes se generan automaticamente como 'consultas por agendar'. Si la generacion falla, NO se recuperan solas — el sistema no las recrea; en ese caso el especialista debe crearlas manualmente desde esta pantalla.
+
+**Pantalla:**
+- Lista de preconsultas con: nombre del paciente, plan (nombre del paquete), numero de sesion, estado, fecha de vencimiento y botones de accion.
+- Filtros por estado.
+- Cada fila muestra cuantos dias quedan para que venza (si tiene fecha limite).
+
+**Estados de una preconsulta:**
+- **Por agendar (pending_scheduling):** lista para agendarse; el especialista puede seleccionar fecha y datos.
+- **Agendada (scheduled):** ya tiene cita asignada. Aparece tambien en la Agenda.
+- **Completada (completed):** la cita asociada se marco como Atendida.
+- **Vencida (expired):** paso la fecha limite sin que se agendara.
+- **Cancelada (cancelled):** se cancelo manualmente.
+
+**Acciones:**
+- **Agendar** (solo desde estado 'por agendar'): abre un modal donde eliges fecha y hora, consultorio y modalidad. Al confirmar se crea la cita.
+- **Cancelar** (solo desde estado 'por agendar'): cancela la preconsulta. Confirmacion requerida.
+
+**Recordatorios:**
+El sistema envia recordatorios automaticos al paciente cuando una preconsulta sigue sin agendarse.
+
+### 6.18 Solicitudes al paciente — /doctor/patient-requests
+
+Siempre visible en el menu (bajo 'Solicitudes'), sin candado de plan. Tambien accesible desde la ficha del paciente mediante el boton 'Solicitar documentos al paciente'.
+
+Permite pedirle al paciente que suba documentos (examenes, resultados, comprobantes) o que escriba una respuesta, sin que el paciente necesite entrar al portal.
+
+**Como funciona:**
+1. Desde /doctor/patient-requests (o desde la ficha del paciente), pulsa **Nueva solicitud**.
+2. Elige el paciente (debe tener email registrado).
+3. Escribe un **Titulo** (obligatorio) y una **Descripcion** opcional.
+4. Al crear, el sistema genera automaticamente un enlace unico y envia por correo al paciente un **codigo de 6 digitos** para acceder.
+
+**El paciente abre el enlace:**
+- Ingresa el codigo de 6 digitos y su cedula.
+- Ve el titulo y la descripcion de lo que le pides.
+- Puede subir archivos (jpg, png, webp, pdf; maximo 10 MB por archivo) y/o escribir un texto de respuesta.
+- Cuando termina, pulsa **Enviar respuesta**, que marca la solicitud como 'Respondida'.
+
+**Estados de una solicitud:**
+- **Pendiente:** el paciente aun no respondio.
+- **Respondida (fulfilled):** el paciente envio su respuesta o subio archivos.
+- **Revocada:** ya no esta activa.
+
+**Seguridad:**
+- Si el paciente falla el codigo 10 veces acumuladas, el enlace se bloquea permanentemente. El especialista debe crear una nueva solicitud.
+- El paciente puede pedir un nuevo codigo si no lo recibio (hay un cooldown de 60 segundos entre solicitudes de codigo).
 
 ---
 
@@ -386,6 +553,51 @@ En **Configuracion**, seccion 'Tu link publico de booking': ahi esta el **Codigo
 
 En **Servicios**, crea un servicio con Nombre, Precio USD, Duracion, Consultorio (o General) y una **Descripcion** (que vera el paciente en tu booking). Activa **Mostrar en link de booking** para que aparezca en tu pagina publica.
 
+### 7.11 Gestionar el inventario de productos
+
+1. Entra a **Inventario** y pulsa **Nuevo producto**.
+2. Completa Nombre, Descripcion, Proveedor, Precio de venta y moneda (USD o Bs), Stock inicial y Umbral de stock bajo (opcional).
+3. Guarda. El producto aparece en la lista.
+4. Para entrar mas stock: abre el producto y pulsa **Registrar movimiento** (tipo 'Compra'). Para ajustar por perdida o diferencia de conteo, usa tipo 'Ajuste' o 'Perdida'.
+5. Para agregar un producto a una consulta y cobrar su precio aparte: dentro del detalle de la consulta, usa **Cobrar aparte**, agrega el producto, confirma el cobro. El stock se descuenta al aprobar.
+
+### 7.12 Crear y enviar un presupuesto
+
+1. Ve a **Presupuestos** y pulsa **Nuevo presupuesto**.
+2. Elige el destinatario (paciente existente o prospecto del CRM).
+3. Agrega los items con nombre, cantidad y precio unitario.
+4. Opcionalmente agrega un descuento (monto fijo o porcentaje) y una fecha de validez.
+5. Guarda. El presupuesto queda en estado Borrador.
+6. Cuando este listo, abre el detalle y pulsa **Enviar**. Se congelan los bolivares con la tasa del momento y se envia el correo al paciente.
+7. El paciente abre el enlace, ve el PDF y puede Aceptar o Rechazar. Cuando acepta, el estado cambia a 'Aceptado'. Eso NO genera el pago: el especialista lo cobra por separado.
+
+### 7.13 Agendar una sesion desde 'Consultas por agendar'
+
+1. Ve a **Consultas por agendar** (/doctor/pending-consultations).
+2. Localiza la preconsulta con estado 'Por agendar'.
+3. Pulsa **Agendar** en esa fila.
+4. En el modal elige la fecha y hora, el consultorio y la modalidad.
+5. Confirma. La cita queda creada y vinculada al paquete del paciente.
+
+### 7.14 Enviarle una solicitud de documentos al paciente
+
+1. Ve a **Solicitudes** (/doctor/patient-requests) o abre la ficha del paciente y pulsa 'Solicitar documentos al paciente'.
+2. Pulsa **Nueva solicitud**, elige el paciente (debe tener email), escribe el titulo y la descripcion.
+3. Al crear, el sistema envia el correo con el codigo al paciente.
+4. El paciente abre el enlace, ingresa su codigo y cedula, sube los archivos o escribe su respuesta y pulsa 'Enviar respuesta'.
+5. En tu lista de solicitudes la fila pasa a estado 'Respondida' y puedes ver los archivos y el texto del paciente.
+
+### 7.15 Dar de baja la cuenta
+
+1. Ve a **Configuracion** (/doctor/settings) y baja hasta el final de la pagina, o ve a /doctor/upgrade (al pie de esa pagina).
+2. En la tarjeta **'Dar de baja mi cuenta'**, pulsa el boton.
+3. En el modal, escribe el motivo opcional, luego escribe exactamente 'DAR DE BAJA' en el campo de confirmacion.
+4. El boton 'Confirmar baja' se activa. Al pulsar:
+   - Si tienes citas futuras agendadas: el backend rechaza con un mensaje que dice cuantas citas tienes; debes cancelarlas o completarlas primero.
+   - Si tienes plan pagado vigente: la baja queda programada — conservas el acceso hasta el final del periodo pagado.
+   - Si no tienes plan vigente: la cuenta se desactiva de inmediato y se cierra tu sesion.
+5. Para reactivar tu cuenta despues, contacta al soporte de Delta Salud.
+
 ---
 
 ## 8. Pagina publica de booking — /book/tu-id
@@ -470,4 +682,34 @@ Nombre completo, cedula (V/E/P) y especialidad. El numero MPPS y el numero de co
 
 **Donde edito mi perfil, telefono o metodos de pago?**
 En **Configuracion** (/doctor/settings). El email, la cedula y la especialidad no se pueden editar ahi (vienen del login y del onboarding).
+
+**Por que esta consulta dice 'Cubierta' y no me deja cobrar?**
+Porque es una sesion 2..N de un paquete que el paciente ya pago (o que esta por pagar). El paquete se cobra UNA SOLA VEZ en la primera sesion; las siguientes estan cubiertas. Si necesitas cobrar algo adicional (productos, extras), usa el boton **Cobrar aparte**: ese cobro es independiente del paquete y requiere elegir un metodo de pago.
+
+**Que significan los iconos del listado de consultas?**
+- Estetoscopio sobre fondo turquesa: la consulta es HOY.
+- Reloj azul: la consulta es futura (tiene fecha posterior a hoy).
+- Check gris: la consulta es pasada (fecha anterior a hoy).
+No indican si el pago esta aprobado ni si el paciente asistio — son solo indicadores de fecha relativa.
+
+**Por que no puedo cancelar esta cita?**
+Hay dos razones posibles: (1) La cita ya esta en un estado final: si aparece como 'Atendida', 'Cancelada' o 'No asistio', no admite ningun cambio posterior. (2) El pago ya esta aprobado: una cita con pago aprobado no se cancela directamente. Si el paciente necesita cambiar la fecha, se REAGENDA — el pago aprobado viaja con la nueva fecha. Contacta al soporte si necesitas una excepcion.
+
+**Por que veo dos ingresos iguales del mismo paciente en Cobros?**
+Son dos consultas distintas del mismo paciente, no un duplicado. El listado de Cobros muestra una fila por cada CONSULTA, no por paciente. Cada fila indica de que consulta proviene (con la fecha de la cita y el servicio). Si las fechas de cobro son iguales puede ser porque las aprobaste el mismo dia. Revisa el codigo de consulta de cada fila para confirmar que son citas diferentes.
+
+**Como creo un presupuesto y como lo envio?**
+En **Presupuestos** (/doctor/quotes) pulsa **Nuevo presupuesto**, elige el destinatario (paciente o prospecto del CRM), agrega los items, configura el descuento y la fecha de validez opcionales y guarda. El presupuesto queda en Borrador. Cuando este listo abre el detalle y pulsa **Enviar**: se congela la tasa BCV y se envia el enlace por correo al paciente para que pueda ver y responder la cotizacion.
+
+**Cuando el paciente acepta un presupuesto, queda pagado?**
+No. Aceptar es solo confirmar el interes. El pago se gestiona por separado, igual que cualquier consulta. El presupuesto pasa a estado 'Aceptado' pero el especialista cobra normalmente cuando el paciente abone.
+
+**Como doy de baja mi cuenta?**
+En **Configuracion** (/doctor/settings), baja hasta el final y usa la tarjeta 'Dar de baja mi cuenta'. Debes escribir 'DAR DE BAJA' para confirmar. No es un borrado: tu informacion queda guardada y un administrador de Delta puede reactivarla. Si tienes citas futuras el sistema no te deja hasta que las canceles o completes. Si tu plan esta vigente, la baja se programa para el final del periodo.
+
+**Que son las 'Consultas por agendar'?**
+Son las sesiones 2..N de un paquete de varias sesiones que el paciente ya compro pero que aun no tienen fecha. Las ves en /doctor/pending-consultations. Desde ahi las agendas eligiendo fecha, consultorio y modalidad. Esas sesiones NO se generan solas si algo fallo al crearlas — si no las ves y deberias verlas, avisale al soporte de Delta.
+
+**Puedo pedir documentos a un paciente sin que el tenga cuenta en Delta?**
+Si. Desde **Solicitudes** (/doctor/patient-requests) crea una solicitud: el paciente recibe un correo con un enlace y un codigo de 6 digitos. Con eso abre la pagina, sube los archivos y escribe su respuesta, sin necesidad de registrarse en la plataforma.
 `;
