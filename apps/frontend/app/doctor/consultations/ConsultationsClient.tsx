@@ -1554,6 +1554,11 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
     setSelected((prev) => (prev && prev.id === consultationId ? { ...prev, ...patch } : prev));
     setConsultations((prev) => prev.map((x) => (x.id === consultationId ? { ...x, ...patch } : x)));
     setPagoAmount(fresh.amount != null ? String(fresh.amount) : '');
+    // El método también: es el que el modal de extras precarga al reabrirse. Sin
+    // esto, cobrar extras por segunda vez obliga a elegirlo de nuevo aunque ya
+    // esté guardado, porque en una sesión cubierta el selector del panel está
+    // oculto y `pagoMethod` sólo se llenaba al abrir la consulta.
+    setPagoMethod(fresh.payment_method ?? '');
   }
 
   async function updatePagoStatus(
