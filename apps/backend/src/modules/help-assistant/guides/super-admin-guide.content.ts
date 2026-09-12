@@ -40,7 +40,9 @@ super admin completo se ven todas. El orden real de las secciones es:
 
 1. **Dashboard** — ruta /admin
 2. **Especialistas** — ruta /admin/doctors
-3. **Aprobaciones** — ruta /admin/aprobaciones
+3. **Pagos** (grupo expandible):
+   - **Aprobaciones** — ruta /admin/aprobaciones
+   - **Registrar pago** — ruta /admin/pagos/registrar
 4. **Pacientes** — ruta /admin/patients
 5. **Finanzas** — ruta /admin/finanzas
 6. **Suscripciones** — ruta /admin/subscriptions
@@ -48,9 +50,12 @@ super admin completo se ven todas. El orden real de las secciones es:
 8. **Verificaciones** — ruta /admin/verifications
 9. **Especialidades** — ruta /admin/specialties
 10. **Plantillas de email** — ruta /admin/email-templates
-11. **Roles** — ruta /admin/roles
-12. **Sugerencias** — ruta /admin/suggestions
-13. **Configuración** — ruta /admin/settings
+11. **Vendedores** (grupo expandible):
+    - **Gestion** — ruta /admin/sellers
+    - **Comisiones** — ruta /admin/comisiones
+12. **Roles** — ruta /admin/roles
+13. **Sugerencias** — ruta /admin/suggestions
+14. **Configuracion** — ruta /admin/settings
 
 En el pie del menú aparece un indicador "Sistema operativo" (punto verde) y el botón
 **Cerrar sesión**, que limpia la sesión y redirige a /login.
@@ -578,7 +583,225 @@ la plataforma.
 4. Para manual: escribe el valor (Bs por USD) en el campo y pulsa **Usar tasa manual**.
 5. La "Tasa efectiva" mostrada arriba es la que se aplicará en cobros, booking y reportes.
 
-## 17. Preguntas frecuentes (FAQ)
+## 17. Registrar pago (/admin/pagos/registrar)
+
+Esta pantalla vive bajo el grupo **Pagos** del menu lateral. Sirve para registrar manualmente
+un cobro de suscripcion que el admin recibio por fuera de la app (efectivo, transferencia directa
+sin comprobante del doctor). Al guardar, el pago queda APROBADO al instante y la suscripcion
+se extiende.
+
+**Diferencia clave con Aprobaciones:** Aprobaciones (/admin/aprobaciones) es para revisar
+comprobantes que los propios doctores suben desde su portal — el doctor inicia el tramite.
+Registrar pago es lo contrario: el admin registra el cobro directamente, sin que el doctor
+suba nada.
+
+**Formulario (campos):**
+- **Especialista:** selector desplegable con todos los especialistas de la plataforma y su plan
+  actual. Se carga al abrir la pagina.
+- **Monto (USD):** monto cobrado en dolares (campo numerico, acepta decimales).
+- **Meses a extender:** entero entre 1 y 36 meses que se sumaran a la fecha de vencimiento
+  de la suscripcion del especialista.
+- **Metodo de pago:** Transferencia, Pago Movil, Zelle, Binance, Efectivo USD, Efectivo Bs,
+  POS, Otro.
+- **Referencia** (opcional): numero de referencia, ultimos digitos de la transaccion u otro
+  identificador.
+
+**Boton "Registrar pago":** se habilita cuando Especialista, Monto y Meses estan completos y
+validos. Al pulsarlo, el backend crea el pago como APROBADO y extiende la suscripcion por
+los meses indicados. El formulario se resetea; el metodo de pago queda pre-seleccionado.
+No hay pantalla de confirmacion: la operacion es directa.
+
+## 18. Gestion de vendedores (/admin/sellers)
+
+Accesible desde el grupo **Vendedores** del menu lateral (solo super_admin; cualquier otro
+rol ve un aviso de acceso denegado).
+
+Los vendedores son personas que refieren especialistas a Delta Salud. Cada vendedor recibe un
+**codigo de referido** unico generado por el sistema (no se elige a mano). Los especialistas
+que usan ese codigo al registrarse quedan "atribuidos" al vendedor, y el sistema genera
+comisiones automaticamente segun su actividad.
+
+**Encabezado:** titulo "Vendedores" con subtitulo explicando que cada vendedor tiene un codigo
+propio. Boton **Nuevo vendedor** — despliega el formulario de alta en la misma pagina.
+
+**Formulario de alta:**
+- **Nombre completo** (obligatorio, minimo 2 caracteres).
+- **Correo** (obligatorio, email valido).
+- El codigo lo genera el sistema al crear al vendedor; aparece en el mensaje de exito del toast.
+- Botones **Cancelar** y **Crear vendedor**.
+
+**Tabla de vendedores (columnas):**
+- **Vendedor:** nombre en negrita y, debajo, el email con icono de sobre.
+- **Codigo:** etiqueta con el codigo unico del vendedor (fondo teal, fuente monoespacio). Al
+  hacer clic, copia el codigo al portapapeles; el icono cambia brevemente a tilde de
+  confirmacion.
+- **Estado:** "Habilitado" (verde) o "Deshabilitado" (rojo). Las filas de vendedores
+  deshabilitados se muestran con menor opacidad.
+- **Especialistas:** cantidad de especialistas registrados con el codigo del vendedor.
+- **Alta:** fecha de creacion del vendedor en la plataforma.
+- **Ultimo ingreso:** fecha de su ultimo acceso (o "Nunca entro" si nunca inicio sesion).
+- **Cobro:** boton **Ver cobro** — abre un modal de solo lectura con los datos de pago del
+  vendedor (Pago Movil, Zelle, Transferencia, etc.) que el admin usa para saber a donde
+  transferirle las comisiones. El vendedor es quien carga y edita esos datos desde su propio
+  portal.
+- **Acceso:** boton **Deshabilitar** (rojo) si esta habilitado, o **Habilitar** (verde) si
+  esta deshabilitado.
+
+**Deshabilitar un vendedor (pide confirmacion):**
+- Consecuencias que muestra el dialogo: su enlace de referido deja de atribuir especialistas
+  nuevos; no genera comisiones nuevas mientras este deshabilitado; lo que ya se le debe sigue
+  vigente (deshabilitar no borra las comisiones pendientes). Se puede volver a habilitar
+  en cualquier momento.
+
+**Habilitar un vendedor (pide confirmacion breve):**
+- Al habilitar, su enlace vuelve a atribuir especialistas y puede generar comisiones de nuevo.
+
+## 19. Comisiones (/admin/comisiones)
+
+Accesible desde el grupo **Vendedores** del menu lateral (solo super_admin).
+
+Pantalla para revisar y liquidar las comisiones que el sistema genero automaticamente por la
+actividad de los especialistas atribuidos a cada vendedor.
+
+**Reglas de negocio de las comisiones:**
+- Cada especialista genera como maximo **dos comisiones** en su ciclo de vida:
+  - **Entrada** ($10 USD): se genera cuando el especialista completa el onboarding.
+  - **Plan**: se genera cuando el especialista activa su primer plan pago
+    ($10 USD para Delta Base, $20 USD para Delta Plus).
+- Si el especialista nunca activa un plan pago, no se genera comision de Plan.
+- La comision le corresponde al vendedor al que el especialista quedo atribuido al registrarse.
+
+**Estados de una comision:**
+- **Pendiente** (ambar): generada automaticamente por el sistema, aun sin revisar.
+- **Aprobada** (verde): el admin la reviso y aprobo; esta lista para pagar. Aprobar no salda
+  la deuda — es un paso de verificacion previo al pago.
+- **Pagada**: ya liquidada. No aparece en esta lista; queda en el historial del vendedor.
+
+**Estadisticas de la pagina:**
+- **Total pendiente (USD):** suma de todo lo no pagado (pendientes + aprobadas) en USD.
+- **Vendedores con saldo:** cuantos vendedores tienen al menos una comision sin liquidar.
+
+Los vendedores se ordenan de mayor a menor por monto pendiente.
+
+**Tarjeta de vendedor (expandible):**
+Cada vendedor con saldo aparece como una tarjeta. La cabecera muestra nombre, cantidad de
+comisiones pendientes y total por cobrar en USD. Al hacer clic se expande y aparecen dos
+pestanas.
+
+**Pestana "Comisiones pendientes":**
+- Lista de todas las comisiones sin pagar (pendientes y aprobadas) con checkboxes.
+- Cada fila muestra: nombre del especialista, fecha en que se genero la comision, estado
+  (Pendiente / Aprobada) y tipo (Entrada, Plan Base, Plan Plus) con su monto.
+- Al abrir la tarjeta, las comisiones aprobadas quedan pre-seleccionadas.
+- Boton **Seleccionar todo / Deseleccionar todo**.
+- **Total a pagar** (en tiempo real): suma solo las comisiones APROBADAS seleccionadas.
+  Marcar una comision pendiente no la suma al total pagable — solo las aprobadas se pueden
+  pagar en ese paso.
+- Boton **Aprobar N comisiones** (aparece si hay pendientes marcadas): las marca como
+  Aprobadas. Este paso no paga nada; le indica al sistema que el admin reviso esas comisiones
+  y las habilita para pago. Se pueden aprobar antes de tener los fondos.
+- Boton **Registrar pago** (aparece si hay aprobadas seleccionadas): abre el formulario de
+  pago en la misma tarjeta.
+
+**Formulario de pago de comisiones:**
+- Resumen de las comisiones seleccionadas con tipo, nombre del especialista y monto. Total en
+  USD y, si la tasa BCV esta disponible, equivalente en bolivares.
+- Aviso visible: **esta operacion es irreversible** desde la plataforma — no hay opcion de
+  deshacer. Verificar monto y datos antes de confirmar.
+- **Metodo de pago** (obligatorio): selector con los metodos que el vendedor cargo en sus
+  datos de cobro. Si el vendedor no tiene metodos configurados, no se puede registrar el pago
+  hasta que los complete en su portal. Al elegir un metodo, aparecen automaticamente los datos
+  del vendedor para esa via (cuenta, banco, telefono, etc.).
+- **Referencia / numero de confirmacion** (obligatorio): el dato de la transferencia ya
+  realizada (maximo 500 caracteres).
+- **Comprobante** (opcional): archivo JPEG, PNG, WebP o PDF de hasta 10 MB. Se sube al
+  almacenamiento antes de confirmar el pago.
+- **Notas** (opcional): observaciones internas.
+- Boton **Confirmar pago**: liquida las comisiones seleccionadas. El vendedor las ve como
+  pagadas en su portal.
+
+**Pestana "Historial de pagos":**
+Lista de todos los pagos ya registrados para ese vendedor: monto (en Bs si habia tasa BCV al
+registrar, de lo contrario en USD), equivalente en USD, metodo, referencia, tasa BCV al
+momento del pago y fecha. Si el pago tiene comprobante adjunto, boton **Ver comprobante**
+que abre una URL firmada temporal en una pestana nueva.
+
+### Flujo: aprobar y pagar comisiones (paso a paso)
+
+1. Entra a **Comisiones** (/admin/comisiones).
+2. Ubica al vendedor con saldo y haz clic en su tarjeta para expandirla.
+3. Revisa cada comision en la pestana **Comisiones pendientes**.
+4. Si hay comisiones **Pendientes** que quieras validar: marcalas y pulsa
+   **Aprobar N comisiones**. Esto no las paga; las habilita para el pago posterior.
+5. Con las comisiones **Aprobadas** marcadas, pulsa **Registrar pago**.
+6. Elige el **metodo** (los datos del vendedor aparecen abajo automaticamente), escribe la
+   **referencia** de la transferencia que ya realizaste, adjunta el **comprobante** si lo
+   tienes y agrega **notas** opcionales.
+7. Pulsa **Confirmar pago**. La operacion es irreversible.
+8. Las comisiones pasan a estado Pagadas. La tarjeta desaparece de la lista si no quedan
+   saldos para ese vendedor.
+
+## 20. Promociones (/admin/promotions)
+
+Esta pantalla **no aparece en el menu lateral**: se accede por URL directa
+(/admin/promotions). Permite crear descuentos de suscripcion para paquetes de varios meses.
+Parte de esta funcionalidad tambien esta disponible dentro de la pestana **Configuracion**
+de **Suscripciones** (/admin/subscriptions).
+
+**Titulo:** "Promociones". Subtitulo: "Configura descuentos por suscripcion multi-mes".
+
+**Boton "Nueva Promocion"** — muestra el formulario de creacion.
+
+**Formulario de creacion:**
+- **Plan** (obligatorio): selector de planes disponibles (el plan Trial queda excluido).
+- **Duracion (meses):** desplegable con 2, 3, 6 o 12 meses unicamente. Si necesitas otra
+  duracion (por ejemplo 4 o 24 meses), usa la pestana Configuracion de Suscripciones: ahi el
+  campo de meses es libre y acepta cualquier valor entre 2 y 36. Son las mismas promociones,
+  administradas desde dos pantallas distintas.
+- **Etiqueta** (opcional): texto descriptivo visible en la promocion, ej. "Oferta de
+  lanzamiento". Si no se escribe, el sistema genera automaticamente "Oferta N meses".
+- **Precio original (USD):** campo de solo lectura, calculado automaticamente como
+  precio mensual del plan multiplicado por los meses elegidos.
+- **Precio promocional (USD)** (obligatorio): debe ser menor al precio original. El
+  porcentaje de descuento se calcula y muestra en tiempo real.
+- **Vence** (opcional): fecha limite de la promocion. Si se deja vacio, la promocion
+  no tiene fecha de expiracion.
+- Vista previa: se muestra debajo del formulario cuando los campos estan completos.
+- Botones **Cancelar** y **Crear Promocion**.
+
+**Lista de promociones:** cada promocion muestra plan, duracion, badge con el porcentaje de
+descuento, precio original tachado, precio promo en teal, etiqueta opcional y fecha de
+vencimiento si aplica. Las inactivas o expiradas se muestran con menor opacidad.
+
+**Acciones por promocion:**
+- Boton de toggle (Activa / Inactiva): activa o desactiva la promocion al instante.
+- Boton de papelera: elimina la promocion (pide confirmacion antes de borrar).
+
+## 21. Recordatorios (/admin/reminders)
+
+Esta pantalla **no aparece en el menu lateral**: se accede por URL directa
+(/admin/reminders). Es un **monitor de solo lectura** de la cola de recordatorios
+programados para citas de los especialistas.
+
+**Titulo:** "Recordatorios". Subtitulo: "Monitor de la cola de envios".
+
+**Estadisticas:**
+- **Pendientes:** recordatorios en espera de envio.
+- **Enviados:** recordatorios enviados exitosamente.
+- **Fallidos:** recordatorios con error de envio.
+
+**Tabla de la cola (columnas):**
+- **Paciente:** nombre del especialista responsable del recordatorio.
+- **Tipo:** tipo de recordatorio segun su anticipacion (por ejemplo, 24h, 3h, 7d).
+- **Canal:** via de envio (email, WhatsApp).
+- **Programado:** fecha y hora en que esta programado el envio.
+- **Estado:** Pendiente (ambar), Enviado (verde), Fallido (rojo), Cancelado (gris).
+
+No hay botones de accion: es una vista de monitoreo. La cola se alimenta cuando hay citas
+activas y el modulo de envio esta activo. Mientras ese modulo no este habilitado, la cola
+aparece vacia.
+
+## 22. Preguntas frecuentes (FAQ)
 
 **¿Puedo ver el nombre, la cédula o el historial de un paciente?**
 No. El super admin nunca ve datos personales de pacientes. Solo ves estadísticas agregadas en
@@ -645,4 +868,45 @@ puedes marcar En progreso o Resuelto.
 
 **¿Cómo cierro sesión?**
 Con el botón Cerrar sesión al pie del menú lateral. Te redirige a /login.
+
+**¿Cual es la diferencia entre Registrar pago y Aprobaciones?**
+Son dos flujos distintos. Aprobaciones (/admin/aprobaciones) es para revisar comprobantes
+que los propios doctores suben desde su portal: el doctor inicia el tramite. Registrar pago
+(/admin/pagos/registrar) es para cuando el admin registra directamente un cobro que ya recibio
+por fuera de la app (efectivo, transferencia sin comprobante del doctor): el pago queda
+APROBADO al instante y la suscripcion se extiende, sin que el doctor tenga que hacer nada.
+
+**¿Que es un vendedor y para que sirve su codigo?**
+Un vendedor es una persona que refiere especialistas a Delta Salud. Al crearlo en
+/admin/sellers el sistema le genera un codigo unico. Cuando un especialista se registra
+usando ese codigo, queda "atribuido" al vendedor y el sistema genera comisiones
+automaticamente al completar el onboarding o al activar un plan pago.
+
+**¿Como se calcula una comision de vendedor?**
+Cada especialista atribuido genera como maximo dos comisiones: Entrada ($10 USD al completar
+el onboarding) y Plan ($10 USD si activa Delta Base, $20 USD si activa Delta Plus). Si el
+especialista nunca paga un plan, no se genera comision de Plan. Las comisiones se generan
+automaticamente; el admin solo las revisa, aprueba y paga.
+
+**¿Como pago las comisiones de un vendedor?**
+En /admin/comisiones expande la tarjeta del vendedor. Primero aprueba las comisiones en
+estado Pendiente (boton "Aprobar N comisiones") — esto las habilita pero no las paga. Luego
+selecciona las comisiones Aprobadas y pulsa "Registrar pago". Elige el metodo (los datos del
+vendedor aparecen automaticamente), escribe la referencia de la transferencia que ya
+realizaste y confirma. El pago es irreversible desde la plataforma.
+
+**¿Puedo pagar solo algunas comisiones de un vendedor y no todas?**
+Si. En la tarjeta del vendedor en /admin/comisiones podes desmarcar las comisiones que no
+quieras pagar en ese momento. El total a pagar se actualiza en tiempo real segun los
+checkboxes marcados. Solo se pagan las que esten en estado Aprobada.
+
+**¿Que pasa si deshabilito a un vendedor?**
+Su enlace de referido deja de atribuir especialistas nuevos y no genera comisiones nuevas
+mientras este deshabilitado. Las comisiones que ya se le debian siguen vigentes — deshabilitar
+no las borra. Podes volver a habilitarlo en cualquier momento desde /admin/sellers.
+
+**¿Donde configuro promociones de suscripcion?**
+En /admin/promotions (no esta en el menu lateral, se accede por URL directa) o en la pestana
+Configuracion de /admin/subscriptions. Ambas permiten crear paquetes multi-mes con precio
+promocional para atraer especialistas.
 `;
