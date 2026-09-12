@@ -25,6 +25,15 @@ Actualiza el Memory Bank correspondiente:
 - Nuevo componente/módulo → `memory-bank/02-components.md`
 - Fase/unidad completada → `memory-bank/05-progress-log.md`
 - Cambio de prioridad MVP → `memory-bank/06-mvp-planning.md`
+- **Módulo, pantalla, botón o terminología que ve el usuario → `apps/backend/src/modules/help-assistant/guides/*.content.ts`**
+  (la guía del rol afectado: especialista / paciente / super admin)
+
+> ⚠️ La guía **es** la base de conocimiento del asistente de ayuda: `build-help-prompt.ts` la
+> inyecta entera y le ordena al modelo responder SOLO con ese contenido. Lo que no esté escrito
+> ahí, la IA no lo sabe. El desfase **no produce ningún error** — la IA contesta con seguridad
+> usando lo viejo— así que nadie lo reporta. El 2026-09-11 se descubrió con **3 módulos enteros**
+> sin documentar (Inventario, Presupuestos, Consultas por agendar) tras 2 meses sin tocarse.
+> Chequeo rápido del desfase: cruzar `find apps/frontend/app/doctor -name page.tsx` contra el texto.
 
 ## Estructura del monorepo
 
