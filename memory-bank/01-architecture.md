@@ -1138,6 +1138,35 @@ status='active'` con `QueryTypes.UPDATE` (devuelve `[undefined, affectedCount]`;
   `git grep` sobre el comportamiento (un texto de la UI, un nombre de estado), no sobre cómo alguien
   habría titulado el commit.
 
+- **ADR-082 (2026-09-13):** **El plan de Delta se cotiza con la tasa del BCV, y "BCV" es literal.**
+  El checkout del plan leía `app_settings['usdt_rate']`, que **no es la tasa del BCV**: es la
+  **efectiva** del sistema, la que corresponda a `rate_source` (binance | manual | bcv). Con la
+  fuente en Binance —que es el default— cotizaba **886,20** Bs/USD rotulado **"Tasa BCV"**, mientras
+  el resto del portal mostraba la BCV real, **772,54**. **14,7% de diferencia** sobre el monto que el
+  especialista efectivamente transfiere, y sobre el `amount_bs` que queda guardado en su pago —
+  porque el mismo proveedor alimenta `get-checkout-info` **y** `submit-doctor-payment`.
+
+  🔑 **El error estaba SOLO en el proveedor.** El puerto, el caso de uso y la respuesta ya llamaban
+  `bcvRate` a ese número: la intención siempre fue el BCV. Nadie lo notó porque el nombre decía lo
+  correcto y el valor venía de otro lado — el mismo patrón de [[textos-fijos-que-mienten]], pero en
+  el backend.
+
+  Cadena nueva en `BillingRateProvider`: `usdt_bcv_rate` si tiene **menos de 6 h** → consulta en vivo
+  al BCV (se persiste) → `usdt_bcv_rate` vieja **con SU fecha** → `RateUnavailableError`.
+  🔒 **Nunca cae a `usdt_rate`.** Preferir un número cualquiera antes que ninguno es lo que dejó
+  vivir el defecto meses. Mismo criterio que el ADR-049 para pagos a vendedores.
+
+  ⚠️ **Por qué hace falta la consulta en vivo y no alcanza con cambiar la clave:** `usdt_bcv_rate`
+  solo se refresca cuando `rate_source` es `'bcv'` (o cuando la fuente activa falla). Con la fuente en
+  Binance puede estar **vieja o directamente ausente**, y ausente significaría romper el checkout
+  entero. La frescura se mide en **horas, no en día calendario de Caracas**: comparar por día obliga a
+  convertir zonas horarias en un lugar más y este proyecto ya se equivocó dos veces con eso
+  (ADR-064, ADR-074).
+
+  El fetcher del BCV se registra directo en `BillingModule` en vez de importar `FinancesModule`
+  entero: no tiene dependencias ni estado. Decisión del dueño (2026-09-13): "se debe usar la tasa
+  BCV, no una distinta".
+
 - **ADR-081 (2026-09-13):** **Código correcto, puesto donde el usuario nunca pasa.** El backend de
   la detección de sesiones sin usar estuvo bien desde el primer intento —460 suites, 4.422 tests— y
   aun así hubo **CUATRO defectos que solo se ven usando la aplicación**. Los cuatro compilaban,
