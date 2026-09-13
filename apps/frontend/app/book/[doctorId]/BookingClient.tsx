@@ -1231,31 +1231,6 @@ export default function BookingClient({
             onOpen={() => setActiveStep(1)}
           >
             <div className="space-y-3">
-              {/*
-                Aviso de sesiones ya pagadas.
-
-                Va ANTES de elegir el servicio, que es el momento en que todavía
-                se puede evitar el cobro repetido. No bloquea: el paciente puede
-                querer otro servicio y eso es legítimo.
-
-                Es informativo a propósito — agendar una sesión pendiente va por
-                el enlace con token que llega al correo, no desde acá, porque
-                consumir un paquete necesita un identificador que este flujo no
-                tiene (ADR-078).
-              */}
-              {unusedPaidSessions > 0 && (
-                <div className="rounded-xl border border-violet-200 bg-violet-50 px-3 py-2.5 text-left">
-                  <p className="text-xs font-semibold text-violet-800">
-                    Ya tenés {unusedPaidSessions} {unusedPaidSessions === 1 ? 'sesión' : 'sesiones'}{' '}
-                    pagadas sin usar.
-                  </p>
-                  <p className="mt-0.5 text-[11px] leading-snug text-violet-700">
-                    Buscá en tu correo el enlace para agendarlas — así no pagás de nuevo. Si querés
-                    reservar otro servicio distinto, seguí normalmente.
-                  </p>
-                </div>
-              )}
-
               {/* Active package banner */}
               {activePackage && (
                 <button
@@ -2554,6 +2529,32 @@ export default function BookingClient({
               onOpen={() => setActiveStep(6)}
             >
               <div className="space-y-4">
+                {/*
+                  Aviso de sesiones ya pagadas.
+
+                  Va en el paso de PAGO, no antes: el correo se pide recién en el
+                  paso 5 y sin correo no hay a quién consultarle las sesiones. Es
+                  además el último momento en que el paciente puede evitar pagar
+                  dos veces lo mismo.
+
+                  Informativo a propósito — agendar una sesión pendiente va por el
+                  enlace con token que llega al correo, no desde acá, porque
+                  consumir un paquete necesita un identificador que este flujo no
+                  tiene (ADR-078). Y no bloquea: puede querer otro servicio.
+                */}
+                {unusedPaidSessions > 0 && (
+                  <div className="rounded-xl border border-violet-200 bg-violet-50 px-4 py-3 text-left">
+                    <p className="text-xs font-semibold text-violet-800">
+                      Ya tenés {unusedPaidSessions}{' '}
+                      {unusedPaidSessions === 1 ? 'sesión pagada' : 'sesiones pagadas'} sin usar.
+                    </p>
+                    <p className="mt-0.5 text-[11px] leading-snug text-violet-700">
+                      Buscá en tu correo el enlace para agendarlas — así no pagás de nuevo. Si
+                      querés reservar otro servicio distinto, seguí normalmente.
+                    </p>
+                  </div>
+                )}
+
                 {/* Amount reminder */}
                 {selectedPlan && (
                   <div
