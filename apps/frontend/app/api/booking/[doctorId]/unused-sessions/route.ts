@@ -46,8 +46,35 @@ export async function GET(
       return NextResponse.json({ data: [] }, { status: 200 });
     }
 
-    const json = (await res.json()) as { success?: boolean; data?: unknown[] };
-    return NextResponse.json({ data: json?.data ?? [] }, { status: 200 });
+    /*
+      El backend responde este endpoint en camelCase, pero el del especialista
+      —mismo dato— responde en snake_case. Dos formas para lo mismo es como se
+      pierden datos en silencio: el cliente leía `unused_sessions`, llegaba
+      `unusedSessions`, y el aviso quedaba en cero sin que nada fallara.
+
+      Se normaliza acá, que es el único punto por el que pasa, para que la
+      pantalla tenga UNA sola forma que leer.
+    */
+    const json = (await res.json()) as {
+      success?: boolean;
+      data?: Array<{
+        planName?: string;
+        totalSessions?: number;
+        unusedSessions?: number;
+        pendingRows?: number;
+        hasPendingRows?: boolean;
+      }>;
+    };
+
+    const data = (json?.data ?? []).map((r) => ({
+      plan_name: r.planName ?? '',
+      total_sessions: r.totalSessions ?? 0,
+      unused_sessions: r.unusedSessions ?? 0,
+      pending_rows: r.pendingRows ?? 0,
+      has_pending_rows: r.hasPendingRows ?? false,
+    }));
+
+    return NextResponse.json({ data }, { status: 200 });
   } catch (err) {
     // Sin el correo en el log: es PII.
     reportError('booking-unused-sessions-proxy', 'GET', err);
