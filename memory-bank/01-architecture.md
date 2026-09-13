@@ -1138,6 +1138,34 @@ status='active'` con `QueryTypes.UPDATE` (devuelve `[undefined, affectedCount]`;
   `git grep` sobre el comportamiento (un texto de la UI, un nombre de estado), no sobre cómo alguien
   habría titulado el commit.
 
+- **ADR-084 (2026-09-13):** **Frontend y backend consultan la tasa del BCV en el MISMO orden.**
+  Cierra la deuda que el ADR-083 dejó abierta el mismo día. El frontend pedía **pydolarve primero y
+  el BCV último** — el orden **inverso** al del backend—, así que las dos mitades de la app podían
+  mostrar números distintos para exactamente lo mismo. Ese es el síntoma que originó todo el hilo:
+  el checkout decía un número y el portal otro.
+
+  Orden único en los dos lados: **`www.bcv.org.ve` → dolarapi → pydolarve**, más `currency-api` solo
+  en el frontend como último recurso. Ese último **se rotula "Tasa aproximada (Currency API)" y NO
+  "BCV Oficial"**: es una tasa de mercado, y servirla como BCV sería repetir el defecto que se vino
+  a corregir. Se conserva porque sin él la app se queda sin ninguna tasa si fallan las tres primeras.
+
+  🔑 **Sin caché este cambio no era viable, y esa es la parte interesante.** El handler es
+  `force-dynamic` y `useBcvRate` lo llama **al montar cualquier pantalla con dinero**; en `develop`
+  además lo llaman la reserva pública y el PDF de presupuestos. Poner el BCV primero sin cachear
+  habría raspado una página de ~150 KB en cada vista. Caché **en proceso, 1 h** (el BCV publica una
+  vez por día → ~24 consultas por instancia por día). **Solo se cachea un resultado útil**: guardar
+  un fallo dejaría la app sin tasa una hora entera por un tropiezo de red de un segundo; y si una
+  consulta falla habiendo algo cacheado, se sirve eso **con su fecha**.
+
+  ⚠️ **El cambio vive en DOS archivos distintos según la rama**, y es la trampa a recordar: en `main`
+  la lógica está inline en `app/api/admin/bcv-rate/route.ts`; en `develop` ya se había movido a
+  `lib/bcv-rate.ts` (ADR-069) con la ruta como envoltura fina. El merge del hotfix **conflictúa**:
+  hay que portarlo a la librería, no aceptar la versión de la ruta.
+
+  ⚠️ **Si se agrega o reordena una fuente, hay que tocar los dos lados** (`lib/bcv-rate.ts` y
+  `bcv-rate.fetcher.ts`) o vuelven a divergir en silencio. Lo mismo con `parseBcvHtml`, duplicado a
+  propósito en ambos: el día que el BCV rediseñe la página, se rompen los dos.
+
 - **ADR-083 (2026-09-13):** **La tasa del BCV se le pide al BCV, y un espejo se valida por fecha.**
   Corolario inmediato del ADR-082, encontrado el mismo día porque el dueño miró el número real y no
   coincidía. `BcvRateFetcher` consultaba **`ve.dolarapi.com` primero**, que devolvía **832,4883** con
