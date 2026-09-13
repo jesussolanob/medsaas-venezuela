@@ -100,6 +100,7 @@ export type AppointmentFlowState = {
    * bloquea la creación de la cita.
    */
   pendingToSchedule: number;
+  hasPendingRows: boolean;
   selectPatient: (p: PatientLookup) => void;
   searchingPatients: boolean;
   showInlineCreator: boolean;
@@ -188,6 +189,14 @@ export function useAppointmentFlow(
   const [selectedPatient, setSelectedPatient] = useState<PatientLookup | null>(null);
   /** Sesiones de paquete que el paciente tiene esperando ser agendadas. */
   const [pendingToSchedule, setPendingToSchedule] = useState(0);
+  /**
+   * Si esas sesiones ya figuran en "Consultas por agendar".
+   *
+   * Cambia el consejo, no el aviso: con filas registradas se puede agendar
+   * desde ahí; sin ellas el paquete existe pero no hay nada que agendar, y
+   * mandar al especialista a una pantalla vacía sería peor que no decir nada.
+   */
+  const [hasPendingRows, setHasPendingRows] = useState(false);
   const [searchingPatients, setSearchingPatients] = useState(false);
   const [showInlineCreator, setShowInlineCreator] = useState(false);
   const [newPatient, setNewPatient] = useState<NewPatientForm>({
@@ -453,15 +462,39 @@ export function useAppointmentFlow(
   useEffect(() => {
     if (!selectedPatient || !open) {
       setPendingToSchedule(0);
+      setHasPendingRows(false);
       return;
     }
-    fetch('/api/doctor/pending-consultations?status=pending_scheduling')
+    /*
+      Se pregunta por SESIONES SIN USAR, no por filas pendientes.
+
+      Antes esto contaba `pending_consultations` del paciente. Un paquete
+      comprado antes de que esa función existiera no genera ninguna fila: cero
+      pendientes, ningún aviso, y una especialista terminó vendiendo el mismo
+      paquete TRES veces —$240 en cobros que no debían existir— sin que la
+      pantalla le dijera nada (ADR-079).
+
+      El endpoint devuelve las dos señales. Se muestra la mayor: las pendientes
+      cuando existen, y si no, las que el plan incluye y nadie reservó.
+    */
+    fetch(`/api/doctor/pending-consultations/unused-sessions/${selectedPatient.id}`)
       .then((r) => (r.ok ? r.json() : { data: [] }))
       .then((json) => {
-        const items = (json.data || []) as Array<{ patient_id?: string }>;
-        setPendingToSchedule(items.filter((i) => i.patient_id === selectedPatient.id).length);
+        const items = (json.data || []) as Array<{
+          unused_sessions?: number;
+          pending_rows?: number;
+        }>;
+        const total = items.reduce(
+          (acc, i) => acc + Math.max(i.pending_rows ?? 0, i.unused_sessions ?? 0),
+          0,
+        );
+        setPendingToSchedule(total);
+        setHasPendingRows(items.some((i) => (i.pending_rows ?? 0) > 0));
       })
-      .catch(() => setPendingToSchedule(0));
+      .catch(() => {
+        setPendingToSchedule(0);
+        setHasPendingRows(false);
+      });
   }, [selectedPatient, open]);
 
   // ── Búsqueda de pacientes (debounced) ───────────────────────────────────
@@ -818,6 +851,7 @@ export function useAppointmentFlow(
 
   return {
     pendingToSchedule,
+    hasPendingRows,
     currentStep,
     setCurrentStep,
     doctorId,

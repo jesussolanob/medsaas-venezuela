@@ -15,6 +15,7 @@ import { CreateBookingUseCase } from '../../application/use-cases/booking/create
 import { GetBookingDoctorInfoUseCase } from '../../application/use-cases/booking/get-booking-doctor-info.use-case';
 import { GetBookingPlansUseCase } from '../../application/use-cases/booking/get-booking-plans.use-case';
 import { GetBookingPackagesUseCase } from '../../application/use-cases/booking/get-booking-packages.use-case';
+import { GetBookingUnusedSessionsUseCase } from '../../application/use-cases/booking/get-booking-unused-sessions.use-case';
 import { GetAvailableSlotsUseCase } from '../../application/use-cases/booking/get-available-slots.use-case';
 import { GetBookingOfficesUseCase } from '../../application/use-cases/booking/get-booking-offices.use-case';
 
@@ -44,6 +45,7 @@ export class BookingController {
     private readonly getDoctorInfo: GetBookingDoctorInfoUseCase,
     private readonly getPlans: GetBookingPlansUseCase,
     private readonly getPackages: GetBookingPackagesUseCase,
+    private readonly getUnusedSessions: GetBookingUnusedSessionsUseCase,
     private readonly getSlots: GetAvailableSlotsUseCase,
     private readonly getOffices: GetBookingOfficesUseCase,
   ) {}
@@ -111,6 +113,39 @@ export class BookingController {
     }
     const packages = await this.getPackages.execute(doctorId, email);
     return { success: true, data: packages };
+  }
+
+  /**
+   * GET /api/booking/:doctorId/unused-sessions?email=
+   *
+   * Returns multi-session plans with remaining sessions for a patient identified
+   * by email. Informational only — does NOT modify any state.
+   *
+   * Two signals per plan:
+   *   - unusedSessions: safety net for pre-feature packages (no pending rows),
+   *     which is exactly the $240 re-sale case this endpoint was built to prevent.
+   *   - pendingRows: happy path when pending_consultations rows exist.
+   *
+   * Security:
+   *   - Email validated with Zod before hashing (invalid format → 400).
+   *   - Patient identified by email_hash — no plaintext email reaches the DB.
+   *   - No patient_id or PII in the response.
+   *   - Unknown email → empty array (prevents email enumeration).
+   *
+   * This endpoint is SEPARATE from /packages — do NOT merge them.
+   * /packages feeds the "consume package" flow which needs a package_id that does
+   * not exist in the current data model. Merging would break that flow.
+   */
+  @Get(':doctorId/unused-sessions')
+  async getUnusedPackageSessions(
+    @Param('doctorId', ParseUUIDPipe) doctorId: string,
+    @Query('email') email: string,
+  ): Promise<SuccessResponse<unknown>> {
+    if (!email) {
+      return { success: true, data: [] };
+    }
+    const rows = await this.getUnusedSessions.execute(doctorId, email);
+    return { success: true, data: rows };
   }
 
   /**

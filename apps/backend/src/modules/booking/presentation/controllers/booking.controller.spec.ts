@@ -7,6 +7,7 @@ import { GetBookingPlansUseCase } from '../../application/use-cases/booking/get-
 import { GetBookingPackagesUseCase } from '../../application/use-cases/booking/get-booking-packages.use-case';
 import { GetAvailableSlotsUseCase } from '../../application/use-cases/booking/get-available-slots.use-case';
 import { GetBookingOfficesUseCase } from '../../application/use-cases/booking/get-booking-offices.use-case';
+import { GetBookingUnusedSessionsUseCase } from '../../application/use-cases/booking/get-booking-unused-sessions.use-case';
 import { DoctorNotFoundError } from '../../application/use-cases/booking/create-booking.use-case';
 import { Appointment } from '../../../appointments/domain/entities/appointment.entity';
 import { PricingPlan } from '../../../packages/domain/entities/pricing-plan.entity';
@@ -50,6 +51,7 @@ describe('BookingController', () => {
   let mockGetPackages: jest.Mocked<GetBookingPackagesUseCase>;
   let mockGetSlots: jest.Mocked<GetAvailableSlotsUseCase>;
   let mockGetOffices: jest.Mocked<GetBookingOfficesUseCase>;
+  let mockGetUnusedSessions: jest.Mocked<GetBookingUnusedSessionsUseCase>;
 
   beforeEach(async () => {
     mockCreateUseCase = { execute: jest.fn() } as unknown as jest.Mocked<CreateBookingUseCase>;
@@ -60,6 +62,9 @@ describe('BookingController', () => {
     mockGetPackages = { execute: jest.fn() } as unknown as jest.Mocked<GetBookingPackagesUseCase>;
     mockGetSlots = { execute: jest.fn() } as unknown as jest.Mocked<GetAvailableSlotsUseCase>;
     mockGetOffices = { execute: jest.fn() } as unknown as jest.Mocked<GetBookingOfficesUseCase>;
+    mockGetUnusedSessions = {
+      execute: jest.fn(),
+    } as unknown as jest.Mocked<GetBookingUnusedSessionsUseCase>;
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [BookingController],
@@ -68,6 +73,7 @@ describe('BookingController', () => {
         { provide: GetBookingDoctorInfoUseCase, useValue: mockGetDoctorInfo },
         { provide: GetBookingPlansUseCase, useValue: mockGetPlans },
         { provide: GetBookingPackagesUseCase, useValue: mockGetPackages },
+        { provide: GetBookingUnusedSessionsUseCase, useValue: mockGetUnusedSessions },
         { provide: GetAvailableSlotsUseCase, useValue: mockGetSlots },
         { provide: GetBookingOfficesUseCase, useValue: mockGetOffices },
       ],
