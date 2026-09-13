@@ -4,6 +4,35 @@
 > ⚠️ Orden: **la entrada más nueva va ARRIBA**. La del 2026-08-11 quedó al final
 > del archivo por error; no se movió para no ensuciar el diff.
 
+## 2026-09-13 — El aviso que nunca se vio: cuatro defectos invisibles a los tests
+
+> Todo en `staging`, verificado **en navegador**. ADR-081.
+
+Se arregló la detección que debía frenar la reventa de un paquete: ahora deriva de la fuente
+primaria —cuántas sesiones incluye el plan contra cuántas citas existen— en vez de contar solo filas
+de `pending_consultations`. Se sumó el aviso a la **reserva pública**, donde no existía.
+
+**La prueba que valió más que los tests:** se corrió la lógica contra los **datos reales de
+producción**. Detecta 9 paquetes con sesiones sin usar, y **6 aparecen solo gracias a la señal
+nueva**. Entre esos hay una paciente **real** de Ana —Leagny Campos— con 2 sesiones pagadas sin usar
+que el aviso viejo no veía. Los otros 5 son cuentas de prueba del equipo.
+
+**Y después, abriendo la pantalla, aparecieron CUATRO defectos más** (ADR-081). El más grave: el
+aviso del especialista **no se renderizó nunca desde que se escribió**, porque vive en un paso del
+acordeón que ya está colapsado cuando hay un paciente elegido. Lleva así en producción. Eso corrige
+lo anotado el 12/09: no era solo que la tabla estuviera vacía — el recuadro tampoco se dibujaba.
+
+Los otros tres: un aviso puesto en un paso anterior al que pide el correo; la consulta enganchada en
+un botón que el camino normal no usa (cero peticiones en la red); y el backend devolviendo camelCase
+contra un cliente que leía snake_case, con el contador en cero y sin ningún error.
+
+⚠️ **Dos descuidos de proceso, anotados para no repetirlos:** se commiteó **dos veces directo en
+`staging`** en lugar de pasar por una rama, por encadenar comandos sin verificar la rama activa. Las
+dos se sincronizaron; al cierre no falta ningún commit en ninguna rama.
+
+**Pendiente:** producción sigue con el aviso invisible. Hasta que se promueva, la paciente con 2
+sesiones pagadas sin usar sigue expuesta a que se le cobre de nuevo.
+
 ## 2026-09-12 — Reportes de una especialista real: un paquete vendido **tres veces**
 
 > Dos hotfixes a **producción** (ADR-075 a 077) y un arreglo de datos aplicado. Las guías de la IA

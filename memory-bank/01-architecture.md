@@ -1138,6 +1138,33 @@ status='active'` con `QueryTypes.UPDATE` (devuelve `[undefined, affectedCount]`;
   `git grep` sobre el comportamiento (un texto de la UI, un nombre de estado), no sobre cómo alguien
   habría titulado el commit.
 
+- **ADR-081 (2026-09-13):** **Código correcto, puesto donde el usuario nunca pasa.** El backend de
+  la detección de sesiones sin usar estuvo bien desde el primer intento —460 suites, 4.422 tests— y
+  aun así hubo **CUATRO defectos que solo se ven usando la aplicación**. Los cuatro compilaban,
+  pasaban tipos, lint y la suite entera:
+  1. **El aviso del especialista no se renderizó NUNCA desde que se escribió** (`146eaae8`, en
+     producción). Vivía dentro del cuerpo del paso 1 del acordeón, y `selectPatient` hace
+     `setCurrentStep(2)` **siempre**: para que exista un paciente elegido, ese paso ya está
+     colapsado. Es la causa real de que una especialista vendiera el mismo paquete tres veces —la
+     tabla vacía (ADR-079) era solo la mitad.
+  2. **Aviso ubicado en un paso previo a su dato.** Lo puse en el paso 1 de la reserva pública; el
+     correo se pide en el 5. Sin correo no hay a quién consultarle nada.
+  3. **Enganchado en el botón equivocado.** La consulta salía de "Continuar sin cuenta", un camino
+     alternativo. Por el camino normal **no se hacía ni una petición** — se confirmó mirando que la
+     red no registraba ninguna llamada.
+  4. **El backend devolvía `unusedSessions` y el cliente leía `unused_sessions`.** El contador
+     quedaba en cero y **nada fallaba**. El endpoint del especialista —mismo dato— sí respondía en
+     snake_case: dos formas para lo mismo (ver [`tipos que mienten sobre la API`]).
+
+  Reglas: al ubicar un elemento en un flujo por etapas, verificar contra el **orden real** en qué
+  paso existe el dato del que depende y si ese paso sigue **visible** cuando llega. Y normalizar la
+  forma de la respuesta en el **proxy**, que es el punto único por el que pasa, para que la pantalla
+  lea una sola forma.
+
+  🔎 **Cómo se encontraron los cuatro:** abriendo la pantalla y leyendo el panel de red. Ninguno
+  habría aparecido con más tests. Un lote **no está verificado** hasta que alguien recorrió el camino
+  del usuario.
+
 - **ADR-063 (2026-09-08):** **Una columna `DATEONLY` devuelve una CADENA, no un `Date`.**
   Sequelize 6 sanea `DATEONLY` con `moment(v).format('YYYY-MM-DD')` (`data-types.js`), así que al
   LEER llega `'2026-10-08'`, y al ESCRIBIR se le pasa un `Date`. `quotes.valid_until` se declaraba
