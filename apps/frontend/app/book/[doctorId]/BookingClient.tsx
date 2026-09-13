@@ -397,6 +397,17 @@ export default function BookingClient({
 
   // Active package (prepaid sessions)
   const [activePackage, setActivePackage] = useState<ActivePackage | null>(null);
+  /**
+   * Sesiones ya pagadas que este correo tiene sin usar. SOLO PARA AVISAR.
+   *
+   * Deliberadamente separado de `activePackage`: ese estado dispara "saltear el
+   * pago y consumir el paquete", y consumirlo necesita un identificador de
+   * paquete que en el modelo real no existe (ADR-078). Mezclarlos rompería la
+   * reserva. Acá solo se le dice al paciente que ya pagó, para que no pague dos
+   * veces por lo mismo — reservar igual sigue siendo válido: puede querer otro
+   * servicio.
+   */
+  const [unusedPaidSessions, setUnusedPaidSessions] = useState(0);
   const [usingPackage, setUsingPackage] = useState(false);
 
   // Doctor offices — seeded from server component (public /api/booking/:id/offices).
@@ -528,6 +539,32 @@ export default function BookingClient({
     }
   };
 
+  /**
+   * Consulta si este correo tiene sesiones pagadas sin usar.
+   *
+   * Degrada en silencio a 0: el aviso es una ayuda, nunca una condición para
+   * poder reservar.
+   */
+  const fetchUnusedPaidSessions = async (email: string) => {
+    if (!email) return;
+    try {
+      const res = await fetch(
+        `/api/booking/${doctor.id}/unused-sessions?email=${encodeURIComponent(email)}`,
+      );
+      if (!res.ok) return;
+      const json = (await res.json()) as {
+        data?: Array<{ unused_sessions?: number; pending_rows?: number }>;
+      };
+      const total = (json.data ?? []).reduce(
+        (acc, i) => acc + Math.max(i.pending_rows ?? 0, i.unused_sessions ?? 0),
+        0,
+      );
+      setUnusedPaidSessions(total);
+    } catch (err) {
+      reportError('BookingClient', 'fetchUnusedPaidSessions', err);
+    }
+  };
+
   // Doctor offices are loaded server-side in page.tsx via publicFetch.
   // No client-side fetch is needed — initialOffices prop already contains the data.
 
@@ -621,6 +658,7 @@ export default function BookingClient({
     // Attempt to load packages by email (backend supports email lookup)
     if (form.email.trim()) {
       await fetchActivePackages(form.email.trim());
+      await fetchUnusedPaidSessions(form.email.trim());
     }
   };
 
@@ -1193,6 +1231,31 @@ export default function BookingClient({
             onOpen={() => setActiveStep(1)}
           >
             <div className="space-y-3">
+              {/*
+                Aviso de sesiones ya pagadas.
+
+                Va ANTES de elegir el servicio, que es el momento en que todavía
+                se puede evitar el cobro repetido. No bloquea: el paciente puede
+                querer otro servicio y eso es legítimo.
+
+                Es informativo a propósito — agendar una sesión pendiente va por
+                el enlace con token que llega al correo, no desde acá, porque
+                consumir un paquete necesita un identificador que este flujo no
+                tiene (ADR-078).
+              */}
+              {unusedPaidSessions > 0 && (
+                <div className="rounded-xl border border-violet-200 bg-violet-50 px-3 py-2.5 text-left">
+                  <p className="text-xs font-semibold text-violet-800">
+                    Ya tenés {unusedPaidSessions} {unusedPaidSessions === 1 ? 'sesión' : 'sesiones'}{' '}
+                    pagadas sin usar.
+                  </p>
+                  <p className="mt-0.5 text-[11px] leading-snug text-violet-700">
+                    Buscá en tu correo el enlace para agendarlas — así no pagás de nuevo. Si querés
+                    reservar otro servicio distinto, seguí normalmente.
+                  </p>
+                </div>
+              )}
+
               {/* Active package banner */}
               {activePackage && (
                 <button

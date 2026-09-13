@@ -447,19 +447,39 @@ export default function NewAppointmentFlow({ open, onClose, onSuccess, initialCo
                 <div className="min-w-0 text-xs text-amber-800">
                   <p className="font-semibold">
                     Este paciente tiene {flow.pendingToSchedule}{' '}
-                    {flow.pendingToSchedule === 1 ? 'consulta' : 'consultas'} por agendar de un
-                    paquete ya pagado.
+                    {flow.pendingToSchedule === 1 ? 'sesión' : 'sesiones'} sin usar de un paquete ya
+                    pagado.
                   </p>
-                  <p className="mt-0.5 text-amber-700">
-                    Si vas a usar una de ellas, agendala desde{' '}
-                    <a
-                      href="/doctor/pending-consultations"
-                      className="font-semibold underline underline-offset-2 hover:text-amber-900"
-                    >
-                      Consultas por agendar
-                    </a>{' '}
-                    — así no se le vuelve a cobrar. Si es otro servicio, seguí normalmente.
-                  </p>
+                  {/*
+                    El consejo cambia segun esten registradas o no.
+
+                    Con filas en "Consultas por agendar" se agenda desde ahi y el
+                    pago del paquete se hereda solo. Sin ellas el paquete existe
+                    —lo dice el plan contratado— pero esa pantalla esta vacia:
+                    mandar al especialista ahi seria mandarlo a la nada. Pasa con
+                    los paquetes comprados antes de que esa funcion existiera, que
+                    es justo el caso que hizo que uno se vendiera tres veces.
+                  */}
+                  {flow.hasPendingRows ? (
+                    <p className="mt-0.5 text-amber-700">
+                      Si vas a usar una de ellas, agendala desde{' '}
+                      <a
+                        href="/doctor/pending-consultations"
+                        className="font-semibold underline underline-offset-2 hover:text-amber-900"
+                      >
+                        Consultas por agendar
+                      </a>{' '}
+                      — así no se le vuelve a cobrar. Si es otro servicio, seguí normalmente.
+                    </p>
+                  ) : (
+                    <p className="mt-0.5 text-amber-700">
+                      Esas sesiones no quedaron registradas para agendar, así que no aparecen en
+                      Consultas por agendar. Si vas a usar una, tené en cuenta que{' '}
+                      <strong className="font-semibold">ya están pagadas</strong> — reservar el
+                      paquete de nuevo le genera un cobro repetido. Si es otro servicio, seguí
+                      normalmente.
+                    </p>
+                  )}
                 </div>
               </div>
             )}
