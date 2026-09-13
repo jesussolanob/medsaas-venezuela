@@ -33,6 +33,8 @@ import { SequelizeInvoiceRepository } from './infrastructure/database/repositori
 import { SequelizeBillingDocumentRepository } from './infrastructure/database/repositories/sequelize-billing-document.repository';
 import { SequelizeProfileLookupRepository } from './infrastructure/database/repositories/sequelize-profile-lookup.repository';
 import { BillingRateProvider } from './infrastructure/rate/billing-rate.provider';
+import { BCV_RATE_FETCHER } from '../finances/domain/repositories/rate-fetcher.ports';
+import { BcvRateFetcher } from '../finances/infrastructure/rate-fetchers/bcv-rate.fetcher';
 import { SequelizePlanPriceProvider } from './infrastructure/database/repositories/sequelize-plan-price.provider';
 
 // Use cases
@@ -72,7 +74,7 @@ import { DoctorSubscriptionPaymentsController } from './presentation/controllers
  * Cross-module model re-registration pattern:
  *   - ProfileAdminModel, AdminSubscriptionModel → approve flow (subscriptions + profiles tables)
  *   - PlanConfigModel, PlanPriceModel → checkout price lookup
- *   - AppSettingModel → BCV rate lookup (usdt_rate key written by finances module)
+ *   - AppSettingModel → tasa BCV (clave `usdt_bcv_rate`, compartida con finanzas)
  * Re-registering the same model class in multiple modules is the correct NestJS
  * pattern for cross-module table access — no new model classes are created.
  */
@@ -125,6 +127,14 @@ import { DoctorSubscriptionPaymentsController } from './presentation/controllers
     {
       provide: PLATFORM_RATE_PROVIDER,
       useClass: BillingRateProvider,
+    },
+    // El proveedor de la tasa consulta el BCV en vivo cuando la guardada está
+    // vieja. Se registra el fetcher acá en vez de importar FinancesModule
+    // entero: no tiene dependencias ni estado, así que una segunda instancia
+    // no cuesta nada y evita arrastrar un módulo grande a billing.
+    {
+      provide: BCV_RATE_FETCHER,
+      useClass: BcvRateFetcher,
     },
     {
       provide: PLAN_PRICE_PROVIDER,

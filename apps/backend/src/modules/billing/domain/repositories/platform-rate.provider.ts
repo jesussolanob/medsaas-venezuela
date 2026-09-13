@@ -7,9 +7,10 @@
  * This interface lives in the billing domain so that application use-cases
  * depend on an abstraction, not on the finances infrastructure.
  *
- * The infrastructure implementation reads the effective rate from
- * app_settings (the persistent source of truth that the finances module
- * always keeps up-to-date), avoiding a direct cross-module use-case import.
+ * ⚠️ "La tasa del BCV" es literal: NO es la tasa efectiva del sistema. El
+ * portal maneja tres (manual, Binance, BCV) y una efectiva según `rate_source`,
+ * y el plan que el especialista le paga a Delta se cotiza SIEMPRE con la del
+ * BCV. Mismo criterio que los pagos a vendedores (ADR-049).
  */
 
 export const PLATFORM_RATE_PROVIDER = 'PLATFORM_RATE_PROVIDER';
@@ -23,14 +24,17 @@ export interface RateResolution {
 
 export interface IPlatformRateProvider {
   /**
-   * Returns the current effective exchange rate for billing calculations.
+   * Devuelve la tasa del BCV (Bs por USD) para cotizar el plan.
    *
-   * Resolution order:
-   *   1. app_settings['usdt_rate']         — effective rate (all sources write here)
-   *   2. app_settings['usdt_bcv_rate']      — last known BCV-specific rate
+   * Orden de resolución:
+   *   1. `app_settings['usdt_bcv_rate']` si tiene menos de 6 h
+   *   2. consulta en vivo al BCV, que se persiste como última conocida
+   *   3. `app_settings['usdt_bcv_rate']` aunque esté vieja, con SU fecha
    *
-   * @throws RateUnavailableError when no rate can be resolved.
-   * NEVER returns 0 or NaN.
+   * 🔒 Nunca cae a `usdt_rate` (la efectiva): si no hay BCV, falla.
+   *
+   * @throws RateUnavailableError cuando no se puede resolver ninguna tasa BCV.
+   * NUNCA devuelve 0 ni NaN.
    */
   getEffectiveRate(): Promise<RateResolution>;
 }
