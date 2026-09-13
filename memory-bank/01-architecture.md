@@ -1138,6 +1138,118 @@ status='active'` con `QueryTypes.UPDATE` (devuelve `[undefined, affectedCount]`;
   `git grep` sobre el comportamiento (un texto de la UI, un nombre de estado), no sobre cómo alguien
   habría titulado el commit.
 
+- **ADR-084 (2026-09-13):** **Frontend y backend consultan la tasa del BCV en el MISMO orden.**
+  Cierra la deuda que el ADR-083 dejó abierta el mismo día. El frontend pedía **pydolarve primero y
+  el BCV último** — el orden **inverso** al del backend—, así que las dos mitades de la app podían
+  mostrar números distintos para exactamente lo mismo. Ese es el síntoma que originó todo el hilo:
+  el checkout decía un número y el portal otro.
+
+  Orden único en los dos lados: **`www.bcv.org.ve` → dolarapi → pydolarve**, más `currency-api` solo
+  en el frontend como último recurso. Ese último **se rotula "Tasa aproximada (Currency API)" y NO
+  "BCV Oficial"**: es una tasa de mercado, y servirla como BCV sería repetir el defecto que se vino
+  a corregir. Se conserva porque sin él la app se queda sin ninguna tasa si fallan las tres primeras.
+
+  🔑 **Sin caché este cambio no era viable, y esa es la parte interesante.** El handler es
+  `force-dynamic` y `useBcvRate` lo llama **al montar cualquier pantalla con dinero**; en `develop`
+  además lo llaman la reserva pública y el PDF de presupuestos. Poner el BCV primero sin cachear
+  habría raspado una página de ~150 KB en cada vista. Caché **en proceso, 1 h** (el BCV publica una
+  vez por día → ~24 consultas por instancia por día). **Solo se cachea un resultado útil**: guardar
+  un fallo dejaría la app sin tasa una hora entera por un tropiezo de red de un segundo; y si una
+  consulta falla habiendo algo cacheado, se sirve eso **con su fecha**.
+
+  ⚠️ **El cambio vive en DOS archivos distintos según la rama**, y es la trampa a recordar: en `main`
+  la lógica está inline en `app/api/admin/bcv-rate/route.ts`; en `develop` ya se había movido a
+  `lib/bcv-rate.ts` (ADR-069) con la ruta como envoltura fina. El merge del hotfix **conflictúa**:
+  hay que portarlo a la librería, no aceptar la versión de la ruta.
+
+  ⚠️ **Si se agrega o reordena una fuente, hay que tocar los dos lados** (`lib/bcv-rate.ts` y
+  `bcv-rate.fetcher.ts`) o vuelven a divergir en silencio. Lo mismo con `parseBcvHtml`, duplicado a
+  propósito en ambos: el día que el BCV rediseñe la página, se rompen los dos.
+
+- **ADR-083 (2026-09-13):** **La tasa del BCV se le pide al BCV, y un espejo se valida por fecha.**
+  Corolario inmediato del ADR-082, encontrado el mismo día porque el dueño miró el número real y no
+  coincidía. `BcvRateFetcher` consultaba **`ve.dolarapi.com` primero**, que devolvía **832,4883** con
+  `fechaActualizacion` del **11/09**, mientras **`www.bcv.org.ve` publicaba 842,2067** (Fecha Valor:
+  15 de septiembre). Un **1,2%** servido como si fuera la tasa del día.
+
+  🔑 **La lección no es el 1,2%, es de dónde se saca un dato que tiene dueño.** El BCV es la
+  autoridad de su propia tasa: un espejo solo puede empatarlo o atrasarse. Orden nuevo:
+  **`www.bcv.org.ve` → dolarapi → pydolarve**. El scraping usa el mismo patrón (`id="dolar"`) que la
+  ruta `/api/admin/bcv-rate` del frontend ya venía usando en producción — o sea que la capacidad
+  existía y estaba en el lado equivocado de la app.
+
+  ⚠️ **`fechaActualizacion` venía en la respuesta y nadie la miraba.** El dato viejo entraba sin un
+  solo aviso. Ahora se descarta lo de más de **5 días** (margen de feriado largo: el BCV no publica
+  fines de semana) y se pasa a la siguiente fuente. Una fecha **ausente o ilegible NO** descarta:
+  eso dejaría la cadena sin respaldo.
+
+  `parseBcvHtml` se exporta y se prueba contra **HTML real** guardado como fixture, no contra uno
+  escrito a mano: un fixture inventado solo demuestra que el regex entiende lo que uno _cree_ que el
+  BCV emite. Es la pieza que se rompe sola el día que rediseñen la página.
+
+  🔴 **DEUDA ABIERTA — las dos mitades de la app consultan cadenas distintas.** El frontend tiene la
+  suya en `app/api/admin/bcv-rate/route.ts` con el **orden inverso** (pydolarve → dolarapi → BCV), y
+  es `force-dynamic` con `no-store`: `useBcvRate` la llama en **cada carga de página que muestra
+  dinero**. Poner el BCV primero ahí exige **cachear antes** — hoy sería raspar una página de 151 KB
+  en cada vista. Mientras sean dos cadenas, el checkout y el portal **pueden mostrar números
+  distintos**, que es exactamente el síntoma que originó el ADR-082.
+
+- **ADR-082 (2026-09-13):** **El plan de Delta se cotiza con la tasa del BCV, y "BCV" es literal.**
+  El checkout del plan leía `app_settings['usdt_rate']`, que **no es la tasa del BCV**: es la
+  **efectiva** del sistema, la que corresponda a `rate_source` (binance | manual | bcv). Con la
+  fuente en Binance —que es el default— cotizaba **886,20** Bs/USD rotulado **"Tasa BCV"**, mientras
+  el resto del portal mostraba la BCV real, **772,54**. **14,7% de diferencia** sobre el monto que el
+  especialista efectivamente transfiere, y sobre el `amount_bs` que queda guardado en su pago —
+  porque el mismo proveedor alimenta `get-checkout-info` **y** `submit-doctor-payment`.
+
+  🔑 **El error estaba SOLO en el proveedor.** El puerto, el caso de uso y la respuesta ya llamaban
+  `bcvRate` a ese número: la intención siempre fue el BCV. Nadie lo notó porque el nombre decía lo
+  correcto y el valor venía de otro lado — el mismo patrón de [[textos-fijos-que-mienten]], pero en
+  el backend.
+
+  Cadena nueva en `BillingRateProvider`: `usdt_bcv_rate` si tiene **menos de 6 h** → consulta en vivo
+  al BCV (se persiste) → `usdt_bcv_rate` vieja **con SU fecha** → `RateUnavailableError`.
+  🔒 **Nunca cae a `usdt_rate`.** Preferir un número cualquiera antes que ninguno es lo que dejó
+  vivir el defecto meses. Mismo criterio que el ADR-049 para pagos a vendedores.
+
+  ⚠️ **Por qué hace falta la consulta en vivo y no alcanza con cambiar la clave:** `usdt_bcv_rate`
+  solo se refresca cuando `rate_source` es `'bcv'` (o cuando la fuente activa falla). Con la fuente en
+  Binance puede estar **vieja o directamente ausente**, y ausente significaría romper el checkout
+  entero. La frescura se mide en **horas, no en día calendario de Caracas**: comparar por día obliga a
+  convertir zonas horarias en un lugar más y este proyecto ya se equivocó dos veces con eso
+  (ADR-064, ADR-074).
+
+  El fetcher del BCV se registra directo en `BillingModule` en vez de importar `FinancesModule`
+  entero: no tiene dependencias ni estado. Decisión del dueño (2026-09-13): "se debe usar la tasa
+  BCV, no una distinta".
+
+- **ADR-081 (2026-09-13):** **Código correcto, puesto donde el usuario nunca pasa.** El backend de
+  la detección de sesiones sin usar estuvo bien desde el primer intento —460 suites, 4.422 tests— y
+  aun así hubo **CUATRO defectos que solo se ven usando la aplicación**. Los cuatro compilaban,
+  pasaban tipos, lint y la suite entera:
+  1. **El aviso del especialista no se renderizó NUNCA desde que se escribió** (`146eaae8`, en
+     producción). Vivía dentro del cuerpo del paso 1 del acordeón, y `selectPatient` hace
+     `setCurrentStep(2)` **siempre**: para que exista un paciente elegido, ese paso ya está
+     colapsado. Es la causa real de que una especialista vendiera el mismo paquete tres veces —la
+     tabla vacía (ADR-079) era solo la mitad.
+  2. **Aviso ubicado en un paso previo a su dato.** Lo puse en el paso 1 de la reserva pública; el
+     correo se pide en el 5. Sin correo no hay a quién consultarle nada.
+  3. **Enganchado en el botón equivocado.** La consulta salía de "Continuar sin cuenta", un camino
+     alternativo. Por el camino normal **no se hacía ni una petición** — se confirmó mirando que la
+     red no registraba ninguna llamada.
+  4. **El backend devolvía `unusedSessions` y el cliente leía `unused_sessions`.** El contador
+     quedaba en cero y **nada fallaba**. El endpoint del especialista —mismo dato— sí respondía en
+     snake_case: dos formas para lo mismo (ver [`tipos que mienten sobre la API`]).
+
+  Reglas: al ubicar un elemento en un flujo por etapas, verificar contra el **orden real** en qué
+  paso existe el dato del que depende y si ese paso sigue **visible** cuando llega. Y normalizar la
+  forma de la respuesta en el **proxy**, que es el punto único por el que pasa, para que la pantalla
+  lea una sola forma.
+
+  🔎 **Cómo se encontraron los cuatro:** abriendo la pantalla y leyendo el panel de red. Ninguno
+  habría aparecido con más tests. Un lote **no está verificado** hasta que alguien recorrió el camino
+  del usuario.
+
 - **ADR-063 (2026-09-08):** **Una columna `DATEONLY` devuelve una CADENA, no un `Date`.**
   Sequelize 6 sanea `DATEONLY` con `moment(v).format('YYYY-MM-DD')` (`data-types.js`), así que al
   LEER llega `'2026-10-08'`, y al ESCRIBIR se le pasa un `Date`. `quotes.valid_until` se declaraba
