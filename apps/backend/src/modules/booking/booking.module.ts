@@ -23,6 +23,7 @@ import { GetAvailableSlotsUseCase } from './application/use-cases/booking/get-av
 import { GetBookingOfficesUseCase } from './application/use-cases/booking/get-booking-offices.use-case';
 import { GetImmediateWindowUseCase } from './application/use-cases/booking/get-immediate-window.use-case';
 import { CreateImmediateAppointmentUseCase } from './application/use-cases/booking/create-immediate-appointment.use-case';
+import { GetBookingUnusedSessionsUseCase } from './application/use-cases/booking/get-booking-unused-sessions.use-case';
 
 // Controllers
 import { BookingController } from './presentation/controllers/booking.controller';
@@ -136,6 +137,7 @@ import { DoctorScheduleModel } from '../doctor-settings/infrastructure/database/
     GetBookingDoctorInfoUseCase,
     GetBookingPlansUseCase,
     GetBookingPackagesUseCase,
+    GetBookingUnusedSessionsUseCase,
     GetAvailableSlotsUseCase,
     GetBookingOfficesUseCase,
     GetImmediateWindowUseCase,

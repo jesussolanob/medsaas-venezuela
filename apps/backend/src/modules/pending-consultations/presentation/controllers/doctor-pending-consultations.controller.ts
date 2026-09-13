@@ -29,8 +29,10 @@ import { SchedulePendingConsultationUseCase } from '../../application/use-cases/
 import { CancelPendingConsultationUseCase } from '../../application/use-cases/cancel-pending-consultation.use-case';
 import { CreateDoctorPendingConsultationsUseCase } from '../../application/use-cases/create-doctor-pending-consultations.use-case';
 import { GetPackageUsageUseCase } from '../../application/use-cases/get-package-usage.use-case';
+import { GetUnusedPackageSessionsUseCase } from '../../application/use-cases/get-unused-package-sessions.use-case';
 import type { PendingConsultation } from '../../domain/entities/pending-consultation.entity';
 import type { PackageUsageRow } from '../../domain/repositories/pending-consultation.repository';
+import type { UnusedPackageSessionsRow } from '../../application/use-cases/get-unused-package-sessions.use-case';
 
 interface SuccessResponse<T> {
   success: true;
@@ -46,6 +48,17 @@ function toUsageResponse(row: PackageUsageRow) {
     scheduled: row.scheduled,
     no_show: row.noShow,
     pending_scheduling: row.pendingScheduling,
+  };
+}
+
+function toUnusedResponse(row: UnusedPackageSessionsRow) {
+  return {
+    plan_name: row.planName,
+    total_sessions: row.totalSessions,
+    booked_sessions: row.bookedSessions,
+    pending_rows: row.pendingRows,
+    unused_sessions: row.unusedSessions,
+    has_pending_rows: row.hasPendingRows,
   };
 }
 
@@ -86,6 +99,7 @@ export class DoctorPendingConsultationsController {
     private readonly cancel: CancelPendingConsultationUseCase,
     private readonly createDoctorPending: CreateDoctorPendingConsultationsUseCase,
     private readonly getUsage: GetPackageUsageUseCase,
+    private readonly getUnused: GetUnusedPackageSessionsUseCase,
   ) {}
 
   /**
@@ -186,5 +200,30 @@ export class DoctorPendingConsultationsController {
   ): Promise<SuccessResponse<ReturnType<typeof toUsageResponse>[]>> {
     const items = await this.getUsage.execute({ doctorId: user.sub, patientId });
     return { success: true, data: items.map(toUsageResponse) };
+  }
+
+  /**
+   * GET /api/doctor/pending-consultations/patient/:patientId/unused-sessions
+   *
+   * Returns plans with unused sessions or pending scheduling rows for a patient.
+   * Two signals are surfaced (unusedSessions + pendingRows) to cover the $240
+   * re-sale case: packages bought before pending_consultations rows existed have
+   * unusedSessions > 0 and pendingRows = 0 simultaneously.
+   *
+   * Only plans where unusedSessions > 0 OR pendingRows > 0 are returned; fully
+   * consumed packages are excluded.
+   *
+   * Anti-IDOR: doctorId comes from the authenticated session (user.sub).
+   * The patient must belong to the authenticated doctor; returns 404 otherwise.
+   *
+   * NEVER log patient_id (PII).
+   */
+  @Get('patient/:patientId/unused-sessions')
+  async getUnusedSessions(
+    @Param('patientId', ParseUUIDPipe) patientId: string,
+    @CurrentUser() user: CurrentUserPayload,
+  ): Promise<SuccessResponse<ReturnType<typeof toUnusedResponse>[]>> {
+    const items = await this.getUnused.execute(user.sub, patientId);
+    return { success: true, data: items.map(toUnusedResponse) };
   }
 }
