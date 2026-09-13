@@ -2497,6 +2497,17 @@ export default function BookingClient({
                         return;
                       }
                       setError('');
+                      /*
+                        Acá —y no en "Continuar sin cuenta"— es donde se sabe el
+                        correo: este es el botón que realmente avanza al paso de
+                        pago. Enganchado en el otro manejador, la consulta no se
+                        hacía nunca por este camino.
+
+                        No se espera la respuesta a propósito: el paso avanza ya y
+                        el aviso aparece cuando llega. `fetchUnusedPaidSessions`
+                        atrapa sus propios errores y degrada a 0.
+                      */
+                      void fetchUnusedPaidSessions(form.email.trim());
                       setActiveStep(usingPackage ? 7 : 6);
                     }}
                     className="w-full text-white py-3 rounded-xl text-sm font-bold transition-all hover:opacity-90"
