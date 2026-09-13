@@ -1138,6 +1138,34 @@ status='active'` con `QueryTypes.UPDATE` (devuelve `[undefined, affectedCount]`;
   `git grep` sobre el comportamiento (un texto de la UI, un nombre de estado), no sobre cómo alguien
   habría titulado el commit.
 
+- **ADR-083 (2026-09-13):** **La tasa del BCV se le pide al BCV, y un espejo se valida por fecha.**
+  Corolario inmediato del ADR-082, encontrado el mismo día porque el dueño miró el número real y no
+  coincidía. `BcvRateFetcher` consultaba **`ve.dolarapi.com` primero**, que devolvía **832,4883** con
+  `fechaActualizacion` del **11/09**, mientras **`www.bcv.org.ve` publicaba 842,2067** (Fecha Valor:
+  15 de septiembre). Un **1,2%** servido como si fuera la tasa del día.
+
+  🔑 **La lección no es el 1,2%, es de dónde se saca un dato que tiene dueño.** El BCV es la
+  autoridad de su propia tasa: un espejo solo puede empatarlo o atrasarse. Orden nuevo:
+  **`www.bcv.org.ve` → dolarapi → pydolarve**. El scraping usa el mismo patrón (`id="dolar"`) que la
+  ruta `/api/admin/bcv-rate` del frontend ya venía usando en producción — o sea que la capacidad
+  existía y estaba en el lado equivocado de la app.
+
+  ⚠️ **`fechaActualizacion` venía en la respuesta y nadie la miraba.** El dato viejo entraba sin un
+  solo aviso. Ahora se descarta lo de más de **5 días** (margen de feriado largo: el BCV no publica
+  fines de semana) y se pasa a la siguiente fuente. Una fecha **ausente o ilegible NO** descarta:
+  eso dejaría la cadena sin respaldo.
+
+  `parseBcvHtml` se exporta y se prueba contra **HTML real** guardado como fixture, no contra uno
+  escrito a mano: un fixture inventado solo demuestra que el regex entiende lo que uno _cree_ que el
+  BCV emite. Es la pieza que se rompe sola el día que rediseñen la página.
+
+  🔴 **DEUDA ABIERTA — las dos mitades de la app consultan cadenas distintas.** El frontend tiene la
+  suya en `app/api/admin/bcv-rate/route.ts` con el **orden inverso** (pydolarve → dolarapi → BCV), y
+  es `force-dynamic` con `no-store`: `useBcvRate` la llama en **cada carga de página que muestra
+  dinero**. Poner el BCV primero ahí exige **cachear antes** — hoy sería raspar una página de 151 KB
+  en cada vista. Mientras sean dos cadenas, el checkout y el portal **pueden mostrar números
+  distintos**, que es exactamente el síntoma que originó el ADR-082.
+
 - **ADR-082 (2026-09-13):** **El plan de Delta se cotiza con la tasa del BCV, y "BCV" es literal.**
   El checkout del plan leía `app_settings['usdt_rate']`, que **no es la tasa del BCV**: es la
   **efectiva** del sistema, la que corresponda a `rate_source` (binance | manual | bcv). Con la
