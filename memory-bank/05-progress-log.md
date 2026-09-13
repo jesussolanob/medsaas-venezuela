@@ -4,6 +4,56 @@
 > ⚠️ Orden: **la entrada más nueva va ARRIBA**. La del 2026-08-11 quedó al final
 > del archivo por error; no se movió para no ensuciar el diff.
 
+## 2026-09-12 — Reportes de una especialista real: un paquete vendido **tres veces**
+
+> Dos hotfixes a **producción** (ADR-075 a 077) y un arreglo de datos aplicado. Las guías de la IA
+> y el botón de extras quedaron en **staging**. ADR-078 a 080.
+
+### Lo que entró a producción
+
+Cinco reportes de Ana Solano, todos corregidos y desplegados: el historial que se leía como un
+corrido (faltaba margen entre `<p>`, no era el contenido), los mensajes de estado de cita —que eran
+**dos distintos para la misma falla**, uno sin nombrar los estados y otro nombrándolos en inglés—,
+las etiquetas HTML crudas en el listado, y los ingresos que **no estaban duplicados**.
+
+Después se sumó un sexto: al cancelar una cita **el listado no mostraba nada**. Solo desaparecía una
+etiqueta ámbar. Por eso la especialista creyó que la cancelación fallaba y siguió reintentando
+contra errores. El acuse de recibo de una acción tiene que ser visible.
+
+### El caso caro: un paquete cobrado tres veces
+
+Gabriela Jaraba compró un paquete de 3 sesiones. En el sistema había **tres reservas del mismo
+paquete**, cada una con su cobro de $120: uno pagado y **$240 en pendientes que no existían**.
+
+La causa: compró el **19 de agosto** y "Consultas por agendar" llegó a producción el **27**. Esa
+compra nunca generó sesiones pendientes, así que el aviso que debía frenarlo —que **sí existe y está
+en producción**— miró una tabla vacía y se quedó callado (ADR-079).
+
+**Cómo se resolvió:** los datos se arreglaron en dos pasadas, y la primera estuvo mal. Reconstruí la
+historia desde los datos y asumí que el paquete era el del 19 de agosto; la especialista aclaró que
+ese día fue una **consulta individual de $45** y que el paquete arrancó el **10 de septiembre**, con
+**dos pagos** distintos. Estado final: el cobro de $120 quedó asignado al paquete, la consulta del 19
+volvió a ser individual con su cargo de $45, y la tercera sesión regresó a "Consultas por agendar".
+
+⚠️ **Lección de método:** borré dos filas de pago sin guardar copia completa de sus columnas. Eran
+cargos impagos y no se perdió dinero, pero de haber hecho falta restaurarlas idénticas no habría
+podido. Antes de un `DELETE` en producción, volcar la fila entera.
+
+### Lo que quedó en staging
+
+- **Guías del asistente de IA** — no se tocaban desde el 23/07. Faltaban **cinco módulos enteros**
+  (Inventario, Presupuestos, Consultas por agendar, Registrar pago, Comisiones) y una docena de
+  funciones. La IA responde SOLO con esa guía: lo que no esté escrito, no lo sabe, y **falla sin
+  producir ningún error**. Ahora el paso está en el checklist de cierre de `CLAUDE.md`.
+- **Botón "Cobrar aparte"** en una sesión cubierta, verificado en navegador: cobrar dos veces
+  seguidas deja **una sola** fila de pago y el stock no baja de más.
+
+### Pendiente
+
+El arreglo de código del aviso: que la detección no dependa solo de `pending_consultations`, y que
+la reserva pública avise también. Ahí la pieza ya existe pero consulta `patient_packages`, que tiene
+**cero filas en toda la producción** (ADR-078).
+
 ## 2026-09-11 — Lote de paquete pagado: cerrado y verificado en staging (**14 defectos**)
 
 > Todo en `staging`, desplegado y probado en navegador. `staging` quedó **208 commits por delante de

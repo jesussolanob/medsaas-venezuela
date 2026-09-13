@@ -1093,6 +1093,51 @@ status='active'` con `QueryTypes.UPDATE` (devuelve `[undefined, affectedCount]`;
   las ideas. Y cada bloque de la consulta se presenta como su propia sección con superficie — una
   etiqueta gris de 10px no alcanza para marcar dónde termina el motivo y empieza el tratamiento.
 
+- **ADR-078 (2026-09-12):** **`patient_packages` está MUERTA: cero filas en producción, y una
+  pantalla entera depende de ella.** El modelo real de un paquete NO es esa tabla: es
+  `appointments` con un plan de `sessions_count > 1` más filas en `pending_consultations` para las
+  sesiones sin fecha. Nada llena `patient_packages` desde el booking — `CreatePackageUseCase` solo
+  es alcanzable desde su propio controlador, que nadie usa.
+
+  Consecuencia medida: la reserva pública **ya tiene** la detección de paquetes prepagados
+  —`GET /api/booking/:doctorId/packages?email=`, `GetBookingPackagesUseCase`, y el cliente que la
+  consume y ofrece usar el paquete— y **no puede dispararse para nadie**, porque consulta una tabla
+  que siempre está vacía. Es el patrón "código completo que nadie llama", pero peor: el código SÍ se
+  llama, y la respuesta siempre viene vacía. No hay error, no hay log, nadie lo reporta.
+
+  ⚠️ Al repuntar esa detección hacia `pending_consultations`, **no alimentes `activePackage` del
+  cliente con el dato derivado**: ese estado dispara "saltear el pago y consumir el paquete", y para
+  consumirlo hace falta un `package_id` que en el modelo real **no existe**. El aviso al paciente
+  tiene que ser informativo; agendar una sesión pendiente va por su propio enlace con token.
+
+- **ADR-079 (2026-09-12):** **Un aviso que se apoya en una tabla que puede estar vacía falla en
+  silencio.** Existe desde `146eaae8` y está en producción: al elegir un paciente en "Nueva
+  consulta", si tiene sesiones por agendar aparece un recuadro ámbar que sugiere usarlas —sin
+  bloquear, porque puede estar vendiéndole otro servicio y eso es legítimo—. Funciona.
+
+  Y aun así una especialista **le vendió el mismo paquete tres veces** a la misma paciente. El aviso
+  cuenta filas de `pending_consultations`; ese paquete se compró el **19 de agosto** y la función que
+  genera esas filas llegó a producción el **27 de agosto**. Cero filas ⇒ ningún aviso ⇒ se revendió.
+
+  Regla: una salvaguarda que depende de datos derivados tiene que **degradar a la fuente primaria**.
+  Acá: deducir las sesiones sin usar comparando `sessions_count` del plan contra las citas
+  realmente reservadas, y no solo contar pendientes. Vale también para la fragilidad conocida de que
+  las preconsultas **no se derivan**: si su generación falla, no se recuperan solas.
+
+  📊 Daño: 3 reservas del mismo paquete, **$240 en cobros pendientes que no existían**. Ningún
+  dinero real se movió —los dos cargos de más nunca se pagaron— pero si la especialista los aprueba,
+  la paciente queda facturada tres veces. Un solo caso real en toda la producción; los demás
+  paquetes sin pendientes resultaron ser de **cuentas de prueba del equipo**.
+
+- **ADR-080 (2026-09-12):** **Antes de decir "esto no está implementado", buscá en el CÓDIGO.**
+  Busqué una decisión de producto en `memory-bank/`, en `docs/` y en los mensajes de commit, no la
+  encontré, y le reporté al dueño que nunca se había escrito ni construido. **Estaba construida y en
+  producción.** Lo que no existía era su rastro en la documentación.
+
+  El costo no fue solo la vergüenza: casi rehago una función que ya existía. El chequeo correcto es
+  `git grep` sobre el comportamiento (un texto de la UI, un nombre de estado), no sobre cómo alguien
+  habría titulado el commit.
+
 - **ADR-063 (2026-09-08):** **Una columna `DATEONLY` devuelve una CADENA, no un `Date`.**
   Sequelize 6 sanea `DATEONLY` con `moment(v).format('YYYY-MM-DD')` (`data-types.js`), así que al
   LEER llega `'2026-10-08'`, y al ESCRIBIR se le pasa un `Date`. `quotes.valid_until` se declaraba
