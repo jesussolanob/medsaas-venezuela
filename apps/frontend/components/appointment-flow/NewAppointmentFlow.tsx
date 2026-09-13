@@ -407,6 +407,63 @@ export default function NewAppointmentFlow({ open, onClose, onSuccess, initialCo
         )}
 
         <div className="p-4 space-y-3">
+          {/*
+            Aviso de sesiones ya pagadas — FUERA del acordeón, a propósito.
+
+            Vivía dentro del cuerpo del paso 1, y `selectPatient` hace
+            `setCurrentStep(2)` SIEMPRE: para que haya un paciente elegido hay que
+            haber pasado de paso, con lo cual el paso 1 ya está colapsado. El aviso
+            no pudo verse nunca desde que se escribió, y eso explica por qué una
+            especialista vendió el mismo paquete tres veces sin que nada se lo
+            advirtiera (ADR-079).
+
+            Acá arriba queda visible durante todo el flujo, que es lo que
+            corresponde: el dato importa al elegir servicio y al cobrar, no solo al
+            elegir paciente.
+          */}
+          {flow.pendingToSchedule > 0 && (
+            <div className="mt-3 flex items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5">
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
+              <div className="min-w-0 text-xs text-amber-800">
+                <p className="font-semibold">
+                  Este paciente tiene {flow.pendingToSchedule}{' '}
+                  {flow.pendingToSchedule === 1 ? 'sesión' : 'sesiones'} sin usar de un paquete ya
+                  pagado.
+                </p>
+                {/*
+                    El consejo cambia segun esten registradas o no.
+
+                    Con filas en "Consultas por agendar" se agenda desde ahi y el
+                    pago del paquete se hereda solo. Sin ellas el paquete existe
+                    —lo dice el plan contratado— pero esa pantalla esta vacia:
+                    mandar al especialista ahi seria mandarlo a la nada. Pasa con
+                    los paquetes comprados antes de que esa funcion existiera, que
+                    es justo el caso que hizo que uno se vendiera tres veces.
+                  */}
+                {flow.hasPendingRows ? (
+                  <p className="mt-0.5 text-amber-700">
+                    Si vas a usar una de ellas, agendala desde{' '}
+                    <a
+                      href="/doctor/pending-consultations"
+                      className="font-semibold underline underline-offset-2 hover:text-amber-900"
+                    >
+                      Consultas por agendar
+                    </a>{' '}
+                    — así no se le vuelve a cobrar. Si es otro servicio, seguí normalmente.
+                  </p>
+                ) : (
+                  <p className="mt-0.5 text-amber-700">
+                    Esas sesiones no quedaron registradas para agendar, así que no aparecen en
+                    Consultas por agendar. Si vas a usar una, tené en cuenta que{' '}
+                    <strong className="font-semibold">ya están pagadas</strong> — reservar el
+                    paquete de nuevo le genera un cobro repetido. Si es otro servicio, seguí
+                    normalmente.
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* ── PASO 1: Paciente ──────────────────────────────────────── */}
           <AccordionSection
             step={1}
@@ -441,48 +498,6 @@ export default function NewAppointmentFlow({ open, onClose, onSuccess, initialCo
               No se bloquea la creación a propósito: puede estar vendiéndole
               un servicio distinto, y eso es legítimo.
             */}
-            {flow.pendingToSchedule > 0 && (
-              <div className="mt-3 flex items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5">
-                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
-                <div className="min-w-0 text-xs text-amber-800">
-                  <p className="font-semibold">
-                    Este paciente tiene {flow.pendingToSchedule}{' '}
-                    {flow.pendingToSchedule === 1 ? 'sesión' : 'sesiones'} sin usar de un paquete ya
-                    pagado.
-                  </p>
-                  {/*
-                    El consejo cambia segun esten registradas o no.
-
-                    Con filas en "Consultas por agendar" se agenda desde ahi y el
-                    pago del paquete se hereda solo. Sin ellas el paquete existe
-                    —lo dice el plan contratado— pero esa pantalla esta vacia:
-                    mandar al especialista ahi seria mandarlo a la nada. Pasa con
-                    los paquetes comprados antes de que esa funcion existiera, que
-                    es justo el caso que hizo que uno se vendiera tres veces.
-                  */}
-                  {flow.hasPendingRows ? (
-                    <p className="mt-0.5 text-amber-700">
-                      Si vas a usar una de ellas, agendala desde{' '}
-                      <a
-                        href="/doctor/pending-consultations"
-                        className="font-semibold underline underline-offset-2 hover:text-amber-900"
-                      >
-                        Consultas por agendar
-                      </a>{' '}
-                      — así no se le vuelve a cobrar. Si es otro servicio, seguí normalmente.
-                    </p>
-                  ) : (
-                    <p className="mt-0.5 text-amber-700">
-                      Esas sesiones no quedaron registradas para agendar, así que no aparecen en
-                      Consultas por agendar. Si vas a usar una, tené en cuenta que{' '}
-                      <strong className="font-semibold">ya están pagadas</strong> — reservar el
-                      paquete de nuevo le genera un cobro repetido. Si es otro servicio, seguí
-                      normalmente.
-                    </p>
-                  )}
-                </div>
-              </div>
-            )}
           </AccordionSection>
 
           {/* ── PASO 2: Consultorio ──────────────────────────────────── */}
