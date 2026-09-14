@@ -72,8 +72,11 @@ type PaymentMethod =
   | 'transferencia'
   | 'zelle'
   | 'binance'
-  | 'cash_usd'
-  | 'cash_bs'
+  // Espanol, igual que Consultas, Cobros y Configuracion. La reserva publica
+  // escribia `cash_usd` y el especialista despues abria la consulta y veia
+  // "— Sin especificar —": perdia como habia dicho pagar el paciente.
+  | 'efectivo'
+  | 'efectivo_bs'
   | 'pos';
 type ActivePackage = {
   id: string;
@@ -237,12 +240,13 @@ const PAYMENT_LABELS: Record<PaymentMethod, string> = {
   transferencia: '🏦 Transferencia',
   zelle: '💳 Zelle',
   binance: '₿ Binance',
-  cash_usd: '💵 Efectivo (USD)',
-  cash_bs: '💵 Efectivo (Bs)',
+  efectivo: '💵 Efectivo (USD)',
+  efectivo_bs: '💵 Efectivo (Bs)',
   pos: '🛒 Punto de venta',
 };
 
-const requiresReceipt = (method: PaymentMethod) => !['cash_usd', 'cash_bs', 'pos'].includes(method);
+const requiresReceipt = (method: PaymentMethod) =>
+  !['efectivo', 'efectivo_bs', 'pos'].includes(method);
 
 // ── Accordion Section Component ─────────────────────────────────────────────
 function AccordionSection({
@@ -2460,7 +2464,7 @@ export default function BookingClient({
                   <div className="grid grid-cols-2 gap-2">
                     {(paymentMethods.length > 0
                       ? paymentMethods
-                      : ['pago_movil', 'transferencia', 'zelle', 'cash_usd']
+                      : ['pago_movil', 'transferencia', 'zelle', 'efectivo']
                     ).map((method) => (
                       <button
                         key={method}

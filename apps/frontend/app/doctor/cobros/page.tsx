@@ -19,7 +19,12 @@ import {
   addPaymentItem,
   removePaymentItem,
 } from '@/app/doctor/finances/payments-actions';
-import { formatPaymentMethod } from '@/lib/payment-methods';
+import {
+  formatPaymentMethod,
+  normalizePaymentMethod,
+  normalizePaymentMethods,
+  normalizePaymentDetailKeys,
+} from '@/lib/payment-methods';
 import { entriesOf } from '@/lib/payment-details';
 import { buildReceiptHtml } from '@/lib/receipt-pdf';
 import { waLink } from '@/lib/phone-utils';
@@ -84,8 +89,11 @@ const PAYMENT_METHOD_OPTIONS: Array<{ value: string; label: string }> = [
   { value: 'transferencia', label: 'Transferencia' },
   { value: 'zelle', label: 'Zelle' },
   { value: 'binance', label: 'Binance' },
-  { value: 'cash_usd', label: 'Efectivo USD' },
-  { value: 'cash_bs', label: 'Efectivo Bs' },
+  // Espanol, igual que Consultas. Antes esta pantalla ofrecia `cash_usd` y
+  // Consultas `efectivo`: lo que se guardaba de un lado no se podia mostrar del
+  // otro. Los valores viejos ya guardados se normalizan al leer.
+  { value: 'efectivo', label: 'Efectivo USD' },
+  { value: 'efectivo_bs', label: 'Efectivo Bs' },
   { value: 'pos', label: 'POS' },
 ];
 
@@ -223,9 +231,13 @@ export default function CobrosPage() {
     let cancelled = false;
     getDoctorProfile().then((prof) => {
       if (cancelled || !prof) return;
-      setDoctorPaymentMethods((prof.paymentMethods as string[] | null) ?? []);
+      setDoctorPaymentMethods(normalizePaymentMethods(prof.paymentMethods as string[] | null));
+      // Las CLAVES de payment_details se normalizan junto con la lista de
+      // metodos. Si se normalizara solo la lista, el mensaje de cobro buscaria
+      // los datos bancarios bajo `efectivo` mientras el JSONB los guarda bajo
+      // `cash_usd`, y el paciente recibiria el metodo sin a donde transferir.
       setDoctorPaymentDetails(
-        (prof.paymentDetails as Record<string, Record<string, string>> | null) ?? {},
+        normalizePaymentDetailKeys(prof.paymentDetails as Record<string, unknown> | null),
       );
     });
     return () => {
@@ -262,7 +274,7 @@ export default function CobrosPage() {
     const effectiveRate = frozenRate ?? bcvRate;
 
     setEditPaidAt(selectedPayment.paid_at?.split('T')[0] ?? new Date().toISOString().split('T')[0]);
-    setEditMethod(selectedPayment.payment_method ?? '');
+    setEditMethod(normalizePaymentMethod(selectedPayment.payment_method));
     setEditReference('');
     setEditBcvRate(effectiveRate ? effectiveRate.toFixed(2) : '');
     setEditAmountBs(
@@ -775,6 +787,11 @@ export default function CobrosPage() {
       transferencia: 'Transferencia Bancaria',
       zelle: 'Zelle',
       binance: 'Binance Pay',
+      // Espanol: `doctorPaymentMethods` llega normalizado. Se dejan tambien las
+      // claves viejas por si alguna linea todavia no paso por el normalizador —
+      // sin ellas el mensaje al paciente diria "efectivo" en crudo.
+      efectivo: 'Efectivo USD',
+      efectivo_bs: 'Efectivo Bs',
       cash_usd: 'Efectivo USD',
       cash_bs: 'Efectivo Bs',
       pos: 'Punto de venta (POS)',

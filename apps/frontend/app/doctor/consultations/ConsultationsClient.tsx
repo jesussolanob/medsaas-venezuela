@@ -116,6 +116,7 @@ import { reportError } from '@/lib/report-error';
 import { useDoctorFeatures } from '@/hooks/useDoctorFeatures';
 import { showToast } from '@/components/ui/Toaster';
 import ShareDocumentsModal from './ShareDocumentsModal';
+import { normalizePaymentMethod, normalizePaymentMethods } from '@/lib/payment-methods';
 import ApprovePaymentModal, { type ExistingExtraItem } from './ApprovePaymentModal';
 import PaymentMethodModal from './PaymentMethodModal';
 import IncomeModal, { type IncomeForm } from '@/components/finances/IncomeModal';
@@ -1021,7 +1022,10 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                 `${profileData.professionalTitle || ''} ${profileData.fullName || ''}`.trim();
               setDoctorName(fullName);
               if (profileData.paymentMethods && Array.isArray(profileData.paymentMethods)) {
-                setDoctorPaymentMethods(profileData.paymentMethods);
+                // Normalizado: el perfil puede traer el vocabulario viejo
+                // (`cash_usd`) y el selector de abajo ofrece `efectivo`. Sin esto la
+                // opcion se filtraba y el especialista no podia cobrar en efectivo.
+                setDoctorPaymentMethods(normalizePaymentMethods(profileData.paymentMethods));
               }
               setDoctorSpecialty(profileData.specialty || null);
               setDoctorLogo(profileData.logoUrl ?? null);
@@ -1717,7 +1721,7 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
         // (default '') para no arrastrar el diagnóstico de una consulta abierta antes.
         setReposoDiagnosis(freshDiagnosis || '');
         // Inicializar estado del panel de detalles de pago
-        setPagoMethod(fresh.payment_method ?? '');
+        setPagoMethod(normalizePaymentMethod(fresh.payment_method));
         setPagoReference(fresh.payment_reference ?? '');
         setPagoAmount(fresh.amount != null ? String(fresh.amount) : '');
         setPagoReceiptPath(fresh.payment_receipt_url ?? null);
@@ -1739,7 +1743,7 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
           payment_status: c.payment_status,
         });
         setReposoDiagnosis(cachedDiagnosis || '');
-        setPagoMethod(c.payment_method ?? '');
+        setPagoMethod(normalizePaymentMethod(c.payment_method));
         setPagoReference(c.payment_reference ?? '');
         setPagoAmount(c.amount != null ? String(c.amount) : '');
         setPagoReceiptPath(c.payment_receipt_url ?? null);
@@ -1760,7 +1764,7 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
         payment_status: c.payment_status,
       });
       setReposoDiagnosis(cachedDiagnosisFallback || '');
-      setPagoMethod(c.payment_method ?? '');
+      setPagoMethod(normalizePaymentMethod(c.payment_method));
       setPagoReference(c.payment_reference ?? '');
       setPagoAmount(c.amount != null ? String(c.amount) : '');
       setPagoReceiptPath(c.payment_receipt_url ?? null);
