@@ -13,9 +13,8 @@
 1. **Tiene que existir un servicio.** Sin eso el modal dice _"No tienes planes
    configurados"_ y ofrece ir a configurarlos. Si querés mostrar ese mensaje,
    mostralo a propósito; si no, dejá el servicio listo.
-2. **Usá Pago Móvil o Transferencia, no Efectivo.** Hay un defecto vivo en
-   producción: Configuración guarda el efectivo con una clave distinta de la que
-   busca la pantalla de cobro, y el método **desaparece del selector**.
+2. **Efectivo ya funciona.** Estuvo roto en producción hasta el 2026-09-14 —
+   desaparecía del selector al cobrar— y se corrigió. Se puede mostrar sin problema.
 3. **Para un servicio de varias sesiones (paquete), grabá aparte.** El
    comportamiento de paquetes cambió y todavía no está promovido: lo que veas hoy
    no es lo que va a haber en unas semanas. Para este video usá un **servicio
@@ -181,4 +180,3 @@ Ahí ves **Plan**, **Monto** y **Método**, y el estado del pago.
 - ❌ "Tenés que apretar guardar" — se guarda solo.
 - ❌ "La IA completa la consulta por vos" — transcribe y sugiere; el especialista
   revisa y firma.
-- ❌ No demuestres **Efectivo** hasta el cobro (defecto vivo en producción).

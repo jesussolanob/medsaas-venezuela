@@ -1138,6 +1138,33 @@ status='active'` con `QueryTypes.UPDATE` (devuelve `[undefined, affectedCount]`;
   `git grep` sobre el comportamiento (un texto de la UI, un nombre de estado), no sobre cómo alguien
   habría titulado el commit.
 
+- **ADR-085 (2026-09-14):** **El vocabulario de método de pago se normaliza AL LEER; la migración es
+  la otra mitad, no la única.** El ADR-072 unificó el vocabulario en `develop` el 11/09 con una
+  migración de datos + enum en los DTOs. Esa migración es **una de las 18 pendientes**, así que el
+  defecto **siguió vivo en producción un mes**: Configuración guardaba `cash_usd`, el selector al
+  cobrar buscaba `efectivo`, y **un especialista que aceptaba efectivo no podía cobrarlo**.
+
+  🔑 **La lección es de despliegue, no de código.** Un arreglo que depende de una migración hereda
+  el calendario del lote entero. Si el defecto duele hoy, el arreglo tiene que poder viajar **solo**.
+  Por eso el hotfix a `main` resuelve lo mismo **normalizando al leer**, con cero migraciones:
+  `normalizePaymentMethod` / `normalizePaymentMethods` / `normalizePaymentDetailKeys` en
+  `apps/frontend/lib/payment-methods.ts`, aplicadas en Consultas, Cobros, Configuración y la reserva
+  pública. Los perfiles viejos funcionan sin que nadie los toque y la forma nueva se escribe sola.
+
+  ⚠️ **Normalizar la lista sin normalizar las CLAVES de `payment_details` rompe otra cosa:** los
+  datos bancarios se buscarían bajo `efectivo` mientras el JSONB los guarda bajo `cash_usd`, y el
+  paciente recibiría el método de pago **sin a dónde transferir**. Por eso existe
+  `normalizePaymentDetailKeys`. Segunda trampa del mismo tipo: los mapas de etiquetas de Cobros y de
+  `appointment-flow` no tenían las claves en español, así que el mensaje de cobro habría dicho
+  `efectivo` en crudo.
+
+  🔴 **DEUDA EN `develop`:** su implementación **no normaliza al leer** — confía enteramente en que
+  la migración haya corrido. Es la misma fragilidad del ADR-079: una salvaguarda que depende de datos
+  derivados y no degrada a la fuente primaria. Un perfil que escape a la migración, o un cliente
+  viejo en caché, reabre el defecto. Al promover el lote conviene portar la normalización de `main`
+  (los puntos de lectura difieren: en `develop` los métodos viven en
+  `components/shared/PaymentDetailsEditor.tsx`).
+
 - **ADR-084 (2026-09-13):** **Frontend y backend consultan la tasa del BCV en el MISMO orden.**
   Cierra la deuda que el ADR-083 dejó abierta el mismo día. El frontend pedía **pydolarve primero y
   el BCV último** — el orden **inverso** al del backend—, así que las dos mitades de la app podían

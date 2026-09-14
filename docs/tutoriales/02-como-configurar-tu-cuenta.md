@@ -8,15 +8,15 @@
 
 ---
 
-## 🔴 Antes de grabar — un defecto vivo en producción
+## Nota sobre "Efectivo"
 
-**No muestres "Efectivo" de punta a punta.** Configuración guarda ese método con
-una clave (`cash_usd`) distinta de la que busca la pantalla de cobro
-(`efectivo`), así que si lo activás acá **desaparece del selector al momento de
-cobrar**. El arreglo está hecho pero todavía no se promovió.
+**Ya se puede mostrar.** Hasta el 2026-09-14 este método estaba roto en
+producción: Configuración lo guardaba con una clave distinta de la que buscaba la
+pantalla de cobro, así que **desaparecía del selector al momento de cobrar**. Se
+corrigió y está desplegado.
 
-Para el video, **usá Pago Móvil y Transferencia**, que funcionan bien y además
-son los que tienen la función de varias cuentas.
+Si grabás con una cuenta que ya tenía "Efectivo" activado de antes, va a seguir
+funcionando: los datos viejos se reinterpretan solos.
 
 ---
 

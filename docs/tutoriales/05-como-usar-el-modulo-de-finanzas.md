@@ -14,8 +14,8 @@
 - **Finanzas no existe en Delta Free.** Grabá con plan de prueba, Base o Plus.
 - Tené a mano **al menos una consulta pagada y una impaga**, para que la
   diferencia entre _Ingresos_ y _Por ingresar_ se vea con números reales.
-- **No uses Efectivo** en los ejemplos de cobro: hay un defecto vivo en
-  producción por el que ese método desaparece del selector al cobrar.
+- **Efectivo ya funciona**: estuvo roto en producción hasta el 2026-09-14 y se
+  corrigió. Se puede usar en los ejemplos.
 
 ---
 
@@ -199,4 +199,3 @@ contador.
 - ❌ "Todo lo que cobrás aparece al instante en Ingresos" — hace falta el pago
   aprobado **y** la cita confirmada.
 - ❌ "Delta Salud te cobra automáticamente" — no hay pasarela; el cobro es manual.
-- ❌ No uses **Efectivo** en el ejemplo (defecto vivo en producción).
