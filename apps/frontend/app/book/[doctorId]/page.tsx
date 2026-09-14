@@ -1,4 +1,5 @@
 import BookingClient from './BookingClient';
+import { normalizePaymentMethods, normalizePaymentDetailKeys } from '@/lib/payment-methods';
 import { AlertCircle } from 'lucide-react';
 
 // Backend booking endpoints are public (no auth required).
@@ -184,11 +185,15 @@ export default async function PublicBookingPage({
       : [];
 
   // paymentMethods and paymentDetails come from doctorInfo (backend includes them).
-  const paymentMethods = doctorInfo.paymentMethods ?? [];
-  const paymentDetails = (doctorInfo.paymentDetails ?? {}) as Record<
-    string,
-    Record<string, string>
-  >;
+  //
+  // Se NORMALIZAN antes de bajarlos al cliente: el perfil puede traer el
+  // vocabulario viejo (`cash_usd`) y la reserva ahora rotula por `efectivo`. Sin
+  // esto el paciente veria el valor crudo de la base como nombre del metodo, y
+  // los datos bancarios quedarian huerfanos de su metodo.
+  const paymentMethods = normalizePaymentMethods(doctorInfo.paymentMethods);
+  const paymentDetails = normalizePaymentDetailKeys(
+    doctorInfo.paymentDetails as Record<string, Record<string, string>> | null,
+  );
 
   // Horizonte de booking: número de semanas a mostrar en el selector de fechas.
   // Default 8 semanas si el backend no lo devuelve (backwards-compatible).

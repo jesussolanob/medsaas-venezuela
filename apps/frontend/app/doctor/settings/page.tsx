@@ -9,6 +9,7 @@ import {
   MULTI_ENTRY_METHODS,
   type PaymentEntry,
 } from '@/lib/payment-details';
+import { normalizePaymentMethods, normalizePaymentDetailKeys } from '@/lib/payment-methods';
 import {
   User,
   Users2,
@@ -231,8 +232,12 @@ const PAYMENT_METHODS: PaymentMethodData[] = [
       { key: 'email', label: 'Email', placeholder: 'doctor@email.com' },
     ],
   },
-  { id: 'cash_usd', label: 'Efectivo USD', emoji: '💵', fields: [] },
-  { id: 'cash_bs', label: 'Efectivo Bs', emoji: '💵', fields: [] },
+  // Espanol, igual que Consultas y Cobros. Esta pantalla escribia `cash_usd`
+  // mientras el selector al cobrar ofrecia `efectivo`: el especialista activaba
+  // efectivo aca y no lo encontraba al momento de cobrar. Lo ya guardado con el
+  // nombre viejo se normaliza al leer, sin migrar datos.
+  { id: 'efectivo', label: 'Efectivo USD', emoji: '💵', fields: [] },
+  { id: 'efectivo_bs', label: 'Efectivo Bs', emoji: '💵', fields: [] },
   {
     id: 'pos',
     label: 'Punto de venta',
@@ -444,20 +449,22 @@ function SettingsPageInner() {
         setLogoUrl(profileData.logo_url ?? null);
         setSignatureUrl(profileData.signature_url ?? null);
         setLicenseNumber(profileData.license_number ?? '');
-        setPaymentMethods(profileData.payment_methods);
+        const metodosNormalizados = normalizePaymentMethods(profileData.payment_methods);
+        setPaymentMethods(metodosNormalizados);
+        const detallesNormalizados = normalizePaymentDetailKeys(profileData.payment_details);
         // La BD puede traer un objeto suelto (forma vieja) o una lista: las dos
         // se normalizan a lista acá. Un método sin datos arranca con un juego
         // vacío para que sus campos se puedan escribir.
         setPaymentDetails(
           Object.fromEntries(
             PAYMENT_METHODS.map((m) => {
-              const guardadas = entriesOf(profileData.payment_details, m.id);
+              const guardadas = entriesOf(detallesNormalizados, m.id);
               return [m.id, guardadas.length > 0 ? guardadas : [{}]];
             }),
           ),
         );
         // Pre-expandir los métodos que ya estaban activos al cargar.
-        setExpandedMethods(new Set(profileData.payment_methods));
+        setExpandedMethods(new Set(metodosNormalizados));
         setCedula(profileData.cedula ?? null);
       }
 
