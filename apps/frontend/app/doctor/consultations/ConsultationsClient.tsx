@@ -1826,6 +1826,16 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
           diagnosis: fresh_raw.diagnosis,
           treatment: fresh_raw.treatment,
           status: mapAppointmentStatusToConsulta(fresh_raw.appointment_status),
+          // ⚠️ `appointment_status` CRUDO, ademas de `status` derivado.
+          //
+          // Faltaba, y `setSelected(fresh)` PISA el objeto que venia de la lista,
+          // que si lo traia. El estado de la cita quedaba en undefined al abrir la
+          // consulta y, como `allowedAppointmentTransitions('')` devuelve [], la
+          // pantalla concluia "no admite mas cambios" y ESCONDIA "Atendida" y
+          // "No asistio" sobre una cita perfectamente agendada.
+          //
+          // Que sea opcional en el tipo es lo que dejo pasar la omision al compilador.
+          appointment_status: fresh_raw.appointment_status ?? null,
           payment_status: fresh_raw.payment_status,
           payment_method: fresh_raw.payment_method ?? null,
           payment_reference: fresh_raw.payment_reference ?? null,
@@ -3513,9 +3523,21 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
 
       Sin cita vinculada no hay transición que validar: la consulta se maneja sola.
     */
-    const transicionesPosibles = selected.appointment_id
-      ? allowedAppointmentTransitions(selected.appointment_status ?? '')
-      : null;
+    /*
+      `null` = no hay transicion que validar, se muestran todas las acciones.
+
+      ⚠️ Un estado AUSENTE cae a `null`, NO a lista vacia. Con `?? ''`,
+      `allowedAppointmentTransitions('')` devuelve `[]`, o sea que "no se cual es
+      el estado" se leia como "estado final": la pantalla escondia las acciones y
+      afirmaba "no admite mas cambios" sobre una cita agendada. Un campo que se
+      pierde en el camino no puede volverse una funcion inaccesible en silencio.
+
+      Ante la duda se OFRECE la accion y decide el backend, que es la puerta dura.
+    */
+    const transicionesPosibles =
+      selected.appointment_id && selected.appointment_status
+        ? allowedAppointmentTransitions(selected.appointment_status)
+        : null;
     const puedeMarcarAtendida =
       transicionesPosibles === null || transicionesPosibles.includes('completed');
     const puedeMarcarNoAsistio =
