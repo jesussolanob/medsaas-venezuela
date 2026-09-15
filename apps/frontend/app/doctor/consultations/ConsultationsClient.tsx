@@ -1666,6 +1666,17 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
           diagnosis: fresh_raw.diagnosis,
           treatment: fresh_raw.treatment,
           status: mapAppointmentStatusToConsulta(fresh_raw.appointment_status),
+          // ⚠️ `appointment_status` CRUDO, ademas de `status` derivado.
+          //
+          // Esta linea faltaba y el efecto era grave: `setSelected(fresh)` PISA el
+          // objeto que venia de la lista, que si lo traia. Al abrir una consulta el
+          // estado de la cita quedaba en undefined, y como
+          // `allowedAppointmentTransitions('')` devuelve [], la pantalla concluia
+          // "no admite mas cambios" y ESCONDIA "Atendida" y "No asistio" sobre una
+          // cita perfectamente agendada.
+          //
+          // Que sea opcional en el tipo es lo que dejo pasar la omision al compilador.
+          appointment_status: fresh_raw.appointment_status ?? null,
           payment_status: fresh_raw.payment_status,
           payment_method: fresh_raw.payment_method ?? null,
           payment_reference: fresh_raw.payment_reference ?? null,
@@ -1677,6 +1688,11 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
           started_at: fresh_raw.started_at,
           ended_at: fresh_raw.ended_at,
           duration_minutes: fresh_raw.duration_minutes,
+          // Del paquete: sin estos, al abrir la consulta desaparecia el rotulo
+          // "Paquete (N consultas)" y el aviso de que se cobra una sola vez.
+          session_number: fresh_raw.session_number ?? null,
+          package_total_sessions: fresh_raw.package_total_sessions ?? null,
+          package_charge_usd: fresh_raw.package_charge_usd ?? null,
           amount: (fresh_raw as Record<string, unknown>).amount as number | null | undefined,
           base_amount: (fresh_raw as Record<string, unknown>).base_amount as
             | number
@@ -3266,9 +3282,24 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
 
       Sin cita vinculada no hay transición que validar: la consulta se maneja sola.
     */
-    const transicionesPosibles = selected.appointment_id
-      ? allowedAppointmentTransitions(selected.appointment_status ?? '')
-      : null;
+    /*
+      `null` = no hay transicion que validar, se muestran todas las acciones.
+
+      ⚠️ Un estado AUSENTE cae a `null`, NO a lista vacia. Antes se pasaba
+      `?? ''` y `allowedAppointmentTransitions('')` devuelve `[]`, o sea que
+      "no se cual es el estado" se leia como "estado final": la pantalla
+      escondia "Atendida" y "No asistio" y afirmaba "no admite mas cambios"
+      sobre una cita agendada. Un campo que se perdio en el camino no puede
+      volverse una funcion inaccesible en silencio.
+
+      Ante la duda se OFRECE la accion y decide el backend, que es la puerta
+      dura: como mucho el especialista ve un error explicando por que no se
+      puede. Es preferible a que el boton no exista.
+    */
+    const transicionesPosibles =
+      selected.appointment_id && selected.appointment_status
+        ? allowedAppointmentTransitions(selected.appointment_status)
+        : null;
     const puedeMarcarAtendida =
       transicionesPosibles === null || transicionesPosibles.includes('completed');
     const puedeMarcarNoAsistio =
