@@ -1138,6 +1138,71 @@ status='active'` con `QueryTypes.UPDATE` (devuelve `[undefined, affectedCount]`;
   `git grep` sobre el comportamiento (un texto de la UI, un nombre de estado), no sobre cómo alguien
   habría titulado el commit.
 
+- **ADR-088 (2026-09-15):** **Un aviso que depende de datos derivados tiene que degradar a la fuente
+  primaria — y estar donde el usuario mira.** Segunda línea de defensa del cobro doble. Dos
+  decisiones, y las dos nacieron de que la versión anterior fallaba:
+  1. **Va FUERA del acordeón.** `selectPatient` hace `setCurrentStep(2)` **siempre**, así que cuando
+     hay un paciente elegido el paso "Paciente" ya está colapsado: un aviso dentro de ese paso **no
+     se renderiza nunca**. Estuvo invisible desde que se escribió (ADR-081).
+  2. **Las sesiones sin usar se DERIVAN**: `sessions_count` del servicio menos las citas que existen
+     (atendidas + agendadas). **No se cuentan filas de `pending_consultations`.** `no_show` no resta
+     porque una inasistencia no consume sesión.
+
+  🔑 **La diferencia decidió el caso real.** Carlos Bastidas tenía 1 sesión atendida, **0
+  preconsultas** y un paquete de 3. Contando filas pendientes el aviso da **cero** y se queda callado
+  justo cuando hacía falta; derivando da **"2 de 3 sin usar"**. Es literalmente el escenario que el
+  ADR-079 anticipó.
+
+  No hizo falta backend nuevo: `GET /api/doctor/pending-consultations/usage?patient_id=` ya existía en
+  producción con `totalSessions`/`attended`/`scheduled`/`no_show` por plan.
+
+  ⚠️ **La versión de producción es MÁS CHICA que la de `develop`** (que trae endpoint propio, aviso
+  también en la reserva pública y ~1500 líneas entre dos módulos, mezcladas con el lote de paquetes).
+  Se hizo así a propósito: el daño vino del panel del especialista, y un port de ese tamaño no es un
+  hotfix. **Al promover el backlog hay que reconciliar las dos versiones.**
+
+- **ADR-087 (2026-09-15):** **Vender un paquete desde el panel del especialista cobraba el paquete
+  entero por cada sesión.** Una especialista vendió UN paquete de 3 sesiones de $120 y quedaron **dos
+  cobros de $120 — $240**. No hubo doble compra: los logs muestran que las dos citas salieron de
+  `POST /api/doctor/appointments` con 2 minutos de diferencia. Agendó la sesión 1 y después la 2, y
+  **cada una creó su propio pago por el precio completo**.
+
+  🔑 **Causa: el panel manda `planName`, `planPrice` y `sessionsCount`, pero NO `planId`.** El bloque
+  multi-sesión de `CreateBookingUseCase` está detrás de `if (dto.plan_id && …)`: sin el id se saltea
+  **entero**, así que no se generan preconsultas ni se asigna `session_number`. Sin sesiones por
+  agendar, la especialista agenda la siguiente a mano — y ese camino vuelve a cobrar.
+
+  ⚠️ **Y fue invisible dos veces porque el WARN de diagnóstico vive DENTRO del mismo `if` que se
+  saltea.** Busqué ese aviso en los logs de producción y no había nada, precisamente porque el código
+  nunca llegaba a él. Es la causa raíz que quedó sin identificar en agosto con el caso de Ana Solano
+  ("Consultas por agendar" vacío). **Un diagnóstico dentro de la guarda que quiere diagnosticar no
+  sirve para nada.** Ahora hay un WARN fuera.
+
+  📊 Daño medido: de **12** citas cuyo plan es un paquete, solo **1** tenía `session_number`. El
+  camino del especialista nunca generó sesiones desde que existe.
+
+- **ADR-086 (2026-09-14):** **Al reconstruir un objeto campo por campo, lo que no se copia se pierde
+  — y un campo opcional hace que el compilador no avise.** `openConsultation` rearma la consulta
+  desde la respuesta del detalle y `setSelected(fresh)` **pisa** el objeto que venía de la lista. Ese
+  `fresh` no copiaba `appointment_status`, así que al abrir cualquier consulta con cita vinculada el
+  estado quedaba `undefined`.
+
+  Como `allowedAppointmentTransitions('')` devuelve `[]` y **una lista vacía significa "estado
+  final"**, la pantalla concluía **"no admite más cambios"** y escondía **"Atendida"** y **"No
+  asistió"** sobre una cita perfectamente agendada. Verificado contra la BD: la cita reportada estaba
+  en `scheduled`.
+
+  ⚠️ **Se disparaba justo cuando la petición de detalle salía BIEN.** El camino de fallback
+  —`setSelected(c)` con los datos de la lista— sí conservaba el campo. El camino feliz era el roto.
+
+  Al enumerar los campos del tipo contra los que el objeto rellenaba aparecieron **tres más** que
+  también se perdían (`session_number`, `package_total_sessions`, `package_charge_usd`): por eso al
+  abrir una consulta de paquete desaparecía el rótulo "Paquete (N consultas)".
+
+  🔑 **Regla de fondo:** un estado **ausente** ya no se interpreta como final. Cae a `null` = "no hay
+  transición que validar, mostrá las acciones" y decide el backend, que es la puerta dura. Un campo
+  que se pierde en el camino no puede volverse una función inaccesible en silencio.
+
 - **ADR-085 (2026-09-14):** **El vocabulario de método de pago se normaliza AL LEER; la migración es
   la otra mitad, no la única.** El ADR-072 unificó el vocabulario en `develop` el 11/09 con una
   migración de datos + enum en los DTOs. Esa migración es **una de las 18 pendientes**, así que el
