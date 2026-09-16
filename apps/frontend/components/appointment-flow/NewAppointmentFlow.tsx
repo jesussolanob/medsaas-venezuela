@@ -30,6 +30,7 @@ import {
 import AccordionSection from './AccordionSection';
 import { DeltaMark } from '@/components/dh';
 import { useAppointmentFlow } from './useAppointmentFlow';
+import { getPackageUsage } from '@/app/doctor/patients/actions';
 import type { DeferredSessionsContext, AppointmentSuccessResult } from './useAppointmentFlow';
 import StepPatient from './steps/StepPatient';
 import StepOffice from './steps/StepOffice';
@@ -276,6 +277,55 @@ export default function NewAppointmentFlow({ open, onClose, onSuccess, initialCo
   const { format } = useBcvRate();
 
   /**
+   * Sesiones de paquete ya pagadas que el paciente todavía no usó.
+   *
+   * Se DERIVAN de la fuente primaria —cuántas sesiones incluye el servicio
+   * contra cuántas citas existen— y no de contar filas de `pending_consultations`.
+   *
+   * ⚠️ La diferencia no es teórica: un paquete cuyas filas pendientes nunca se
+   * generaron da cero al contarlas, y el aviso se queda callado justo en el caso
+   * en que más falta hace. Pasó el 15/09/2026: una especialista vendió un paquete
+   * de 3 sesiones desde su panel, no se generó ninguna sesión por agendar, agendó
+   * la segunda a mano y el sistema le cobró el paquete DOS VECES ($240 por uno de
+   * $120). Contra `sessions_count` eso se ve igual.
+   *
+   * `no_show` no consume sesión, por eso no se resta.
+   */
+  const [sesionesSinUsar, setSesionesSinUsar] = useState<
+    { planName: string; totalSessions: number; sinUsar: number }[]
+  >([]);
+  const patientId = flow.selectedPatient?.id ?? null;
+
+  useEffect(() => {
+    if (!open || !patientId) {
+      setSesionesSinUsar([]);
+      return;
+    }
+    let cancelado = false;
+    void getPackageUsage(patientId)
+      .then((filas) => {
+        if (cancelado) return;
+        setSesionesSinUsar(
+          filas
+            .filter((f) => (f.totalSessions ?? 0) > 1)
+            .map((f) => ({
+              planName: f.planName,
+              totalSessions: f.totalSessions as number,
+              sinUsar: (f.totalSessions as number) - f.attended - f.scheduled,
+            }))
+            .filter((f) => f.sinUsar > 0),
+        );
+      })
+      // Es un AVISO: si la consulta falla, no puede impedir agendar.
+      .catch(() => {
+        if (!cancelado) setSesionesSinUsar([]);
+      });
+    return () => {
+      cancelado = true;
+    };
+  }, [open, patientId]);
+
+  /**
    * Una consulta con fecha PASADA abre su detalle sola.
    *
    * El especialista que carga una consulta de ayer viene a llenarla: ya atendió
@@ -407,6 +457,36 @@ export default function NewAppointmentFlow({ open, onClose, onSuccess, initialCo
         )}
 
         <div className="p-4 space-y-3">
+          {/*
+            Aviso de sesiones ya pagadas.
+
+            ⚠️ VA ACA, FUERA DEL ACORDEON, y no dentro del paso "Paciente".
+            `selectPatient` hace `setCurrentStep(2)` SIEMPRE, asi que para cuando
+            hay un paciente elegido ese paso ya esta colapsado: un aviso puesto
+            ahi adentro no se renderiza NUNCA. Asi estuvo, invisible, desde que se
+            escribio.
+          */}
+          {sesionesSinUsar.length > 0 && (
+            <div
+              role="status"
+              className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"
+            >
+              <p className="font-semibold">Este paciente ya tiene sesiones pagadas sin usar</p>
+              <ul className="mt-1 space-y-0.5">
+                {sesionesSinUsar.map((s) => (
+                  <li key={s.planName}>
+                    • <strong>{s.planName}</strong>: {s.sinUsar} de {s.totalSessions} sin agendar
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-2 text-xs leading-relaxed">
+                Si esta consulta es una de esas sesiones, agendala desde{' '}
+                <strong>Consultas por agendar</strong> en vez de crear una cita nueva: asi no se le
+                vuelve a cobrar el paquete. Si le estas vendiendo otro servicio, segui normal.
+              </p>
+            </div>
+          )}
+
           {/* ── PASO 1: Paciente ──────────────────────────────────────── */}
           <AccordionSection
             step={1}
