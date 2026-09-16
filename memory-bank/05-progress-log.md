@@ -50,9 +50,20 @@ veces porque el WARN de diagnóstico vive **dentro del mismo `if` que se saltea*
 
 ### Pendiente para la próxima sesión
 
-1. 🔴 **Reconciliar el aviso**: la versión de producción es más chica que la de `develop` (que trae
-   endpoint propio y el aviso también en la **reserva pública**). Al promover el backlog hay que
-   unificarlas, no dejar que una pise a la otra.
+1. 🔴🔴 **PELIGRO AL PROMOVER: `develop` NO tiene dos de los arreglos de hoy y promoverlo tal cual
+   los REVIERTE en producción.** Faltan el `planId` (ADR-087) y el aviso (ADR-088). Se dejaron sin
+   back-mergear **a propósito**, porque no es un merge sino una reconciliación de diseño:
+   - **Preconsultas.** En `main` las crea el **backend solo**, al recibir `plan_id`. En `develop` las
+     crea un paso **manual** del frontend (`handleDeferLater` → `POST /api/doctor/pending-consultations`)
+     que exige que la especialista elija "agendar después". Mergear a ciegas puede **crearlas dos
+     veces**; y el camino de `develop`, si ella no elige esa opción, **reproduce el cobro doble**.
+   - **Aviso.** La versión de `main` es más chica (deriva de `sessions_count`, sin backend nuevo). La
+     de `develop` trae endpoint propio y aviso también en la **reserva pública**, ~1500 líneas entre
+     dos módulos. Hay que unificarlas, no dejar que una pise a la otra.
+
+   👉 **Antes de promover el backlog, resolver esto primero.** Es la tarea número uno de la próxima
+   sesión.
+
 2. 🔴 **Promover el backlog**: 247 commits y 18 migraciones sin pasar a producción.
 3. 🟡 **`develop` no normaliza los métodos de pago al leer** (ADR-085): confía en que la migración
    haya corrido.
