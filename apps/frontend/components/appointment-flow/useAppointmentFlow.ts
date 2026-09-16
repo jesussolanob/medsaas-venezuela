@@ -726,6 +726,12 @@ export function useAppointmentFlow(
           scheduledAt,
           chiefComplaint: chiefComplaint || null,
           planName: selectedPlan?.name ?? GENERIC_PLAN.name,
+          // El ID del servicio, no solo su nombre: es lo que le permite al
+          // backend generar las sesiones de un paquete. Sin esto vendia el
+          // paquete y no creaba ninguna sesion por agendar, asi que la
+          // especialista agendaba la segunda a mano y se generaba un pago NUEVO
+          // por el precio completo del paquete.
+          planId: selectedPlan?.id ?? null,
           planPrice: usePackage ? 0 : (selectedPlan?.price_usd ?? GENERIC_PLAN.price_usd),
           sessionsCount: selectedPlan?.sessions_count ?? GENERIC_PLAN.sessions_count,
           paymentMethod: usePackage ? 'package' : (paymentMethod ?? null),

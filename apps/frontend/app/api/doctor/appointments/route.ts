@@ -125,6 +125,20 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     scheduledAt?: string;
     chiefComplaint?: string;
     planName?: string;
+    /**
+     * ID del servicio. SIN ESTO el backend no genera las sesiones de un paquete.
+     *
+     * El bloque multi-sesión de `CreateBookingUseCase` está detrás de
+     * `if (dto.plan_id && ...)`: sin el id se saltea ENTERO y en silencio —
+     * ni preconsultas, ni `session_number`, ni siquiera el WARN de diagnóstico,
+     * que vive dentro de ese mismo `if`.
+     *
+     * Consecuencia real (15/09/2026): una especialista vendió UN paquete de 3
+     * sesiones desde su panel. No se generó ninguna sesión por agendar, así que
+     * agendó la segunda a mano — y esa segunda cita creó un pago NUEVO de $120.
+     * Un paquete de $120 quedó como $240 por cobrar.
+     */
+    planId?: string | null;
     planPrice?: number;
     paymentMethod?: string;
     paymentReference?: string;
@@ -146,6 +160,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     scheduledAt,
     chiefComplaint,
     planName,
+    planId,
     planPrice,
     paymentMethod,
     paymentReference,
@@ -189,6 +204,9 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     scheduled_at: scheduledAt,
     appointment_mode: appointmentMode || 'presencial',
     plan_name: planName || 'Consulta General',
+    // Solo se manda cuando existe: el DTO es `.strict()` y `plan_id` es
+    // `uuid().nullable().optional()`, así que un string vacío lo rechazaría.
+    ...(planId ? { plan_id: planId } : {}),
     plan_price: typeof planPrice === 'number' ? planPrice : 20,
     chief_complaint: chiefComplaint || null,
     payment_method: paymentMethod || null,
