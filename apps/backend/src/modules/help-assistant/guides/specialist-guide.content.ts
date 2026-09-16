@@ -478,6 +478,12 @@ En Delta no existe un boton 'Crear Cita' aparte: la cita se agenda como parte de
 
 1. Desde **Inicio** pulsa **Crear Consulta**, o entra a **Agenda** y pulsa **Nueva consulta**.
 2. Selecciona el **paciente** (busca o crea uno nuevo).
+   - **Aviso de sesiones pagadas sin usar:** si ese paciente compro un paquete y le quedan sesiones
+     sin agendar, arriba del acordeon aparece un recuadro ambar que dice cuantas le quedan (ej.
+     'Paquete de 3 sesiones: 2 de 3 sin agendar'). NO te bloquea. Te esta avisando que, si esta
+     consulta es una de esas sesiones, la agendes desde **Consultas por agendar** en vez de crear
+     una cita nueva: creando una cita nueva se le vuelve a cobrar el paquete completo. Si le estas
+     vendiendo otro servicio distinto, segui normal.
 3. Selecciona la **fecha** y la **hora** entre los slots disponibles. Para el dia de **hoy** NO puedes elegir **horas que ya pasaron**: solo se ofrecen horarios futuros.
 4. Selecciona el **consultorio y la modalidad** (presencial u online).
 5. Indica el **motivo** y el **plan de consulta** (tarifa) y, si aplica, el metodo de pago.
