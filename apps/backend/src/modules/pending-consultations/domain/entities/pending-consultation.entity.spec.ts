@@ -107,6 +107,47 @@ describe('PendingConsultation entity', () => {
   });
 
   // ---------------------------------------------------------------------------
+  // withConsultationId
+  // ---------------------------------------------------------------------------
+
+  describe('withConsultationId()', () => {
+    it('returns a new instance with the consultationId set', () => {
+      const pc = make({ status: 'scheduled', scheduledAppointmentId: 'appt-001' });
+      const linked = pc.withConsultationId('consult-001');
+
+      expect(linked).not.toBe(pc);
+      expect(linked.consultationId).toBe('consult-001');
+    });
+
+    it('preserves status and scheduledAppointmentId unchanged', () => {
+      const pc = make({ status: 'scheduled', scheduledAppointmentId: 'appt-001' });
+      const linked = pc.withConsultationId('consult-001');
+
+      expect(linked.status).toBe('scheduled');
+      expect(linked.scheduledAppointmentId).toBe('appt-001');
+    });
+
+    it('preserves all other fields unchanged', () => {
+      const pc = make({ packageId: 'pkg-001', sessionNumber: 3, planName: 'Paquete Ortopedia' });
+      const linked = pc.withConsultationId('consult-001');
+
+      expect(linked.id).toBe(pc.id);
+      expect(linked.doctorId).toBe(pc.doctorId);
+      expect(linked.patientId).toBe(pc.patientId);
+      expect(linked.packageId).toBe(pc.packageId);
+      expect(linked.sessionNumber).toBe(pc.sessionNumber);
+      expect(linked.planName).toBe(pc.planName);
+    });
+
+    it('does NOT mutate the original', () => {
+      const pc = make();
+      pc.withConsultationId('consult-001');
+
+      expect(pc.consultationId).toBeNull();
+    });
+  });
+
+  // ---------------------------------------------------------------------------
   // markCancelled
   // ---------------------------------------------------------------------------
 
