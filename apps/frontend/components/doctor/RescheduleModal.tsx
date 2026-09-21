@@ -3,12 +3,26 @@
 /**
  * RescheduleModal — self-contained reschedule flow.
  *
- * Fetches the doctor's schedule config from /api/doctor/schedule and
- * checks booked slots per day via GET /api/doctor/appointments?date=YYYY-MM-DD.
+ * Availability comes from the doctor's OFFICES (`/api/doctor/offices`), which is
+ * the real source of truth for working hours (one schedule entry per block, so a
+ * day can have a morning and an afternoon window). `/api/doctor/schedule` is the
+ * legacy single-window fallback, used only when no active office has a schedule.
+ *
+ * Booked times per day come from GET /api/doctor/appointments?date=YYYY-MM-DD.
  * Calls POST /api/doctor/reschedule on confirm.
  *
  * Used by the dashboard (/doctor/page.tsx) and the consultation detail
  * (ConsultationsClient.tsx) where schedule config is not available in scope.
+ *
+ * ⚠️ DAY-OF-WEEK CONVENTIONS — the two sources disagree, and mixing them was a
+ * real production bug: this modal read the LEGACY slots while converting the day
+ * with the OFFICE convention, so Monday never matched and the card for today was
+ * permanently disabled (and Saturday was wrongly enabled). Everything below
+ * `availSlots` is normalized to the OFFICE convention; legacy days are converted
+ * at the mapping boundary by `legacyDayToOfficeDay`.
+ *
+ *   - `doctor_offices.schedule[].day` → 0=Monday … 6=Sunday
+ *   - `doctor_schedules.work_days`    → 0=Sunday … 6=Saturday
  */
 
 import { useState, useEffect, useCallback } from 'react';
@@ -31,11 +45,64 @@ interface ScheduleConfig {
   buffer_minutes: number;
 }
 
+/** A working block. `day_of_week` is always in the OFFICE convention (0=Monday). */
 interface AvailabilitySlot {
   day_of_week: number;
   start_time: string;
   end_time: string;
   is_enabled: boolean;
+  /** Per-block overrides (ADR-028). Absent = inherit the office/global values. */
+  slot_duration?: number | null;
+  buffer_minutes?: number | null;
+}
+
+/** One schedule block as the backend serializes it for an office (camelCase). */
+interface OfficeScheduleBlock {
+  day: number;
+  start: string;
+  end: string;
+  enabled: boolean;
+  slotDuration?: number | null;
+  bufferMinutes?: number | null;
+}
+
+interface BackendOffice {
+  isActive?: boolean;
+  is_active?: boolean;
+  slotDuration?: number | null;
+  bufferMinutes?: number | null;
+  schedule?: OfficeScheduleBlock[] | null;
+}
+
+/**
+ * `doctor_schedules.work_days` (0=Sunday) → office convention (0=Monday).
+ *
+ * Converting here, at the boundary, keeps a single convention alive inside the
+ * component. See the day-of-week note in the file header.
+ */
+function legacyDayToOfficeDay(day: number): number {
+  return (day + 6) % 7;
+}
+
+/** Active offices → working blocks, in the office day convention. */
+function officesToSlots(offices: BackendOffice[]): AvailabilitySlot[] {
+  const slots: AvailabilitySlot[] = [];
+  for (const office of offices) {
+    if (!(office.isActive ?? office.is_active)) continue;
+    if (!Array.isArray(office.schedule)) continue;
+    for (const block of office.schedule) {
+      if (!block.enabled || !block.start || !block.end) continue;
+      slots.push({
+        day_of_week: block.day,
+        start_time: block.start,
+        end_time: block.end,
+        is_enabled: true,
+        slot_duration: block.slotDuration ?? office.slotDuration ?? null,
+        buffer_minutes: block.bufferMinutes ?? office.bufferMinutes ?? null,
+      });
+    }
+  }
+  return slots;
 }
 
 export interface RescheduleModalProps {
@@ -74,18 +141,28 @@ function generateTimeSlots(
 ): { time: string; endTime: string }[] {
   const daySlots = availSlots.filter((s) => s.day_of_week === dayOfWeek && s.is_enabled);
   const result: { time: string; endTime: string }[] = [];
+  const seen = new Set<string>();
   for (const slot of daySlots) {
+    // Each block may carry its own duration/buffer (ADR-028); otherwise it
+    // inherits the global config, which is the previous behaviour.
+    const duration = slot.slot_duration ?? config.slot_duration;
+    const buffer = slot.buffer_minutes ?? config.buffer_minutes;
     const blockStart = timeToMinutes(slot.start_time);
     const blockEnd = timeToMinutes(slot.end_time);
-    const step = config.slot_duration + config.buffer_minutes;
+    const step = duration + buffer;
+    if (duration <= 0 || step <= 0) continue;
     let current = blockStart;
-    while (current + config.slot_duration <= blockEnd) {
+    while (current + duration <= blockEnd) {
       const startStr = `${String(Math.floor(current / 60)).padStart(2, '0')}:${String(current % 60).padStart(2, '0')}`;
-      result.push({ time: startStr, endTime: addMinutes(startStr, config.slot_duration) });
+      // Two offices can offer the same hour on the same day — show it once.
+      if (!seen.has(startStr)) {
+        seen.add(startStr);
+        result.push({ time: startStr, endTime: addMinutes(startStr, duration) });
+      }
       current += step;
     }
   }
-  return result;
+  return result.sort((a, b) => timeToMinutes(a.time) - timeToMinutes(b.time));
 }
 
 // ---------------------------------------------------------------------------
@@ -115,16 +192,52 @@ export default function RescheduleModal({
   // satisfying the react-hooks/set-state-in-effect rule.
   useEffect(() => {
     let cancelled = false;
-    fetch('/api/doctor/schedule')
-      .then((r) => r.json() as Promise<{ config?: ScheduleConfig; slots?: AvailabilitySlot[] }>)
-      .then((data) => {
-        if (cancelled) return;
-        setConfig(data.config ?? { slot_duration: 30, buffer_minutes: 0 });
-        setAvailSlots(data.slots ?? []);
-      })
-      .catch(() => {
-        if (!cancelled) setLoadError('No se pudo cargar el horario del especialista.');
-      });
+
+    const loadSchedule = async () => {
+      // Legacy single-window schedule: still the source of slot_duration /
+      // buffer_minutes, and the fallback when no office has a schedule.
+      const legacyRes = await fetch('/api/doctor/schedule');
+      const legacy = (await legacyRes.json()) as {
+        config?: ScheduleConfig;
+        slots?: AvailabilitySlot[];
+      };
+
+      // Offices are the real working hours — the same source the agenda uses.
+      // A failure here is NOT fatal: we fall back to the legacy window rather
+      // than leaving the specialist unable to reschedule at all.
+      let officeSlots: AvailabilitySlot[] = [];
+      try {
+        const officesRes = await fetch('/api/doctor/offices');
+        if (officesRes.ok) {
+          const json: unknown = await officesRes.json();
+          const list: BackendOffice[] = Array.isArray(json)
+            ? (json as BackendOffice[])
+            : Array.isArray((json as { data?: unknown })?.data)
+              ? (json as { data: BackendOffice[] }).data
+              : [];
+          officeSlots = officesToSlots(list);
+        }
+      } catch {
+        officeSlots = [];
+      }
+
+      if (cancelled) return;
+
+      setConfig(legacy.config ?? { slot_duration: 30, buffer_minutes: 0 });
+      setAvailSlots(
+        officeSlots.length > 0
+          ? officeSlots
+          : (legacy.slots ?? []).map((s) => ({
+              ...s,
+              day_of_week: legacyDayToOfficeDay(s.day_of_week),
+            })),
+      );
+    };
+
+    loadSchedule().catch(() => {
+      if (!cancelled) setLoadError('No se pudo cargar el horario del especialista.');
+    });
+
     return () => {
       cancelled = true;
     };
@@ -198,7 +311,8 @@ export default function RescheduleModal({
     (date: string): { time: string; endTime: string }[] => {
       if (!config) return [];
       const d = new Date(date + 'T12:00:00');
-      // Mirror the agenda convention: (d.getDay() + 6) % 7 → 0=Mon, 6=Sun
+      // `availSlots` is always normalized to the office convention (0=Mon, 6=Sun),
+      // whichever source it came from — see the day-of-week note in the header.
       const dayOfWeek = (d.getDay() + 6) % 7;
       return generateTimeSlots(dayOfWeek, availSlots, config);
     },

@@ -47,6 +47,38 @@ export class PendingConsultation {
   }
 
   /**
+   * Returns a copy with the consultation ID linked.
+   *
+   * Exists because the consultation is created AFTER the appointment transaction
+   * commits (inside the tx the FK against `appointments` does not see the new row,
+   * so Postgres rejects the INSERT). The pending consultation is first saved as
+   * 'scheduled' without a consultationId, then updated here in a second step.
+   * Does NOT mutate — returns an immutable copy.
+   */
+  withConsultationId(consultationId: string): PendingConsultation {
+    return new PendingConsultation(
+      this.id,
+      this.doctorId,
+      this.patientId,
+      this.authUserId,
+      this.packageId,
+      this.paymentId,
+      this.planName,
+      this.officeId,
+      this.appointmentMode,
+      this.sessionNumber,
+      this.status,
+      this.expiresAt,
+      this.scheduledAppointmentId,
+      consultationId,
+      this.reminderStage,
+      this.lastReminderAt,
+      this.createdAt,
+      new Date(),
+    );
+  }
+
+  /**
    * Returns a new PendingConsultation with status='scheduled' and the linked
    * appointment/consultation IDs set.
    * Does NOT mutate — returns an immutable copy.

@@ -822,3 +822,31 @@ entera de diagnóstico. Ver **ADR-043**.
 ⚠️ **El rol que espera el watchdog es el MISMO que exigen los guards** (`requireSuperAdmin` en el
 BFF y `@Roles('super_admin')` en el backend). El día que `/admin` admita también al rol `admin`,
 hay que ampliarlo en los tres lugares o la pantalla va a bloquear a alguien con permiso.
+
+## Hotfix del 2026-09-21 — cita de paquete sin nombre y reagendar para hoy
+
+Dos bugs reportados por la Dra. Ana Solano por nota de voz, con evidencia cruzada contra la BD
+de producción. Ver **ADR-089** y **ADR-090**.
+
+| Pieza                                      | Dónde                                          | Qué cambió                                                                                                                         |
+| ------------------------------------------ | ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `SchedulePendingConsultationUseCase`       | `pending-consultations/application/use-cases/` | Resuelve el snapshot del paciente por `PATIENT_REPOSITORY` (best-effort) y crea la consulta **después** del commit                 |
+| `PendingConsultation.withConsultationId()` | `pending-consultations/domain/entities/`       | Enlaza la consulta en un segundo paso. No usa `markScheduled`, que exige partir de `pending_scheduling`                            |
+| `RescheduleModal.tsx`                      | `components/doctor/`                           | Los **consultorios** pasan a ser la fuente de los horarios; `doctor_schedules` queda de respaldo con su día convertido en el borde |
+
+⚠️ **`appointments.patient_name` es un SNAPSHOT y la agenda no lo deriva.** El listado
+(`sequelize-appointment.repository.ts`) **no hace JOIN con `patients`**: si un camino de alta no
+escribe el nombre, la cita sale como **"Paciente"** y nadie sabe de quién es. Cualquier camino
+NUEVO que cree una cita tiene que escribir el snapshot completo.
+
+⚠️ **El modal de reagendar tiene TRES consumidores** — inicio (`app/doctor/page.tsx`), consultas
+(`ConsultationsClient.tsx`) e inasistencia (`NoShowModal.tsx`). Un arreglo ahí los alcanza a los
+tres; un bug ahí también.
+
+🔴 **Encontrado y NO arreglado (deuda anotada):** el listado de Cobros hace
+`LEFT JOIN appointments a ON a.payment_id = p.id` **plano**
+(`sequelize-payment.repository.ts:176`). Como todas las sesiones de un paquete comparten
+`payment_id`, un paquete con 2 citas **muestra el cobro dos veces en la lista**. El TOTAL de la
+tarjeta está bien (sale de `payments` sin join), así que la pantalla se contradice sola. Ya pasa
+en producción con el paquete de Gabriela Jaraba. El arreglo (`LEFT JOIN LATERAL … LIMIT 1`) ya
+está escrito en `develop`.
