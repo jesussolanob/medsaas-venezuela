@@ -62,6 +62,7 @@ import TelemetryProvider from '@/components/telemetry/TelemetryProvider';
 import TermsModal from '@/components/legal/TermsModal';
 import TrialExpiryBanner from '@/components/doctor/TrialExpiryBanner';
 import { SidebarUtilityBar } from '@/components/doctor/SidebarUtilityBar';
+import DoctorNotifications from '@/components/doctor/DoctorNotifications';
 
 type NavItem = { name: string; href: string; icon: React.ElementType; moduleKey?: string };
 type NavSection = { key: string; label: string; icon: React.ElementType; items: NavItem[] };
@@ -827,18 +828,7 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
             <div className="flex items-center gap-3">
               <SearchCommandPalette />
               <HelpButton />
-              <div
-                className="relative p-2 rounded-full cursor-pointer transition-colors"
-                style={{ color: 'var(--dh-gray-600)' }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = 'var(--dh-gray-50)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = 'transparent';
-                }}
-              >
-                <Bell className="w-[18px] h-[18px]" />
-              </div>
+              <DoctorNotifications />
             </div>
           </header>
 
