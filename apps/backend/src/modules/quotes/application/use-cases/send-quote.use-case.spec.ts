@@ -9,6 +9,7 @@ import type { Lead } from '../../../leads/domain/entities/lead.entity';
 import { Quote } from '../../domain/entities/quote.entity';
 import { QuoteNotFoundError } from '../../domain/errors/quote-not-found.error';
 import { QuoteAlreadySentError } from '../../domain/errors/quote-already-sent.error';
+import { QuoteValidUntilExpiredError } from '../../domain/errors/quote-valid-until-expired.error';
 import type { MailerService } from '../../../email/application/services/mailer.service';
 import type { IUsdtRateStore } from '../../../finances/domain/repositories/usdt-rate.store';
 import type { ConfigService } from '@nestjs/config';
@@ -61,6 +62,7 @@ function makeRepo(quote: Quote | null = makeQuote()): jest.Mocked<IQuoteReposito
     findItemsByQuoteId: jest.fn(),
     findQuotesNearingExpiry: jest.fn(),
     markExpiryReminderSent: jest.fn(),
+    acceptWithPayment: jest.fn(),
   };
 }
 
@@ -207,7 +209,7 @@ describe('SendQuoteUseCase', () => {
     );
   });
 
-  it('throws QuoteAlreadySentError for a non-draft quote', async () => {
+  it('throws QuoteAlreadySentError for a non-draft/non-expired quote', async () => {
     const repo = makeRepo(makeQuote({ status: 'sent' }));
     const uc = makeUseCase(repo);
 
@@ -215,6 +217,59 @@ describe('SendQuoteUseCase', () => {
       QuoteAlreadySentError,
     );
     expect(repo.markAsSent).not.toHaveBeenCalled();
+  });
+
+  describe('valid_until expiry check (ÍTEM A)', () => {
+    it('throws QuoteValidUntilExpiredError when validUntil is in the past (draft)', async () => {
+      // validUntil set to yesterday: the share link would be dead on arrival.
+      const pastDate = '2026-08-01'; // before now = 2026-09-01
+      const repo = makeRepo(
+        makeQuote({ status: 'draft', validUntil: pastDate as unknown as Date }),
+      );
+      const uc = makeUseCase(repo);
+
+      await expect(uc.execute({ quoteId: QUOTE_ID, doctorId: DOCTOR_ID })).rejects.toThrow(
+        QuoteValidUntilExpiredError,
+      );
+      expect(repo.markAsSent).not.toHaveBeenCalled();
+    });
+
+    it('throws QuoteValidUntilExpiredError when reviving an expired quote with stale validUntil', async () => {
+      // expired quote whose doctor forgot to update valid_until before clicking Send.
+      const pastDate = '2026-07-15';
+      const repo = makeRepo(
+        makeQuote({ status: 'expired', validUntil: pastDate as unknown as Date }),
+      );
+      const uc = makeUseCase(repo);
+
+      await expect(uc.execute({ quoteId: QUOTE_ID, doctorId: DOCTOR_ID })).rejects.toThrow(
+        QuoteValidUntilExpiredError,
+      );
+      expect(repo.markAsSent).not.toHaveBeenCalled();
+    });
+
+    it('allows sending an expired quote whose validUntil was updated to a future date', async () => {
+      // Doctor revived the quote by updating valid_until to the future.
+      const futureDate = '2027-01-01';
+      const repo = makeRepo(
+        makeQuote({ status: 'expired', validUntil: futureDate as unknown as Date }),
+      );
+      const uc = makeUseCase(repo);
+
+      const result = await uc.execute({ quoteId: QUOTE_ID, doctorId: DOCTOR_ID });
+
+      expect(result.quote.status).toBe('sent');
+      expect(repo.markAsSent).toHaveBeenCalledTimes(1);
+    });
+
+    it('allows sending when validUntil is null (no expiry set)', async () => {
+      const repo = makeRepo(makeQuote({ status: 'draft', validUntil: null }));
+      const uc = makeUseCase(repo);
+
+      const result = await uc.execute({ quoteId: QUOTE_ID, doctorId: DOCTOR_ID });
+
+      expect(result.quote.status).toBe('sent');
+    });
   });
 
   it('sends email when recipientEmail is provided', async () => {

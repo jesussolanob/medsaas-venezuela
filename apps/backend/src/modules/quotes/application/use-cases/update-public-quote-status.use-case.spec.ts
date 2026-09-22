@@ -7,6 +7,7 @@ import type { Patient } from '../../../patients/domain/entities/patient.entity';
 import type { ILeadRepository } from '../../../leads/domain/repositories/lead.repository';
 import type { Lead } from '../../../leads/domain/entities/lead.entity';
 import type { MailerService } from '../../../email/application/services/mailer.service';
+import type { IPaymentRepository } from '../../../finances/domain/repositories/payment.repository';
 import { Quote } from '../../domain/entities/quote.entity';
 import { QuoteLinkExpiredError } from '../../domain/errors/quote-link-expired.error';
 import { QuoteInvalidStatusTransitionError } from '../../domain/errors/quote-invalid-status-transition.error';
@@ -62,7 +63,28 @@ function makeRepo(quote: Quote | null): jest.Mocked<IQuoteRepository> {
     findItemsByQuoteId: jest.fn(),
     findQuotesNearingExpiry: jest.fn(),
     markExpiryReminderSent: jest.fn(),
+    // Returns the accepted quote; mirrors what the real implementation does.
+    acceptWithPayment: jest
+      .fn()
+      .mockImplementation((_id, doctorId) =>
+        Promise.resolve(Quote.create({ ...quote!, doctorId, status: 'accepted' })),
+      ),
   };
+}
+
+function makePaymentRepo(): jest.Mocked<IPaymentRepository> {
+  return {
+    listForDoctor: jest.fn(),
+    totalsForDoctor: jest.fn(),
+    findByIdForDoctor: jest.fn(),
+    updateStatus: jest.fn(),
+    addItem: jest.fn(),
+    removeItem: jest.fn(),
+    listItems: jest.fn(),
+    attachReceiptUrl: jest.fn(),
+    updateDetails: jest.fn(),
+    create: jest.fn(),
+  } as unknown as jest.Mocked<IPaymentRepository>;
 }
 
 function makeDoctorProfileRepo(
@@ -119,8 +141,16 @@ function makeUseCase(
   patientRepo = makePatientRepo(),
   leadRepo = makeLeadRepo(),
   mailer = makeMailer(),
+  paymentRepo = makePaymentRepo(),
 ): UpdatePublicQuoteStatusUseCase {
-  return new UpdatePublicQuoteStatusUseCase(repo, doctorProfileRepo, patientRepo, leadRepo, mailer);
+  return new UpdatePublicQuoteStatusUseCase(
+    repo,
+    doctorProfileRepo,
+    patientRepo,
+    leadRepo,
+    mailer,
+    paymentRepo,
+  );
 }
 
 describe('UpdatePublicQuoteStatusUseCase', () => {
@@ -137,14 +167,31 @@ describe('UpdatePublicQuoteStatusUseCase', () => {
   });
 
   describe('state machine', () => {
-    it('allows sent → accepted', async () => {
-      const repo = makeRepo(makeQuote({ status: 'sent' }));
+    it('allows sent → accepted (patient quote: uses acceptWithPayment)', async () => {
+      const repo = makeRepo(makeQuote({ status: 'sent', patientId: PATIENT_ID, leadId: null }));
+      const uc = makeUseCase(repo);
+
+      const result = await uc.execute('tok', { status: 'accepted' });
+
+      expect(result.status).toBe('accepted');
+      // Patient quote: atomic path via acceptWithPayment, not updateStatus.
+      expect(repo.acceptWithPayment).toHaveBeenCalledWith(
+        QUOTE_ID,
+        DOCTOR_ID,
+        expect.objectContaining({ patientId: PATIENT_ID, amountUsd: 100 }),
+      );
+      expect(repo.updateStatus).not.toHaveBeenCalled();
+    });
+
+    it('allows sent → accepted (lead quote: uses updateStatus, no payment)', async () => {
+      const repo = makeRepo(makeQuote({ status: 'sent', patientId: null, leadId: LEAD_ID }));
       const uc = makeUseCase(repo);
 
       const result = await uc.execute('tok', { status: 'accepted' });
 
       expect(result.status).toBe('accepted');
       expect(repo.updateStatus).toHaveBeenCalledWith(QUOTE_ID, DOCTOR_ID, 'accepted', 'sent');
+      expect(repo.acceptWithPayment).not.toHaveBeenCalled();
     });
 
     it('allows sent → rejected', async () => {
@@ -186,8 +233,28 @@ describe('UpdatePublicQuoteStatusUseCase', () => {
   });
 
   describe('anti-IDOR: doctorId always comes from the token-resolved quote', () => {
-    it('passes quote.doctorId to updateStatus, never anything from the request', async () => {
-      const repo = makeRepo(makeQuote({ status: 'sent', doctorId: 'foreign-doctor' }));
+    it('passes quote.doctorId to acceptWithPayment (patient quote), never anything from the request', async () => {
+      // patientId is non-null → atomic acceptWithPayment path.
+      const repo = makeRepo(
+        makeQuote({ status: 'sent', doctorId: 'foreign-doctor', patientId: PATIENT_ID }),
+      );
+      const uc = makeUseCase(repo);
+
+      await uc.execute('tok', { status: 'accepted' });
+
+      // doctorId must come from the resolved quote, not from request body/params.
+      expect(repo.acceptWithPayment).toHaveBeenCalledWith(
+        QUOTE_ID,
+        'foreign-doctor',
+        expect.objectContaining({ patientId: PATIENT_ID }),
+      );
+    });
+
+    it('passes quote.doctorId to updateStatus (lead quote), never anything from the request', async () => {
+      // patientId is null → lead fallback path uses updateStatus.
+      const repo = makeRepo(
+        makeQuote({ status: 'sent', doctorId: 'foreign-doctor', patientId: null, leadId: LEAD_ID }),
+      );
       const uc = makeUseCase(repo);
 
       await uc.execute('tok', { status: 'accepted' });
@@ -292,14 +359,17 @@ describe('UpdatePublicQuoteStatusUseCase', () => {
      * UPDATE lleve el estado esperado en el WHERE: la segunda afecta 0 filas.
      */
     describe('dos respuestas a la vez', () => {
-      it('le pasa al repositorio el estado que leyó, para que el UPDATE lo verifique', async () => {
-        const repo = makeRepo(makeQuote({ status: 'sent' }));
+      it('lead quote: le pasa al repositorio el estado que leyó, para que el UPDATE lo verifique', async () => {
+        // Lead quote uses updateStatus with the explicit fromStatus guard.
+        // Patient quote uses acceptWithPayment whose WHERE payment_id IS NULL guard lives inside
+        // the repository implementation (ADR-058).
+        const repo = makeRepo(makeQuote({ status: 'sent', patientId: null, leadId: LEAD_ID }));
         const uc = makeUseCase(repo);
 
         await uc.execute('tok', { status: 'accepted' });
 
-        // El 4º argumento es el estado esperado: sin él, la segunda respuesta
-        // pisaría a la primera sin que nadie viera un error.
+        // The 4th argument is the expected current state: without it, a concurrent
+        // response would overwrite the first one without anyone noticing.
         expect(repo.updateStatus).toHaveBeenCalledWith(
           expect.any(String),
           expect.any(String),
@@ -308,8 +378,38 @@ describe('UpdatePublicQuoteStatusUseCase', () => {
         );
       });
 
-      it('si el repositorio rechaza la transición, no le avisa al especialista', async () => {
-        const repo = makeRepo(makeQuote({ status: 'sent' }));
+      it('patient quote: llama a acceptWithPayment (guarda payment_id IS NULL en la BD)', async () => {
+        const repo = makeRepo(makeQuote({ status: 'sent', patientId: PATIENT_ID, leadId: null }));
+        const uc = makeUseCase(repo);
+
+        await uc.execute('tok', { status: 'accepted' });
+
+        // Concurrency guard is inside acceptWithPayment (WHERE payment_id IS NULL).
+        expect(repo.acceptWithPayment).toHaveBeenCalledWith(
+          QUOTE_ID,
+          DOCTOR_ID,
+          expect.objectContaining({ patientId: PATIENT_ID, amountUsd: 100 }),
+        );
+        expect(repo.updateStatus).not.toHaveBeenCalled();
+      });
+
+      it('si el repositorio rechaza la transición (patient quote), no le avisa al especialista', async () => {
+        const repo = makeRepo(makeQuote({ status: 'sent', patientId: PATIENT_ID, leadId: null }));
+        repo.acceptWithPayment.mockRejectedValue(
+          new QuoteInvalidStatusTransitionError('rejected', 'accepted'),
+        );
+        const mailer = makeMailer();
+        const uc = makeUseCase(repo, undefined, undefined, undefined, mailer);
+
+        await expect(uc.execute('tok', { status: 'accepted' })).rejects.toThrow(
+          QuoteInvalidStatusTransitionError,
+        );
+        // Lost the race: notifying the doctor "accepted" would be a lie.
+        expect(mailer.sendTemplate).not.toHaveBeenCalled();
+      });
+
+      it('si el repositorio rechaza la transición (lead quote), no le avisa al especialista', async () => {
+        const repo = makeRepo(makeQuote({ status: 'sent', patientId: null, leadId: LEAD_ID }));
         repo.updateStatus.mockRejectedValue(
           new QuoteInvalidStatusTransitionError('rejected', 'accepted'),
         );
@@ -319,7 +419,6 @@ describe('UpdatePublicQuoteStatusUseCase', () => {
         await expect(uc.execute('tok', { status: 'accepted' })).rejects.toThrow(
           QuoteInvalidStatusTransitionError,
         );
-        // Perdió la carrera: avisarle "te aceptaron" sería mentirle al especialista.
         expect(mailer.sendTemplate).not.toHaveBeenCalled();
       });
     });
