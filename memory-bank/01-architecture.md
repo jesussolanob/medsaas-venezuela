@@ -1407,3 +1407,58 @@ status='active'` con `QueryTypes.UPDATE` (devuelve `[undefined, affectedCount]`;
   La regla vive en **un solo lugar** del booking (`planTotal()`), que ahora devuelve `price_usd`
   tal cual. Se conservó la función en vez de reemplazar sus 9 llamadas: si el precio volviera a
   componerse de partes, se cambia ahí y en ningún otro lado.
+
+- **ADR-089 (2026-09-21):** **La agenda lee el SNAPSHOT de la cita, no al paciente: quien crea
+  una cita tiene que escribirlo.** `schedule-pending-consultation.use-case` escribía literalmente
+  `patientName: null` (más teléfono, correo y cédula) y el `patient_id` correcto. Parecía inocuo
+  —el vínculo estaba bien— pero **el listado de la agenda no hace JOIN con `patients`**: lee
+  `appointments.patient_name` crudo y el frontend cae en `?? 'Paciente'`. Una especialista real
+  vio una cita anónima en su agenda y tuvo que **revisar los chats de WhatsApp de todos sus
+  pacientes** para saber de quién era.
+
+  El snapshot se resuelve ahora por `PATIENT_REPOSITORY` y es **best-effort**: si el paciente no
+  aparece, la cita se agenda igual con los campos en null. Agendar no puede romperse porque no se
+  pudo resolver un nombre.
+
+  ⚠️ **Segundo defecto en la misma fila: la consulta se crea DESPUÉS del commit.** Dentro de la
+  transacción la FK contra `appointments` no ve la cita todavía, el INSERT muere, y el error caía
+  en un `warn` — la cita quedaba sin consulta y la sesión **no aparecía en el módulo Consultas**.
+  Es el mismo arreglo que ya existía en `develop`; acá se portó a producción.
+
+  📊 **Cómo se midió:** la cita `c7e05fbb` era la **ÚNICA** fila con `source='pending_consultation'`
+  de toda la base. El camino se estrenó con el bug — por eso la especialista dijo "es primera vez
+  que me pasa". Una tabla con una sola fila es la señal de un camino recién estrenado: hay que
+  mirarle TODAS las columnas, no solo la que se reportó.
+
+  Deudas anotadas a propósito (fuera del hotfix): `appointment_code` sigue en null porque el
+  generador es un **método privado** de `CreateBookingUseCase`; `durationMinutes` sigue fijo en 30
+  en vez de salir del bloque del consultorio (ADR-028); y el **evento de Google Calendar no se
+  dispara por este camino** — engancharlo cerraría un ciclo `BookingModule` ↔
+  `PendingConsultationsModule` y pide extraer la notificación a un módulo propio.
+
+- **ADR-090 (2026-09-21):** **Los horarios de trabajo salen de los CONSULTORIOS; `doctor_schedules`
+  es respaldo, y las dos tablas NO usan la misma convención de día.**
+
+  | Fuente                          | Convención               |
+  | ------------------------------- | ------------------------ |
+  | `doctor_offices.schedule[].day` | **0=Lunes** … 6=Domingo  |
+  | `doctor_schedules.work_days`    | **0=Domingo** … 6=Sábado |
+
+  `RescheduleModal` leía la **segunda** tabla mientras convertía el día con la convención de la
+  **primera** (el comentario decía "mirror the agenda convention" — y ahí estaba el error: la
+  agenda usa esa convención porque sus horarios salen de los consultorios). Todo corrido un día:
+  **el lunes siempre apagado, el sábado siempre encendido**.
+
+  🔑 **Pero el bug que de verdad bloqueaba era el otro:** la especialista **no tiene fila en
+  `doctor_schedules`**, así que caía al default `Lun–Vie 08:00–17:00`, mientras sus horarios
+  reales (09:00–12:00 y **15:00–19:00**) viven en el consultorio. Quería reagendar para **hoy en
+  la noche** y las 18:00 **no existían** en ese selector. Arreglar solo la convención no la habría
+  desbloqueado — la lección es que un off-by-one visible puede tapar un problema de FUENTE DE DATOS.
+
+  Regla: adentro de un componente vive **UNA** convención; la conversión va en el **borde**
+  (`legacyDayToOfficeDay`), donde entra el dato. Si la lectura de consultorios falla se cae al
+  respaldo, nunca se deja al especialista sin poder reagendar.
+
+  ⚠️ `ConsultationsClient` lee el MISMO endpoint con `getDay()` (0=Domingo) y **está bien** — es
+  coherente con la fuente legacy. Lo que estaba mal era mezclar. Sigue usando la ventana legacy en
+  vez de los consultorios: mismo desfase de datos, todavía sin arreglar.

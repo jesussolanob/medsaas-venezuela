@@ -108,9 +108,14 @@ export const PAYMENT_LABELS: Record<string, string> = {
   transferencia: 'Transferencia bancaria',
   zelle: 'Zelle',
   binance: 'Binance / USDT',
+  // Vocabulario vigente. `availablePaymentMethods` llega normalizado desde
+  // Consultas, asi que sin `efectivo_bs` el metodo se mostraba con su clave
+  // cruda al especialista.
+  efectivo: 'Efectivo (USD)',
+  efectivo_bs: 'Efectivo (Bs)',
+  // Claves viejas: se conservan para que una fila historica no se lea en crudo.
   cash_usd: 'Efectivo (USD)',
   cash_bs: 'Efectivo (Bs)',
-  efectivo: 'Efectivo',
   pos: 'Punto de venta',
   courtesy: 'Cortesía',
 };

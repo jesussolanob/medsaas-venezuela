@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import PaymentDetailsEditor from '@/components/shared/PaymentDetailsEditor';
+import { normalizePaymentMethods, normalizePaymentDetailKeys } from '@/lib/payment-methods';
 import {
   User,
   Users2,
@@ -358,9 +359,14 @@ function SettingsPageInner() {
         setSignatureUrl(profileData.signature_url ?? null);
         setLicenseNumber(profileData.license_number ?? '');
         // Datos iniciales para PaymentDetailsEditor. El componente normaliza
-        // internamente la forma vieja/nueva del JSONB con entriesOf.
-        setInitialPaymentMethods(profileData.payment_methods ?? []);
-        setInitialPaymentDetails(profileData.payment_details ?? {});
+        // internamente la FORMA vieja/nueva del JSONB con entriesOf; el
+        // VOCABULARIO del método se normaliza acá (`cash_usd` → `efectivo`),
+        // porque un perfil que no pasó por la migración 20260911000001 haría
+        // desaparecer la opción Efectivo del selector al cobrar.
+        // Las claves del JSONB se normalizan junto con la lista: renombrar solo
+        // una de las dos deja huérfanos banco, teléfono y titular.
+        setInitialPaymentMethods(normalizePaymentMethods(profileData.payment_methods));
+        setInitialPaymentDetails(normalizePaymentDetailKeys(profileData.payment_details));
         setPaymentDataKey((k) => k + 1);
         setCedula(profileData.cedula ?? null);
       }

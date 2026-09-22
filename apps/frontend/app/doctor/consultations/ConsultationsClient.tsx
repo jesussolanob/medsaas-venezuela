@@ -3,6 +3,7 @@
 import { useState, useEffect, useTransition, useRef, useCallback, Suspense } from 'react';
 import dynamic from 'next/dynamic';
 import { useSearchParams, useRouter, usePathname } from 'next/navigation';
+import { normalizePaymentMethod, normalizePaymentMethods } from '@/lib/payment-methods';
 
 // GenerateDocumentModal: reemplaza ConsultationInformePdfButton.
 // Se importa con ssr:false para excluir @react-pdf del bundle de Node
@@ -1105,7 +1106,9 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                 `${profileData.professionalTitle || ''} ${profileData.fullName || ''}`.trim();
               setDoctorName(fullName);
               if (profileData.paymentMethods && Array.isArray(profileData.paymentMethods)) {
-                setDoctorPaymentMethods(profileData.paymentMethods);
+                // Vocabulario normalizado al LEER: el selector al cobrar se filtra
+                // por esta lista y un perfil en `cash_usd` se quedaba sin Efectivo.
+                setDoctorPaymentMethods(normalizePaymentMethods(profileData.paymentMethods));
               }
               setDoctorSpecialty(profileData.specialty || null);
               setDoctorLogo(profileData.logoUrl ?? null);
@@ -1558,7 +1561,7 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
     // esto, cobrar extras por segunda vez obliga a elegirlo de nuevo aunque ya
     // esté guardado, porque en una sesión cubierta el selector del panel está
     // oculto y `pagoMethod` sólo se llenaba al abrir la consulta.
-    setPagoMethod(fresh.payment_method ?? '');
+    setPagoMethod(normalizePaymentMethod(fresh.payment_method));
   }
 
   async function updatePagoStatus(
@@ -1908,7 +1911,7 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
         // (default '') para no arrastrar el diagnóstico de una consulta abierta antes.
         setReposoDiagnosis(freshDiagnosis || '');
         // Inicializar estado del panel de detalles de pago
-        setPagoMethod(fresh.payment_method ?? '');
+        setPagoMethod(normalizePaymentMethod(fresh.payment_method));
         setPagoReference(fresh.payment_reference ?? '');
         setPagoAmount(fresh.amount != null ? String(fresh.amount) : '');
         setPagoReceiptPath(fresh.payment_receipt_url ?? null);
@@ -1931,7 +1934,7 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
           payment_status: c.payment_status,
         });
         setReposoDiagnosis(cachedDiagnosis || '');
-        setPagoMethod(c.payment_method ?? '');
+        setPagoMethod(normalizePaymentMethod(c.payment_method));
         setPagoReference(c.payment_reference ?? '');
         setPagoAmount(c.amount != null ? String(c.amount) : '');
         setPagoReceiptPath(c.payment_receipt_url ?? null);
@@ -1952,7 +1955,7 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
         payment_status: c.payment_status,
       });
       setReposoDiagnosis(cachedDiagnosisFallback || '');
-      setPagoMethod(c.payment_method ?? '');
+      setPagoMethod(normalizePaymentMethod(c.payment_method));
       setPagoReference(c.payment_reference ?? '');
       setPagoAmount(c.amount != null ? String(c.amount) : '');
       setPagoReceiptPath(c.payment_receipt_url ?? null);

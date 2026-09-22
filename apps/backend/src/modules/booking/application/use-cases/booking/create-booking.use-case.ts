@@ -552,6 +552,25 @@ export class CreateBookingUseCase {
       // Only runs when plan_id is provided AND the plan has sessions_count > 1.
       // RULE: sessions_count <= 1 → identical behaviour to today (no-op block).
       // RULE: pricingPlanRepo or createPendingUC absent → silently skip (backward compat).
+      // Diagnostico FUERA de la guarda, a proposito.
+      //
+      // El WARN de mas abajo vive DENTRO del if, asi que el caso mas comun -que
+      // no llegue `plan_id`- se salteaba sin dejar absolutamente ningun rastro.
+      // Eso hizo invisible el defecto dos veces: en agosto de 2026 con una
+      // especialista cuyo modulo "Consultas por agendar" salia vacio, y el
+      // 15/09/2026, cuando el panel del especialista NO mandaba `plan_id` y un
+      // paquete de $120 termino facturado como $240.
+      //
+      // Se loguea el NOMBRE del plan, que no es PII y en este proyecto suele
+      // decir "Paquete de N sesiones": alcanza para reconocer el caso de un
+      // vistazo en los logs.
+      if (!dto.plan_id) {
+        this.logger.warn(
+          `[multi-sesion] reserva SIN plan_id (plan="${dto.plan_name}"): no se evalua ` +
+            `la generacion de sesiones. Si ese plan es un paquete, no se crearan preconsultas.`,
+        );
+      }
+
       if (dto.plan_id && this.pricingPlanRepo && this.createPendingUC) {
         const plan = await this.pricingPlanRepo.findById(dto.plan_id);
 
