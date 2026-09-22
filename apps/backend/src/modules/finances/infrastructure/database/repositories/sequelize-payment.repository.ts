@@ -139,7 +139,13 @@ export class SequelizePaymentRepository implements IPaymentRepository {
            a.plan_name,
            a.payment_receipt_url,
            c.id                    AS consultation_id,
-           c.consultation_code
+           c.consultation_code,
+           -- Esta rama SIEMPRE tiene cita, asi que el nombre sale del snapshot y
+           -- el respaldo cifrado va en NULL. La columna tiene que estar igual:
+           -- un UNION ALL exige la MISMA cantidad de columnas en las dos ramas,
+           -- y agregarla solo arriba dejaba la consulta invalida y la pantalla
+           -- de Cobros VACIA. Los tests no lo ven: usan Sequelize simulado.
+           NULL::text              AS patient_full_name_enc
          FROM consultations c
          LEFT JOIN appointments a ON a.id = c.appointment_id
          WHERE c.doctor_id = :doctorId
