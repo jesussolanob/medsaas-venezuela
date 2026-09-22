@@ -15,7 +15,7 @@ interface ReadAllResponse {
 }
 
 export async function POST(): Promise<NextResponse> {
-  const result = await backendPost<ReadAllResponse>('/doctor/notifications/read-all', {});
+  const result = await backendPost<ReadAllResponse>('/api/doctor/notifications/read-all', {});
 
   if (!result.ok) {
     return NextResponse.json(

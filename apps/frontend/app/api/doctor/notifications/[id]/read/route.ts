@@ -27,7 +27,7 @@ export async function POST(
     );
   }
 
-  const result = await backendPost<ReadResult>(`/doctor/notifications/${id}/read`, {});
+  const result = await backendPost<ReadResult>(`/api/doctor/notifications/${id}/read`, {});
 
   if (!result.ok) {
     return NextResponse.json(

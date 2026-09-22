@@ -29,7 +29,7 @@ interface NotificationsResponse {
 export const dynamic = 'force-dynamic';
 
 export async function GET(): Promise<NextResponse> {
-  const result = await backendGet<NotificationsResponse>('/doctor/notifications');
+  const result = await backendGet<NotificationsResponse>('/api/doctor/notifications');
 
   if (!result.ok) {
     return NextResponse.json(
