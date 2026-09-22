@@ -13,6 +13,7 @@ import { Download, CheckCircle, XCircle, Clock, Calendar } from 'lucide-react';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import type { PublicQuoteData } from './page';
 import { useBcvRate } from '@/lib/useBcvRate';
+import { currencyOf } from '@/lib/currency';
 
 type QuoteStatus = PublicQuoteData['status'];
 
@@ -55,10 +56,6 @@ function formatDate(iso: string | null | undefined): string {
  * y a sus pacientes se les presentaba el presupuesto en una moneda ajena. El
  * booking público ya respetaba esta preferencia; esta pantalla no.
  */
-function currencyOf(mode: string | null | undefined): { symbol: string; code: string } {
-  return mode === 'eur_bcv' ? { symbol: '€', code: 'EUR' } : { symbol: '$', code: 'USD' };
-}
-
 function moneyFmt(n: number, symbol: string): string {
   return `${symbol}${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
@@ -118,8 +115,15 @@ export default function PublicQuoteClient({ token, quote: initialQuote }: Props)
    * `quote.bcvRate` y `quote.totalBs` se conservan en la base como registro
    * histórico de la emisión, pero NO se muestran.
    */
+  /*
+    Se pasa TAMBIÉN `customRate`. Antes solo viajaba el modo: con un
+    especialista en tasa propia, `useBcvRate` no recibía el valor, caía al BCV
+    en dólares y encima pisaba el símbolo — el paciente veía un monto en
+    bolívares que el especialista nunca fijó.
+  */
   const { rate: liveRate } = useBcvRate({
     mode: quote.doctor.currencyMode ?? undefined,
+    customRate: quote.doctor.customRate ?? undefined,
   });
   const bcvRate = liveRate;
   const totalBs = liveRate != null ? Math.round(totalUsd * liveRate * 100) / 100 : null;

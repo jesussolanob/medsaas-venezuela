@@ -44,6 +44,13 @@ export interface PublicDoctorProfile {
    * preferencia; la del presupuesto no.
    */
   currencyMode: string | null;
+  /**
+   * Tasa propia del especialista, solo significativa cuando `currencyMode` es
+   * 'custom'. Se expone porque la vista pública y el PDF tienen que convertir a
+   * bolívares con la MISMA tasa que ve el especialista: sin este campo caían a
+   * la del BCV en dólares y mostraban un monto que él nunca fijó.
+   */
+  customRate: number | null;
   professionalTitle: string | null;
   specialty: string | null;
   licenseNumber: string | null;
@@ -161,6 +168,7 @@ export class GetPublicQuoteUseCase {
       id: quote.doctorId,
       fullName: doctorProfile?.fullName ?? 'Dr./Dra.',
       currencyMode: doctorProfile?.currencyMode ?? null,
+      customRate: doctorProfile?.customRate ?? null,
       professionalTitle: doctorProfile?.professionalTitle ?? null,
       specialty: doctorProfile?.specialty ?? null,
       licenseNumber: doctorProfile?.licenseNumber ?? null,

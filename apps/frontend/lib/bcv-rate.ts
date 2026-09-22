@@ -348,3 +348,59 @@ export async function fetchBcvRates(): Promise<BcvRates> {
   // Mejor una tasa del BCV con fecha visible que ninguna.
   return cache?.payload ?? payload;
 }
+
+// ---------------------------------------------------------------------------
+// Resolución de la tasa según la divisa del especialista
+// ---------------------------------------------------------------------------
+
+import type { CurrencyMode } from './currency';
+
+export type { CurrencyMode };
+
+export interface ResolvedRate {
+  /** Tasa a aplicar, o null si no se pudo resolver (nunca se inventa una). */
+  rate: number | null;
+  /** Modo efectivamente aplicado — puede diferir del pedido si faltaba el dato. */
+  mode: CurrencyMode;
+}
+
+/**
+ * Elige la tasa que corresponde a la divisa del especialista.
+ *
+ * ⚠️ **Existe porque el PDF público y la pantalla resolvían la tasa por su
+ * cuenta y no coincidían.** Para una especialista en `eur_bcv`, la página usaba
+ * `eur_rate` y el PDF `rate` (la del dólar) mientras rotulaba el monto en `€`:
+ * el mismo presupuesto decía Bs. 119.853,55 en pantalla y Bs. 104.371,13 en el
+ * PDF que recibe el paciente — exactamente la paridad EUR/USD de diferencia.
+ * Es el documento con el que el paciente paga, así que el número equivocado
+ * estaba del lado del paciente.
+ *
+ * 🔑 **La divisa es del ESPECIALISTA y NO se degrada sola** (ADR-034): si el
+ * modo es euro y el BCV no publicó la tasa del euro, se devuelve `rate: null`
+ * conservando `mode: 'eur_bcv'`. Mostrar "—" es la verdad; convertir con la
+ * tasa del dólar y rotularlo en euros es mentir.
+ *
+ * @param rates  Tasas vivas tal como las devuelve `fetchBcvRates()`.
+ * @param mode   `profiles.currency_mode` del especialista.
+ * @param customRate  Tasa propia, solo se usa cuando el modo es `custom`.
+ */
+export function resolveRateForCurrencyMode(
+  rates: Pick<BcvRates, 'rate' | 'eur_rate'>,
+  mode: CurrencyMode | null | undefined,
+  customRate?: number | null,
+): ResolvedRate {
+  if (mode === 'custom') {
+    return {
+      rate: typeof customRate === 'number' && customRate > 0 ? customRate : null,
+      mode: 'custom',
+    };
+  }
+
+  if (mode === 'eur_bcv') {
+    const eur = rates.eur_rate;
+    return { rate: typeof eur === 'number' && eur > 0 ? eur : null, mode: 'eur_bcv' };
+  }
+
+  const usd = rates.rate;
+  return { rate: typeof usd === 'number' && usd > 0 ? usd : null, mode: 'usd_bcv' };
+}

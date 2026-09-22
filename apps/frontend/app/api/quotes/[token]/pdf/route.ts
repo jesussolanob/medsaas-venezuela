@@ -12,7 +12,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import React from 'react';
 import { log } from '@/lib/logger';
-import { fetchBcvRates } from '@/lib/bcv-rate';
+import { fetchBcvRates, resolveRateForCurrencyMode, type CurrencyMode } from '@/lib/bcv-rate';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -57,6 +57,8 @@ interface BackendPublicQuote {
     specialty: string | null;
     /** 'usd_bcv' | 'eur_bcv' | 'custom'. Define el símbolo del PDF. */
     currencyMode?: string | null;
+    /** Tasa propia del especialista. Solo se usa cuando currencyMode es 'custom'. */
+    customRate?: number | null;
     logoUrl?: string | null;
     signatureUrl?: string | null;
   };
@@ -186,13 +188,32 @@ export async function GET(
     // Llamada EN PROCESO, no `fetch` a la propia URL. La vuelta por HTTP fallaba
     // en el contenedor desplegado y el PDF salía sin ningún monto en bolívares.
     const tasas = await fetchBcvRates();
-    if (tasas.rate && tasas.rate > 0) {
-      bcvRate = tasas.rate;
-      totalBsVivo = Math.round(Number(quoteData.totalUsd) * tasas.rate * 100) / 100;
+    /*
+      La tasa se elige por la DIVISA DEL ESPECIALISTA, con el mismo resolutor
+      que usa la pantalla (`resolveRateForCurrencyMode`).
+
+      Antes acá se tomaba `tasas.rate` —siempre la del dólar— aunque más abajo
+      el PDF se rotulara en `€` con `currencyMode`. Para una especialista en
+      `eur_bcv` el mismo presupuesto decía Bs. 119.853,55 en la página y
+      Bs. 104.371,13 en el PDF del paciente: la paridad EUR/USD clavada. Y el
+      pie del documento afirmaba "Bs. {tasa} por EUR" con la tasa del dólar.
+    */
+    const resuelta = resolveRateForCurrencyMode(
+      tasas,
+      quoteData.doctor?.currencyMode as CurrencyMode | null | undefined,
+      quoteData.doctor?.customRate ?? null,
+    );
+    if (resuelta.rate !== null) {
+      bcvRate = resuelta.rate;
+      totalBsVivo = Math.round(Number(quoteData.totalUsd) * resuelta.rate * 100) / 100;
     } else {
-      log.warn('[quotes/pdf] la tasa viva vino vacia — el PDF sale sin bolivares', {
-        source: tasas.source,
-      });
+      log.warn(
+        '[quotes/pdf] sin tasa para la divisa del especialista — el PDF sale sin bolivares',
+        {
+          source: tasas.source,
+          mode: resuelta.mode,
+        },
+      );
     }
   } catch (err: unknown) {
     log.warn('[quotes/pdf] fallo la consulta de la tasa viva', {

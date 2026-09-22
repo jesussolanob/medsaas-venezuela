@@ -16,6 +16,7 @@
  */
 
 import { Document, Page, View, Text, Image, StyleSheet } from '@react-pdf/renderer';
+import { currencyOf } from '@/lib/currency';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -78,10 +79,6 @@ export interface QuotePdfProps {
 // ---------------------------------------------------------------------------
 
 const DEFAULT_COLOR = '#0891b2';
-
-function currencyOf(mode: string | null | undefined): { symbol: string; code: string } {
-  return mode === 'eur_bcv' ? { symbol: '€', code: 'EUR' } : { symbol: '$', code: 'USD' };
-}
 
 function moneyFmt(amount: number, symbol: string): string {
   return `${symbol}${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;

@@ -43,6 +43,8 @@ interface PublicQuoteDoctor {
   fullName: string;
   /** 'usd_bcv' | 'eur_bcv' | 'custom'. Define el símbolo que ve el paciente. */
   currencyMode: string | null;
+  /** Tasa propia; solo se aplica cuando currencyMode es 'custom'. */
+  customRate: number | null;
   professionalTitle: string | null;
   specialty: string | null;
 }

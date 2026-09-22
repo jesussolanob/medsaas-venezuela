@@ -14,6 +14,8 @@ import { Plus, Search, FileText, Loader2, AlertCircle, ChevronDown } from 'lucid
 import { showToast } from '@/components/ui/Toaster';
 import { getQuotes, type QuoteRow, type QuoteStatus } from './actions';
 import QuoteCreateModal from './QuoteCreateModal';
+import { useBcvRate } from '@/lib/useBcvRate';
+import { currencyOf } from '@/lib/currency';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -47,8 +49,14 @@ function formatDate(iso: string | null | undefined): string {
   }).format(new Date(year, month - 1, day));
 }
 
-function formatUsd(amount: number): string {
-  return `$${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+/**
+ * Importe con el símbolo de la divisa del especialista.
+ *
+ * Antes hardcodeaba `$`: a quien trabaja en euros el listado le decía dólares
+ * mientras el detalle, el PDF y la vista del paciente decían euros.
+ */
+function formatMoney(amount: number, symbol: string): string {
+  return `${symbol}${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 function recipientTag(q: QuoteRow): string {
@@ -71,6 +79,9 @@ interface Props {
 
 export default function QuotesListClient({ initialQuotes, initialTotal, fetchError }: Props) {
   const router = useRouter();
+  // Divisa del especialista. Solo cambia el SÍMBOLO — el importe es el mismo.
+  const { mode: currencyMode } = useBcvRate();
+  const currency = currencyOf(currencyMode);
 
   const [quotes, setQuotes] = useState<QuoteRow[]>(initialQuotes);
   const [total, setTotal] = useState(initialTotal);
@@ -321,7 +332,9 @@ export default function QuotesListClient({ initialQuotes, initialTotal, fetchErr
                       {formatDate(q.valid_until)}
                     </td>
                     <td className="px-4 py-3 text-right">
-                      <span className="font-semibold text-slate-800">{formatUsd(q.total_usd)}</span>
+                      <span className="font-semibold text-slate-800">
+                        {formatMoney(q.total_usd, currency.symbol)}
+                      </span>
                     </td>
                     <td className="px-4 py-3 text-center">
                       <span
