@@ -58,6 +58,16 @@ interface PaymentOutput {
   paid_at: string | null;
   method_snapshot: string | null;
   created_at: string;
+  /**
+   * Nombre del paciente del cobro, exista o no una cita.
+   *
+   * ⚠️ Es PII descifrada, y se expone a propósito: este endpoint es
+   * owner-scoped —el cobro es del doctor autenticado y él ya ve el nombre en
+   * el snapshot de la cita en todas las demás filas—. Sin esto, el cobro de un
+   * presupuesto salía como "Paciente" a secas (ADR-089). Sigue sin exponerse
+   * cédula, teléfono ni dato clínico.
+   */
+  patient_name: string | null;
   appointment: {
     id: string;
     appointment_code: string | null;
@@ -107,8 +117,9 @@ interface PaymentItemOutput {
 
 /**
  * Maps a PaymentWithRelations to a safe API output.
- * SECURITY: Only exposes patient_name snapshot from appointments table,
- *           never touches patients.* encrypted columns.
+ * SECURITY: exposes the patient NAME only (snapshot de la cita, o descifrado de
+ *           patients.full_name cuando el cobro no tiene cita). Nunca cédula,
+ *           teléfono de patients.*, ni dato clínico. Endpoint owner-scoped.
  */
 function toPaymentOutput(p: PaymentWithRelations): PaymentOutput {
   return {
@@ -120,6 +131,7 @@ function toPaymentOutput(p: PaymentWithRelations): PaymentOutput {
     paid_at: p.paidAt ? p.paidAt.toISOString() : null,
     method_snapshot: p.methodSnapshot,
     created_at: p.createdAt.toISOString(),
+    patient_name: p.patientName,
     appointment: p.appointment
       ? {
           id: p.appointment.id,

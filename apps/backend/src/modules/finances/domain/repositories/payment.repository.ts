@@ -16,6 +16,15 @@ export interface PaymentWithRelations {
   paidAt: Date | null;
   methodSnapshot: string | null;
   createdAt: Date;
+  /**
+   * Nombre del paciente del COBRO, independiente de la cita.
+   *
+   * Existe porque un cobro puede no tener cita —hoy, el de un presupuesto
+   * aceptado— y el nombre vivía solo en el snapshot de `appointments`. Sin esto
+   * la fila de Cobros salía como "Paciente" a secas (mismo agujero que el
+   * ADR-089 dejó en la agenda). Se resuelve descifrando `patients.full_name`.
+   */
+  patientName: string | null;
   appointment: {
     id: string;
     appointmentCode: string | null;

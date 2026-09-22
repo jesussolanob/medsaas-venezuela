@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/sequelize';
 import { QueryTypes } from 'sequelize';
 import { Sequelize } from 'sequelize-typescript';
+import { CryptoService } from '../../../../../infrastructure/crypto/crypto.service';
 import type {
   IPaymentRepository,
   PaymentListFilters,
@@ -31,6 +32,8 @@ interface PaymentListRow {
   appointment_code: string | null;
   scheduled_at: string | null;
   patient_name: string | null;
+  /** `patients.full_name` CIFRADO. Respaldo para cobros sin cita. */
+  patient_full_name_enc?: string | null;
   /** Plain-text phone snapshot from appointments.patient_phone. */
   patient_phone: string | null;
   plan_name: string | null;
@@ -66,6 +69,7 @@ export class SequelizePaymentRepository implements IPaymentRepository {
     @InjectModel(PaymentItemModel)
     private readonly itemModel: typeof PaymentItemModel,
     private readonly sequelize: Sequelize,
+    private readonly crypto: CryptoService,
   ) {}
 
   async listForDoctor(filters: PaymentListFilters): Promise<PaymentWithRelations[]> {
@@ -171,9 +175,16 @@ export class SequelizePaymentRepository implements IPaymentRepository {
          a.plan_name,
          a.payment_receipt_url,
          a.consultation_id,
-         c.consultation_code
+         c.consultation_code,
+         -- Respaldo del nombre cuando el cobro NO tiene cita (el de un
+         -- presupuesto aceptado). appointments.patient_name es un snapshot en
+         -- texto plano; patients.full_name esta CIFRADO, asi que aca viaja el
+         -- ciphertext y se descifra al mapear la fila. Sin esto la fila salia
+         -- como "Paciente" a secas, el mismo agujero del ADR-089 en la agenda.
+         pt.full_name    AS patient_full_name_enc
        FROM payments p
        LEFT JOIN appointments a ON a.payment_id = p.id
+       LEFT JOIN patients pt ON pt.id = p.patient_id
        /*
         * Extras payments for covered sessions (session 2..N) have no appointment
         * link — the appointment's payment_id already points to the package payment.
@@ -587,6 +598,16 @@ export class SequelizePaymentRepository implements IPaymentRepository {
     });
   }
 
+  /** Descifra un campo PII tolerando basura o llaves rotadas. Nunca lanza. */
+  private decryptSafely(value: string | null | undefined): string | null {
+    if (!value) return null;
+    try {
+      return this.crypto.decrypt(value);
+    } catch {
+      return null;
+    }
+  }
+
   private toRelationsDto(r: PaymentListRow): PaymentWithRelations {
     return {
       id: r.id,
@@ -597,6 +618,10 @@ export class SequelizePaymentRepository implements IPaymentRepository {
       paidAt: r.paid_at ? new Date(r.paid_at) : null,
       methodSnapshot: r.method_snapshot,
       createdAt: new Date(r.created_at),
+      // El snapshot de la cita manda cuando existe; si no, se descifra el del
+      // paciente. `decrypt` nunca tumba el listado: sin nombre es preferible a
+      // un 500 en la pantalla de la plata.
+      patientName: r.patient_name ?? this.decryptSafely(r.patient_full_name_enc),
       appointment: r.appt_id
         ? {
             id: r.appt_id,

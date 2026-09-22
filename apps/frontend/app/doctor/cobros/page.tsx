@@ -200,7 +200,9 @@ export default function CobrosPage() {
     setPayments(
       rows.map((p) => ({
         id: p.id,
-        patient_name: p.appointment?.patient_name || 'Paciente',
+        // El snapshot de la cita manda; si el cobro no tiene cita —el de un
+        // presupuesto aceptado— se usa el nombre que ahora manda el backend.
+        patient_name: p.appointment?.patient_name || p.patient_name || 'Paciente',
         plan_name: p.appointment?.plan_name || null,
         plan_price: p.amount_usd,
         payment_method: p.method_snapshot || null,

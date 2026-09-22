@@ -95,6 +95,12 @@ describe('SequelizePaymentRepository', () => {
       mockPaymentModel as unknown as typeof import('../models/payment.model').PaymentModel,
       mockItemModel as unknown as typeof import('../models/payment-item.model').PaymentItemModel,
       mockSequelize as unknown as import('sequelize-typescript').Sequelize,
+      // CryptoService: solo se usa para descifrar el nombre del paciente cuando
+      // el cobro no tiene cita. Devuelve el valor tal cual para no acoplar los
+      // tests a la implementacion del cifrado.
+      {
+        decrypt: (v: string) => v,
+      } as unknown as import('../../../../../infrastructure/crypto/crypto.service').CryptoService,
     );
   });
 

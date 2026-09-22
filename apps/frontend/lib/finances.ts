@@ -25,6 +25,8 @@ export type PaymentRow = {
   paid_at: string | null;
   method_snapshot?: string | null;
   created_at: string;
+  /** Nombre del paciente, haya o no cita. Respaldo para cobros de presupuesto. */
+  patient_name?: string | null;
   // Relacionados (joins opcionales)
   appointment?: {
     id: string;

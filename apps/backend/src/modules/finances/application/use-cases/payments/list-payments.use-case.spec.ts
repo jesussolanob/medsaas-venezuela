@@ -10,6 +10,7 @@ const makeRelationsRow = (overrides: Partial<PaymentWithRelations> = {}): Paymen
   amountUsd: 30,
   amountBs: null,
   status: 'pending',
+  patientName: 'Paciente de prueba',
   paidAt: null,
   methodSnapshot: 'pago_movil',
   createdAt: new Date('2026-06-01'),
