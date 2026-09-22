@@ -69,3 +69,7 @@ coverage-report/
 
 # Binario local de Cloud SQL Auth Proxy (no versionar)
 cloud-sql-proxy
+
+# Capturas y artefactos de QA en navegador (Playwright MCP). No son del producto.
+/*.png
+.playwright-mcp/
