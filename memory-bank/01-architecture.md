@@ -605,6 +605,46 @@ próxima cita)` — si el bloque siguiente está libre ocupa lo que dura, y si n
   toast efímero. ⚠️ Antes de esto **no existía nada**: la campana del especialista era un `<div>`
   decorativo —sin `onClick`, sin badge, sin fetch— y la única viva era la de `/admin`.
 
+- **ADR-094 (2026-09-22):** **Tres defectos que SOLO aparecieron probando en staging, y por qué los
+  tests no podían verlos.** El lote del QA del 19-09 pasó build, lint y 4.522 tests en verde, y aun
+  así llegó a staging con tres fallas. Las tres comparten raíz: **el Sequelize de los tests es
+  simulado** —verifica qué SQL se emite, no que Postgres lo acepte ni que el modelo valide—.
+  1. **La notificación no se creaba nunca.** `notNull Violation: NotificationModel.createdAt`. El
+     modelo declara `timestamps: false` (la tabla no tiene `updated_at`), así que Sequelize **no
+     rellena `createdAt`**; el decorador `@CreatedAt` hacía creer lo contrario —solo actúa con los
+     timestamps encendidos— y la validación fallaba **antes** de llegar a Postgres, donde la columna
+     sí tiene `DEFAULT NOW()`. El error caía en el catch best-effort de presupuestos: aceptar y
+     cobrar funcionaban, y la campana quedaba vacía **sin un solo síntoma**.
+  2. **La campana daba 404.** El backend corre con `setGlobalPrefix('api')`, así que
+     `@Controller('doctor/notifications')` se sirve en `/api/doctor/...`. Los route handlers
+     llamaban a `/doctor/notifications`, sin el prefijo. ⚠️ **Un 404 y una lista vacía se ven
+     IGUAL en pantalla**: la campana decía "No hay notificaciones aún". El controller y el route
+     handler se prueban por separado y **ninguno de los dos conoce el prefijo global**.
+  3. **Cobros quedó en blanco.** `listForDoctor` **no es una consulta: es un `UNION ALL`** entre
+     pagos y consultas pendientes. Agregar una columna a una sola rama rompe la paridad y Postgres
+     rechaza todo → `$0.00` y "No hay registros pendientes". Verde en tests.
+
+  🔑 **La regla que sale de acá:** en este repo, **lo que toca SQL crudo o validación de modelo se
+  comprueba EJECUTÁNDOLO** — contra la base de staging antes de desplegar, no con el mock. Y un
+  camino best-effort necesita que alguien MIRE el log: tragarse el error es correcto para no tumbar
+  la operación, pero deja la función muerta en silencio.
+
+- **ADR-095 (2026-09-22):** **El nombre del paciente de un cobro no puede depender de que exista una
+  cita.** El cobro que genera un presupuesto aceptado salía en Cobros como **"Paciente"** a secas —
+  el mismo agujero que el ADR-089 dejó en la agenda, por la misma causa: el nombre vivía solo en
+  `appointments.patient_name`, un snapshot en texto plano, y este cobro **no tiene cita**.
+
+  `PaymentWithRelations` lleva ahora `patientName` a nivel raíz: manda el snapshot de la cita y, si
+  no hay, se **descifra `patients.full_name`** en un helper que nunca lanza (sin nombre es preferible
+  a un 500 en la pantalla de la plata).
+
+  ⚠️ Expone PII descifrada **a propósito** y es defendible por el ADR-005: el endpoint es
+  owner-scoped y el especialista ya ve ese mismo nombre en todas las demás filas. No se expone
+  cédula, teléfono de `patients.*` ni dato clínico.
+
+  ⚠️ Trampa de sintaxis al documentarlo: **el SQL vive en un template literal**, así que un
+  comentario con backticks lo corta. Usar `--` dentro del SQL.
+
 ## Inventario de tablas (auditoría Fase 0 — fuente de verdad: archivos `*.sql`)
 
 Core: `profiles`, `appointments`, `consultations`, `patients`, `patient_packages`,
