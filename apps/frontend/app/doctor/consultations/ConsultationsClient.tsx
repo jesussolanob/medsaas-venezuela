@@ -5817,6 +5817,33 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                         </button>
                       )}
 
+                      {/*
+                        Agregar productos ANTES de aprobar.
+
+                        El selector de productos vive dentro del modal de aprobación, y hasta
+                        acá el único modo de abrirlo era poner "Estado del pago" en Aprobado:
+                        el QA lo reportó como "está muy escondido, solo le llegué cambiando el
+                        estado del pago". Ahora hay una puerta directa, y el modal muestra el
+                        total (base + productos) antes de confirmar, que es lo que hacía falta
+                        para saber cuánto cobrar.
+
+                        Solo mientras el pago NO esté aprobado: una vez aprobado, el camino es
+                        "Ingreso adicional" (de arriba), porque reaprobar recalcularía el total
+                        de algo ya cobrado. La sesión cubierta tiene su propio botón.
+                      */}
+                      {!coverage && selected.payment_status !== 'approved' && (
+                        <button
+                          type="button"
+                          onClick={() => setShowApprovePaymentModal(true)}
+                          className="w-full flex items-center justify-center gap-1.5 border border-violet-300 text-violet-700 bg-violet-50 hover:bg-violet-100 text-xs font-semibold rounded-lg py-2 transition-colors"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          {selected.extra_items && selected.extra_items.length > 0
+                            ? 'Editar productos y adicionales'
+                            : 'Agregar productos o adicionales'}
+                        </button>
+                      )}
+
                       {/* Botón Guardar pago — write final (persiste método/referencia/comprobante y aprueba)
                           No se ofrece en una sesión cubierta: dispararía approve-payment sobre
                           una consulta que ya está pagada por el paquete, recalculando su total
