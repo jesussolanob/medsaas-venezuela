@@ -22,6 +22,8 @@ Delta Salud (tambien llamado Delta) es un CRM medico para especialistas en Venez
 
 El portal usa los colores de Delta: blanco, turquesa y gris. El menu lateral (sidebar) izquierdo es tu navegacion principal. El titulo de la pantalla actual aparece arriba en la barra superior, junto a la busqueda global y la campana de notificaciones.
 
+**Campana de notificaciones (barra superior):** te avisa cuando un paciente ACEPTA o RECHAZA un presupuesto desde el enlace que le enviaste. Muestra un punto rojo con la cantidad sin leer; al abrirla ves la lista y puedes marcar una como leida o usar **Leer todo**. Solo avisa de decisiones del PACIENTE: si vos mismo marcas un presupuesto como aceptado o rechazado, no se genera aviso (ya lo sabes, seria ruido). Por ahora la campana cubre unicamente presupuestos.
+
 **Acceso:** entras al portal en /doctor. Tu rol es 'doctor'. Para salir, usa el boton **Cerrar sesion** al final del menu lateral; esto limpia tu sesion y te lleva al login.
 
 ---
@@ -231,6 +233,9 @@ Las consultas 2, 3, N de un paquete no generan cobro propio — el paquete se co
 - **Badge 'Cubierta - por cobrar' (ambar/amarillo):** el paquete aun tiene el pago pendiente. La consulta sigue cubierta pero el cobro del paquete todavia no fue aprobado.
 En ambos casos la pantalla te dice de que paquete proviene, la sesion (ej. 'Sesion 2 de 3') y el monto del paquete completo.
 
+**Boton 'Agregar productos o adicionales' (en consultas normales):**
+En el panel de Pago del detalle de la consulta, entre 'Ingreso adicional' y 'Guardar pago'. Sirve para sumar productos del inventario o montos adicionales ANTES de aprobar el pago, asi ves cuanto tiene que pagar el paciente en total. Solo aparece mientras el pago esta Pendiente: una vez aprobado, el camino es 'Ingreso adicional', porque volver a aprobar recalcularia el total de algo ya cobrado. Si ya cargaste extras, el boton dice 'Editar productos y adicionales'.
+
 **Boton 'Cobrar aparte' (en sesiones cubiertas):**
 Aparece cuando la consulta esta cubierta por un paquete. Sirve para cobrar extras (productos del inventario u otros servicios adicionales) SIN tocar el paquete. Al pulsarlo abre un modal donde:
 - Puedes agregar productos del inventario o items extra con su monto.
@@ -266,6 +271,7 @@ Aparece debajo del nombre del paciente en el panel lateral derecho de la consult
 Gestion de los pagos de tus consultas. (Requiere plan Base o Plus.)
 
 - **Tabla de cobros:** Servicio, Paciente, Metodo de pago, Total USD y Total Bs (convertido con la tasa BCV), Estado del pago (Pendiente / Aprobado) y Fecha. Mientras carga la tasa muestra 'Cargando tasa BCV...'; si no hay tasa, 'Tasa no disponible'.
+- Un cobro puede venir de una consulta o de un **presupuesto aceptado**. Los de presupuesto se reconocen porque su referencia es el numero del presupuesto (por ejemplo #PRE-0008) y la columna Servicio aparece con un guion: no salen de una consulta agendada. Al marcarlos como aprobados suman a tus ingresos igual que cualquier otro cobro.
 - **Aprobar** un pago pendiente lo pasa a Aprobado de inmediato y sincroniza la consulta.
 - **Detalle del cobro:** abre el detalle; puedes **Anadir al cobro** lineas de servicio. Si se subio comprobante se muestra; si no, 'Sin comprobante adjunto'.
 - **Exportar** la informacion.
@@ -388,9 +394,9 @@ Crea y envia cotizaciones a tus pacientes o prospectos (leads del CRM).
 **Estados de un presupuesto:**
 - **Borrador:** recien creado, aun no enviado. Puedes editarlo y eliminarlo.
 - **Enviado:** ya lo enviaste al paciente. Solo puedes cambiar su estado (a Aceptado, Rechazado o Vencido). No se puede editar.
-- **Aceptado:** el destinatario acepto la cotizacion desde el enlace publico. ACEPTAR NO ES PAGAR: el especialista aun debe aprobar el pago por separado cuando el paciente lo abone.
+- **Aceptado:** el destinatario acepto la cotizacion desde el enlace publico. Al aceptarse se genera automaticamente un COBRO PENDIENTE en Finanzas > Cobros, con el numero del presupuesto como referencia. ACEPTAR NO ES PAGAR: el cobro queda pendiente hasta que tu lo marques como aprobado cuando el paciente abone. Recien ahi suma a tus ingresos.
 - **Rechazado:** el destinatario rechazo la cotizacion.
-- **Vencido:** paso la fecha de validez sin que se aceptara.
+- **Vencido:** paso la fecha de validez sin que se aceptara. Un presupuesto vencido NO es un callejon sin salida: puedes pulsar **Editar**, cambiarle la fecha de vigencia y volver a **Enviar**. Se genera un enlace nuevo.
 
 **Crear un presupuesto (Borrador):**
 - Elige el destinatario: un paciente existente o un prospecto (lead) del CRM.
@@ -399,8 +405,12 @@ Crea y envia cotizaciones a tus pacientes o prospectos (leads del CRM).
 - El total y el descuento los calcula el backend — no los puedes manipular manualmente.
 - Fecha de validez ('Valido hasta'): opcional. Si la configuras, el presupuesto vence automaticamente al final de ese dia (hora Venezuela).
 - Notas internas: visibles en el PDF.
+- Al elegir un servicio o producto del catalogo, el primero REEMPLAZA la fila vacia inicial; del segundo en adelante se van agregando.
+- Abajo tienes dos botones: **Crear presupuesto** deja el borrador para revisarlo despues, y **Crear y enviar** lo crea y lo manda en un solo paso, sin tener que abrir el detalle.
+- El modal NO se cierra si tocas fuera: se cierra con Cancelar o con la X, para que no pierdas lo que cargaste.
 
 **Enviar un presupuesto:**
+Si la fecha de vigencia ya paso, el sistema NO deja enviarlo y te avisa: "La fecha de vigencia ya vencio. Actualiza la fecha de vigencia del presupuesto para poder enviarlo." Es a proposito: con la vigencia vencida el enlace le llegaria al paciente ya muerto.
 Al pulsar **Enviar**, el sistema:
 1. Congela la tasa BCV del momento y calcula el total en bolivares. Esos bolivares ya NO se recalculan despues aunque la tasa cambie: el PDF siempre muestra los bolivares de cuando se envio.
 2. Crea un enlace publico y lo muestra junto a la URL copiable.
@@ -565,7 +575,7 @@ En **Servicios**, crea un servicio con Nombre, Precio USD, Duracion, Consultorio
 2. Completa Nombre, Descripcion, Proveedor, Precio de venta y moneda (USD o Bs), Stock inicial y Umbral de stock bajo (opcional).
 3. Guarda. El producto aparece en la lista.
 4. Para entrar mas stock: abre el producto y pulsa **Registrar movimiento** (tipo 'Compra'). Para ajustar por perdida o diferencia de conteo, usa tipo 'Ajuste' o 'Perdida'.
-5. Para agregar un producto a una consulta y cobrar su precio aparte: dentro del detalle de la consulta, usa **Cobrar aparte**, agrega el producto, confirma el cobro. El stock se descuenta al aprobar.
+5. Para agregar un producto a una consulta y cobrar su precio: dentro del detalle de la consulta, abre el panel de **Pago** y usa **Agregar productos o adicionales** (o **Cobrar aparte** si la sesion esta cubierta por un paquete), agrega el producto y confirma. El stock se descuenta al aprobar.
 
 ### 7.12 Crear y enviar un presupuesto
 

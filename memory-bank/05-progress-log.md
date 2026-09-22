@@ -5285,3 +5285,74 @@ que hay que correrlo acotado a los archivos tocados; hay además 2 errores preex
 - **Las pantallas** (Etapas 1 y 3). Hoy el motor **no es alcanzable desde la UI**.
 - Decisión abierta del dueño: qué querer ver exactamente en el resumen al ir a pagarle a un
   vendedor.
+
+---
+
+## 2026-09-21/22 — Hotfix de producción, back-merges y lote de QA del 19-09
+
+Sesión larga con tres bloques. **Todo terminó desplegado y verificado en staging**; producción
+recibió solo el hotfix.
+
+### 1. Hotfix a producción (`main`, desplegado)
+
+Dos bugs reportados por la Dra. Ana Solano por nota de voz, diagnosticados contra la BD de prod:
+
+- **Una cita de paquete salía sin nombre** (ADR-089). `schedule-pending-consultation` escribía
+  literalmente `patientName: null`; la agenda **no hace JOIN con `patients`** y el frontend caía en
+  `?? 'Paciente'`. Era la **única** fila con `source='pending_consultation'` de toda la base: el
+  camino se estrenó con el bug. Además su consulta moría por la FK dentro de la transacción.
+- **Reagendar no ofrecía el día de hoy** (ADR-090). Off-by-one de convención de día **más** —lo que
+  de verdad bloqueaba— que el modal leía `doctor_schedules` (sin fila para ella → default
+  08:00–17:00) en vez de los consultorios, donde están sus horarios reales hasta las 19:00.
+
+Dato de prod reparado: la cita `c7e05fbb` quedó con nombre, teléfono, correo y cédula.
+
+### 2. Back-merges (la deuda que venía del 15/09)
+
+`main` → `develop`: **11 archivos en conflicto**, porque las dos ramas habían arreglado lo mismo por
+caminos distintos. Criterio: conservar **los dos** aportes. Después `develop` → `staging`, que
+además sacó a staging de estar 15 commits atrás de `main`.
+
+⚠️ **`git checkout --ours/--theirs` reemplaza el archivo ENTERO** y descarta lo automezclado del
+otro lado. Dos trampas concretas quedaron anotadas en la memoria del proyecto.
+
+### 3. Lote de QA del 19-09 (11 observaciones, en `develop` y `staging`)
+
+Seis arreglos de UI, la divergencia de bolívares del PDF (ADR-091), el presupuesto aceptado que
+ahora genera cobro e ingreso (ADR-092) y la campana de notificaciones desde cero (ADR-093).
+
+**Verificado en navegador contra staging, con evidencia**: el PDF y la pantalla coinciden en
+Bs. 195.928,22; el cobro del presupuesto entra a Cobros y al aprobarlo los ingresos pasan de
+$652,50 a **$667,50**; la campana enciende con "Presupuesto PRE-0008 aceptado".
+
+### Lo que el QA en staging destapó y los tests no podían ver (ADR-094)
+
+Tres defectos pasaron build, lint y **4.522 tests en verde**:
+
+1. La notificación **nunca se creaba** (`createdAt` en null con `timestamps: false`).
+2. La campana daba **404** (faltaba el prefijo `/api`) — y un 404 se ve igual que una lista vacía.
+3. **Cobros quedó en blanco** al perder la paridad de columnas de un `UNION ALL`.
+
+Raíz común: **el Sequelize de los tests es simulado**. Regla que queda: lo que toca SQL crudo o
+validación de modelo se comprueba **ejecutándolo** contra staging antes de desplegar.
+
+Más el cobro que salía sin nombre de paciente (ADR-095), mismo patrón que el ADR-089.
+
+### Estado al cerrar
+
+| Rama      | Dónde está                                                |
+| --------- | --------------------------------------------------------- |
+| `main`    | `78b5529c` — solo el hotfix. **Sin promover el backlog.** |
+| `develop` | al día, **idéntica a `staging`**                          |
+| `staging` | desplegado y verificado, con las 2 migraciones aplicadas  |
+
+**Verificación final:** 470 suites / 4.522 tests, build 0, `tsc` 0, lint sin errores nuevos
+(122 preexistentes en el frontend, igual que la base).
+
+### Qué falta
+
+- 🔴 **Promover a producción: 279 commits.** Nada de este lote está en prod salvo el hotfix.
+- 🟡 Los avisos de citas siguen siendo un toast efímero; migrarlos a la campana es decisión de
+  producto sin tomar.
+- 🟡 `appointment_code` y el evento de Google Calendar siguen sin generarse en el camino de
+  preconsultas (ver ADR-089).

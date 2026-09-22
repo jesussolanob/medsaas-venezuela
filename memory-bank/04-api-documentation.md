@@ -1385,3 +1385,66 @@ con el texto crudo "cash_usd", y `requiresReceipt` le exige comprobante a un pag
 
 El `down()` está **vacío a propósito**: antes de esto los dos valores convivían de verdad, así que
 revertir en bloque marcaría como `cash_usd` filas que nacieron en español, inventando historia.
+
+## Notificaciones del especialista (2026-09-22)
+
+Módulo `notifications` — campana in-app. Todos con `AppAuthGuard`; el `doctorId` sale **siempre**
+de `user.sub`, nunca del cuerpo. Envelope `{success, data}`. Una notificación de otro doctor y una
+inexistente devuelven **el mismo** 404.
+
+| Método | Ruta                                 | Notas                             |
+| ------ | ------------------------------------ | --------------------------------- |
+| GET    | `/api/doctor/notifications`          | lista (tope 30) + `unreadCount`   |
+| POST   | `/api/doctor/notifications/:id/read` | marca una como leída; idempotente |
+| POST   | `/api/doctor/notifications/read-all` | marca todas; idempotente          |
+
+⚠️ **Van como POST y no como PATCH, y como route handler y no como Server Action** (ADR-022): es
+polling de un cliente de larga vida, justo el caso que truena "Server Action not found" tras cada
+despliegue.
+
+⚠️ **El prefijo `/api` NO es opcional.** El backend corre con `setGlobalPrefix('api')`, así que
+`@Controller('doctor/notifications')` se sirve en `/api/doctor/notifications`. Los route handlers
+nacieron llamando a `/doctor/notifications` y daban **404** — y en pantalla un 404 y una lista vacía
+se ven IGUAL ("No hay notificaciones aún"). Ver ADR-094.
+
+**Qué se guarda:** `type` (`quote_accepted` | `quote_rejected`), `title`, `body`, `entity_type`,
+`entity_id`, `read_at`. ⚠️ **NUNCA PII**: el texto nombra el presupuesto por su NÚMERO, jamás por el
+paciente — la fila se guarda sin cifrar y se pinta en pantalla.
+
+**Quién las emite:** solo `update-public-quote-status` (cuando decide el PACIENTE desde el enlace).
+El camino del especialista NO emite: avisarle de su propio clic es ruido (ADR-093). La emisión es
+best-effort y posterior a la transición — un fallo al notificar no puede tumbar la aceptación ni el
+cobro.
+
+## Cambios de contrato del lote de QA del 19-09 (2026-09-22)
+
+### `GET /api/finances/payments` — `patient_name` a nivel raíz
+
+La fila de un cobro llevaba el nombre **solo** dentro de `appointment`, y un cobro de presupuesto
+**no tiene cita**: salía como "Paciente" a secas. Ahora el pago expone `patient_name` en la raíz —
+snapshot de la cita si existe, y si no el descifrado de `patients.full_name`. El frontend lee
+`p.appointment?.patient_name || p.patient_name`. Ver ADR-095.
+
+⚠️ `listForDoctor` es un **`UNION ALL`** entre pagos y consultas pendientes: agregar una columna
+obliga a tocar **las dos ramas** o Postgres rechaza todo y la pantalla queda vacía.
+
+### `GET /api/quotes/:token` — `doctor.customRate`
+
+El payload público ya exponía `currencyMode`; ahora también `customRate`. Sin él, un especialista
+con tasa propia hacía que la vista pública y el PDF cayeran al BCV en dólares y pisaran el símbolo.
+
+### Presupuesto aceptado → cobro
+
+Aceptar (por cualquiera de los dos caminos) crea una fila `payments` con `status='pending'`,
+`amount_usd` = total y `payment_code` = **número del presupuesto** (es la referencia que muestra
+Cobros). El vínculo va en `quotes.payment_id`, que además es la **clave de idempotencia dentro del
+UPDATE**: aceptar dos veces no genera dos cobros (ADR-058).
+
+⚠️ Un presupuesto a un **prospecto** (`lead_id`) NO genera cobro: `payments.patient_id` es NOT NULL.
+Se saltea con aviso y la aceptación funciona igual.
+
+### `POST /api/doctor/quotes/:id/send` — rechaza la vigencia vencida
+
+Enviar un presupuesto cuya `valid_until` ya pasó devuelve `QuoteValidUntilExpiredError` en español.
+Antes se enviaba y el share link nacía **ya vencido**: el paciente recibía un enlace muerto al
+instante. Un `expired` ahora se puede editar y reenviar (deja de ser un callejón sin salida).
