@@ -554,6 +554,57 @@ próxima cita)` — si el bloque siguiente está libre ocupa lo que dura, y si n
   git). Docs vivos reubicados a `docs/` (`presentacion-inversionistas.html`, `dominio-dns-snapshot.md`,
   `guides/estructura-modulo.md`); el manual de agentes viejo → `docs/_archivo/` (lo suplió `.claude/agents/orchestrator.md`).
 
+- **ADR-091 (2026-09-22):** **La tasa se elige por la DIVISA del especialista, y esa decisión vive
+  en UN solo lugar.** El mismo presupuesto mostraba Bs. 104.371,13 en el PDF del paciente y
+  Bs. 119.853,55 en la pantalla. No era congelada contra viva —las dos eran vivas—: la página
+  usaba `eur_rate` (la especialista tiene `currency_mode='eur_bcv'`) y la ruta del PDF tomaba
+  siempre `tasas.rate`, la del dólar, **mientras rotulaba el monto en `€`**. El pie del documento
+  llegaba a decir "Bs. 834,97 por EUR" con la tasa del dólar.
+
+  🔑 **El ratio delata la causa:** `119.853,55 / 104.371,13 = 1,14834` es la **paridad EUR/USD**
+  clavada. Una brecha BCV/paralelo habría dado un número cualquiera (el caso del 09/09 fue 17%).
+  Cuando dos montos difieren por una constante reconocible, el problema es **qué tasa**, no cuándo.
+
+  `resolveRateForCurrencyMode` (`lib/bcv-rate.ts`) es ahora el único que decide, y `currencyOf`
+  vive en **`lib/currency.ts`**, un módulo sin dependencias a propósito: ponerlo junto al fetch de
+  la tasa le habría metido al PDF —que también se renderiza en el navegador— todo el código de
+  scraping en el bundle.
+
+  ⚠️ **La divisa NO se degrada sola** (ADR-034): modo euro sin tasa del euro devuelve `null` y el
+  PDF sale sin bolívares. Mostrar "—" es la verdad; convertir con la del dólar y rotularlo en euros
+  es mentir, en el documento con el que el paciente paga.
+
+- **ADR-092 (2026-09-22):** **Un presupuesto aceptado genera su cobro, y la tarjeta de ingresos
+  suma los pagos que no cuelgan de ninguna consulta.** Finanzas suma por dos vías —la tarjeta desde
+  `consultations`, la lista desde `payments`— y hoy coinciden **de casualidad**: todo cobro nace de
+  una cita y toda cita genera su consulta. Un cobro de presupuesto no tiene consulta detrás, así que
+  aparecería en la tabla y no en la tarjeta: dos totales distintos en la misma pantalla (ADR-029 /
+  ADR-052). El término nuevo es **aditivo y disjunto**, así que no puede contar dos veces.
+
+  ⚠️ **Un pago llega a una consulta por DOS caminos, no uno**, y los dos tienen que quedar afuera:
+  `appointments.payment_id` (el normal) y **`payments.consultation_id`**, que escribe
+  `approveWithExtras` para los extras de una sesión de paquete ya cubierta (ADR-070) — esa cita
+  apunta al pago del **paquete**, no a este. Mirar solo las citas contaba esos extras **dos veces**.
+  Los tests usan Sequelize simulado y no pueden verlo: la única red es afirmar sobre el SQL emitido.
+
+  La idempotencia va **dentro del UPDATE y de la transacción** (`payment_id IS NULL` en el WHERE),
+  no en el use case (ADR-058). Un presupuesto a un **prospecto no genera cobro**:
+  `payments.patient_id` es NOT NULL y volverla nullable arrastra a todo el listado de cobros.
+
+- **ADR-093 (2026-09-22):** **La campana notifica lo que el especialista NO vio.** El camino que
+  dispara él mismo (`PUT /api/doctor/quotes/:id/status`, marcar aceptado/rechazado a mano) **no
+  emite**: avisarle de algo que acaba de hacer es ruido y enciende el punto de "no leídas", que
+  tiene que significar "pasó algo que no viste". Sí emite el camino **público**, que es cuando
+  decide el paciente.
+
+  **NUNCA PII:** título y cuerpo nombran el presupuesto por su **número**, jamás por el paciente —
+  la fila se guarda sin cifrar y se pinta en pantalla. Emisión **best-effort y posterior** a la
+  transición: un fallo al notificar no puede tumbar la aceptación ni el cobro.
+
+  Alcance mínimo por decisión del dueño: solo presupuestos. Los avisos de citas siguen siendo un
+  toast efímero. ⚠️ Antes de esto **no existía nada**: la campana del especialista era un `<div>`
+  decorativo —sin `onClick`, sin badge, sin fetch— y la única viva era la de `/admin`.
+
 ## Inventario de tablas (auditoría Fase 0 — fuente de verdad: archivos `*.sql`)
 
 Core: `profiles`, `appointments`, `consultations`, `patients`, `patient_packages`,

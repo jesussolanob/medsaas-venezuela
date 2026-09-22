@@ -1093,3 +1093,45 @@ tres; un bug ahí también.
 tarjeta está bien (sale de `payments` sin join), así que la pantalla se contradice sola. Ya pasa
 en producción con el paquete de Gabriela Jaraba. El arreglo (`LEFT JOIN LATERAL … LIMIT 1`) ya
 está escrito en `develop`.
+
+## Módulo `notifications` + campana del especialista (2026-09-22)
+
+Módulo backend nuevo `apps/backend/src/modules/notifications/` (DDD 4 capas) + tabla
+`notifications` (mig `20260922000002`) + `components/doctor/DoctorNotifications.tsx`.
+Ver **ADR-093**.
+
+- Endpoints: `GET /api/doctor/notifications` (lista + contador de no leídas) ·
+  `POST /api/doctor/notifications/:id/read` · `POST /api/doctor/notifications/read-all`.
+- Anti-IDOR: `doctor_id` SIEMPRE de `user.sub`, nunca del body.
+- `NotificationsModule` exporta `CreateNotificationUseCase`; `QuotesModule` lo importa.
+
+⚠️ **Antes de esto la campana del especialista era un `<div>` DECORATIVO** en
+`app/doctor/layout.tsx`: icono `<Bell/>` con estilos de hover, **sin `onClick`, sin badge, sin
+dropdown y sin fetch**. La misma campana muerta sigue en `app/patient/layout.tsx`.
+
+⚠️ **Los endpoints van como route handler, NO como Server Action** (ADR-022) — es polling de
+cliente de larga vida, justo el caso que truena "Server Action not found" tras cada deploy.
+
+⚠️ **El polling escribe estado solo dentro de `.then()`**, nunca en el cuerpo del efecto:
+`react-hooks/set-state-in-effect` lo marca como error. Por eso el fetch va escrito adentro del
+`useEffect` en vez de extraído a un `useCallback` — mismo patrón que `RescheduleModal`.
+
+## Piezas del lote de QA del 19-09 (2026-09-22)
+
+| Pieza                         | Dónde                                    | Para qué                                                                                                                                       |
+| ----------------------------- | ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `lib/currency.ts`             | `apps/frontend/lib/`                     | `currencyOf` — la divisa del especialista. Módulo **sin dependencias** a propósito: lo usa el PDF, que también corre en el navegador (ADR-091) |
+| `resolveRateForCurrencyMode`  | `lib/bcv-rate.ts`                        | Única función que elige la tasa según la divisa. La usan la pantalla y la ruta del PDF público                                                 |
+| `appendItem` / `isBlankItem`  | `app/doctor/quotes/QuoteCreateModal.tsx` | El primer ítem del catálogo REEMPLAZA la fila en blanco inicial en vez de sumarse                                                              |
+| `QuoteValidUntilExpiredError` | `quotes/domain/errors/`                  | Rechaza enviar con la vigencia vencida — antes el paciente recibía un enlace muerto al instante                                                |
+| `acceptWithPayment`           | `quotes/domain/repositories/`            | ⚠️ **Método nuevo en el puerto**: rompió los mocks de 6 specs. Crea el cobro y acepta en UNA transacción                                       |
+
+⚠️ **`.g-bg` vive SIN capa en `globals.css`** y las utilidades de Tailwind v4 viven en
+`@layer utilities`: lo no-encapado **siempre gana**. Un botón con `.g-bg` NO puede cambiar su
+fondo con `disabled:bg-*` — esas clases no se aplican nunca. El estado deshabilitado va con
+`disabled:opacity-*`. Así quedó ilegible el botón de cambiar servicio (degradado turquesa con
+texto gris encima), y como nace deshabilitado, era lo primero que se veía.
+
+⚠️ **Los modales de captura no cierran por clic en el fondo** (regla del ADR-021). Se aplicó a
+alta y envío de presupuesto, y alta/edición y carga masiva de producto. El visor de movimientos
+de inventario SÍ cierra: es de solo lectura.
