@@ -4,6 +4,71 @@
 > ⚠️ Orden: **la entrada más nueva va ARRIBA**. La del 2026-08-11 quedó al final
 > del archivo por error; no se movió para no ensuciar el diff.
 
+## 2026-09-15 — Un paquete cobrado dos veces: la causa raíz que faltaba desde agosto
+
+> Todo desplegado en **producción**. ADR-086 a 088.
+
+Una especialista reportó que las consultas 1 y 2 de un paquete decían las dos **"Consulta 1 de 3"**.
+El badge no mentía: cada cita **era** la sesión 1 — de su propia reserva. El paciente figuraba con
+**$240 por cobrar de un paquete de $120**.
+
+### Cómo se dictaminó
+
+Los logs de producción cerraron la discusión: las dos citas salieron de
+`POST /api/doctor/appointments` —el panel de la especialista— con 2 minutos de diferencia. **No hubo
+doble compra**, como ella decía. Agendó la sesión 1 y después la 2, y cada una creó su propio pago
+por el precio completo del paquete.
+
+⚠️ **Mi primera lectura fue equivocada**: interpreté los datos como que el paciente había comprado
+dos veces por la reserva pública. El dueño insistió en que eso no concordaba, y tenía razón. Lo que
+lo resolvió fue mirar QUÉ ENDPOINT se llamó, no solo las filas.
+
+### La causa raíz (ADR-087)
+
+El panel manda `planName`, `planPrice` y `sessionsCount` pero **no manda `planId`**, y todo el bloque
+multi-sesión del backend está detrás de `if (dto.plan_id && …)`. Sin el id no se generan preconsultas
+ni `session_number` — así que no hay sesiones por agendar y la siguiente se crea a mano, cobrando de
+nuevo.
+
+**Es la causa que quedó sin identificar en agosto** con el caso de Ana Solano. Fue invisible dos
+veces porque el WARN de diagnóstico vive **dentro del mismo `if` que se saltea**.
+
+📊 De **12** citas de paquete en producción, solo **1** tenía `session_number`.
+
+### Lo demás de la sesión
+
+- **ADR-086:** al abrir cualquier consulta con cita vinculada se perdía `appointment_status` y la
+  pantalla escondía "Atendida"/"No asistió" diciendo "no admite más cambios". Se disparaba **cuando
+  la petición salía bien**; el fallback conservaba el campo.
+- **ADR-088:** aviso de sesiones pagadas sin usar, derivado de la fuente primaria y **fuera del
+  acordeón** (dentro no se renderiza nunca).
+- **Datos de Carlos corregidos** en producción, en una transacción con respaldo: $240 → **$120**, la
+  cita del 5/10 pasó a ser sesión 2 del mismo pago, y se creó la sesión 3 por agendar.
+- **Datos de pago de la plataforma cargados** (Grupo TLS, C.A. — Bancamiga) en prod y staging. El RIF
+  que había en producción era `J-000000000-0`: **nadie podía pagar su plan**.
+- Los nueve guiones de tutoriales se reescribieron a **un minuto** cada uno.
+
+### Pendiente para la próxima sesión
+
+1. 🔴🔴 **PELIGRO AL PROMOVER: `develop` NO tiene dos de los arreglos de hoy y promoverlo tal cual
+   los REVIERTE en producción.** Faltan el `planId` (ADR-087) y el aviso (ADR-088). Se dejaron sin
+   back-mergear **a propósito**, porque no es un merge sino una reconciliación de diseño:
+   - **Preconsultas.** En `main` las crea el **backend solo**, al recibir `plan_id`. En `develop` las
+     crea un paso **manual** del frontend (`handleDeferLater` → `POST /api/doctor/pending-consultations`)
+     que exige que la especialista elija "agendar después". Mergear a ciegas puede **crearlas dos
+     veces**; y el camino de `develop`, si ella no elige esa opción, **reproduce el cobro doble**.
+   - **Aviso.** La versión de `main` es más chica (deriva de `sessions_count`, sin backend nuevo). La
+     de `develop` trae endpoint propio y aviso también en la **reserva pública**, ~1500 líneas entre
+     dos módulos. Hay que unificarlas, no dejar que una pise a la otra.
+
+   👉 **Antes de promover el backlog, resolver esto primero.** Es la tarea número uno de la próxima
+   sesión.
+
+2. 🔴 **Promover el backlog**: 247 commits y 18 migraciones sin pasar a producción.
+3. 🟡 **`develop` no normaliza los métodos de pago al leer** (ADR-085): confía en que la migración
+   haya corrido.
+4. 🟡 **Confirmar con la especialista** que ve la cita del 5/10 como "Consulta 2 de 3".
+
 ## 2026-09-13 — El aviso que nunca se vio: cuatro defectos invisibles a los tests
 
 > Todo en `staging`, verificado **en navegador**. ADR-081.

@@ -249,3 +249,48 @@ modal en el panel de la consulta. Decisiones que se tomaron al construirlo:
   coherente con el lote de cobros del 09/09.
 - ⚠️ **La migración `20260910000001` NO se ejecutó**: no hay Postgres levantado en la máquina. Va en
   la próxima ventana de QA, ANTES de cualquier deploy (una migración rota bloquea todos).
+
+## Lote de QA del 19-09 (implementado 2026-09-22)
+
+Once observaciones del QA sobre presupuestos, inventario y consulta. Las dos últimas son
+funciones NUEVAS y entran acá por la regla 1 del documento.
+
+| Ítem                                                               | Área                      | Estado     |
+| ------------------------------------------------------------------ | ------------------------- | ---------- |
+| Los modales no se cierran al tocar afuera                          | Presupuestos · Inventario | completado |
+| El primer ítem reemplaza la fila en blanco en vez de sumarse       | Presupuestos              | completado |
+| Botón "Crear y enviar" en el modal de alta                         | Presupuestos              | completado |
+| Revivir un presupuesto vencido (editar vigencia y reenviar)        | Presupuestos              | completado |
+| El PDF del paciente mostraba otro monto en Bs que la pantalla      | Presupuestos              | completado |
+| **Presupuesto aceptado → cobro pendiente → ingreso**               | Presupuestos · Finanzas   | **NUEVO**  |
+| **Notificaciones de presupuesto aceptado/rechazado en la campana** | Presupuestos              | **NUEVO**  |
+| El botón de confirmar cambio de servicio era ilegible              | Consulta                  | completado |
+| Los productos estaban escondidos detrás del estado del pago        | Consulta                  | completado |
+
+**Decisiones del dueño en este lote (2026-09-22):**
+
+1. **El presupuesto cobrado entra a los ingresos sumando los pagos SIN consulta a la
+   tarjeta de resumen.** Finanzas suma por dos vías —la tarjeta desde `consultations`,
+   la lista desde `payments`— y hoy coinciden solo porque todo cobro nace de una cita.
+   Un cobro de presupuesto no tiene consulta detrás, así que saldría en la tabla y no en
+   la tarjeta: dos totales distintos en la misma pantalla (ADR-029 / ADR-052). El término
+   nuevo es **aditivo y disjunto** —cada cobro cae en una sola bolsa—, así que no puede
+   contar dos veces.
+2. **La campana arranca mínima: solo presupuestos.** Tabla `notifications` + módulo +
+   campana real en `/doctor`, con leído/no leído. NO se migran los avisos de citas (hoy un
+   toast efímero) ni se abre a admin/paciente: son decisiones de producto sin tomar.
+3. **Un presupuesto a un `lead` no genera cobro** — `payments.patient_id` es NOT NULL y
+   volverla nullable arrastra a todo el listado de cobros. Los presupuestos nuevos siempre
+   tienen paciente; los viejos a prospecto se saltean con un aviso.
+
+**Hallazgos de la investigación previa (2026-09-22):**
+
+- La divergencia de bolívares **no era congelada vs viva**: las dos eran vivas. La página
+  usaba la tasa del EURO (la divisa de la especialista) y el PDF la del DÓLAR, mientras lo
+  rotulaba en `€`. El ratio del reporte —1,14834— es la paridad EUR/USD clavada.
+- La decisión de divisa estaba **copiada en tres lugares** y el listado se había quedado
+  atrás con `$` fijo. Ahora vive en `lib/currency.ts`.
+- La campana del especialista era un **`div` decorativo**: sin `onClick`, sin badge, sin
+  fetch. La única campana viva del proyecto es la de `/admin`.
+- Un `draft` con vigencia ya vencida **se podía enviar** y generaba un enlace muerto al
+  instante para el paciente. Se arregló junto con el ítem de revivir.

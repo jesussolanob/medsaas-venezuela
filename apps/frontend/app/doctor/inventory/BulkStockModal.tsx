@@ -91,9 +91,11 @@ export default function BulkStockModal({ products, onClose, onSuccess }: Props) 
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
       style={{ backgroundColor: 'rgba(15,23,42,0.45)' }}
-      onClick={(e) => {
-        if (e.target === e.currentTarget && !isPending) onClose();
-      }}
+      /*
+        El clic en el fondo NO cierra. Mismo criterio que Nuevo/Editar producto:
+        acá se cargan cantidades de VARIOS productos a la vez, así que un clic
+        al costado tiraba la carga entera.
+      */
     >
       <div
         className="bg-white rounded-2xl shadow-2xl w-full max-w-xl max-h-[90vh] flex flex-col"

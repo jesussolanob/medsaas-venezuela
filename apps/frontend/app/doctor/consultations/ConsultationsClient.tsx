@@ -3,6 +3,7 @@
 import { useState, useEffect, useTransition, useRef, useCallback, Suspense } from 'react';
 import dynamic from 'next/dynamic';
 import { useSearchParams, useRouter, usePathname } from 'next/navigation';
+import { normalizePaymentMethod, normalizePaymentMethods } from '@/lib/payment-methods';
 
 // GenerateDocumentModal: reemplaza ConsultationInformePdfButton.
 // Se importa con ssr:false para excluir @react-pdf del bundle de Node
@@ -1105,7 +1106,9 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                 `${profileData.professionalTitle || ''} ${profileData.fullName || ''}`.trim();
               setDoctorName(fullName);
               if (profileData.paymentMethods && Array.isArray(profileData.paymentMethods)) {
-                setDoctorPaymentMethods(profileData.paymentMethods);
+                // Vocabulario normalizado al LEER: el selector al cobrar se filtra
+                // por esta lista y un perfil en `cash_usd` se quedaba sin Efectivo.
+                setDoctorPaymentMethods(normalizePaymentMethods(profileData.paymentMethods));
               }
               setDoctorSpecialty(profileData.specialty || null);
               setDoctorLogo(profileData.logoUrl ?? null);
@@ -1558,7 +1561,7 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
     // esto, cobrar extras por segunda vez obliga a elegirlo de nuevo aunque ya
     // esté guardado, porque en una sesión cubierta el selector del panel está
     // oculto y `pagoMethod` sólo se llenaba al abrir la consulta.
-    setPagoMethod(fresh.payment_method ?? '');
+    setPagoMethod(normalizePaymentMethod(fresh.payment_method));
   }
 
   async function updatePagoStatus(
@@ -1908,7 +1911,7 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
         // (default '') para no arrastrar el diagnóstico de una consulta abierta antes.
         setReposoDiagnosis(freshDiagnosis || '');
         // Inicializar estado del panel de detalles de pago
-        setPagoMethod(fresh.payment_method ?? '');
+        setPagoMethod(normalizePaymentMethod(fresh.payment_method));
         setPagoReference(fresh.payment_reference ?? '');
         setPagoAmount(fresh.amount != null ? String(fresh.amount) : '');
         setPagoReceiptPath(fresh.payment_receipt_url ?? null);
@@ -1931,7 +1934,7 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
           payment_status: c.payment_status,
         });
         setReposoDiagnosis(cachedDiagnosis || '');
-        setPagoMethod(c.payment_method ?? '');
+        setPagoMethod(normalizePaymentMethod(c.payment_method));
         setPagoReference(c.payment_reference ?? '');
         setPagoAmount(c.amount != null ? String(c.amount) : '');
         setPagoReceiptPath(c.payment_receipt_url ?? null);
@@ -1952,7 +1955,7 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
         payment_status: c.payment_status,
       });
       setReposoDiagnosis(cachedDiagnosisFallback || '');
-      setPagoMethod(c.payment_method ?? '');
+      setPagoMethod(normalizePaymentMethod(c.payment_method));
       setPagoReference(c.payment_reference ?? '');
       setPagoAmount(c.amount != null ? String(c.amount) : '');
       setPagoReceiptPath(c.payment_receipt_url ?? null);
@@ -5811,6 +5814,33 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                         >
                           <ArrowDownCircle className="w-3.5 h-3.5" />
                           Ingreso adicional
+                        </button>
+                      )}
+
+                      {/*
+                        Agregar productos ANTES de aprobar.
+
+                        El selector de productos vive dentro del modal de aprobación, y hasta
+                        acá el único modo de abrirlo era poner "Estado del pago" en Aprobado:
+                        el QA lo reportó como "está muy escondido, solo le llegué cambiando el
+                        estado del pago". Ahora hay una puerta directa, y el modal muestra el
+                        total (base + productos) antes de confirmar, que es lo que hacía falta
+                        para saber cuánto cobrar.
+
+                        Solo mientras el pago NO esté aprobado: una vez aprobado, el camino es
+                        "Ingreso adicional" (de arriba), porque reaprobar recalcularía el total
+                        de algo ya cobrado. La sesión cubierta tiene su propio botón.
+                      */}
+                      {!coverage && selected.payment_status !== 'approved' && (
+                        <button
+                          type="button"
+                          onClick={() => setShowApprovePaymentModal(true)}
+                          className="w-full flex items-center justify-center gap-1.5 border border-violet-300 text-violet-700 bg-violet-50 hover:bg-violet-100 text-xs font-semibold rounded-lg py-2 transition-colors"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          {selected.extra_items && selected.extra_items.length > 0
+                            ? 'Editar productos y adicionales'
+                            : 'Agregar productos o adicionales'}
                         </button>
                       )}
 

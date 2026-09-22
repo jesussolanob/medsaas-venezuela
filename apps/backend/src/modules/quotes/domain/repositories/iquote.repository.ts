@@ -192,6 +192,38 @@ export interface IQuoteRepository {
   ): Promise<Quote>;
 
   /**
+   * Accepts a patient quote and atomically creates the associated pending payment.
+   *
+   * ADR-058 compliance: the payment INSERT and the quote status UPDATE are a single
+   * DB transaction. The WHERE clause on the UPDATE includes `payment_id IS NULL` as
+   * the idempotency guard — a concurrent second accept rolls back its own payment
+   * INSERT because the UPDATE affects 0 rows.
+   *
+   * Only valid from 'sent' status. Throws QuoteNotFoundError or
+   * QuoteInvalidStatusTransitionError when the transition cannot proceed.
+   *
+   * If the quote is already accepted and has a payment_id: returns the existing
+   * quote without creating a duplicate payment (idempotent double-click guard).
+   *
+   * SECURITY: doctorId and patientId are from the server — never from the request.
+   */
+  acceptWithPayment(
+    id: string,
+    doctorId: string,
+    paymentData: {
+      paymentId: string;
+      patientId: string;
+      amountUsd: number;
+      /**
+       * Referencia visible del cobro — se guarda en `payments.payment_code`.
+       * Es el número del presupuesto: sin él, la fila aparece en Cobros sin
+       * ninguna referencia y no hay forma de saber de qué presupuesto viene.
+       */
+      paymentCode: string;
+    },
+  ): Promise<Quote>;
+
+  /**
    * Deletes a quote and its items (cascade in DB).
    * Only draft quotes may be deleted.
    * Throws QuoteNotFoundError when not found or not owned.

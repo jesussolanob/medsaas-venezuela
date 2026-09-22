@@ -28,6 +28,7 @@ import { QuotesController } from './presentation/controllers/quotes.controller';
 import { PublicQuotesController } from './presentation/controllers/public-quotes.controller';
 
 // External modules
+import { NotificationsModule } from '../notifications/notifications.module';
 import { EmailModule } from '../email/email.module';
 import { FinancesModule } from '../finances/finances.module';
 import { DoctorSettingsModule } from '../doctor-settings/doctor-settings.module';
@@ -46,6 +47,7 @@ import { LeadsModule } from '../leads/leads.module';
  * Depends on:
  *   - EmailModule        → MailerService (quote_sent template)
  *   - FinancesModule     → USDT_RATE_STORE (freeze BCV rate at send time)
+ *                          + PAYMENT_REPOSITORY (create pending payment on acceptance)
  *   - DoctorSettingsModule  → DOCTOR_PROFILE_REPOSITORY (branding for public view + doctor name in email)
  *   - DoctorTemplatesModule → DOCTOR_TEMPLATE_REPOSITORY (template config for PDF)
  *   - StorageModule      → STORAGE_PORT (re-sign GCS URLs for logo / signature)
@@ -64,6 +66,7 @@ import { LeadsModule } from '../leads/leads.module';
 @Module({
   imports: [
     SequelizeModule.forFeature([QuoteModel, QuoteItemModel, QuoteShareLinkModel]),
+    NotificationsModule,
     EmailModule,
     FinancesModule,
     DoctorSettingsModule,

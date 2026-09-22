@@ -21,6 +21,10 @@ import {
   PAYMENT_REPOSITORY,
   type IPaymentRepository,
 } from '../../../finances/domain/repositories/payment.repository';
+import {
+  PATIENT_REPOSITORY,
+  type IPatientRepository,
+} from '../../../patients/domain/repositories/patient.repository';
 
 export interface SchedulePendingConsultationInput {
   id: string;
@@ -41,16 +45,18 @@ export interface SchedulePendingConsultationInput {
  *
  * Steps:
  *   1. Load and verify the pending consultation (ownership + schedulable check).
+ *   1c. Resolve the patient snapshot (best-effort — the appointment is always created).
  *   2. Check appointment slot availability (overlap guard).
- *   3. Create the appointment (status: 'scheduled').
- *   4. Auto-create a consultation (best-effort, same as CreateAppointmentUseCase).
- *   5. Update the pending consultation to 'scheduled' with the appointment/consultation IDs.
- *
- * The entire operation runs inside a Sequelize transaction.
+ *   3. Create the appointment with the patient snapshot (status: 'scheduled').
+ *   4. Commit the transaction.
+ *   5. Update the pending consultation to 'scheduled' (consultationId still null).
+ *   6. Create the consultation AFTER the commit — inside the transaction the FK
+ *      against `appointments` does not see the new row yet — and link it back.
  *
  * SECURITY:
  *   - When doctorId is supplied, findByIdAndDoctor enforces ownership (anti-IDOR).
  *   - Slot duration defaults to 30 min (same as legacy appointments).
+ *   - Patient PII is NEVER logged.
  */
 @Injectable()
 export class SchedulePendingConsultationUseCase {
@@ -68,6 +74,9 @@ export class SchedulePendingConsultationUseCase {
     @Optional()
     @Inject(PAYMENT_REPOSITORY)
     private readonly paymentRepo: IPaymentRepository | null = null,
+    @Optional()
+    @Inject(PATIENT_REPOSITORY)
+    private readonly patientRepo: IPatientRepository | null = null,
   ) {}
 
   async execute(input: SchedulePendingConsultationInput): Promise<PendingConsultation> {
@@ -86,6 +95,39 @@ export class SchedulePendingConsultationUseCase {
     // Distinguish expired from other non-schedulable states
     if (entity.expiresAt !== null && entity.expiresAt <= new Date()) {
       throw new PendingConsultationExpiredError(input.id);
+    }
+
+    // 1c. Snapshot del paciente (best-effort).
+    //     `appointments.patient_name` es un SNAPSHOT y el listado de la agenda NO
+    //     hace JOIN con `patients`: si no se escribe acá, la cita sale como
+    //     "Paciente" y nadie sabe de quién es. Si el paciente no aparece o la
+    //     búsqueda falla, la cita se agenda igual — agendar no puede romperse
+    //     porque no se pudo resolver un nombre. NUNCA se loguea PII.
+    let patientName: string | null = null;
+    let patientPhone: string | null = null;
+    let patientEmail: string | null = null;
+    let patientCedula: string | null = null;
+
+    if (this.patientRepo) {
+      try {
+        const patient = await this.patientRepo.findById(entity.patientId, entity.doctorId);
+        if (patient) {
+          patientName = patient.fullName;
+          patientPhone = patient.phone ?? null;
+          patientEmail = patient.email ?? null;
+          patientCedula = patient.cedula ?? null;
+        } else {
+          this.logger.warn(
+            `[schedule-pending] Patient not found for pending consultation ${input.id}; ` +
+              `appointment will be created without name snapshot.`,
+          );
+        }
+      } catch (err: unknown) {
+        this.logger.warn(
+          `[schedule-pending] Could not resolve patient snapshot for pending ` +
+            `${input.id}: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
     }
 
     /** Cita a la que hay que colgarle la consulta una vez commiteada la transacción. */
@@ -111,10 +153,10 @@ export class SchedulePendingConsultationUseCase {
         patientId: entity.patientId,
         authUserId: entity.authUserId,
         consultationId: null,
-        patientName: null,
-        patientPhone: null,
-        patientEmail: null,
-        patientCedula: null,
+        patientName,
+        patientPhone,
+        patientEmail,
+        patientCedula,
         scheduledAt: input.scheduledAt,
         status: 'scheduled',
         appointmentMode: (input.appointmentMode ?? entity.appointmentMode ?? 'presencial') as
@@ -203,11 +245,9 @@ export class SchedulePendingConsultationUseCase {
         });
         await this.appointmentRepo.updateConsultationId(appointmentToLink, consultation.id);
         // La preconsulta también guarda el vínculo a la consulta.
-        await this.pendingRepo.save(
-          scheduledPending.withConsultationId(consultation.id),
-          undefined,
-        );
-        return scheduledPending.withConsultationId(consultation.id);
+        const linked = scheduledPending.withConsultationId(consultation.id);
+        await this.pendingRepo.save(linked);
+        return linked;
       } catch (err: unknown) {
         this.logger.warn(
           `[schedule-pending] Could not auto-create consultation for pending ` +

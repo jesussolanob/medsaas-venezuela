@@ -19,12 +19,13 @@
  */
 
 import { useState, useEffect } from 'react';
-import { X, Plus, Trash2, Loader2, Info, Search } from 'lucide-react';
+import { X, Plus, Trash2, Loader2, Info, Search, Send } from 'lucide-react';
 import { cedulaSchema } from '@delta/shared-types';
 import { showToast } from '@/components/ui/Toaster';
 import {
   getQuoteFormOptions,
   createQuote,
+  sendQuote,
   type QuoteItemInput,
   type QuoteFormOptions,
   type QuoteDiscountType,
@@ -70,6 +71,31 @@ function newItem(overrides: Partial<FormItem> = {}): FormItem {
     unit_price_usd: '',
     ...overrides,
   };
+}
+
+/**
+ * ¿La fila está intacta? (nombre, descripción y precio vacíos).
+ *
+ * El modal abre con una fila en blanco para que se pueda tipear de una. Pero al
+ * elegir un servicio o un producto del catálogo, esa fila vacía quedaba ARRIBA
+ * del ítem recién agregado: el especialista veía un renglón fantasma que además
+ * bloqueaba el guardado por "falta el nombre".
+ */
+function isBlankItem(item: FormItem): boolean {
+  return (
+    item.name.trim() === '' && item.description.trim() === '' && item.unit_price_usd.trim() === ''
+  );
+}
+
+/**
+ * Agrega un ítem REEMPLAZANDO la fila en blanco inicial, si es la única que hay.
+ *
+ * Solo aplica cuando queda exactamente una fila y está intacta: si el
+ * especialista ya escribió algo, o ya hay varios ítems, no se pisa nada.
+ */
+function appendItem(prev: FormItem[], item: FormItem): FormItem[] {
+  if (prev.length === 1 && prev[0] && isBlankItem(prev[0])) return [item];
+  return [...prev, item];
 }
 
 function itemToInput(item: FormItem, index: number): QuoteItemInput {
@@ -153,8 +179,10 @@ export default function QuoteCreateModal({ onClose, onCreated }: Props) {
   const validityInvalid = isValidityInvalid(validityDays);
   const [notes, setNotes] = useState('');
 
-  // Submission
-  const [saving, setSaving] = useState(false);
+  // Submission. Guarda CUÁL botón está trabajando para poner el spinner en el
+  // que se apretó — con un booleano los dos giraban a la vez.
+  type SubmitIntent = 'create' | 'send';
+  const [saving, setSaving] = useState<SubmitIntent | null>(null);
 
   // Load options on mount
   useEffect(() => {
@@ -189,35 +217,39 @@ export default function QuoteCreateModal({ onClose, onCreated }: Props) {
     // Manual items have NO catalog entry — source_id must stay null, the
     // backend rejects it otherwise (a manual item can't reference a service
     // or a product).
-    setItems((prev) => [...prev, newItem({ kind: 'manual', source_id: null })]);
+    setItems((prev) => appendItem(prev, newItem({ kind: 'manual', source_id: null })));
   }
 
   function addFromService(svc: DoctorService) {
-    setItems((prev) => [
-      ...prev,
-      newItem({
-        kind: 'service',
-        source_id: svc.id,
-        name: svc.name,
-        description: svc.description ?? '',
-        unit_price_usd: String(svc.price_usd),
-      }),
-    ]);
+    setItems((prev) =>
+      appendItem(
+        prev,
+        newItem({
+          kind: 'service',
+          source_id: svc.id,
+          name: svc.name,
+          description: svc.description ?? '',
+          unit_price_usd: String(svc.price_usd),
+        }),
+      ),
+    );
   }
 
   function addFromProduct(prod: ProductRow) {
     // Only auto-fill price for USD products; VES products need manual price
     const price = prod.sale_price_currency === 'USD' ? String(prod.sale_price_amount) : '';
-    setItems((prev) => [
-      ...prev,
-      newItem({
-        kind: 'product',
-        source_id: prod.id,
-        name: prod.name,
-        description: prod.description ?? '',
-        unit_price_usd: price,
-      }),
-    ]);
+    setItems((prev) =>
+      appendItem(
+        prev,
+        newItem({
+          kind: 'product',
+          source_id: prod.id,
+          name: prod.name,
+          description: prod.description ?? '',
+          unit_price_usd: price,
+        }),
+      ),
+    );
   }
 
   function removeItem(key: string) {
@@ -232,9 +264,19 @@ export default function QuoteCreateModal({ onClose, onCreated }: Props) {
   // Submit
   // ---------------------------------------------------------------------------
 
-  async function handleSubmit(e: React.FormEvent) {
+  function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    void submit('create');
+  }
 
+  /**
+   * Crea el presupuesto y, si `intent` es 'send', lo envía en el mismo paso.
+   *
+   * El envío no necesita datos extra: el backend resuelve el correo desde la
+   * ficha del destinatario (por eso `sendQuote` los acepta opcionales). Enviar
+   * acá evita el segundo modal que pedía el QA.
+   */
+  async function submit(intent: SubmitIntent) {
     // Validate recipient
     setCedulaError(null);
     if (recipientMode === 'patient' && !selectedPatientId) {
@@ -317,7 +359,7 @@ export default function QuoteCreateModal({ onClose, onCreated }: Props) {
       return;
     }
 
-    setSaving(true);
+    setSaving(intent);
     try {
       const result = await createQuote({
         patient_id: recipientMode === 'patient' ? selectedPatientId : null,
@@ -338,10 +380,39 @@ export default function QuoteCreateModal({ onClose, onCreated }: Props) {
         return;
       }
 
-      showToast({ type: 'success', message: `Presupuesto ${result.quote.quote_number} creado` });
+      if (intent === 'create') {
+        showToast({ type: 'success', message: `Presupuesto ${result.quote.quote_number} creado` });
+        onCreated(result.quote.id);
+        return;
+      }
+
+      // Crear y enviar. El presupuesto YA quedó creado: si el envío falla, no se
+      // deshace nada — se avisa y se navega igual al detalle, desde donde se
+      // puede reintentar. Perder un presupuesto cargado por un fallo de correo
+      // sería peor que dejarlo en borrador.
+      const sent = await sendQuote(result.quote.id, {});
+      if (sent.error) {
+        showToast({
+          type: 'error',
+          message: `Se creó ${result.quote.quote_number}, pero no se pudo enviar: ${sent.error}`,
+        });
+      } else if (sent.email_sent === false) {
+        showToast({
+          type: 'success',
+          message:
+            sent.email_skip_reason === 'no_recipient_email'
+              ? `${result.quote.quote_number} enviado. El destinatario no tiene correo cargado: compartí el enlace desde el detalle.`
+              : `${result.quote.quote_number} enviado, pero el correo no salió. Compartí el enlace desde el detalle.`,
+        });
+      } else {
+        showToast({
+          type: 'success',
+          message: `Presupuesto ${result.quote.quote_number} creado y enviado`,
+        });
+      }
       onCreated(result.quote.id);
     } finally {
-      setSaving(false);
+      setSaving(null);
     }
   }
 
@@ -368,9 +439,12 @@ export default function QuoteCreateModal({ onClose, onCreated }: Props) {
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
       style={{ backgroundColor: 'rgba(15,23,42,0.45)' }}
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
+      /*
+        El clic en el fondo NO cierra: este formulario es largo (destinatario,
+        ítems, descuento, vigencia) y un clic al costado borraba todo lo tipeado
+        sin preguntar. Se cierra solo con Cancelar o con la X, que es la regla
+        que el proyecto ya había fijado para los modales de captura (ADR-021).
+      */
     >
       <div
         className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[92vh] flex flex-col"
@@ -879,19 +953,38 @@ export default function QuoteCreateModal({ onClose, onCreated }: Props) {
               <button
                 type="button"
                 onClick={onClose}
-                disabled={saving}
+                disabled={saving !== null}
                 className="px-4 py-2 text-xs font-semibold text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors disabled:opacity-50"
               >
                 Cancelar
               </button>
+              {/*
+                "Crear presupuesto" queda como acción secundaria (deja el
+                borrador) y "Crear y enviar" pasa a ser la principal: el camino
+                normal es mandarlo, y antes eso obligaba a abrir un segundo
+                modal desde el detalle.
+              */}
               <button
                 type="submit"
-                disabled={saving}
+                disabled={saving !== null}
+                className="flex items-center gap-2 px-4 py-2 text-xs font-semibold text-slate-700 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors disabled:opacity-60"
+              >
+                {saving === 'create' && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                Crear presupuesto
+              </button>
+              <button
+                type="button"
+                onClick={() => void submit('send')}
+                disabled={saving !== null}
                 className="flex items-center gap-2 px-5 py-2 text-xs font-semibold text-white rounded-lg transition-opacity hover:opacity-90 disabled:opacity-60"
                 style={{ background: 'linear-gradient(135deg,#00C4CC 0%,#0891b2 100%)' }}
               >
-                {saving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                Crear presupuesto
+                {saving === 'send' ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Send className="w-3.5 h-3.5" />
+                )}
+                Crear y enviar
               </button>
             </div>
           </form>

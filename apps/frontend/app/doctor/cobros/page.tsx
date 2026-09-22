@@ -19,7 +19,12 @@ import {
   addPaymentItem,
   removePaymentItem,
 } from '@/app/doctor/finances/payments-actions';
-import { formatPaymentMethod } from '@/lib/payment-methods';
+import {
+  formatPaymentMethod,
+  normalizePaymentMethod,
+  normalizePaymentMethods,
+  normalizePaymentDetailKeys,
+} from '@/lib/payment-methods';
 import { entriesOf } from '@/lib/payment-details';
 import { buildReceiptHtml } from '@/lib/receipt-pdf';
 import { waLink } from '@/lib/phone-utils';
@@ -225,9 +230,12 @@ export default function CobrosPage() {
     let cancelled = false;
     getDoctorProfile().then((prof) => {
       if (cancelled || !prof) return;
-      setDoctorPaymentMethods((prof.paymentMethods as string[] | null) ?? []);
+      // Se normaliza al LEER: la migración 20260911000001 unificó el vocabulario,
+      // pero un perfil que no pasó por ella todavía puede traer `cash_usd` y el
+      // selector —que filtra por esta lista— se quedaría sin la opción Efectivo.
+      setDoctorPaymentMethods(normalizePaymentMethods(prof.paymentMethods as string[] | null));
       setDoctorPaymentDetails(
-        (prof.paymentDetails as Record<string, Record<string, string>> | null) ?? {},
+        normalizePaymentDetailKeys(prof.paymentDetails as Record<string, unknown> | null),
       );
     });
     return () => {
@@ -264,7 +272,7 @@ export default function CobrosPage() {
     const effectiveRate = frozenRate ?? bcvRate;
 
     setEditPaidAt(selectedPayment.paid_at?.split('T')[0] ?? new Date().toISOString().split('T')[0]);
-    setEditMethod(selectedPayment.payment_method ?? '');
+    setEditMethod(normalizePaymentMethod(selectedPayment.payment_method));
     setEditReference('');
     setEditBcvRate(effectiveRate ? effectiveRate.toFixed(2) : '');
     setEditAmountBs(

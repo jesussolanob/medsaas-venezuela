@@ -5,9 +5,11 @@
  *
  * Displays a single cotización with read + edit modes.
  * Status determines which actions are available:
- *   DRAFT  → edit items, discount, notes, validity; delete; send
- *   SENT   → mark as accepted / rejected; share link
- *   ACCEPTED/REJECTED/EXPIRED → read-only
+ *   DRAFT   → edit items, discount, notes, validity; delete; send
+ *   SENT    → mark as accepted / rejected; share link
+ *   EXPIRED → revivir: editar (sobre todo la vigencia) y volver a enviar.
+ *             No se puede borrar: ya se le mandó al paciente y su historia vale.
+ *   ACCEPTED/REJECTED → read-only
  *
  * §4.1: the notes field always shows the public-visibility warning in edit mode.
  */
@@ -223,9 +225,7 @@ function SendModal({ quoteId, recipientEmail, recipientName, onClose, onSent }: 
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
       style={{ backgroundColor: 'rgba(15,23,42,0.45)' }}
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
+      /* El clic en el fondo NO cierra: se cierra con Cancelar o Enviar. */
     >
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6" role="dialog">
         <h2 className="text-sm font-bold text-slate-800 mb-4">Enviar presupuesto</h2>
@@ -387,6 +387,20 @@ export default function QuoteDetailClient({ initialQuote }: Props) {
 
   const isDraft = quote.status === 'draft';
   const isSent = quote.status === 'sent';
+  /**
+   * Vencido = se puede REVIVIR: cambiarle la vigencia y volver a enviarlo.
+   *
+   * Antes un `expired` no tenía NINGÚN botón: el cron lo pasaba de `sent` a
+   * `expired` y ahí quedaba, sin poder editarse ni enviarse. El especialista no
+   * tenía más salida que rehacer el presupuesto entero.
+   *
+   * El backend ya lo permite (`canBeEdited`/`canBeSent` aceptan `expired`) y
+   * rechaza el envío mientras la vigencia siga vencida, con un mensaje que dice
+   * qué hacer. Acá solo hay que ofrecer las acciones.
+   */
+  const isExpired = quote.status === 'expired';
+  /** Editable y enviable comparten condición: borrador o vencido. */
+  const isEditable = isDraft || isExpired;
 
   // share_url comes from the backend (set after send). null = not yet sent.
   const shareUrl = quote.share_url ?? null;
@@ -675,8 +689,7 @@ export default function QuoteDetailClient({ initialQuote }: Props) {
    * Sin tasa disponible no se muestra nada — mejor ningún equivalente que uno que
    * el paciente no va a poder pagar.
    */
-  const totalBsVivo =
-    tasaViva != null ? Math.round(quote.total_usd * tasaViva * 100) / 100 : null;
+  const totalBsVivo = tasaViva != null ? Math.round(quote.total_usd * tasaViva * 100) / 100 : null;
 
   // computeTotal y no la resta a mano: es el mismo redondeo que hace el backend.
   // Acá no cambiaba nada visible —usdFmt ya recorta a dos decimales—, pero la
@@ -738,8 +751,8 @@ export default function QuoteDetailClient({ initialQuote }: Props) {
               </button>
             )}
 
-            {/* Draft actions */}
-            {isDraft && !editMode && (
+            {/* Acciones de borrador y de vencido (revivir) */}
+            {isEditable && !editMode && (
               <>
                 <button
                   type="button"
@@ -762,7 +775,7 @@ export default function QuoteDetailClient({ initialQuote }: Props) {
             )}
 
             {/* Edit mode actions */}
-            {isDraft && editMode && (
+            {isEditable && editMode && (
               <>
                 <button
                   type="button"

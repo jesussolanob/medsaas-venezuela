@@ -238,7 +238,22 @@ export default function ChangeServiceModal({
             type="button"
             onClick={() => void handleConfirm()}
             disabled={saving || !selected}
-            className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white g-bg rounded-lg hover:opacity-90 disabled:bg-slate-200 disabled:bg-none disabled:text-slate-400 disabled:cursor-not-allowed transition-opacity"
+            /*
+              Deshabilitado = el MISMO botón con opacidad, nunca otro color.
+
+              Antes decía `disabled:bg-slate-200 disabled:bg-none
+              disabled:text-slate-400`, y esas tres clases NO se aplicaban nunca:
+              `.g-bg` vive SIN capa en globals.css y las utilidades de Tailwind v4
+              viven en `@layer utilities`, así que lo no-encapado siempre gana.
+              Quedaba el degradado turquesa con texto gris claro encima —
+              ilegible—, y como el botón nace deshabilitado hasta elegir servicio,
+              era lo primero que se veía.
+
+              Regla: si un botón usa `.g-bg`, su estado deshabilitado va con
+              `disabled:opacity-*`, como el resto de la app. Cambiarle el fondo
+              con una utilidad de Tailwind no funciona.
+            */
+            className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white g-bg rounded-lg hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity"
           >
             {saving ? (
               <>

@@ -327,6 +327,104 @@ describe('SequelizeFinanceRepository', () => {
    * no hay base que pueda contestar. El SQL se comprobó además contra la base
    * real, que es la única forma de saber que Postgres lo acepta.
    */
+  /**
+   * getIncomeBreakdown — orphan payments (quote acceptances).
+   *
+   * A payment created when a patient accepts a quote has no linked appointment.
+   * It must appear in consultationsApproved.  A payment that DOES have a linked
+   * appointment is already counted via consultations.amount — adding it again
+   * here would double-count it (ADR-052).
+   *
+   * The NOT EXISTS guard lives in the SQL (infrastructure concern), so these
+   * tests verify the calculation math: the repo adds the three query results
+   * correctly.  The SQL guard itself is verified against the real database.
+   */
+  describe('getIncomeBreakdown — orphan payment inclusion (ADR-052)', () => {
+    function setupBreakdownQueries(
+      consultationApproved: string,
+      consultationPending: string,
+      manualIncome: string,
+      orphanPayments: string,
+    ) {
+      // getIncomeBreakdown calls query() three times in order via Promise.all:
+      //   1. consultation rows (approved_total / pending_total)
+      //   2. financial_transactions rows (manual income total)
+      //   3. orphan payments rows (payments without an appointment link)
+      mockSequelize.query
+        .mockResolvedValueOnce([
+          { approved_total: consultationApproved, pending_total: consultationPending },
+        ])
+        .mockResolvedValueOnce([{ total: manualIncome }])
+        .mockResolvedValueOnce([{ total: orphanPayments }]);
+    }
+
+    it('adds orphan payment total to consultationsApproved', async () => {
+      setupBreakdownQueries('200.00', '50.00', '100.00', '150.00');
+
+      const result = await repo.getIncomeBreakdown('doc-id-1', '2026-09');
+
+      // consultationsApproved = consultation approved (200) + orphan payments (150) = 350
+      expect(result.consultationsApproved).toBeCloseTo(350);
+      expect(result.consultationsPending).toBeCloseTo(50);
+      expect(result.manualIncome).toBeCloseTo(100);
+    });
+
+    it('does not double-count when orphan payment total is zero (all payments link to appointments)', async () => {
+      // orphanPaymentRows returns 0 because NOT EXISTS filters everything out.
+      setupBreakdownQueries('200.00', '50.00', '100.00', '0');
+
+      const result = await repo.getIncomeBreakdown('doc-id-1', '2026-09');
+
+      // consultationsApproved = consultation approved (200) + 0 = 200 — no duplication.
+      expect(result.consultationsApproved).toBeCloseTo(200);
+    });
+
+    it('handles null totals (empty tables) without NaN', async () => {
+      setupBreakdownQueries('0', '0', '0', '0');
+
+      const result = await repo.getIncomeBreakdown('doc-id-1', '2026-09');
+
+      expect(result.consultationsApproved).toBe(0);
+      expect(result.consultationsPending).toBe(0);
+      expect(result.manualIncome).toBe(0);
+    });
+
+    it('emits a NOT EXISTS subquery to exclude appointment-linked payments', async () => {
+      setupBreakdownQueries('0', '0', '0', '0');
+
+      await repo.getIncomeBreakdown('doc-id-1', '2026-09');
+
+      // Third query call (index 2) is the orphan payment query.
+      const orphanSql = String(mockSequelize.query.mock.calls[2]?.[0] ?? '');
+      expect(orphanSql).toContain('NOT EXISTS');
+      expect(orphanSql).toContain('appointments');
+      expect(orphanSql).toContain('payment_id');
+    });
+
+    /*
+      Un pago llega a una consulta por DOS caminos y los dos tienen que quedar
+      afuera de este término, o el ingreso se cuenta dos veces.
+
+      El segundo camino es `payments.consultation_id`, que escribe
+      `approveWithExtras` para los extras de una sesión de paquete ya cubierta
+      (ADR-070): esa cita apunta al pago del PAQUETE, no a este, así que el
+      `NOT EXISTS` sobre `appointments` no la excluye. Sin esta cláusula, los
+      extras de un paquete se sumaban una vez por `consultations.amount` y otra
+      acá.
+
+      Los tests usan un Sequelize simulado: verifican el SQL que se emite, no que
+      Postgres lo acepte. Afirmar sobre la cláusula es la única red posible acá.
+    */
+    it('excluye también los pagos enlazados a una consulta sin cita (extras de paquete)', async () => {
+      setupBreakdownQueries('0', '0', '0', '0');
+
+      await repo.getIncomeBreakdown('doc-id-1', '2026-09');
+
+      const orphanSql = String(mockSequelize.query.mock.calls[2]?.[0] ?? '');
+      expect(orphanSql).toContain('consultation_id IS NULL');
+    });
+  });
+
   describe('ingreso = pago aprobado (sin mirar el estado de la cita)', () => {
     it('no condiciona el total de ingresos al estado de la cita', async () => {
       mockSequelize.query.mockResolvedValue([

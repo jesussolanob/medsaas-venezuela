@@ -747,9 +747,12 @@ export default function InventoryClient({ initialProducts }: Props) {
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4"
           style={{ backgroundColor: 'rgba(15,23,42,0.45)' }}
-          onClick={(e) => {
-            if (e.target === e.currentTarget) closeModal();
-          }}
+          /*
+            El clic en el fondo NO cierra — vale para Nuevo producto y para
+            Editar producto, que son este mismo modal. Además de los campos,
+            acá puede haber una FOTO ya subida: cerrar por accidente la perdía.
+            Se cierra con Cancelar o con la X.
+          */
         >
           <div
             className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col"

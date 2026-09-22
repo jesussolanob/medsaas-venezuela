@@ -339,16 +339,20 @@ export class SequelizeQuoteRepository implements IQuoteRepository {
 
   async update(id: string, doctorId: string, params: UpdateQuoteParams): Promise<Quote> {
     return this.sequelize.transaction(async (t) => {
-      // TOCTOU fix: require status = 'draft' in the fetch so a concurrent send
-      // between the use case's guard check and this UPDATE is caught here.
+      // TOCTOU fix: require status IN ('draft', 'expired') in the fetch so a
+      // concurrent send between the use case's guard check and this UPDATE is
+      // caught here. Expired quotes can be edited (valid_until update → re-send).
       const row = await this.quoteModel.findOne({
-        where: { id, doctorId, status: 'draft' } as WhereOptions,
+        where: {
+          id,
+          doctorId,
+          status: { [Op.in]: ['draft', 'expired'] },
+        } as WhereOptions,
         include: [{ model: QuoteItemModel, as: 'items' }],
         transaction: t,
       });
       if (!row) {
-        // Quote not found OR it was sent concurrently — unify the check by
-        // looking up existence without status filter.
+        // Quote not found OR it is in a non-editable state (sent/accepted/rejected).
         const exists = await this.quoteModel.findOne({
           where: { id, doctorId } as WhereOptions,
           attributes: ['id', 'status'],
@@ -417,7 +421,11 @@ export class SequelizeQuoteRepository implements IQuoteRepository {
 
       if (Object.keys(updateFields).length > 0) {
         await this.quoteModel.update(updateFields, {
-          where: { id, doctorId, status: 'draft' } as WhereOptions,
+          where: {
+            id,
+            doctorId,
+            status: { [Op.in]: ['draft', 'expired'] },
+          } as WhereOptions,
           transaction: t,
         });
       }
@@ -433,17 +441,24 @@ export class SequelizeQuoteRepository implements IQuoteRepository {
 
   async markAsSent(id: string, doctorId: string, params: SendQuoteParams): Promise<Quote> {
     return this.sequelize.transaction(async (t) => {
-      // TOCTOU fix: UPDATE with status = 'draft' in WHERE.
+      // TOCTOU fix: UPDATE with status IN ('draft', 'expired') in WHERE.
       // If a concurrent send already changed status, affected = 0 → 409.
+      // When reviving an expired quote, expiryReminderSentAt is reset to null
+      // so the reminder fires again for the new valid_until date.
       const [affected] = await this.quoteModel.update(
         {
           status: 'sent',
           bcvRate: params.bcvRate,
           totalBs: params.totalBs,
           sentAt: new Date(),
+          expiryReminderSentAt: null,
         },
         {
-          where: { id, doctorId, status: 'draft' } as WhereOptions,
+          where: {
+            id,
+            doctorId,
+            status: { [Op.in]: ['draft', 'expired'] },
+          } as WhereOptions,
           transaction: t,
         },
       );
@@ -588,6 +603,99 @@ export class SequelizeQuoteRepository implements IQuoteRepository {
     );
   }
 
+  /**
+   * Accepts a patient quote and atomically creates the pending payment.
+   *
+   * The INSERT (payment) and UPDATE (quote status + payment_id) share the same
+   * Sequelize transaction. The UPDATE's WHERE includes `payment_id IS NULL` as
+   * an idempotency guard: if a concurrent request already accepted the quote and
+   * set payment_id, the UPDATE returns 0 rows, the payment INSERT is rolled back
+   * by the transaction, and the caller receives QuoteInvalidStatusTransitionError.
+   *
+   * Pre-accept idempotency: if the quote already has status='accepted' AND a
+   * payment_id, this method returns the existing quote without creating anything.
+   *
+   * SECURITY: doctorId and patientId come from the server — never from the request.
+   * ADR-058: guard is inside the DB transaction, not only in the use case.
+   */
+  async acceptWithPayment(
+    id: string,
+    doctorId: string,
+    paymentData: { paymentId: string; patientId: string; amountUsd: number; paymentCode: string },
+  ): Promise<Quote> {
+    // Fast-path idempotency check OUTSIDE the transaction to avoid a lock when
+    // the common case is "already accepted with a payment".
+    const priorRow = await this.quoteModel.findOne({
+      where: { id, doctorId } as WhereOptions,
+      attributes: ['id', 'status', 'paymentId'],
+    });
+    if (!priorRow) throw new QuoteNotFoundError();
+    if (priorRow.status === 'accepted' && priorRow.paymentId !== null) {
+      const full = await this.quoteModel.findOne({
+        where: { id, doctorId } as WhereOptions,
+        include: [{ model: QuoteItemModel, as: 'items' }],
+      });
+      return this.toDomain(full!);
+    }
+
+    return this.sequelize.transaction(async (t) => {
+      // 1. Create the payment row inside the transaction.
+      //    Raw SQL so this stays in the quotes module without importing
+      //    PaymentModel (cross-module model import is an anti-pattern here).
+      await this.sequelize.query(
+        // `payment_code` lleva el número del presupuesto: es lo que la pantalla
+        // de Cobros muestra como referencia de la fila. Sin él, el cobro de un
+        // presupuesto aparecía sin ninguna referencia y no había forma de saber
+        // de cuál venía. `currency` no se manda: la columna tiene DEFAULT 'USD'.
+        `INSERT INTO payments
+           (id, doctor_id, patient_id, amount_usd, status, payment_code, created_at, updated_at)
+         VALUES
+           (:paymentId, :doctorId, :patientId, :amountUsd, 'pending', :paymentCode, NOW(), NOW())`,
+        {
+          replacements: {
+            paymentId: paymentData.paymentId,
+            doctorId,
+            patientId: paymentData.patientId,
+            amountUsd: paymentData.amountUsd,
+            paymentCode: paymentData.paymentCode,
+          },
+          transaction: t,
+        },
+      );
+
+      // 2. Accept the quote and bind the payment atomically.
+      //    payment_id IS NULL is the DB-level idempotency guard (ADR-058):
+      //    a second concurrent accept will find payment_id already set and
+      //    return 0 affected rows, rolling back its payment INSERT.
+      const [affected] = await this.quoteModel.update(
+        { status: 'accepted', paymentId: paymentData.paymentId },
+        {
+          where: { id, doctorId, status: 'sent', paymentId: null } as WhereOptions,
+          transaction: t,
+        },
+      );
+
+      if (affected === 0) {
+        // Could be: already accepted by a concurrent request, not found,
+        // or not in 'sent' state. Re-check to give a precise error.
+        const current = await this.quoteModel.findOne({
+          where: { id, doctorId } as WhereOptions,
+          attributes: ['id', 'status'],
+          transaction: t,
+        });
+        if (!current) throw new QuoteNotFoundError();
+        throw new QuoteInvalidStatusTransitionError(current.status as QuoteStatus, 'accepted');
+      }
+
+      const updated = await this.quoteModel.findOne({
+        where: { id, doctorId } as WhereOptions,
+        include: [{ model: QuoteItemModel, as: 'items' }],
+        transaction: t,
+      });
+      return this.toDomain(updated!);
+    });
+  }
+
   // --------------------------------------------------------------------------
   // Private helpers
   // --------------------------------------------------------------------------
@@ -636,6 +744,7 @@ export class SequelizeQuoteRepository implements IQuoteRepository {
       expiryReminderSentAt: row.expiryReminderSentAt,
       items: itemRows.map((i) => this.itemToDomain(i)),
       shareToken,
+      paymentId: row.paymentId ?? null,
     });
   }
 

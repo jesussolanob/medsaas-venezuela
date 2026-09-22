@@ -10,6 +10,7 @@ import type { Quote } from '../../domain/entities/quote.entity';
 import { QuoteShareLink } from '../../domain/entities/quote-share-link.entity';
 import { QuoteNotFoundError } from '../../domain/errors/quote-not-found.error';
 import { QuoteAlreadySentError } from '../../domain/errors/quote-already-sent.error';
+import { QuoteValidUntilExpiredError } from '../../domain/errors/quote-valid-until-expired.error';
 import { MailerService } from '../../../email/application/services/mailer.service';
 import {
   USDT_RATE_STORE,
@@ -128,6 +129,14 @@ export class SendQuoteUseCase {
     }
     if (!quote.canBeSent()) {
       throw new QuoteAlreadySentError();
+    }
+
+    // 1b. Reject if valid_until is already in the past — the share link would be
+    //     dead the instant the patient opens it. This catches both fresh drafts
+    //     and expired quotes that were not updated before clicking "Enviar".
+    const validUntilCutoff = quote.expiresAt();
+    if (validUntilCutoff !== null && validUntilCutoff < new Date()) {
+      throw new QuoteValidUntilExpiredError();
     }
 
     // 2. Resolve doctor's full name from profile (never from the JWT — the JWT

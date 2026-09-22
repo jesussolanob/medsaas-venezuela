@@ -1065,3 +1065,73 @@ eso el modal no puede filtrar lo equivalente.
 (`schedule-pending-consultation`), el paciente desde el correo (`…-by-token`, que delega en el anterior) y la
 consulta inmediata (`create-immediate-appointment`)—. Arreglar uno y razonar que los otros "delegan" ya falló
 dos veces en este mismo lote. **Recorrer los tres en el navegador.**
+
+## Hotfix del 2026-09-21 — cita de paquete sin nombre y reagendar para hoy
+
+Dos bugs reportados por la Dra. Ana Solano por nota de voz, con evidencia cruzada contra la BD
+de producción. Ver **ADR-089** y **ADR-090**.
+
+| Pieza                                      | Dónde                                          | Qué cambió                                                                                                                         |
+| ------------------------------------------ | ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `SchedulePendingConsultationUseCase`       | `pending-consultations/application/use-cases/` | Resuelve el snapshot del paciente por `PATIENT_REPOSITORY` (best-effort) y crea la consulta **después** del commit                 |
+| `PendingConsultation.withConsultationId()` | `pending-consultations/domain/entities/`       | Enlaza la consulta en un segundo paso. No usa `markScheduled`, que exige partir de `pending_scheduling`                            |
+| `RescheduleModal.tsx`                      | `components/doctor/`                           | Los **consultorios** pasan a ser la fuente de los horarios; `doctor_schedules` queda de respaldo con su día convertido en el borde |
+
+⚠️ **`appointments.patient_name` es un SNAPSHOT y la agenda no lo deriva.** El listado
+(`sequelize-appointment.repository.ts`) **no hace JOIN con `patients`**: si un camino de alta no
+escribe el nombre, la cita sale como **"Paciente"** y nadie sabe de quién es. Cualquier camino
+NUEVO que cree una cita tiene que escribir el snapshot completo.
+
+⚠️ **El modal de reagendar tiene TRES consumidores** — inicio (`app/doctor/page.tsx`), consultas
+(`ConsultationsClient.tsx`) e inasistencia (`NoShowModal.tsx`). Un arreglo ahí los alcanza a los
+tres; un bug ahí también.
+
+🔴 **Encontrado y NO arreglado (deuda anotada):** el listado de Cobros hace
+`LEFT JOIN appointments a ON a.payment_id = p.id` **plano**
+(`sequelize-payment.repository.ts:176`). Como todas las sesiones de un paquete comparten
+`payment_id`, un paquete con 2 citas **muestra el cobro dos veces en la lista**. El TOTAL de la
+tarjeta está bien (sale de `payments` sin join), así que la pantalla se contradice sola. Ya pasa
+en producción con el paquete de Gabriela Jaraba. El arreglo (`LEFT JOIN LATERAL … LIMIT 1`) ya
+está escrito en `develop`.
+
+## Módulo `notifications` + campana del especialista (2026-09-22)
+
+Módulo backend nuevo `apps/backend/src/modules/notifications/` (DDD 4 capas) + tabla
+`notifications` (mig `20260922000002`) + `components/doctor/DoctorNotifications.tsx`.
+Ver **ADR-093**.
+
+- Endpoints: `GET /api/doctor/notifications` (lista + contador de no leídas) ·
+  `POST /api/doctor/notifications/:id/read` · `POST /api/doctor/notifications/read-all`.
+- Anti-IDOR: `doctor_id` SIEMPRE de `user.sub`, nunca del body.
+- `NotificationsModule` exporta `CreateNotificationUseCase`; `QuotesModule` lo importa.
+
+⚠️ **Antes de esto la campana del especialista era un `<div>` DECORATIVO** en
+`app/doctor/layout.tsx`: icono `<Bell/>` con estilos de hover, **sin `onClick`, sin badge, sin
+dropdown y sin fetch**. La misma campana muerta sigue en `app/patient/layout.tsx`.
+
+⚠️ **Los endpoints van como route handler, NO como Server Action** (ADR-022) — es polling de
+cliente de larga vida, justo el caso que truena "Server Action not found" tras cada deploy.
+
+⚠️ **El polling escribe estado solo dentro de `.then()`**, nunca en el cuerpo del efecto:
+`react-hooks/set-state-in-effect` lo marca como error. Por eso el fetch va escrito adentro del
+`useEffect` en vez de extraído a un `useCallback` — mismo patrón que `RescheduleModal`.
+
+## Piezas del lote de QA del 19-09 (2026-09-22)
+
+| Pieza                         | Dónde                                    | Para qué                                                                                                                                       |
+| ----------------------------- | ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `lib/currency.ts`             | `apps/frontend/lib/`                     | `currencyOf` — la divisa del especialista. Módulo **sin dependencias** a propósito: lo usa el PDF, que también corre en el navegador (ADR-091) |
+| `resolveRateForCurrencyMode`  | `lib/bcv-rate.ts`                        | Única función que elige la tasa según la divisa. La usan la pantalla y la ruta del PDF público                                                 |
+| `appendItem` / `isBlankItem`  | `app/doctor/quotes/QuoteCreateModal.tsx` | El primer ítem del catálogo REEMPLAZA la fila en blanco inicial en vez de sumarse                                                              |
+| `QuoteValidUntilExpiredError` | `quotes/domain/errors/`                  | Rechaza enviar con la vigencia vencida — antes el paciente recibía un enlace muerto al instante                                                |
+| `acceptWithPayment`           | `quotes/domain/repositories/`            | ⚠️ **Método nuevo en el puerto**: rompió los mocks de 6 specs. Crea el cobro y acepta en UNA transacción                                       |
+
+⚠️ **`.g-bg` vive SIN capa en `globals.css`** y las utilidades de Tailwind v4 viven en
+`@layer utilities`: lo no-encapado **siempre gana**. Un botón con `.g-bg` NO puede cambiar su
+fondo con `disabled:bg-*` — esas clases no se aplican nunca. El estado deshabilitado va con
+`disabled:opacity-*`. Así quedó ilegible el botón de cambiar servicio (degradado turquesa con
+texto gris encima), y como nace deshabilitado, era lo primero que se veía.
+
+⚠️ **Los modales de captura no cierran por clic en el fondo** (regla del ADR-021). Se aplicó a
+alta y envío de presupuesto, y alta/edición y carga masiva de producto. El visor de movimientos
+de inventario SÍ cierra: es de solo lectura.

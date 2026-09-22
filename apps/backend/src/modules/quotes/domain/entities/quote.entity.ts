@@ -43,6 +43,13 @@ export interface QuoteCreateParams {
   leadId: string | null;
   status: QuoteStatus;
   /**
+   * FK to payments.id — set atomically when the quote transitions to
+   * 'accepted'. Null while in draft/sent/rejected/expired.
+   * Used as the idempotency key: a second accept attempt is a no-op when
+   * this field is already populated (ADR-058).
+   */
+  paymentId?: string | null;
+  /**
    * ⚠️ `Date | string` a propósito, y no `Date`: al LEER de la base esto es una
    * cadena 'YYYY-MM-DD' (columna DATEONLY), al ESCRIBIR llega un Date desde el
    * DTO. Declararlo solo `Date` es lo que hizo que el cron de vencimiento no
@@ -115,6 +122,8 @@ export class Quote {
   readonly shareToken: string | null;
   /** Patient/prospect display name. Read-model — see QuoteCreateParams. */
   readonly recipientName: string | null;
+  /** FK to payments.id — null until the quote is accepted. See QuoteCreateParams. */
+  readonly paymentId: string | null;
 
   constructor(params: QuoteCreateParams) {
     this.id = params.id;
@@ -139,6 +148,7 @@ export class Quote {
     this.items = params.items ?? [];
     this.shareToken = params.shareToken ?? null;
     this.recipientName = params.recipientName ?? null;
+    this.paymentId = params.paymentId ?? null;
   }
 
   /**
@@ -155,14 +165,35 @@ export class Quote {
     return this.doctorId === doctorId;
   }
 
-  /** Only draft quotes can be edited or deleted. */
+  /**
+   * Draft and expired quotes can be edited.
+   *
+   * Design decision: we extend `canBeEdited()` to include 'expired' rather than
+   * adding a separate `reviveQuote` path. An "expired → revived" workflow is
+   * semantically identical to "edit valid_until → re-send": the same data fields
+   * change and the same send flow applies. A dedicated path would duplicate the
+   * update logic without adding any new invariant. The state machine guard
+   * (`canTransitionTo`) already prevents editing accepted/rejected/sent quotes.
+   *
+   * Note: the infrastructure layer (SequelizeQuoteRepository.update) enforces
+   * this same set in its WHERE clause so an out-of-band status change cannot
+   * bypass the guard.
+   */
   canBeEdited(): boolean {
-    return this.status === 'draft';
+    return this.status === 'draft' || this.status === 'expired';
   }
 
-  /** Only draft quotes can be sent. */
+  /**
+   * Draft and expired quotes can be sent.
+   *
+   * Sending an expired quote "revives" it: the use case validates that the
+   * updated valid_until is in the future before calling markAsSent. If the
+   * specialist does not update the date first, SendQuoteUseCase throws
+   * QuoteValidUntilExpiredError — the state machine itself does not check dates,
+   * only the use case does (domain vs. application-layer responsibility split).
+   */
   canBeSent(): boolean {
-    return this.status === 'draft';
+    return this.status === 'draft' || this.status === 'expired';
   }
 
   /**

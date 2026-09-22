@@ -554,6 +554,57 @@ próxima cita)` — si el bloque siguiente está libre ocupa lo que dura, y si n
   git). Docs vivos reubicados a `docs/` (`presentacion-inversionistas.html`, `dominio-dns-snapshot.md`,
   `guides/estructura-modulo.md`); el manual de agentes viejo → `docs/_archivo/` (lo suplió `.claude/agents/orchestrator.md`).
 
+- **ADR-091 (2026-09-22):** **La tasa se elige por la DIVISA del especialista, y esa decisión vive
+  en UN solo lugar.** El mismo presupuesto mostraba Bs. 104.371,13 en el PDF del paciente y
+  Bs. 119.853,55 en la pantalla. No era congelada contra viva —las dos eran vivas—: la página
+  usaba `eur_rate` (la especialista tiene `currency_mode='eur_bcv'`) y la ruta del PDF tomaba
+  siempre `tasas.rate`, la del dólar, **mientras rotulaba el monto en `€`**. El pie del documento
+  llegaba a decir "Bs. 834,97 por EUR" con la tasa del dólar.
+
+  🔑 **El ratio delata la causa:** `119.853,55 / 104.371,13 = 1,14834` es la **paridad EUR/USD**
+  clavada. Una brecha BCV/paralelo habría dado un número cualquiera (el caso del 09/09 fue 17%).
+  Cuando dos montos difieren por una constante reconocible, el problema es **qué tasa**, no cuándo.
+
+  `resolveRateForCurrencyMode` (`lib/bcv-rate.ts`) es ahora el único que decide, y `currencyOf`
+  vive en **`lib/currency.ts`**, un módulo sin dependencias a propósito: ponerlo junto al fetch de
+  la tasa le habría metido al PDF —que también se renderiza en el navegador— todo el código de
+  scraping en el bundle.
+
+  ⚠️ **La divisa NO se degrada sola** (ADR-034): modo euro sin tasa del euro devuelve `null` y el
+  PDF sale sin bolívares. Mostrar "—" es la verdad; convertir con la del dólar y rotularlo en euros
+  es mentir, en el documento con el que el paciente paga.
+
+- **ADR-092 (2026-09-22):** **Un presupuesto aceptado genera su cobro, y la tarjeta de ingresos
+  suma los pagos que no cuelgan de ninguna consulta.** Finanzas suma por dos vías —la tarjeta desde
+  `consultations`, la lista desde `payments`— y hoy coinciden **de casualidad**: todo cobro nace de
+  una cita y toda cita genera su consulta. Un cobro de presupuesto no tiene consulta detrás, así que
+  aparecería en la tabla y no en la tarjeta: dos totales distintos en la misma pantalla (ADR-029 /
+  ADR-052). El término nuevo es **aditivo y disjunto**, así que no puede contar dos veces.
+
+  ⚠️ **Un pago llega a una consulta por DOS caminos, no uno**, y los dos tienen que quedar afuera:
+  `appointments.payment_id` (el normal) y **`payments.consultation_id`**, que escribe
+  `approveWithExtras` para los extras de una sesión de paquete ya cubierta (ADR-070) — esa cita
+  apunta al pago del **paquete**, no a este. Mirar solo las citas contaba esos extras **dos veces**.
+  Los tests usan Sequelize simulado y no pueden verlo: la única red es afirmar sobre el SQL emitido.
+
+  La idempotencia va **dentro del UPDATE y de la transacción** (`payment_id IS NULL` en el WHERE),
+  no en el use case (ADR-058). Un presupuesto a un **prospecto no genera cobro**:
+  `payments.patient_id` es NOT NULL y volverla nullable arrastra a todo el listado de cobros.
+
+- **ADR-093 (2026-09-22):** **La campana notifica lo que el especialista NO vio.** El camino que
+  dispara él mismo (`PUT /api/doctor/quotes/:id/status`, marcar aceptado/rechazado a mano) **no
+  emite**: avisarle de algo que acaba de hacer es ruido y enciende el punto de "no leídas", que
+  tiene que significar "pasó algo que no viste". Sí emite el camino **público**, que es cuando
+  decide el paciente.
+
+  **NUNCA PII:** título y cuerpo nombran el presupuesto por su **número**, jamás por el paciente —
+  la fila se guarda sin cifrar y se pinta en pantalla. Emisión **best-effort y posterior** a la
+  transición: un fallo al notificar no puede tumbar la aceptación ni el cobro.
+
+  Alcance mínimo por decisión del dueño: solo presupuestos. Los avisos de citas siguen siendo un
+  toast efímero. ⚠️ Antes de esto **no existía nada**: la campana del especialista era un `<div>`
+  decorativo —sin `onClick`, sin badge, sin fetch— y la única viva era la de `/admin`.
+
 ## Inventario de tablas (auditoría Fase 0 — fuente de verdad: archivos `*.sql`)
 
 Core: `profiles`, `appointments`, `consultations`, `patients`, `patient_packages`,
@@ -1138,6 +1189,71 @@ status='active'` con `QueryTypes.UPDATE` (devuelve `[undefined, affectedCount]`;
   `git grep` sobre el comportamiento (un texto de la UI, un nombre de estado), no sobre cómo alguien
   habría titulado el commit.
 
+- **ADR-088 (2026-09-15):** **Un aviso que depende de datos derivados tiene que degradar a la fuente
+  primaria — y estar donde el usuario mira.** Segunda línea de defensa del cobro doble. Dos
+  decisiones, y las dos nacieron de que la versión anterior fallaba:
+  1. **Va FUERA del acordeón.** `selectPatient` hace `setCurrentStep(2)` **siempre**, así que cuando
+     hay un paciente elegido el paso "Paciente" ya está colapsado: un aviso dentro de ese paso **no
+     se renderiza nunca**. Estuvo invisible desde que se escribió (ADR-081).
+  2. **Las sesiones sin usar se DERIVAN**: `sessions_count` del servicio menos las citas que existen
+     (atendidas + agendadas). **No se cuentan filas de `pending_consultations`.** `no_show` no resta
+     porque una inasistencia no consume sesión.
+
+  🔑 **La diferencia decidió el caso real.** Carlos Bastidas tenía 1 sesión atendida, **0
+  preconsultas** y un paquete de 3. Contando filas pendientes el aviso da **cero** y se queda callado
+  justo cuando hacía falta; derivando da **"2 de 3 sin usar"**. Es literalmente el escenario que el
+  ADR-079 anticipó.
+
+  No hizo falta backend nuevo: `GET /api/doctor/pending-consultations/usage?patient_id=` ya existía en
+  producción con `totalSessions`/`attended`/`scheduled`/`no_show` por plan.
+
+  ⚠️ **La versión de producción es MÁS CHICA que la de `develop`** (que trae endpoint propio, aviso
+  también en la reserva pública y ~1500 líneas entre dos módulos, mezcladas con el lote de paquetes).
+  Se hizo así a propósito: el daño vino del panel del especialista, y un port de ese tamaño no es un
+  hotfix. **Al promover el backlog hay que reconciliar las dos versiones.**
+
+- **ADR-087 (2026-09-15):** **Vender un paquete desde el panel del especialista cobraba el paquete
+  entero por cada sesión.** Una especialista vendió UN paquete de 3 sesiones de $120 y quedaron **dos
+  cobros de $120 — $240**. No hubo doble compra: los logs muestran que las dos citas salieron de
+  `POST /api/doctor/appointments` con 2 minutos de diferencia. Agendó la sesión 1 y después la 2, y
+  **cada una creó su propio pago por el precio completo**.
+
+  🔑 **Causa: el panel manda `planName`, `planPrice` y `sessionsCount`, pero NO `planId`.** El bloque
+  multi-sesión de `CreateBookingUseCase` está detrás de `if (dto.plan_id && …)`: sin el id se saltea
+  **entero**, así que no se generan preconsultas ni se asigna `session_number`. Sin sesiones por
+  agendar, la especialista agenda la siguiente a mano — y ese camino vuelve a cobrar.
+
+  ⚠️ **Y fue invisible dos veces porque el WARN de diagnóstico vive DENTRO del mismo `if` que se
+  saltea.** Busqué ese aviso en los logs de producción y no había nada, precisamente porque el código
+  nunca llegaba a él. Es la causa raíz que quedó sin identificar en agosto con el caso de Ana Solano
+  ("Consultas por agendar" vacío). **Un diagnóstico dentro de la guarda que quiere diagnosticar no
+  sirve para nada.** Ahora hay un WARN fuera.
+
+  📊 Daño medido: de **12** citas cuyo plan es un paquete, solo **1** tenía `session_number`. El
+  camino del especialista nunca generó sesiones desde que existe.
+
+- **ADR-086 (2026-09-14):** **Al reconstruir un objeto campo por campo, lo que no se copia se pierde
+  — y un campo opcional hace que el compilador no avise.** `openConsultation` rearma la consulta
+  desde la respuesta del detalle y `setSelected(fresh)` **pisa** el objeto que venía de la lista. Ese
+  `fresh` no copiaba `appointment_status`, así que al abrir cualquier consulta con cita vinculada el
+  estado quedaba `undefined`.
+
+  Como `allowedAppointmentTransitions('')` devuelve `[]` y **una lista vacía significa "estado
+  final"**, la pantalla concluía **"no admite más cambios"** y escondía **"Atendida"** y **"No
+  asistió"** sobre una cita perfectamente agendada. Verificado contra la BD: la cita reportada estaba
+  en `scheduled`.
+
+  ⚠️ **Se disparaba justo cuando la petición de detalle salía BIEN.** El camino de fallback
+  —`setSelected(c)` con los datos de la lista— sí conservaba el campo. El camino feliz era el roto.
+
+  Al enumerar los campos del tipo contra los que el objeto rellenaba aparecieron **tres más** que
+  también se perdían (`session_number`, `package_total_sessions`, `package_charge_usd`): por eso al
+  abrir una consulta de paquete desaparecía el rótulo "Paquete (N consultas)".
+
+  🔑 **Regla de fondo:** un estado **ausente** ya no se interpreta como final. Cae a `null` = "no hay
+  transición que validar, mostrá las acciones" y decide el backend, que es la puerta dura. Un campo
+  que se pierde en el camino no puede volverse una función inaccesible en silencio.
+
 - **ADR-085 (2026-09-14):** **El vocabulario de método de pago se normaliza AL LEER; la migración es
   la otra mitad, no la única.** El ADR-072 unificó el vocabulario en `develop` el 11/09 con una
   migración de datos + enum en los DTOs. Esa migración es **una de las 18 pendientes**, así que el
@@ -1342,3 +1458,58 @@ status='active'` con `QueryTypes.UPDATE` (devuelve `[undefined, affectedCount]`;
   La regla vive en **un solo lugar** del booking (`planTotal()`), que ahora devuelve `price_usd`
   tal cual. Se conservó la función en vez de reemplazar sus 9 llamadas: si el precio volviera a
   componerse de partes, se cambia ahí y en ningún otro lado.
+
+- **ADR-089 (2026-09-21):** **La agenda lee el SNAPSHOT de la cita, no al paciente: quien crea
+  una cita tiene que escribirlo.** `schedule-pending-consultation.use-case` escribía literalmente
+  `patientName: null` (más teléfono, correo y cédula) y el `patient_id` correcto. Parecía inocuo
+  —el vínculo estaba bien— pero **el listado de la agenda no hace JOIN con `patients`**: lee
+  `appointments.patient_name` crudo y el frontend cae en `?? 'Paciente'`. Una especialista real
+  vio una cita anónima en su agenda y tuvo que **revisar los chats de WhatsApp de todos sus
+  pacientes** para saber de quién era.
+
+  El snapshot se resuelve ahora por `PATIENT_REPOSITORY` y es **best-effort**: si el paciente no
+  aparece, la cita se agenda igual con los campos en null. Agendar no puede romperse porque no se
+  pudo resolver un nombre.
+
+  ⚠️ **Segundo defecto en la misma fila: la consulta se crea DESPUÉS del commit.** Dentro de la
+  transacción la FK contra `appointments` no ve la cita todavía, el INSERT muere, y el error caía
+  en un `warn` — la cita quedaba sin consulta y la sesión **no aparecía en el módulo Consultas**.
+  Es el mismo arreglo que ya existía en `develop`; acá se portó a producción.
+
+  📊 **Cómo se midió:** la cita `c7e05fbb` era la **ÚNICA** fila con `source='pending_consultation'`
+  de toda la base. El camino se estrenó con el bug — por eso la especialista dijo "es primera vez
+  que me pasa". Una tabla con una sola fila es la señal de un camino recién estrenado: hay que
+  mirarle TODAS las columnas, no solo la que se reportó.
+
+  Deudas anotadas a propósito (fuera del hotfix): `appointment_code` sigue en null porque el
+  generador es un **método privado** de `CreateBookingUseCase`; `durationMinutes` sigue fijo en 30
+  en vez de salir del bloque del consultorio (ADR-028); y el **evento de Google Calendar no se
+  dispara por este camino** — engancharlo cerraría un ciclo `BookingModule` ↔
+  `PendingConsultationsModule` y pide extraer la notificación a un módulo propio.
+
+- **ADR-090 (2026-09-21):** **Los horarios de trabajo salen de los CONSULTORIOS; `doctor_schedules`
+  es respaldo, y las dos tablas NO usan la misma convención de día.**
+
+  | Fuente                          | Convención               |
+  | ------------------------------- | ------------------------ |
+  | `doctor_offices.schedule[].day` | **0=Lunes** … 6=Domingo  |
+  | `doctor_schedules.work_days`    | **0=Domingo** … 6=Sábado |
+
+  `RescheduleModal` leía la **segunda** tabla mientras convertía el día con la convención de la
+  **primera** (el comentario decía "mirror the agenda convention" — y ahí estaba el error: la
+  agenda usa esa convención porque sus horarios salen de los consultorios). Todo corrido un día:
+  **el lunes siempre apagado, el sábado siempre encendido**.
+
+  🔑 **Pero el bug que de verdad bloqueaba era el otro:** la especialista **no tiene fila en
+  `doctor_schedules`**, así que caía al default `Lun–Vie 08:00–17:00`, mientras sus horarios
+  reales (09:00–12:00 y **15:00–19:00**) viven en el consultorio. Quería reagendar para **hoy en
+  la noche** y las 18:00 **no existían** en ese selector. Arreglar solo la convención no la habría
+  desbloqueado — la lección es que un off-by-one visible puede tapar un problema de FUENTE DE DATOS.
+
+  Regla: adentro de un componente vive **UNA** convención; la conversión va en el **borde**
+  (`legacyDayToOfficeDay`), donde entra el dato. Si la lectura de consultorios falla se cae al
+  respaldo, nunca se deja al especialista sin poder reagendar.
+
+  ⚠️ `ConsultationsClient` lee el MISMO endpoint con `getDay()` (0=Domingo) y **está bien** — es
+  coherente con la fuente legacy. Lo que estaba mal era mezclar. Sigue usando la ventana legacy en
+  vez de los consultorios: mismo desfase de datos, todavía sin arreglar.

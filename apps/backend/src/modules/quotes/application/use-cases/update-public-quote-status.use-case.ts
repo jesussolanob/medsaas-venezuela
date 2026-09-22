@@ -1,4 +1,5 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import type { PublicQuoteStatusDto } from '@delta/shared-types';
 import {
   QUOTE_REPOSITORY,
@@ -20,6 +21,11 @@ import {
   LEAD_REPOSITORY,
   type ILeadRepository,
 } from '../../../leads/domain/repositories/lead.repository';
+import {
+  PAYMENT_REPOSITORY,
+  type IPaymentRepository,
+} from '../../../finances/domain/repositories/payment.repository';
+import { CreateNotificationUseCase } from '../../../notifications/application/use-cases/create-notification.use-case';
 
 /**
  * UpdatePublicQuoteStatusUseCase — lets the (unauthenticated) recipient of a
@@ -57,6 +63,10 @@ export class UpdatePublicQuoteStatusUseCase {
     @Inject(LEAD_REPOSITORY)
     private readonly leadRepo: ILeadRepository,
     private readonly mailer: MailerService,
+    @Inject(PAYMENT_REPOSITORY)
+    private readonly paymentRepo: IPaymentRepository,
+    @Optional()
+    private readonly createNotification?: CreateNotificationUseCase,
   ) {}
 
   async execute(token: string, dto: PublicQuoteStatusDto): Promise<Quote> {
@@ -71,18 +81,38 @@ export class UpdatePublicQuoteStatusUseCase {
     }
 
     // doctorId comes from the resolved quote, never from the request body/params.
-    // Se pasa el estado que se leyó: si otra respuesta llegó primero, el UPDATE
-    // afecta 0 filas y el repositorio lanza la transición inválida en vez de pisar.
-    const updated = await this.quoteRepo.updateStatus(
-      quote.id,
-      quote.doctorId,
-      dto.status,
-      quote.status,
-    );
+    let updated: Quote;
 
-    if (dto.status === 'accepted') {
-      await this.notifyDoctorSafely(updated);
+    if (dto.status === 'accepted' && quote.patientId !== null) {
+      // Payment creation is atomic with the status update (ADR-058).
+      updated = await this.quoteRepo.acceptWithPayment(quote.id, quote.doctorId, {
+        paymentId: randomUUID(),
+        patientId: quote.patientId,
+        amountUsd: quote.totalUsd,
+        paymentCode: quote.quoteNumber,
+      });
+    } else {
+      if (dto.status === 'accepted' && quote.patientId === null) {
+        // Lead quote: payments.patient_id is NOT NULL — skip payment creation.
+        this.logger.warn(
+          `[public-quote] quote ${quote.id} accepted without payment — lead quote has no patient`,
+        );
+      }
+      // Se pasa el estado que se leyó: si otra respuesta llegó primero, el UPDATE
+      // afecta 0 filas y el repositorio lanza la transición inválida en vez de pisar.
+      updated = await this.quoteRepo.updateStatus(
+        quote.id,
+        quote.doctorId,
+        dto.status,
+        quote.status,
+      );
     }
+
+    // Best-effort: email (accepted only) + bell notification (accepted + rejected).
+    await Promise.all([
+      dto.status === 'accepted' ? this.notifyDoctorSafely(updated) : Promise.resolve(),
+      this.emitBellNotificationSafely(updated, dto.status),
+    ]);
 
     return updated;
   }
@@ -125,6 +155,33 @@ export class UpdatePublicQuoteStatusUseCase {
       // Log by quote id only — never the recipient's name or email (PII).
       const msg = err instanceof Error ? err.message : String(err);
       this.logger.warn(`[public-quote] accepted notice failed for quote ${quote.id}: ${msg}`);
+    }
+  }
+
+  /**
+   * Best-effort in-app bell notification for the doctor.
+   * Fired for both accepted and rejected so the specialist sees the outcome.
+   * Never throws — a failure must not break the recipient's own response.
+   * NEVER include PII: identify the quote by its number only.
+   */
+  private async emitBellNotificationSafely(
+    quote: Quote,
+    status: 'accepted' | 'rejected',
+  ): Promise<void> {
+    if (!this.createNotification) return;
+    try {
+      const label = status === 'accepted' ? 'aceptado' : 'rechazado';
+      await this.createNotification.execute({
+        doctorId: quote.doctorId,
+        type: status === 'accepted' ? 'quote_accepted' : 'quote_rejected',
+        title: `Presupuesto ${quote.quoteNumber} ${label}`,
+        body: `El presupuesto ${quote.quoteNumber} fue ${label}.`,
+        entityType: 'quote',
+        entityId: quote.id,
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.warn(`[public-quote] bell notification failed for quote ${quote.id}: ${msg}`);
     }
   }
 

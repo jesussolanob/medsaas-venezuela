@@ -28,6 +28,9 @@ import { QuoteItemModel } from './quote-item.model';
  *
  * Migration 20260908000005 adds:
  *   - expiry_reminder_sent_at (nullable timestamp)
+ *
+ * Migration 20260922000001 adds:
+ *   - payment_id (nullable FK → payments.id, idempotency key for accept)
  */
 @Table({
   tableName: 'quotes',
@@ -101,6 +104,14 @@ export class QuoteModel extends Model {
    */
   @Column({ type: DataType.DATE, allowNull: true, field: 'expiry_reminder_sent_at' })
   declare expiryReminderSentAt: Date | null;
+
+  /**
+   * FK to payments.id — set atomically when the quote is accepted.
+   * Null while in draft/sent/rejected/expired. Used as the DB-level
+   * idempotency key (ADR-058) — see migration 20260922000001.
+   */
+  @Column({ type: DataType.UUID, allowNull: true, field: 'payment_id' })
+  declare paymentId: string | null;
 
   @CreatedAt
   @Column({ field: 'created_at' })

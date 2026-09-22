@@ -77,6 +77,7 @@ function makeRepo(): jest.Mocked<IQuoteRepository> {
     findItemsByQuoteId: jest.fn(),
     findQuotesNearingExpiry: jest.fn(),
     markExpiryReminderSent: jest.fn(),
+    acceptWithPayment: jest.fn(),
   };
 }
 

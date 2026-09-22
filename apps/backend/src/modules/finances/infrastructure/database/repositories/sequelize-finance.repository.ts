@@ -244,8 +244,11 @@ export class SequelizeFinanceRepository implements IFinanceRepository {
   }
 
   async lifetimeIncome(doctorId: string): Promise<{ total: number; consultationCount: number }> {
-    // Sum approved consultations (all time) and manual income (all time) in parallel.
-    const [consultationRows, incomeRows] = await Promise.all([
+    // Sum approved consultations, orphan payments (quote acceptances), and manual
+    // income (all time) in parallel. The same "no appointment" criterion as
+    // getIncomeBreakdown prevents double-counting payments that already have an
+    // associated consultation tracked in the consultations table.
+    const [consultationRows, incomeRows, orphanPaymentRows] = await Promise.all([
       this.sequelize.query<{ approved_total: string | null; approved_count: string | null }>(
         `SELECT
            COALESCE(SUM(amount), 0) AS approved_total,
@@ -268,10 +271,29 @@ export class SequelizeFinanceRepository implements IFinanceRepository {
           type: QueryTypes.SELECT,
         },
       ),
+      this.sequelize.query<{ total: string | null }>(
+        `SELECT COALESCE(SUM(p.amount_usd), 0) AS total
+         FROM payments p
+         WHERE p.doctor_id  = :doctorId
+           AND p.status     = 'approved'
+           AND p.amount_usd > 0
+           AND p.consultation_id IS NULL
+           AND NOT EXISTS (
+             SELECT 1
+               FROM appointments a
+              WHERE a.payment_id = p.id
+                AND a.doctor_id  = :doctorId
+           )`,
+        {
+          replacements: { doctorId },
+          type: QueryTypes.SELECT,
+        },
+      ),
     ]);
 
     const consultationRow = consultationRows[0];
     const incomeRow = incomeRows[0];
+    const orphanRow = orphanPaymentRows[0];
 
     const consultationTotal = consultationRow
       ? parseFloat(consultationRow.approved_total ?? '0')
@@ -280,9 +302,10 @@ export class SequelizeFinanceRepository implements IFinanceRepository {
       ? parseInt(consultationRow.approved_count ?? '0', 10)
       : 0;
     const manualIncome = incomeRow ? parseFloat(incomeRow.total ?? '0') : 0;
+    const orphanPayments = orphanRow ? parseFloat(orphanRow.total ?? '0') : 0;
 
     return {
-      total: parseFloat((consultationTotal + manualIncome).toFixed(2)),
+      total: parseFloat((consultationTotal + manualIncome + orphanPayments).toFixed(2)),
       consultationCount,
     };
   }
@@ -565,7 +588,7 @@ export class SequelizeFinanceRepository implements IFinanceRepository {
   async getIncomeBreakdown(doctorId: string, month: string): Promise<IncomeSummaryBreakdown> {
     const { start, end } = this.monthBounds(month);
 
-    const [consultationRows, incomeRows] = await Promise.all([
+    const [consultationRows, incomeRows, orphanPaymentRows] = await Promise.all([
       this.sequelize.query<{
         approved_total: string | null;
         pending_total: string | null;
@@ -597,13 +620,49 @@ export class SequelizeFinanceRepository implements IFinanceRepository {
           type: QueryTypes.SELECT,
         },
       ),
+      // Payments aprobados que no cuelgan de NINGUNA consulta — ni por cita ni
+      // directo. Hoy eso es el cobro de un presupuesto aceptado.
+      //
+      // ⚠️ Las DOS condiciones son necesarias. Un pago se cuenta por
+      // consultations.amount si llega a una consulta por cualquiera de los dos
+      // caminos, y sumarlo también acá lo duplicaría (ADR-052):
+      //   1. `appointments.payment_id` → la cita y su consulta (camino normal).
+      //   2. `payments.consultation_id` → sin cita. Lo escribe `approveWithExtras`
+      //      para los extras de una sesión de paquete ya cubierta (ADR-070), cuya
+      //      cita apunta al pago del paquete y no a este. Mirar solo las citas
+      //      contaba esos extras DOS veces.
+      // El filtro de fecha usa COALESCE(paid_at, created_at) — el mismo criterio
+      // que listIncomePaginated — para que las dos vistas sean coherentes.
+      this.sequelize.query<{ total: string | null }>(
+        `SELECT COALESCE(SUM(p.amount_usd), 0) AS total
+         FROM payments p
+         WHERE p.doctor_id   = :doctorId
+           AND p.status      = 'approved'
+           AND p.amount_usd  > 0
+           AND COALESCE(p.paid_at, p.created_at) >= :start
+           AND COALESCE(p.paid_at, p.created_at) <  :end
+           AND p.consultation_id IS NULL
+           AND NOT EXISTS (
+             SELECT 1
+               FROM appointments a
+              WHERE a.payment_id = p.id
+                AND a.doctor_id  = :doctorId
+           )`,
+        {
+          replacements: { doctorId, start: start.toISOString(), end: end.toISOString() },
+          type: QueryTypes.SELECT,
+        },
+      ),
     ]);
 
     const cRow = consultationRows[0];
     const iRow = incomeRows[0];
+    const oRow = orphanPaymentRows[0];
 
     return {
-      consultationsApproved: cRow ? parseFloat(cRow.approved_total ?? '0') : 0,
+      consultationsApproved:
+        (cRow ? parseFloat(cRow.approved_total ?? '0') : 0) +
+        (oRow ? parseFloat(oRow.total ?? '0') : 0),
       consultationsPending: cRow ? parseFloat(cRow.pending_total ?? '0') : 0,
       manualIncome: iRow ? parseFloat(iRow.total ?? '0') : 0,
     };
