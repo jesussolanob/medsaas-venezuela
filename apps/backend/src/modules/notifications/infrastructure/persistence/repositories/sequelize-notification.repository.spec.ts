@@ -89,6 +89,43 @@ describe('SequelizeNotificationRepository', () => {
       expect(result).toBeInstanceOf(Notification);
       expect(result.doctorId).toBe(DOCTOR_ID);
     });
+
+    /*
+      Regresión de un bug REAL detectado en staging el 2026-09-22.
+
+      El modelo declara `timestamps: false` (la tabla no tiene `updated_at`), así
+      que Sequelize NO rellena `createdAt` solo. Como la columna es
+      `allowNull: false`, omitirlo hacía fallar la validación DEL MODELO —antes
+      de llegar a Postgres, donde la columna sí tiene DEFAULT NOW()— con
+      `notNull Violation: NotificationModel.createdAt cannot be null`.
+
+      El error caía en el catch best-effort del módulo de presupuestos: aceptar
+      y cobrar funcionaban, y la notificación no se creaba NUNCA, en silencio.
+
+      Los tests usan un Sequelize simulado que jamás corre esa validación, así
+      que afirmar que el valor VIAJA es la única red posible acá.
+    */
+    it('manda createdAt explícito — Sequelize no lo rellena con timestamps: false', async () => {
+      const row = makeRow();
+      const model = makeModel({ create: jest.fn().mockResolvedValue(row) });
+      const repo = new SequelizeNotificationRepository(model);
+
+      await repo.create(
+        Notification.create({
+          id: NOTIF_ID,
+          doctorId: DOCTOR_ID,
+          type: 'quote_accepted',
+          title: 'Presupuesto PRE-0001 aceptado',
+          body: 'El presupuesto PRE-0001 fue aceptado.',
+          entityType: 'quote',
+          entityId: 'qqqqqqqq-0000-0000-0000-000000000001',
+          readAt: null,
+          createdAt: now,
+        }),
+      );
+
+      expect(model.create).toHaveBeenCalledWith(expect.objectContaining({ createdAt: now }));
+    });
   });
 
   describe('listForDoctor', () => {

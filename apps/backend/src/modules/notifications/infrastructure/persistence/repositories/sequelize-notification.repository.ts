@@ -32,6 +32,15 @@ export class SequelizeNotificationRepository implements INotificationRepository 
       entityType: notification.entityType,
       entityId: notification.entityId,
       readAt: notification.readAt,
+      // `createdAt` va EXPLÍCITO. El modelo declara `timestamps: false` (la tabla
+      // no tiene updated_at), así que Sequelize NO lo rellena solo: con la columna
+      // en allowNull:false, omitirlo hacía fallar la validación del modelo ANTES
+      // de llegar a Postgres — donde la columna sí tiene DEFAULT NOW().
+      // El error caía en el catch best-effort de quotes, así que la aceptación y
+      // el cobro funcionaban y la notificación NO se creaba nunca, en silencio.
+      // Detectado en staging el 2026-09-22; los tests no podían verlo porque usan
+      // un Sequelize simulado que nunca corre la validación del modelo.
+      createdAt: notification.createdAt,
     });
 
     return this.toDomain(row);

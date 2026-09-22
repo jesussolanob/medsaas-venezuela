@@ -1,12 +1,4 @@
-import {
-  Column,
-  CreatedAt,
-  DataType,
-  Default,
-  Model,
-  PrimaryKey,
-  Table,
-} from 'sequelize-typescript';
+import { Column, DataType, Default, Model, PrimaryKey, Table } from 'sequelize-typescript';
 
 /**
  * Sequelize model for the `notifications` table.
@@ -51,7 +43,13 @@ export class NotificationModel extends Model {
   @Column({ type: DataType.DATE, allowNull: true, field: 'read_at' })
   declare readAt: Date | null;
 
-  @CreatedAt
+  /**
+   * NO lleva `@CreatedAt`: ese decorador solo actúa con `timestamps: true`, y
+   * acá están apagados porque la tabla no tiene `updated_at`. Tenerlo puesto
+   * hacía creer que Sequelize rellenaba el valor solo — y no lo hacía, así que
+   * la validación de allowNull fallaba antes de llegar a Postgres.
+   * Lo setea el repositorio con el valor de la entidad.
+   */
   @Column({ type: DataType.DATE, allowNull: false, field: 'created_at' })
   declare createdAt: Date;
 }
