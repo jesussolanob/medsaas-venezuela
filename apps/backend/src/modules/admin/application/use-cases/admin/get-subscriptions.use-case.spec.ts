@@ -91,4 +91,15 @@ describe('GetSubscriptionsUseCase', () => {
       expect.objectContaining({ status: 'past_due', plan: 'professional' }),
     );
   });
+
+  it('passes the search text to repo', async () => {
+    const repo = makeRepo();
+    const useCase = new GetSubscriptionsUseCase(repo);
+
+    await useCase.execute({ page: 1, limit: 100, search: 'Jiménez' });
+
+    expect(repo.listSubscriptions).toHaveBeenCalledWith(
+      expect.objectContaining({ search: 'Jiménez' }),
+    );
+  });
 });

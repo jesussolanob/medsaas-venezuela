@@ -10,7 +10,7 @@
  *   3. Configuración → precio base, duración beta, métodos de pago, descuentos.
  */
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import {
   CreditCard,
   Users,
@@ -31,6 +31,10 @@ import {
   ArrowLeftRight,
 } from 'lucide-react';
 import { showToast } from '@/components/ui/Toaster';
+import { reportError } from '@/lib/report-error';
+
+/** Pause after the last keystroke before searching. */
+const SEARCH_DEBOUNCE_MS = 300;
 
 type DoctorRow = {
   doctor_id: string;
@@ -206,22 +210,44 @@ function DoctorsTab() {
     current_period_end: string | null;
   } | null>(null);
 
+  // Debounced copy of `search`: one request per pause, not per keystroke.
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search.trim()), SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  // Only the latest request may paint the list: a slow response for "Al" must not
+  // overwrite the one for "Alejandra".
+  const requestSeq = useRef(0);
+
   const load = useCallback(async () => {
+    const seq = ++requestSeq.current;
     setLoading(true);
     const url = new URL('/api/admin/subscriptions', window.location.origin);
     if (filter) url.searchParams.set('filter', filter);
-    if (search.trim()) url.searchParams.set('search', search.trim());
+    if (debouncedSearch) url.searchParams.set('search', debouncedSearch);
     try {
       const r = await fetch(url.toString());
       const j = await r.json();
+      if (seq !== requestSeq.current) return;
       if (r.ok) setDoctors(j.doctors || []);
+      else
+        showToast({
+          type: 'error',
+          message: j.error || 'No se pudo cargar la lista de suscripciones.',
+        });
+    } catch (err) {
+      if (seq !== requestSeq.current) return;
+      reportError('admin/subscriptions/page.tsx', 'load', err);
+      showToast({ type: 'error', message: 'No se pudo cargar la lista de suscripciones.' });
     } finally {
-      setLoading(false);
+      if (seq === requestSeq.current) setLoading(false);
     }
-  }, [filter, search]);
+  }, [filter, debouncedSearch]);
 
   useEffect(() => {
-    load();
+    void load();
   }, [load]);
 
   /**

@@ -11,6 +11,7 @@ export interface GetSubscriptionsInput {
   limit: number;
   status?: SubscriptionStatus;
   plan?: SubscriptionPlan;
+  search?: string;
 }
 
 @Injectable()
@@ -26,6 +27,7 @@ export class GetSubscriptionsUseCase {
       limit: input.limit,
       status: input.status,
       plan: input.plan,
+      search: input.search,
     });
   }
 }

@@ -17,22 +17,31 @@ export async function GET(req: NextRequest) {
 
   const { searchParams } = new URL(req.url);
   const filter = searchParams.get('filter');
+  const search = searchParams.get('search')?.trim();
 
   // Map legacy filter values to NestJS query params
   const params = new URLSearchParams();
   if (filter === 'active') params.set('status', 'active');
   else if (filter === 'suspended') params.set('status', 'suspended');
-  else if (filter === 'trial') params.set('status', 'trial');
-  // 'expired' and 'expiring' are not yet mapped in the NestJS backend (in-memory fields);
-  // pass through without filter — frontend can filter client-side if needed.
+  // Profiles store 'trialing', not 'trial': asking for 'trial' returned nothing.
+  else if (filter === 'trial') params.set('status', 'trialing');
+  // 'expired' and 'expiring' depend on derived fields: filtered below.
 
-  params.set('limit', '200');
+  // The search used to be read by the page and dropped here, so the list never
+  // filtered. The backend does the matching (name or email, accent-insensitive).
+  if (search) params.set('search', search);
+
+  // Backend caps at 100 per page.
+  params.set('limit', '100');
 
   const result = await backendGet<BackendSubscription[]>(
     `/api/admin/subscriptions?${params.toString()}`,
   );
   if (!result.ok) {
-    return NextResponse.json({ error: result.error.message }, { status: result.error.status || 500 });
+    return NextResponse.json(
+      { error: result.error.message },
+      { status: result.error.status || 500 },
+    );
   }
 
   // El backend devuelve camelCase; la UI espera snake_case + campos derivados.
@@ -53,11 +62,18 @@ export async function GET(req: NextRequest) {
       days_remaining: daysRemaining,
       is_expired: isExpired,
       expiring_soon: !isExpired && daysRemaining <= 7,
-      is_in_trial: s.status === 'trial',
+      is_in_trial: s.status === 'trial' || s.status === 'trialing',
     };
   });
 
-  return NextResponse.json({ doctors });
+  const visible =
+    filter === 'expired'
+      ? doctors.filter((d) => d.is_expired)
+      : filter === 'expiring'
+        ? doctors.filter((d) => d.expiring_soon)
+        : doctors;
+
+  return NextResponse.json({ doctors: visible });
 }
 
 interface BackendSubscription {

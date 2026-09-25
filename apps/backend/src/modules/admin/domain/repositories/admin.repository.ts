@@ -83,6 +83,8 @@ export interface SubscriptionListFilters {
   limit: number;
   status?: SubscriptionStatus;
   plan?: SubscriptionPlan;
+  /** Free text matched against the doctor's name or email (accent/case-insensitive). */
+  search?: string;
 }
 
 /**
