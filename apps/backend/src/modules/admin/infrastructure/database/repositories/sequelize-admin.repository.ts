@@ -47,6 +47,7 @@ import { PlanPriceModel } from '../models/plan-price.model';
 import { AccessAuditLogModel } from '../../../../patients/infrastructure/database/models/access-audit-log.model';
 import { CryptoService } from '../../../../../infrastructure/crypto/crypto.service';
 import type { SubscriptionPlan, SubscriptionStatus } from '@delta/shared-types';
+import { normalizeForSearch } from '@delta/shared-crypto';
 
 // Sensitive keys that must never be returned from the settings endpoint
 const HIDDEN_SETTING_KEYS = new Set(['encryption_key', 'jwt_secret', 'usdt_rate_raw']);
@@ -62,6 +63,21 @@ const ADMIN_TRIAL_DURATION_DAYS = 30;
  * Large enough to be effectively permanent; avoids actual null in the column.
  */
 const PERMANENT_PLAN_YEARS = 99;
+
+// Spanish accented letters folded to plain ASCII inside SQL. The `unaccent`
+// extension is not installed in Cloud SQL, and translate() needs no migration.
+const ACCENTED_CHARS = 'áàäâéèëêíìïîóòöôúùüûñ';
+const PLAIN_CHARS = 'aaaaeeeeiiiioooouuuun';
+
+/** SQL expression: lowercased column with Spanish accents removed. */
+function unaccentSql(column: string): string {
+  return `translate(lower(COALESCE(${column}, '')), '${ACCENTED_CHARS}', '${PLAIN_CHARS}')`;
+}
+
+/** Escapes LIKE wildcards so a typed "%" or "_" matches literally. */
+function escapeLikePattern(value: string): string {
+  return value.replace(/[\\%_]/g, (c) => `\\${c}`);
+}
 
 /**
  * Resolves the subscription status and period_end date for a given plan.
@@ -425,7 +441,7 @@ export class SequelizeAdminRepository implements IAdminRepository {
    * fin de prueba), que no deciden nada.
    */
   async listSubscriptions(filters: SubscriptionListFilters): Promise<SubscriptionListResult> {
-    const { page, limit, status, plan } = filters;
+    const { page, limit, status, plan, search } = filters;
     const offset = (page - 1) * limit;
 
     // Población: los especialistas MÁS cualquier perfil que ya tenga fila en
@@ -435,11 +451,19 @@ export class SequelizeAdminRepository implements IAdminRepository {
     const conditions = ["(p.role = 'doctor' OR s.id IS NOT NULL)"];
     if (status) conditions.push('p.subscription_status = :status');
     if (plan) conditions.push('p.plan = :plan');
+    // The search box used to be dropped on the way here, so typing a name left the
+    // list intact. Accent-insensitive: "Jimenez" must find "Jiménez".
+    if (search) {
+      conditions.push(
+        `(${unaccentSql('p.full_name')} LIKE :search OR lower(p.email) LIKE :search)`,
+      );
+    }
     const whereSql = conditions.join(' AND ');
 
     const replacements: Record<string, unknown> = { limit, offset };
     if (status) replacements.status = status;
     if (plan) replacements.plan = plan;
+    if (search) replacements.search = `%${escapeLikePattern(normalizeForSearch(search))}%`;
 
     const countRows = await this.sequelize.query<{ total: string }>(
       `SELECT COUNT(*)::text AS total

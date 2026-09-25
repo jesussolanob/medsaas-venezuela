@@ -355,6 +355,20 @@ describe('AdminController', () => {
       expect(result.success).toBe(true);
       expect(result.meta.total).toBe(0);
     });
+
+    it('forwards the trimmed search text to the use case', async () => {
+      await controller.listSubscriptions('1', '100', undefined, undefined, '  Alejandra  ');
+      expect(module.get(GetSubscriptionsUseCase).execute).toHaveBeenLastCalledWith(
+        expect.objectContaining({ search: 'Alejandra' }),
+      );
+    });
+
+    it('treats a blank search as no search', async () => {
+      await controller.listSubscriptions('1', '100', undefined, undefined, '   ');
+      expect(module.get(GetSubscriptionsUseCase).execute).toHaveBeenLastCalledWith(
+        expect.objectContaining({ search: undefined }),
+      );
+    });
   });
 
   describe('GET /admin/plans', () => {

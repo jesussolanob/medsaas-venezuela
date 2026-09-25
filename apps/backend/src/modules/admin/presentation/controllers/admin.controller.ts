@@ -87,6 +87,9 @@ import { GetDoctorPatientsUseCase } from '../../application/use-cases/admin/get-
 import type { SubscriptionPlan, SubscriptionStatus } from '@delta/shared-types';
 import type { ActivityStatus } from '../../domain/repositories/admin.repository';
 
+/** A name or email never needs more; caps what reaches the LIKE pattern. */
+const MAX_SUBSCRIPTION_SEARCH_LENGTH = 100;
+
 interface SuccessResponse<T> {
   success: true;
   data: T;
@@ -569,6 +572,7 @@ export class AdminController {
     @Query('limit') limit = '20',
     @Query('status') statusRaw?: string,
     @Query('plan') planRaw?: string,
+    @Query('search') searchRaw?: string,
   ): Promise<PaginatedResponse<unknown>> {
     if (
       statusRaw !== undefined &&
@@ -595,6 +599,7 @@ export class AdminController {
       limit: Math.min(100, Math.max(1, parseInt(limit, 10) || 20)),
       status,
       plan,
+      search: searchRaw?.trim().slice(0, MAX_SUBSCRIPTION_SEARCH_LENGTH) || undefined,
     });
 
     return {
