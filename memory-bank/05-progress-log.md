@@ -4,6 +4,40 @@
 > ⚠️ Orden: **la entrada más nueva va ARRIBA**. La del 2026-08-11 quedó al final
 > del archivo por error; no se movió para no ensuciar el diff.
 
+## 2026-09-25 — Hotfix: "Dr." a una psicóloga y buscador de suscripciones
+
+> En **producción** (`ac98d615`, deploy OK). Back-merge a `develop` (`2fe0d27d`) y `staging` al día.
+
+### El "Dr." que se "arregló varias veces"
+
+Una psicóloga recién registrada veía **"Dr. Alejandra Jimenez"** en el inicio. El arreglo existía
+**dos veces** (`b02ef771` del 30/08 y `3c5714d7` del 08/09) pero las dos vivían solo en `develop`:
+la última promoción a `main` fue el 27/08. **No era un arreglo que fallaba: era un arreglo que nunca
+se desplegó.** Producción seguía con `professional_title || 'Dr.'`.
+
+Se portó a `main` solo lo del título (cherry-pick de `b02ef771` + `d74e487b`, y la parte de título de
+`3c5714d7`), más las dos migraciones de plantillas de correo (bienvenida sin "Dr/a.", aviso al admin
+"Nuevo especialista"), verificadas aplicadas en prod.
+
+⚠️ **Defecto nuevo, también en develop:** el `<select>` de título del onboarding arrancaba en `''`
+pero **no tenía opción vacía**, así que el navegador pintaba "Doctor (Dr.)" como elegido. Ahora
+tiene "Selecciona tu título".
+
+Datos: los 4 perfiles con `professional_title='Dr.'` en prod son médicos reales — nada que corregir.
+
+### El buscador de suscripciones del admin no filtraba
+
+La página mandaba `?search=` y el route handler **lo descartaba**; el backend tampoco lo soportaba.
+Ahora viaja hasta el repo: nombre o email, **sin distinguir acentos** con `translate()` (Cloud SQL no
+tiene `unaccent`), comodines de LIKE escapados. SQL probado contra prod en solo lectura. Debounce de
+300 ms y descarte de respuestas fuera de orden. De paso: el filtro "En trial" pedía `status=trial`
+y los perfiles guardan `trialing` (no mostraba nada); "Por vencer"/"Vencidos" no filtraban.
+
+### Cuenta de marketing borrada
+
+`solanobana@gmail.com` (creada ese día, para volver a grabar el registro): borrada de la BD de prod
+(perfil + suscripción + verificación + `email_send_log`, con respaldo) y de Auth0 (usuario Google).
+
 ## 2026-09-15 — Un paquete cobrado dos veces: la causa raíz que faltaba desde agosto
 
 > Todo desplegado en **producción**. ADR-086 a 088.
