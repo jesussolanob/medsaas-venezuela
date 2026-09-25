@@ -514,6 +514,12 @@ export default function OnboardingPage() {
                       onChange={(e) => setProfessionalTitle(e.target.value)}
                       className={inp}
                     >
+                      {/*
+                        Without an empty option the browser paints the FIRST one ("Doctor
+                        (Dr.)") while the state is '': the specialist sees "Dr." chosen for
+                        her and nothing gets saved. The empty state must be visible.
+                      */}
+                      <option value="">Selecciona tu título</option>
                       {PROFESSIONAL_TITLES.map((t) => (
                         <option key={t.value} value={t.value}>
                           {t.label}
