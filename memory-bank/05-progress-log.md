@@ -4,6 +4,44 @@
 > ⚠️ Orden: **la entrada más nueva va ARRIBA**. La del 2026-08-11 quedó al final
 > del archivo por error; no se movió para no ensuciar el diff.
 
+## 2026-10-06 — Tres reportes de la Dra. Ana, verificados contra producción antes de promover
+
+> `develop`+`staging` = `d6dfacb0`. Investigado con `cloud-sql-proxy` contra `delta-db`
+> (prod, solo lectura). Deploy a staging verificado (curl 200 + `/api/public/pricing` OK).
+
+**1. Cita cancelada "sola" (Geraldyn Piña, 19/10 18:00–19:00) — NO es un bug de Delta.**
+La cita sigue en prod como `scheduled`, `updated_at` = `created_at` (nunca se tocó desde
+que se creó) y `appointment_changes_log` para esa cita está vacío. No existe ningún
+cron/webhook que escuche cambios hechos directamente en Google Calendar — la cancelación
+fue en Google (el organizador es la cuenta de Google del doctor), fuera de la app. Ver
+[[cancelacion-fuera-de-delta-sin-sync]]. Sin cambio de código; se decidió solo informar.
+
+**2. Paquetes multi-sesión duplicaban las filas "por agendar" — bug real y sistémico, arreglado.**
+`CreateBookingUseCase` ya genera las `pending_consultations` de las sesiones 2..N en la
+misma petición que crea la sesión 1 (fix del 15/09 para el bug de "paquete cobrado dos
+veces"). El modal `DeferredSessionsModal` (botón "Agendar después") volvía a pedirlas con
+un segundo `POST /api/doctor/pending-consultations` — confirmado en prod: **2 doctoras
+distintas** con filas duplicadas, creadas 6 segundos aparte, mismo patrón (`payment_id`
+vs `null`). Fix en dos capas (`7191f70b` + `d6dfacb0`):
+
+- Backend: `IPendingConsultationRepository.findExistingSessionNumbers()` — guarda de
+  idempotencia en `CreatePendingConsultationsUseCase`, filtra sesiones que ya tienen fila.
+- Frontend: el modal ya NO llama al endpoint — queda puramente informativo.
+  470/470 suites, 4528/4528 tests (verificado dos veces, por el lead y por el hook de commit).
+  ⚠️ **Dato pendiente de limpiar en prod** (el dueño decidió revisarlo él mismo, no se tocó):
+  4 filas huérfanas — detalle completo en [[duplicados-pending-consultations-prod]].
+  ⚠️ **Riesgo residual no cerrado**: la guarda es a nivel de aplicación, no hay constraint
+  `UNIQUE` en BD — dos requests verdaderamente concurrentes (no 6 segundos aparte, sino al
+  mismo tiempo) todavía podrían colar un duplicado. No se atacó porque el bug confirmado era
+  secuencial, no concurrente; queda como mejora futura.
+
+**3. "Precio tachado" no se ve en prod — no es una regresión, nunca se desplegó.**
+El motor completo (`a94d6f52`…`199cb267`) nunca llegó a `main`; confirmado comparando
+`/api/public/plans` en staging (trae `compare_at_price`) contra prod (ni la columna existe).
+Al promover el backlog, además hay que **configurar el precio tachado en el `/admin/plans`
+de PRODUCCIÓN** — la migración solo agrega la columna en `NULL`, no copia lo que está
+configurado en staging (son BDs separadas).
+
 ## 2026-09-25 — Hotfix: "Dr." a una psicóloga y buscador de suscripciones
 
 > En **producción** (`ac98d615`, deploy OK). Back-merge a `develop` (`2fe0d27d`) y `staging` al día.
