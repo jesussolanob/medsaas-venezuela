@@ -51,7 +51,13 @@ export type AppointmentSuccessResult = {
 export type DeferredSessionsContext = {
   /** UUID of the created appointment (session 1). */
   appointmentId: string;
-  /** UUID of the pricing plan (used by the bulk-create endpoint). */
+  /**
+   * UUID of the pricing plan. Kept for display/debugging — the deferred-sessions
+   * modal no longer calls the bulk-create endpoint itself (2026-10): the backend
+   * already creates the remaining sessions' pending_consultations rows as part
+   * of the appointment-creation request, so a second call here only produced
+   * duplicate rows.
+   */
   planId: string;
   /** plan.name for display purposes. */
   planName: string;

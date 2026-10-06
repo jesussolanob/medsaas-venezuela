@@ -13,7 +13,7 @@
  * API pública (no cambiar): Props + AppointmentContext
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   AlertCircle,
@@ -36,7 +36,6 @@ import StepOffice from './steps/StepOffice';
 import StepServiceType from './steps/StepServiceType';
 import StepSchedule from './steps/StepSchedule';
 import StepPayment from './steps/StepPayment';
-import { showToast } from '@/components/ui/Toaster';
 import { useBcvRate } from '@/lib/useBcvRate';
 
 // ---------------------------------------------------------------------------
@@ -118,56 +117,27 @@ function SuccessStep({
 // ---------------------------------------------------------------------------
 // DeferredSessionsModal
 // Shown after a successful multi-session plan appointment when sessions > 1.
-// Offers "schedule remaining sessions later" (bulk-create pending-consultations)
-// or dismissal (user will schedule on demand from the pending-consultations list).
+//
+// Puramente informativo — NO dispara ningún POST. El backend (CreateBookingUseCase,
+// bloque "multi-session path") ya crea las filas pending_consultations de las
+// sesiones restantes en la MISMA petición que crea la sesión 1. Hasta el
+// 2026-10, este modal ofrecía un botón "Agendar después" que volvía a llamar a
+// POST /api/doctor/pending-consultations con los mismos session_numbers — el
+// backend no validaba duplicados, así que cada venta de un paquete multi-sesión
+// dejaba 2 filas fantasma por sesión diferida (confirmado contra producción:
+// 2 doctores/pacientes distintos, mismo patrón, 6 segundos de diferencia). El
+// backend ahora además se blinda con una guarda de idempotencia, pero la causa
+// de fondo era este botón pidiendo de nuevo algo que ya existía.
 // ---------------------------------------------------------------------------
 
 function DeferredSessionsModal({
   ctx,
-  onClose,
   onDone,
 }: {
   ctx: DeferredSessionsContext;
-  onClose: () => void;
   onDone: () => void;
 }) {
   const deferredCount = ctx.sessionsCount - 1;
-  const sessionNumbers = Array.from({ length: deferredCount }, (_, i) => i + 2);
-  const [submitting, setSubmitting] = useState(false);
-
-  async function handleDeferLater() {
-    setSubmitting(true);
-    try {
-      const res = await fetch('/api/doctor/pending-consultations', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          patient_id: ctx.patientId,
-          plan_id: ctx.planId,
-          session_numbers: sessionNumbers,
-          office_id: ctx.officeId ?? null,
-          appointment_mode: ctx.appointmentMode,
-        }),
-      });
-      const json = (await res.json()) as { error?: string };
-      if (!res.ok) {
-        showToast({
-          type: 'error',
-          message: json.error ?? 'No se pudieron crear las consultas diferidas',
-        });
-        return;
-      }
-      showToast({
-        type: 'success',
-        message: `${deferredCount} ${deferredCount === 1 ? 'consulta creada' : 'consultas creadas'} en "Consultas por agendar"`,
-      });
-      onDone();
-    } catch {
-      showToast({ type: 'error', message: 'Error de conexión. Intenta de nuevo.' });
-    } finally {
-      setSubmitting(false);
-    }
-  }
 
   return (
     <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4">
@@ -193,45 +163,21 @@ function DeferredSessionsModal({
 
         <div className="px-5 py-5 space-y-4">
           <p className="text-sm text-slate-700">
-            Este plan incluye <strong>{ctx.sessionsCount} sesiones en total.</strong> ¿Qué hacemos
-            con las{' '}
+            Este plan incluye <strong>{ctx.sessionsCount} sesiones en total.</strong> Las{' '}
             <strong>
               {deferredCount} {deferredCount === 1 ? 'sesión restante' : 'sesiones restantes'}
-            </strong>
-            ?
+            </strong>{' '}
+            ya quedaron en <strong>&quot;Consultas por agendar&quot;</strong> — las agendas cuando
+            el paciente confirme, sin crear un pago nuevo.
           </p>
 
-          <div className="space-y-2">
-            <button
-              onClick={handleDeferLater}
-              disabled={submitting}
-              className="w-full flex items-center gap-3 px-4 py-3.5 rounded-xl border-2 border-teal-400 bg-teal-50 text-teal-800 text-sm font-semibold hover:bg-teal-100 transition-colors disabled:opacity-50 text-left"
-            >
-              <CalendarClock className="w-5 h-5 shrink-0 text-teal-600" />
-              <div>
-                <p className="font-bold text-teal-800">Agendar después</p>
-                <p className="text-xs font-normal text-teal-600 mt-0.5">
-                  Se crean {deferredCount}{' '}
-                  {deferredCount === 1 ? 'consulta pendiente' : 'consultas pendientes'} en
-                  &quot;Consultas por agendar&quot;
-                </p>
-              </div>
-            </button>
-
-            <button
-              onClick={onClose}
-              disabled={submitting}
-              className="w-full flex items-center gap-3 px-4 py-3.5 rounded-xl border-2 border-slate-200 bg-white text-slate-700 text-sm font-semibold hover:bg-slate-50 transition-colors disabled:opacity-50 text-left"
-            >
-              <X className="w-5 h-5 shrink-0 text-slate-400" />
-              <div>
-                <p className="font-bold">Ignorar por ahora</p>
-                <p className="text-xs font-normal text-slate-500 mt-0.5">
-                  Podrás crearlas manualmente más adelante
-                </p>
-              </div>
-            </button>
-          </div>
+          <button
+            onClick={onDone}
+            className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-teal-500 text-white text-sm font-bold hover:bg-teal-600 transition-colors"
+          >
+            <CalendarClock className="w-4 h-4" />
+            Entendido
+          </button>
         </div>
       </div>
     </div>
@@ -347,10 +293,6 @@ export default function NewAppointmentFlow({ open, onClose, onSuccess, initialCo
     return (
       <DeferredSessionsModal
         ctx={flow.deferredContext}
-        onClose={() => {
-          flow.clearDeferredContext();
-          onClose();
-        }}
         onDone={() => {
           flow.clearDeferredContext();
           onClose();
