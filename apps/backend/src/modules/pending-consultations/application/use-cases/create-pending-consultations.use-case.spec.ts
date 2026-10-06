@@ -34,6 +34,7 @@ describe('CreatePendingConsultationsUseCase', () => {
       findDueForReminder: jest.fn(),
       updateReminderStage: jest.fn(),
       getPackageUsage: jest.fn(),
+      findExistingSessionNumbers: jest.fn().mockResolvedValue([]),
     };
     useCase = new CreatePendingConsultationsUseCase(mockRepo);
   });
@@ -109,5 +110,54 @@ describe('CreatePendingConsultationsUseCase', () => {
     });
 
     expect(mockRepo.bulkCreate).toHaveBeenCalledWith(expect.any(Array), fakeTransaction);
+  });
+
+  describe('idempotency guard', () => {
+    it('(a) creates all sessions when none already exist', async () => {
+      const created = [makePc(2), makePc(3), makePc(4)];
+      mockRepo.findExistingSessionNumbers.mockResolvedValue([]);
+      mockRepo.bulkCreate.mockResolvedValue(created);
+
+      const result = await useCase.execute({
+        doctorId: 'doc-001',
+        patientId: 'pat-001',
+        planName: 'Paquete Ortopedia',
+        sessionNumbers: [2, 3, 4],
+      });
+
+      expect(result).toHaveLength(3);
+      const calledItems = mockRepo.bulkCreate.mock.calls[0]?.[0];
+      expect(calledItems?.map((i) => i.sessionNumber)).toEqual([2, 3, 4]);
+    });
+
+    it('(b) skips already-existing sessions and creates only the missing ones', async () => {
+      mockRepo.findExistingSessionNumbers.mockResolvedValue([2, 3]);
+      mockRepo.bulkCreate.mockResolvedValue([makePc(4)]);
+
+      const result = await useCase.execute({
+        doctorId: 'doc-001',
+        patientId: 'pat-001',
+        planName: 'Paquete Ortopedia',
+        sessionNumbers: [2, 3, 4],
+      });
+
+      expect(result).toHaveLength(1);
+      const calledItems = mockRepo.bulkCreate.mock.calls[0]?.[0];
+      expect(calledItems?.map((i) => i.sessionNumber)).toEqual([4]);
+    });
+
+    it('(c) returns [] without calling bulkCreate when all sessions already exist', async () => {
+      mockRepo.findExistingSessionNumbers.mockResolvedValue([2, 3, 4]);
+
+      const result = await useCase.execute({
+        doctorId: 'doc-001',
+        patientId: 'pat-001',
+        planName: 'Paquete Ortopedia',
+        sessionNumbers: [2, 3, 4],
+      });
+
+      expect(result).toEqual([]);
+      expect(mockRepo.bulkCreate).not.toHaveBeenCalled();
+    });
   });
 });

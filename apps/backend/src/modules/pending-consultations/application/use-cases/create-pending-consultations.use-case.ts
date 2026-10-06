@@ -41,7 +41,17 @@ export class CreatePendingConsultationsUseCase {
   async execute(input: CreatePendingConsultationsInput): Promise<PendingConsultation[]> {
     if (input.sessionNumbers.length === 0) return [];
 
-    const items = input.sessionNumbers.map((sessionNumber) => ({
+    const existing = await this.repo.findExistingSessionNumbers(
+      input.doctorId,
+      input.patientId,
+      input.planName,
+      input.sessionNumbers,
+    );
+
+    const toCreate = input.sessionNumbers.filter((n) => !existing.includes(n));
+    if (toCreate.length === 0) return [];
+
+    const items = toCreate.map((sessionNumber) => ({
       doctorId: input.doctorId,
       patientId: input.patientId,
       authUserId: input.authUserId ?? null,

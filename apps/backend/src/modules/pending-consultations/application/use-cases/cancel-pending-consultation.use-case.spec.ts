@@ -36,6 +36,7 @@ describe('CancelPendingConsultationUseCase', () => {
       findDueForReminder: jest.fn(),
       updateReminderStage: jest.fn(),
       getPackageUsage: jest.fn(),
+      findExistingSessionNumbers: jest.fn(),
     };
     useCase = new CancelPendingConsultationUseCase(mockRepo);
   });

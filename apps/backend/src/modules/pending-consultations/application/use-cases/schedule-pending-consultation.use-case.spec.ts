@@ -93,6 +93,7 @@ describe('SchedulePendingConsultationUseCase', () => {
       findDueForReminder: jest.fn(),
       updateReminderStage: jest.fn(),
       getPackageUsage: jest.fn(),
+      findExistingSessionNumbers: jest.fn(),
     };
 
     mockAppointmentRepo = {

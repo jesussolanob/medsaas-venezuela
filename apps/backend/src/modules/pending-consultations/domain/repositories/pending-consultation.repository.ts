@@ -117,6 +117,22 @@ export interface IPendingConsultationRepository {
   updateReminderStage(id: string, stage: number, lastReminderAt: Date): Promise<void>;
 
   /**
+   * Returns the session numbers from `sessionNumbers` that already have a row
+   * in pending_consultations for the given (doctorId, patientId, planName)
+   * combination, regardless of status.
+   *
+   * Used by CreatePendingConsultationsUseCase as an idempotency guard: the
+   * booking flow (A1b) already creates these rows, so a second call from the
+   * frontend must not produce duplicates.
+   */
+  findExistingSessionNumbers(
+    doctorId: string,
+    patientId: string,
+    planName: string,
+    sessionNumbers: number[],
+  ): Promise<number[]>;
+
+  /**
    * Compute session usage for a patient grouped by plan_name.
    *
    * Combines appointments (attended / scheduled / no_show) and

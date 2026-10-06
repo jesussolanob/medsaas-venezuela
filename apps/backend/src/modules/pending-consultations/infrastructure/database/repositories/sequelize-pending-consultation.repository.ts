@@ -178,6 +178,25 @@ export class SequelizePendingConsultationRepository implements IPendingConsultat
     );
   }
 
+  async findExistingSessionNumbers(
+    doctorId: string,
+    patientId: string,
+    planName: string,
+    sessionNumbers: number[],
+  ): Promise<number[]> {
+    if (sessionNumbers.length === 0) return [];
+    const rows = await this.model.findAll({
+      attributes: ['sessionNumber'],
+      where: {
+        doctorId,
+        patientId,
+        planName,
+        sessionNumber: { [Op.in]: sessionNumbers },
+      } as WhereOptions,
+    });
+    return rows.map((r) => Number(r.sessionNumber));
+  }
+
   async getPackageUsage(doctorId: string, patientId?: string): Promise<PackageUsageRow[]> {
     /**
      * Strategy: UNION ALL of two source tables → aggregate by plan_name → join

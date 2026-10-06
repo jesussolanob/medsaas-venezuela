@@ -48,6 +48,7 @@ function makePendingRepo(
     findDueForReminder: jest.fn(),
     updateReminderStage: jest.fn(),
     getPackageUsage: jest.fn().mockResolvedValue([]),
+    findExistingSessionNumbers: jest.fn(),
     ...overrides,
   } as jest.Mocked<IPendingConsultationRepository>;
 }
