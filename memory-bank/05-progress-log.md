@@ -4,6 +4,24 @@
 > ⚠️ Orden: **la entrada más nueva va ARRIBA**. La del 2026-08-11 quedó al final
 > del archivo por error; no se movió para no ensuciar el diff.
 
+## 2026-10-07 — Datos de producción: tachado, consulta 3/3, duplicados y plan Base
+
+Cambios de DATOS (sin código), hechos directo en `delta-db` con aprobación del dueño:
+
+- **Precio tachado de Delta Base** cargado en `plan_prices.compare_at_price` (igual que
+  staging: mensual 20, trimestral 60, semestral 120, anual 240). Delta Plus sin tachado.
+  Verificado en la landing con navegador: "$10 /mes — ~~Antes $20~~".
+- **Consulta faltante de la sesión 3/3 de Gabriela Jaraba** (Dra. Ana Solano): la cita
+  `c7e05fbb` del hotfix del 21/09 había quedado sin consulta. Creada `DLT-202609-0060`,
+  pago aprobado $0 Zelle (heredado del paquete). 0 citas sin consulta en prod.
+- **4 filas duplicadas de `pending_consultations`** pasadas a `cancelled` (ver entrada
+  del 06/10). 0 duplicados en toda la base; cada paquete suma sus 3 sesiones.
+- **Delta Base ahora incluye Inventario y Cotizaciones** (`plan_features` `inventory` y
+  `quotes` → `enabled=true`, prod Y staging). El cuadro comparativo de la landing se arma
+  desde `plan_features`, así que se actualizó solo (verificado con navegador). Ojo con la
+  caché: la landing tarda ≤5 min (`max-age=300`) y el desbloqueo para los doctores con
+  Base ≤1 h (caché en memoria por instancia, `REDIS_DISABLED=true`, TTL 3600).
+
 ## 2026-10-06 — PROMOCIÓN A PRODUCCIÓN: 285 commits (`ac98d615` → `80a05de1`)
 
 > `main` = `staging` = `develop` = `80a05de1`. Deploy a Cloud Run (`delta-backend`,
