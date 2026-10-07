@@ -4,6 +4,32 @@
 > ⚠️ Orden: **la entrada más nueva va ARRIBA**. La del 2026-08-11 quedó al final
 > del archivo por error; no se movió para no ensuciar el diff.
 
+## 2026-10-06 — PROMOCIÓN A PRODUCCIÓN: 285 commits (`ac98d615` → `80a05de1`)
+
+> `main` = `staging` = `develop` = `80a05de1`. Deploy a Cloud Run (`delta-backend`,
+> `delta-frontend`) exitoso (~9 min, 19 migraciones nuevas aplicadas sin error).
+> Verificado post-deploy: frontend 200, `/api/public/plans` y `/api/public/pricing`
+> responden, sin errores en logs de Cloud Run en los primeros 15 min.
+
+Todo el backlog acumulado desde el 25/09 entró a producción: el motor de comisiones de
+vendedores + precio tachado (Etapa 2, `a94d6f52`…), inventario, cotizaciones (quotes),
+campana de notificaciones, el paquete pagado en vuelo, y los tres fixes de esta sesión
+(ver entrada "Tres reportes de la Dra. Ana" más abajo). 19 migraciones nuevas, de
+`20260828000001-seller-commissions` a `20260922000002-notifications-table`.
+
+**Pendiente de acción manual en PRODUCCIÓN (no lo hace el deploy):**
+
+1. **Precio tachado**: confirmado con curl que la columna ya existe en prod
+   (`/api/public/plans` trae `compare_at_price: null` para Delta Base) pero está vacía —
+   hay que configurarla en el `/admin/plans` de **producción** (BD separada de staging,
+   donde ya estaba puesta en 20 vs 10). Sin este paso el tachado sigue sin verse aunque
+   el código ya esté.
+2. **4 filas huérfanas** de `pending_consultations` del bug de paquetes duplicados — el
+   dueño decidió revisarlas él mismo. IDs completos (paciente, especialista, qué fila
+   dejar y cuál cancelar) en [[duplicados-pending-consultations-prod]].
+3. **Cancelación fuera de Delta** (Geraldyn Piña) — se decidió solo informar a la Dra.
+   Ana; no hay acción de sistema pendiente. Detalle en [[cancelacion-fuera-de-delta-sin-sync]].
+
 ## 2026-10-06 — Tres reportes de la Dra. Ana, verificados contra producción antes de promover
 
 > `develop`+`staging` = `d6dfacb0`. Investigado con `cloud-sql-proxy` contra `delta-db`
