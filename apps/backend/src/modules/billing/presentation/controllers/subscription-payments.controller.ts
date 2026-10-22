@@ -23,6 +23,12 @@ import type { SubscriptionPaymentStatus } from '../../domain/entities/subscripti
 
 const VALID_STATUSES: SubscriptionPaymentStatus[] = ['pending', 'approved', 'rejected'];
 
+/**
+ * Maximum page size for super_admin-only billing list endpoints.
+ * Raised from 100 to 1000 to support client-side date-range filters.
+ */
+const ADMIN_LIST_MAX_LIMIT = 1000;
+
 interface SuccessResponse<T> {
   success: true;
   data: T;
@@ -102,7 +108,7 @@ export class SubscriptionPaymentsController {
     const result = await this.listPayments.execute({
       status,
       page: Math.max(1, parseInt(page, 10) || 1),
-      limit: Math.min(100, Math.max(1, parseInt(limit, 10) || 20)),
+      limit: Math.min(ADMIN_LIST_MAX_LIMIT, Math.max(1, parseInt(limit, 10) || 20)),
     });
 
     return {

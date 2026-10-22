@@ -1394,6 +1394,14 @@ export class SequelizeAdminRepository implements IAdminRepository {
     // the list and export surfaces can surface it when needed.
     const cedula: string | null = row.cedula ?? null;
 
+    // createdAt: profile row creation timestamp (registration date).
+    // Used for "Nuevos este mes" KPI and admin date-range filters.
+    const createdAt: Date | null = row.createdAt ?? null;
+
+    // phone is PII — admin-only context. Available without an extra query
+    // because profile rows already carry the column.
+    const phone: string | null = row.phone ?? null;
+
     return new DoctorWithActivity(
       row.id,
       row.fullName,
@@ -1404,6 +1412,8 @@ export class SequelizeAdminRepository implements IAdminRepository {
       subscriptionExpiresAt,
       lastSignInAt,
       cedula,
+      createdAt,
+      phone,
     );
   }
 

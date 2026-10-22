@@ -139,11 +139,15 @@ exporta y se activa/suspende a un especialista.
 
 **Tarjetas KPI:** Total registrados (y nuevos este mes), Activos (% del total), "+7d sin
 actividad" (posible churn) y Nuevos este mes.
+- **"Nuevos este mes"** cuenta los especialistas cuya fecha de registro cae desde el día 1 del
+  mes actual hasta hoy (basado en la fecha en que se creó el perfil en el sistema).
 
 **Búsqueda y filtros:**
 - Buscador por nombre, cédula, email o especialidad (filtra en vivo).
 - Filtro "Todas las especialidades".
 - Filtro de orden "Más recientes".
+- **Filtro de fecha "Desde / Hasta"** (fecha de registro): limita la lista a los especialistas
+  registrados en el rango de fechas indicado. Útil para ver altas de un período específico.
 
 **Tabla de especialistas (columnas):**
 - **Especialista:** avatar con iniciales + nombre + email.
@@ -157,6 +161,11 @@ actividad" (posible churn) y Nuevos este mes.
 **Drawer de Detalle del Especialista** (panel lateral derecho):
 - Muestra avatar, nombre, especialidad, email, teléfono, cédula, ubicación (ciudad/estado/país),
   badge de plan, fecha de registro y estadísticas (pacientes, citas del mes, ingresos del mes).
+- **Pacientes atendidos:** dentro del drawer hay una lista de los pacientes atendidos por ese
+  especialista (nombre y cédula, sin datos médicos ni de contacto). Incluye un
+  **filtro de fecha "Desde / Hasta"** basado en la **última atención** (fecha de la consulta más
+  reciente de ese paciente con ese especialista). Útil para ver qué pacientes atendió en un
+  período específico.
 - Botón **Suspender** / **Activar** al pie: cambia el estado de la cuenta del especialista. Pide
   confirmación. Suspender impide que el especialista opere; Activar lo reactiva.
 - Botón **Cerrar** para salir del drawer.
@@ -174,6 +183,9 @@ aprobar o rechazar pagos manuales (misma lógica que la pestaña Comprobantes de
 Tiempo promedio de respuesta.
 
 **Pestañas:** Pendientes, Aprobados, Rechazados (cada una muestra su contador).
+
+**Filtro de fecha "Desde / Hasta"** (fecha del pago): disponible en cada pestaña para acotar
+los comprobantes al rango de fechas de envío del pago.
 
 **Cada fila de la cola muestra:** avatar e iniciales del especialista, nombre, especialidad, monto en
 USD (y en Bs si aplica, con la tasa BCV usada), duración en meses, método de pago, número de
@@ -253,10 +265,16 @@ Lista de todos los especialistas con su estado de suscripción.
 
 - Buscador por nombre o email y botón de recargar.
 - Filtros rápidos: Todos, Por vencer, Vencidos, En trial, Activos, Suspendidos.
+- **Selector de fecha "Desde / Hasta"**: puedes filtrar por fecha de registro del especialista o
+  por fecha de vencimiento de su suscripción, según el modo que elijas en el selector.
 - Tabla con: Doctor (nombre/email/especialidad), Estado (Activo, Trial, Vencido, Suspendido,
   Cancelado), Plan, Días restantes (en rojo si llegó a 0, naranja si menos de 7), Vence (fecha) y
   Acciones.
 - Botones de acción por especialista:
+  - **Contactar** (icono de mensaje/teléfono): abre una ventana con el nombre del especialista, su
+    identificación (cédula), correo electrónico y teléfono de contacto. Dentro de esa ventana hay
+    botones para copiar cada dato, escribir por correo (abre el cliente de email con el destinatario
+    precargado) y abrir WhatsApp (enlace directo con el teléfono del especialista).
   - **Extender** (icono +): pregunta cuántos meses (entre 1 y 36) y una razón/nota opcional, y
     extiende la suscripción. Muestra la nueva fecha de vencimiento.
   - **Suspender** (icono de pausa): pide una razón y suspende la suscripción del especialista.
@@ -528,6 +546,9 @@ Bandeja de sugerencias enviadas por los especialistas. Sirve para leer, clasific
 
 **Estadísticas:** contadores por estado (Pendiente, En progreso, Resuelto).
 
+**Filtro de fecha "Desde / Hasta"** (fecha de envío): acota la bandeja a las sugerencias
+enviadas en el rango indicado. Útil para revisar sugerencias de un período específico.
+
 **Cada sugerencia muestra:** categoría (Nueva funcionalidad, Problema, Mejora, General) con color,
 estado, asunto, mensaje, especialista que la envió, su especialidad y fecha. Si ya respondiste, se ve tu
 respuesta resaltada.
@@ -690,6 +711,8 @@ pestanas.
 
 **Pestana "Comisiones pendientes":**
 - Lista de todas las comisiones sin pagar (pendientes y aprobadas) con checkboxes.
+- **Filtro de fecha "Desde / Hasta"** (fecha en que se genero la comision): acota la lista
+  al rango de fechas de generacion de la comision.
 - Cada fila muestra: nombre del especialista, fecha en que se genero la comision, estado
   (Pendiente / Aprobada) y tipo (Entrada, Plan Base, Plan Plus) con su monto.
 - Al abrir la tarjeta, las comisiones aprobadas quedan pre-seleccionadas.
@@ -723,7 +746,10 @@ pestanas.
 **Pestana "Historial de pagos":**
 Lista de todos los pagos ya registrados para ese vendedor: monto (en Bs si habia tasa BCV al
 registrar, de lo contrario en USD), equivalente en USD, metodo, referencia, tasa BCV al
-momento del pago y fecha. Si el pago tiene comprobante adjunto, boton **Ver comprobante**
+momento del pago y fecha.
+- **Filtro de fecha "Desde / Hasta"** (fecha de pago): acota el historial al rango de fechas
+  en que se registro el pago de la comision.
+Si el pago tiene comprobante adjunto, boton **Ver comprobante**
 que abre una URL firmada temporal en una pestana nueva.
 
 ### Flujo: aprobar y pagar comisiones (paso a paso)

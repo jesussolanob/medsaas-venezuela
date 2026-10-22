@@ -90,6 +90,13 @@ import type { ActivityStatus } from '../../domain/repositories/admin.repository'
 /** A name or email never needs more; caps what reaches the LIKE pattern. */
 const MAX_SUBSCRIPTION_SEARCH_LENGTH = 100;
 
+/**
+ * Maximum page size for super_admin-only list endpoints.
+ * Raised from 100 to 1000 to support client-side date-range filters that need
+ * the full list at once without silent truncation.
+ */
+const ADMIN_LIST_MAX_LIMIT = 1000;
+
 interface SuccessResponse<T> {
   success: true;
   data: T;
@@ -328,7 +335,7 @@ export class AdminController {
 
     const result = await this.getDoctorsList.execute({
       page: Math.max(1, parseInt(page, 10) || 1),
-      limit: Math.min(100, Math.max(1, parseInt(limit, 10) || 20)),
+      limit: Math.min(ADMIN_LIST_MAX_LIMIT, Math.max(1, parseInt(limit, 10) || 20)),
       activityStatus,
       subscriptionStatus,
     });
@@ -348,6 +355,10 @@ export class AdminController {
         lastSignInAt: d.lastSignInAt,
         /** Doctor identity document (PII — super_admin only). */
         cedula: d.cedula,
+        /** Profile creation timestamp = registration date (PII — super_admin only). */
+        createdAt: d.createdAt,
+        /** Contact phone (PII — super_admin only). */
+        phone: d.phone,
       })),
       meta: { total: result.total, page: result.page, limit: result.limit },
     };
@@ -596,7 +607,7 @@ export class AdminController {
 
     const result = await this.getSubscriptions.execute({
       page: Math.max(1, parseInt(page, 10) || 1),
-      limit: Math.min(100, Math.max(1, parseInt(limit, 10) || 20)),
+      limit: Math.min(ADMIN_LIST_MAX_LIMIT, Math.max(1, parseInt(limit, 10) || 20)),
       status,
       plan,
       search: searchRaw?.trim().slice(0, MAX_SUBSCRIPTION_SEARCH_LENGTH) || undefined,

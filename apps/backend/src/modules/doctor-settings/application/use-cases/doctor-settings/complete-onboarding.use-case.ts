@@ -12,6 +12,7 @@ import {
   type IPricingPlanRepository,
 } from '../../../../packages/domain/repositories/pricing-plan.repository';
 import { OnboardingRequirementsNotMetError } from '../../../domain/errors/onboarding-requirements-not-met.error';
+import { OnboardingPhoneRequiredError } from '../../../domain/errors/onboarding-phone-required.error';
 import { AccrueSignupCommissionUseCase } from '../../../../seller-commissions/application/use-cases/accrue-signup-commission.use-case';
 import { reportCommissionFailure } from '../../../../seller-commissions/application/report-commission-failure';
 
@@ -71,7 +72,16 @@ export class CompleteOnboardingUseCase {
   }
 
   async execute(doctorId: string): Promise<CompleteOnboardingOutput> {
-    // 1. Verify requirements in parallel — server-side validation cannot be bypassed.
+    // 1. Phone check first (cheap, most actionable for the doctor):
+    //    The profile already exists at this point (created during registration).
+    //    If the doctor skipped step 1 while phone was null, we block here with a
+    //    distinct error so the frontend can route back to step 1.
+    const profile = await this.profileRepo.findByDoctorId(doctorId);
+    if (!profile?.phone || profile.phone.trim() === '') {
+      throw new OnboardingPhoneRequiredError();
+    }
+
+    // 2. Verify office / service requirements in parallel.
     const [activeOffices, allPlans] = await Promise.all([
       this.officeRepo.findActiveByDoctor(doctorId),
       this.pricingPlanRepo.findAllByDoctorId(doctorId),
@@ -84,10 +94,10 @@ export class CompleteOnboardingUseCase {
       throw new OnboardingRequirementsNotMetError();
     }
 
-    // 2. Mark onboarding as complete (idempotent).
+    // 3. Mark onboarding as complete (idempotent).
     await this.profileRepo.markOnboardingCompleted(doctorId);
 
-    // 3. Best-effort: accrue signup commission (does not affect the response on failure).
+    // 4. Best-effort: accrue signup commission (does not affect the response on failure).
     if (this.accrueSignupCommission) {
       // Temporal: confirma que el camino se recorre de verdad. Sin esto, un
       // "no pasó nada" no distingue entre no haber llegado acá y haberse
