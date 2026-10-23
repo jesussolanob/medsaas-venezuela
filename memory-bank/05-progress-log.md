@@ -4,6 +4,27 @@
 > ⚠️ Orden: **la entrada más nueva va ARRIBA**. La del 2026-08-11 quedó al final
 > del archivo por error; no se movió para no ensuciar el diff.
 
+## 2026-10-22 — Entrega 1 de "Cambios 12-10": nota de precio de lanzamiento
+
+> Rama `feature/precio-lanzamiento`. Sin migraciones. 471 suites / 4556 tests.
+
+Pedido del dueño (documento "Cambios 12-10.md"): nota notoria de promo junto al precio del
+plan en promoción. Decisión: texto **"Precio de lanzamiento · Ahorras N%"** (N calculado),
+**sin fecha de fin**: aparece solo cuando el período tiene `plan_prices.compare_at_price >
+price_usd` y se apaga sola al borrar el tachado en `/admin/plans`. Hoy solo Delta Base.
+Pantallas: landing (tarjetas + cabecera del cuadro), `/doctor/upgrade` y Configuración →
+Suscripción (el panel no leía `compare_at_price`; ahora el backend lo devuelve por período).
+Helper `apps/frontend/lib/launch-price.ts` (la landing duplica la regla en JS: mantener
+ambas iguales; el frontend no tiene runner de tests, así que el helper no tiene spec).
+Corregido en revisión: el anual de Base mostraba dos ahorros a la vez (20% contra 12 meses
+y 60% contra el tachado) — con lanzamiento se muestra solo el del tachado.
+
+Las entregas 2 (plantillas de contenido en consultas/presupuestos) y 3 (récipes y
+paraclínicos sin consulta) quedan para definir con el dueño; decisiones ya tomadas: las
+plantillas las crea cada especialista (privadas), al aplicar se agrega y se pide
+confirmación para reemplazar, presupuestos usan el precio actual del inventario, y el
+listado va como pestaña dentro de Plantillas.
+
 ## 2026-10-22 — Lote admin: filtros de fecha, Contactar, teléfono obligatorio y nombres
 
 > Rama `feature/admin-observaciones-oct` → `develop` → `staging`. Sin migraciones.
