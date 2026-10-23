@@ -94,6 +94,8 @@ export interface RenderPrescriptionItem {
   frequency: string | null;
   duration: string | null;
   notes: string | null;
+  /** Medication presentation form (e.g. "tabletas", "cápsulas"). Standalone docs only. */
+  presentation?: string;
 }
 
 /** EHR record for render. */
@@ -241,7 +243,12 @@ export class GetDocumentRenderDataUseCase {
     // 3. Fetch all live data in parallel (doctorId scoped throughout — anti-IDOR)
     // At this point link.consultationId is guaranteed non-null:
     // the standalone branch returned early above.
-    const consultationId = link.consultationId!;
+    if (!link.consultationId) {
+      // Should never happen: the DB XOR constraint ensures exactly one source is set.
+      this.logger.error('[render-data] link has neither consultationId nor standaloneDocumentId');
+      throw new DocumentLinkNotFoundError();
+    }
+    const consultationId = link.consultationId;
 
     const [
       consultation,
@@ -385,12 +392,13 @@ export class GetDocumentRenderDataUseCase {
    * sections (legacy)  ← { report:false, prescriptions:false, ehr:false }
    *                      (frontend uses docSelection when present — legacy field is ignored)
    *
-   * Voided documents: link is still 'active' (revoke is done separately by the doctor);
-   * we return the render data. The public viewer shows voided docs as-is — the same
-   * behavior as a link that was never revoked but the consultation was deleted.
-   * The doctor should revoke the link when voiding a document (future enhancement).
+   * Voided / draft documents: if the document is not in 'issued' state, the render is
+   * blocked with the same opaque error as a revoked link (DocumentLinkNotActiveError).
+   * VoidStandaloneDocumentUseCase also revokes active links on void, so under normal
+   * conditions this guard is reached only if revocation was delayed.
    *
-   * Access audit: same logRenderAccess call as the consultation path.
+   * Access audit: logs with a label that includes the document type,
+   * e.g. 'shared_document_render:standalone_recipe'.
    */
   private async buildRenderDataFromStandaloneDocument(
     link: import('../../../domain/entities/shared-document-link.entity').SharedDocumentLink,
@@ -415,6 +423,13 @@ export class GetDocumentRenderDataUseCase {
 
     const { document: doc, patient } = detail;
 
+    // Security: only issued documents may be rendered via shared link.
+    // Voided or draft documents return the same opaque 404 as a revoked link —
+    // prevents leaking whether the document was voided or never existed.
+    if (doc.status !== 'issued') {
+      throw new DocumentLinkNotActiveError();
+    }
+
     // Resolve signed URLs
     const [logoUrl, signatureUrl, templateLogoUrl, templateSignatureUrl] = await Promise.all([
       this.resolveSignedUrl(doctorProfile?.logoUrl ?? null, 'doctor.logoUrl'),
@@ -423,8 +438,13 @@ export class GetDocumentRenderDataUseCase {
       this.resolveSignedUrl(informeTemplate?.signatureUrl ?? null, 'template.signatureUrl'),
     ]);
 
-    // Audit log — fire-and-forget (same pattern as consultation path)
-    void this.logRenderAccess(link.doctorId, link.patientId, link.sections);
+    // Audit log — fire-and-forget; label includes the document type for traceability
+    void this.logRenderAccess(
+      link.doctorId,
+      link.patientId,
+      link.sections,
+      `shared_document_render:standalone_${doc.type}`,
+    );
 
     // Build type-specific render fields
     const { prescriptions, blocksSnapshot, consultationBlocks } =
@@ -543,6 +563,10 @@ export class GetDocumentRenderDataUseCase {
         // the frontend mapPrescriptions() reads rx.notes as indications.
         notes:
           typeof med['indications'] === 'string' && med['indications'] ? med['indications'] : null,
+        presentation:
+          typeof med['presentation'] === 'string' && med['presentation']
+            ? med['presentation']
+            : undefined,
       }));
 
       return { prescriptions, blocksSnapshot: null, consultationBlocks: [] };
@@ -641,25 +665,40 @@ export class GetDocumentRenderDataUseCase {
     }
   }
 
+  /**
+   * Logs a render access audit entry.
+   *
+   * @param labelOverride - When provided, used as the fieldRevealed value directly.
+   *   Used by the standalone branch to record the document type, e.g.
+   *   'shared_document_render:standalone_recipe'. When absent, the label is
+   *   built from the sections flags (consultation path).
+   */
   private async logRenderAccess(
     doctorId: string,
     patientId: string,
     sections: { report: boolean; prescriptions: boolean; ehr: boolean },
+    labelOverride?: string,
   ): Promise<void> {
     try {
-      const sectionsLabel = [
-        sections.report ? 'report' : null,
-        sections.prescriptions ? 'prescriptions' : null,
-        sections.ehr ? 'ehr' : null,
-      ]
-        .filter(Boolean)
-        .join(',');
+      let fieldRevealed: string;
+      if (labelOverride !== undefined) {
+        fieldRevealed = labelOverride;
+      } else {
+        const sectionsLabel = [
+          sections.report ? 'report' : null,
+          sections.prescriptions ? 'prescriptions' : null,
+          sections.ehr ? 'ehr' : null,
+        ]
+          .filter(Boolean)
+          .join(',');
+        fieldRevealed = `shared_document_render:${sectionsLabel}`;
+      }
 
       await this.patientRepo.logReveal({
         actorId: doctorId,
         actorRole: 'doctor',
         patientId,
-        fieldRevealed: `shared_document_render:${sectionsLabel}`,
+        fieldRevealed,
         ipAddress: null,
         userAgent: null,
       });

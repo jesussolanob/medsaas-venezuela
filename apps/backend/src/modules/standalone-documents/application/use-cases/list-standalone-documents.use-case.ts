@@ -22,6 +22,8 @@ export class ListStandaloneDocumentsUseCase {
       patientId: query.patient_id,
       type: query.type,
       status: query.status,
+      limit: query.limit,
+      offset: query.offset,
     });
   }
 }

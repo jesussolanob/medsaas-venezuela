@@ -28,6 +28,10 @@ export class VoidStandaloneDocumentUseCase {
       throw new StandaloneDocumentNotIssuedError();
     }
     const voidedAt = new Date();
-    return this.repo.persistVoided(id, dto.reason ?? null, voidedAt);
+    const result = await this.repo.persistVoided(id, dto.reason ?? null, voidedAt);
+    // Revoke active shared links so the patient-facing viewer immediately blocks access.
+    // Fire-and-forget: the render-data endpoint also rejects voided docs as a safety net.
+    void this.repo.revokeActiveLinksForDocument(id);
+    return result;
   }
 }

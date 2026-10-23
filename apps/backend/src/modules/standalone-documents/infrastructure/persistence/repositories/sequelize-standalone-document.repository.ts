@@ -67,6 +67,11 @@ export class SequelizeStandaloneDocumentRepository implements IStandaloneDocumen
 
     const where = conditions.join(' AND ');
 
+    const limit = Math.min(filters.limit ?? 200, 500);
+    const offset = filters.offset ?? 0;
+    replacements['limit'] = limit;
+    replacements['offset'] = offset;
+
     const rows = await this.sequelize.query<RawRow>(
       `SELECT sd.id, sd.type, sd.code, sd.status, sd.patient_id,
               p.full_name,
@@ -74,7 +79,8 @@ export class SequelizeStandaloneDocumentRepository implements IStandaloneDocumen
          FROM standalone_documents sd
          JOIN patients p ON p.id = sd.patient_id
         WHERE ${where}
-        ORDER BY sd.created_at DESC`,
+        ORDER BY sd.created_at DESC
+        LIMIT :limit OFFSET :offset`,
       { replacements, type: QueryTypes.SELECT },
     );
 
@@ -232,6 +238,23 @@ export class SequelizeStandaloneDocumentRepository implements IStandaloneDocumen
 
   async delete(id: string): Promise<void> {
     await this.model.destroy({ where: { id } });
+  }
+
+  /**
+   * Revokes all active shared_document_links for the given standalone document.
+   *
+   * Raw SQL update on shared_document_links — cross-table operation kept in the
+   * infrastructure layer (not in the use case) per DDD convention.
+   * Safe to call when no active links exist (no-op).
+   */
+  async revokeActiveLinksForDocument(standaloneDocumentId: string): Promise<void> {
+    await this.sequelize.query(
+      `UPDATE shared_document_links
+          SET status = 'revoked'
+        WHERE standalone_document_id = :standaloneDocumentId
+          AND status = 'active'`,
+      { replacements: { standaloneDocumentId }, type: QueryTypes.UPDATE },
+    );
   }
 
   // ---------------------------------------------------------------------------

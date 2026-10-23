@@ -1,4 +1,6 @@
 import { StandaloneDocument } from './standalone-document.entity';
+import { StandaloneDocumentNotDraftError } from '../errors/standalone-document-not-draft.error';
+import { StandaloneDocumentNotIssuedError } from '../errors/standalone-document-not-issued.error';
 
 const DOCTOR_ID = 'dddddddd-0000-0000-0000-000000000001';
 const OTHER_DOCTOR = 'eeeeeeee-0000-0000-0000-000000000002';
@@ -72,6 +74,20 @@ describe('StandaloneDocument', () => {
       expect(draft.code).toBeNull();
       expect(issued.status).toBe('issued');
     });
+
+    it('throws StandaloneDocumentNotDraftError when already issued', () => {
+      const issued = makeDraft().issue('REC-202610-0001', new Date());
+      expect(() => issued.issue('REC-202610-0002', new Date())).toThrow(
+        StandaloneDocumentNotDraftError,
+      );
+    });
+
+    it('throws StandaloneDocumentNotDraftError when voided', () => {
+      const voided = makeDraft().issue('REC-202610-0001', new Date()).void(new Date(), null);
+      expect(() => voided.issue('REC-202610-0002', new Date())).toThrow(
+        StandaloneDocumentNotDraftError,
+      );
+    });
   });
 
   describe('void()', () => {
@@ -98,6 +114,15 @@ describe('StandaloneDocument', () => {
       const voided = issued.void(new Date(), null);
 
       expect(voided.voidReason).toBeNull();
+    });
+
+    it('throws StandaloneDocumentNotIssuedError when in draft state', () => {
+      expect(() => makeDraft().void(new Date())).toThrow(StandaloneDocumentNotIssuedError);
+    });
+
+    it('throws StandaloneDocumentNotIssuedError when already voided', () => {
+      const voided = makeDraft().issue('REC-202610-0001', new Date()).void(new Date(), null);
+      expect(() => voided.void(new Date())).toThrow(StandaloneDocumentNotIssuedError);
     });
   });
 });

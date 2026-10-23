@@ -170,6 +170,7 @@ const mockStandaloneDocRepo: jest.Mocked<IStandaloneDocumentRepository> = {
   persistVoided: jest.fn(),
   delete: jest.fn(),
   getMaxSequenceForMonth: jest.fn(),
+  revokeActiveLinksForDocument: jest.fn(),
 };
 
 // ---------------------------------------------------------------------------
@@ -477,11 +478,111 @@ describe('GetDocumentRenderDataUseCase — standalone document branch', () => {
     expect(first.duration).toBe('5 días');
     // indications in standalone content maps to notes in the prescription row
     expect(first.notes).toBe('Tomar con comida');
+    // presentation field is mapped
+    expect(first.presentation).toBe('tabletas');
 
     const second = result.prescriptions[1]!;
     expect(second.medication).toBe('Omeprazol');
     // empty indications → null notes
     expect(second.notes).toBeNull();
+    expect(second.presentation).toBe('cápsulas');
+  });
+
+  it('maps presentation as undefined when field is absent or empty', async () => {
+    mockStandaloneDocRepo.findByIdWithPatient.mockResolvedValue({
+      document: StandaloneDocument.create({
+        ...makeRecipeDoc(),
+        content: {
+          medications: [
+            {
+              name: 'Metformina',
+              dose: '500mg',
+              route: 'oral',
+              frequency: 'c/12h',
+              duration: '30 días',
+              presentation: '',
+              indications: '',
+            },
+          ],
+          notes: '',
+        },
+      }),
+      patient: { id: 'patient-1', fullName: 'Ana Pérez', cedula: 'V-12345678', age: 30 },
+    });
+    const sessionToken = signToken(
+      'link-standalone-1',
+      'standalone-token',
+      new Date(Date.now() + 60_000),
+    );
+    const result = await useCase.execute({ token: 'standalone-token', sessionToken });
+
+    expect(result.prescriptions[0]?.presentation).toBeUndefined();
+  });
+
+  // -----------------------------------------------------------------------
+  // Security: voided / draft documents must not be rendered via shared link
+  // -----------------------------------------------------------------------
+
+  it('throws DocumentLinkNotActiveError when standalone document is voided', async () => {
+    mockStandaloneDocRepo.findByIdWithPatient.mockResolvedValue({
+      document: StandaloneDocument.create({
+        ...makeRecipeDoc(),
+        status: 'voided',
+        voidedAt: new Date(),
+        voidReason: 'Error',
+      }),
+      patient: { id: 'patient-1', fullName: 'Ana Pérez', cedula: 'V-12345678', age: 30 },
+    });
+    const sessionToken = signToken(
+      'link-standalone-1',
+      'standalone-token',
+      new Date(Date.now() + 60_000),
+    );
+
+    await expect(
+      useCase.execute({ token: 'standalone-token', sessionToken }),
+    ).rejects.toBeInstanceOf(DocumentLinkNotActiveError);
+  });
+
+  it('throws DocumentLinkNotActiveError when standalone document is still in draft', async () => {
+    mockStandaloneDocRepo.findByIdWithPatient.mockResolvedValue({
+      document: StandaloneDocument.create({
+        ...makeRecipeDoc(),
+        status: 'draft',
+        code: null,
+        issuedAt: null,
+      }),
+      patient: { id: 'patient-1', fullName: 'Ana Pérez', cedula: 'V-12345678', age: 30 },
+    });
+    const sessionToken = signToken(
+      'link-standalone-1',
+      'standalone-token',
+      new Date(Date.now() + 60_000),
+    );
+
+    await expect(
+      useCase.execute({ token: 'standalone-token', sessionToken }),
+    ).rejects.toBeInstanceOf(DocumentLinkNotActiveError);
+  });
+
+  // -----------------------------------------------------------------------
+  // Audit label includes document type
+  // -----------------------------------------------------------------------
+
+  it('audit label includes standalone document type', async () => {
+    const sessionToken = signToken(
+      'link-standalone-1',
+      'standalone-token',
+      new Date(Date.now() + 60_000),
+    );
+    await useCase.execute({ token: 'standalone-token', sessionToken });
+
+    await Promise.resolve(); // flush microtasks
+    expect(mockPatientRepo.logReveal).toHaveBeenCalledWith(
+      expect.objectContaining({
+        fieldRevealed: 'shared_document_render:standalone_recipe',
+      }),
+    );
   });
 
   // -----------------------------------------------------------------------

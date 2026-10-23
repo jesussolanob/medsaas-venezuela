@@ -9,12 +9,14 @@
  *   - canBeModifiedBy() enforces anti-IDOR.
  *   - isInDraft()     — guards PATCH, DELETE, and issue().
  *   - isIssued()      — guards void().
- *   - issue()         — transitions draft → issued; assigns code + issuedAt.
- *   - void(reason)    — transitions issued → voided; assigns voidedAt.
+ *   - issue()         — transitions draft → issued; throws StandaloneDocumentNotDraftError when not draft.
+ *   - void(reason)    — transitions issued → voided; throws StandaloneDocumentNotIssuedError when not issued.
  *   - Editing or deleting a non-draft document throws StandaloneDocumentNotDraftError.
  *
  * No imports from NestJS, Sequelize, or any external library.
  */
+import { StandaloneDocumentNotDraftError } from '../errors/standalone-document-not-draft.error';
+import { StandaloneDocumentNotIssuedError } from '../errors/standalone-document-not-issued.error';
 
 export type StandaloneDocumentType = 'recipe' | 'paraclinical' | 'reposo';
 export type StandaloneDocumentStatus = 'draft' | 'issued' | 'voided';
@@ -89,6 +91,9 @@ export class StandaloneDocument {
    * (The domain raises the error; the infrastructure propagates it as 409.)
    */
   issue(code: string, issuedAt: Date): StandaloneDocument {
+    if (!this.isInDraft()) {
+      throw new StandaloneDocumentNotDraftError();
+    }
     return new StandaloneDocument({
       ...this,
       code,
@@ -103,6 +108,9 @@ export class StandaloneDocument {
    * Throws StandaloneDocumentNotIssuedError when status !== 'issued'.
    */
   void(voidedAt: Date, reason: string | null = null): StandaloneDocument {
+    if (!this.isIssued()) {
+      throw new StandaloneDocumentNotIssuedError();
+    }
     return new StandaloneDocument({
       ...this,
       status: 'voided',

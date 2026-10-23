@@ -1,5 +1,6 @@
 import { ContentTemplate } from '../../domain/entities/content-template.entity';
 import { ContentTemplateNotFoundError } from '../../domain/errors/content-template-not-found.error';
+import { InvalidTemplateContentError } from '../../domain/errors/invalid-template-content.error';
 import type { IContentTemplateRepository } from '../../domain/repositories/icontent-template.repository';
 import { ListContentTemplatesUseCase } from './list-content-templates.use-case';
 import { GetContentTemplateUseCase } from './get-content-template.use-case';
@@ -66,6 +67,19 @@ describe('ListContentTemplatesUseCase', () => {
     await uc.execute(DOCTOR_ID, { type: 'paraclinical' });
 
     expect(repo.list).toHaveBeenCalledWith({ doctorId: DOCTOR_ID, type: 'paraclinical' });
+  });
+
+  it('caps results at 500 even if the repository returns more', async () => {
+    const repo = mockRepo();
+    const manyTemplates = Array.from({ length: 600 }, (_, i) =>
+      makeTemplate({ id: `tttttttt-0000-0000-0000-${String(i).padStart(12, '0')}` }),
+    );
+    repo.list.mockResolvedValue(manyTemplates);
+    const uc = new ListContentTemplatesUseCase(repo);
+
+    const result = await uc.execute(DOCTOR_ID, {});
+
+    expect(result).toHaveLength(500);
   });
 });
 
@@ -184,6 +198,47 @@ describe('UpdateContentTemplateUseCase', () => {
     await expect(uc.execute(TEMPLATE_ID, OTHER_DOCTOR, { name: 'X' })).rejects.toBeInstanceOf(
       ContentTemplateNotFoundError,
     );
+  });
+
+  it('throws InvalidTemplateContentError when content type mismatches stored type', async () => {
+    const repo = mockRepo();
+    // recipe template — paraclinical content should be rejected
+    repo.findById.mockResolvedValue(makeTemplate({ type: 'recipe' }));
+    const uc = new UpdateContentTemplateUseCase(repo);
+
+    await expect(
+      uc.execute(TEMPLATE_ID, DOCTOR_ID, {
+        content: { items: [{ exam_name: 'Hemograma', notes: '' }] } as never,
+      }),
+    ).rejects.toBeInstanceOf(InvalidTemplateContentError);
+    expect(repo.update).not.toHaveBeenCalled();
+  });
+
+  it('accepts valid content matching the stored type', async () => {
+    const repo = mockRepo();
+    repo.findById.mockResolvedValue(makeTemplate({ type: 'recipe' }));
+    repo.update.mockResolvedValue(makeTemplate({ type: 'recipe' }));
+    const uc = new UpdateContentTemplateUseCase(repo);
+
+    await expect(
+      uc.execute(TEMPLATE_ID, DOCTOR_ID, {
+        content: {
+          medications: [
+            {
+              name: 'Ibuprofeno',
+              dose: '400mg',
+              route: 'oral',
+              frequency: 'c/8h',
+              duration: '5 días',
+              presentation: '',
+              indications: '',
+            },
+          ],
+          notes: '',
+        },
+      }),
+    ).resolves.toBeDefined();
+    expect(repo.update).toHaveBeenCalled();
   });
 });
 
