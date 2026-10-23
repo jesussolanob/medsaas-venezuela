@@ -1,4 +1,14 @@
-import { Body, Controller, Get, Param, Post, Query, Res, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Post,
+  Query,
+  Res,
+  UseGuards,
+} from '@nestjs/common';
 import type { Response } from 'express';
 import { AppAuthGuard } from '../../../../infrastructure/auth/app-auth.guard';
 import {
@@ -13,6 +23,7 @@ import {
   type VerifyCodeDto,
 } from '../../application/dtos/share-consultation.dto';
 import { ShareConsultationUseCase } from '../../application/use-cases/document-sharing/share-consultation.use-case';
+import { ShareStandaloneDocumentUseCase } from '../../application/use-cases/document-sharing/share-standalone-document.use-case';
 import { VerifyCodeUseCase } from '../../application/use-cases/document-sharing/verify-code.use-case';
 import { DownloadDocumentUseCase } from '../../application/use-cases/document-sharing/download-document.use-case';
 import { RequestNewCodeUseCase } from '../../application/use-cases/document-sharing/request-new-code.use-case';
@@ -50,6 +61,7 @@ interface SuccessResponse<T> {
 export class DocumentSharingController {
   constructor(
     private readonly shareConsultation: ShareConsultationUseCase,
+    private readonly shareStandaloneDocument: ShareStandaloneDocumentUseCase,
     private readonly verifyCode: VerifyCodeUseCase,
     private readonly downloadDocument: DownloadDocumentUseCase,
     private readonly requestNewCode: RequestNewCodeUseCase,
@@ -83,6 +95,46 @@ export class DocumentSharingController {
       doctorId: user.sub,
       dto,
       doctorName: user.email, // used as fallback name; email is non-PHI in this context
+    });
+    return {
+      success: true,
+      data: {
+        url: result.url,
+        code: result.code,
+        expiresAt: result.expiresAt.toISOString(),
+      },
+    };
+  }
+
+  /**
+   * POST /api/standalone-documents/:id/share
+   *
+   * The doctor shares an ISSUED standalone document (recipe / paraclinical / reposo).
+   * The shared link is rendered by the same public viewer as consultation documents.
+   *
+   * Request body: same ShareConsultationDto (sections / doc_selection) — the body
+   * is accepted by the Zod schema but sections/doc_selection are not used here;
+   * the docSelection is derived from the document type server-side. The body is
+   * kept structurally compatible so the frontend ShareDocumentsModal can reuse
+   * its existing call shape.
+   *
+   * Response: { url, code, expiresAt } — identical shape to the consultation share endpoint.
+   *
+   * Error codes:
+   *   404 DocumentLinkNotFoundError — document missing or belongs to another doctor
+   *   409 StandaloneDocumentNotIssuedError — document is not in issued state
+   *   422 PatientCedulaRequiredForSharingError — patient has no cédula on file
+   */
+  @Post('standalone-documents/:id/share')
+  @UseGuards(AppAuthGuard)
+  async shareStandalone(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: CurrentUserPayload,
+  ): Promise<SuccessResponse<{ url: string; code: string; expiresAt: string }>> {
+    const result = await this.shareStandaloneDocument.execute({
+      standaloneDocumentId: id,
+      doctorId: user.sub,
+      doctorName: user.email,
     });
     return {
       success: true,

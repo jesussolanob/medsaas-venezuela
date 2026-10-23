@@ -1,6 +1,7 @@
 import { Test, type TestingModule } from '@nestjs/testing';
 import { DocumentSharingController } from './document-sharing.controller';
 import { ShareConsultationUseCase } from '../../application/use-cases/document-sharing/share-consultation.use-case';
+import { ShareStandaloneDocumentUseCase } from '../../application/use-cases/document-sharing/share-standalone-document.use-case';
 import { VerifyCodeUseCase } from '../../application/use-cases/document-sharing/verify-code.use-case';
 import { DownloadDocumentUseCase } from '../../application/use-cases/document-sharing/download-document.use-case';
 import { RequestNewCodeUseCase } from '../../application/use-cases/document-sharing/request-new-code.use-case';
@@ -13,6 +14,7 @@ import { InvalidSessionTokenError } from '../../domain/errors/invalid-session-to
 import type { Response } from 'express';
 
 const mockShareUseCase = { execute: jest.fn() };
+const mockShareStandaloneUseCase = { execute: jest.fn() };
 const mockVerifyUseCase = { execute: jest.fn() };
 const mockDownloadUseCase = { execute: jest.fn() };
 const mockRequestCodeUseCase = { execute: jest.fn() };
@@ -30,6 +32,7 @@ describe('DocumentSharingController', () => {
       controllers: [DocumentSharingController],
       providers: [
         { provide: ShareConsultationUseCase, useValue: mockShareUseCase },
+        { provide: ShareStandaloneDocumentUseCase, useValue: mockShareStandaloneUseCase },
         { provide: VerifyCodeUseCase, useValue: mockVerifyUseCase },
         { provide: DownloadDocumentUseCase, useValue: mockDownloadUseCase },
         { provide: RequestNewCodeUseCase, useValue: mockRequestCodeUseCase },
@@ -82,6 +85,51 @@ describe('DocumentSharingController', () => {
       );
 
       const callArg = mockShareUseCase.execute.mock.calls[0]?.[0] as { doctorId: string };
+      expect(callArg.doctorId).toBe('doctor-1');
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // shareStandalone
+  // ---------------------------------------------------------------------------
+
+  describe('shareStandalone', () => {
+    it('returns success envelope with url, code, expiresAt', async () => {
+      const expiresAt = new Date(Date.now() + 48 * 3600 * 1000);
+      mockShareStandaloneUseCase.execute.mockResolvedValue({
+        url: 'http://localhost:3000/documents/abc456',
+        code: '112233',
+        expiresAt,
+      });
+
+      const result = await controller.shareStandalone(
+        'doc-uuid-1',
+        mockUser as Parameters<typeof controller.shareStandalone>[1],
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.data.url).toContain('/documents/');
+      expect(result.data.code).toBe('112233');
+      expect(result.data.expiresAt).toBe(expiresAt.toISOString());
+    });
+
+    it('passes standaloneDocumentId from param and doctorId from user.sub (anti-IDOR)', async () => {
+      mockShareStandaloneUseCase.execute.mockResolvedValue({
+        url: 'http://localhost:3000/documents/x',
+        code: '000000',
+        expiresAt: new Date(),
+      });
+
+      await controller.shareStandalone(
+        'doc-uuid-2',
+        mockUser as Parameters<typeof controller.shareStandalone>[1],
+      );
+
+      const callArg = mockShareStandaloneUseCase.execute.mock.calls[0]?.[0] as {
+        standaloneDocumentId: string;
+        doctorId: string;
+      };
+      expect(callArg.standaloneDocumentId).toBe('doc-uuid-2');
       expect(callArg.doctorId).toBe('doctor-1');
     });
   });

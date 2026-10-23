@@ -94,7 +94,14 @@ export class DownloadDocumentUseCase {
     this.sessionTokenValidator.validate(input.sessionToken, link.id, input.token);
 
     // 4. Fetch decrypted consultation (doctorId scoped — anti-IDOR)
-    const consultation = await this.consultationRepo.findById(link.consultationId, link.doctorId);
+    // Standalone document links (standaloneDocumentId != null) are rendered via the
+    // render-data endpoint, not downloaded as a PDF blob. Guard here so TypeScript knows
+    // consultationId is non-null for the rest of this path.
+    if (!link.consultationId) {
+      throw new DocumentLinkNotFoundError();
+    }
+    const consultationId = link.consultationId;
+    const consultation = await this.consultationRepo.findById(consultationId, link.doctorId);
     if (!consultation) {
       this.logger.warn('[download] consultation disappeared after link was created');
       throw new DocumentLinkNotFoundError();
@@ -102,11 +109,11 @@ export class DownloadDocumentUseCase {
 
     // 5. Fetch prescriptions and EHR (only if sections require them)
     const prescriptions = link.sections.prescriptions
-      ? await this.prescriptionRepo.findByConsultation(link.consultationId, link.doctorId)
+      ? await this.prescriptionRepo.findByConsultation(consultationId, link.doctorId)
       : [];
 
     const ehrRecord = link.sections.ehr
-      ? await this.ehrRepo.findByConsultation(link.consultationId, link.doctorId)
+      ? await this.ehrRepo.findByConsultation(consultationId, link.doctorId)
       : null;
 
     // 6. Fetch patient name and doctor name for PDF header
