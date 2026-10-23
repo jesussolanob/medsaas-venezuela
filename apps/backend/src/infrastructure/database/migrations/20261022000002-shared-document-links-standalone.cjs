@@ -54,12 +54,23 @@ module.exports = {
     //
     //    All pre-existing rows have consultation_id set and standalone_document_id
     //    NULL, so they satisfy the constraint immediately.
+    //    ⚠️ Postgres NO admite `ADD CONSTRAINT IF NOT EXISTS` (syntax error —
+    //    verificado contra staging el 22/10; los tests con Sequelize simulado no
+    //    lo ven). La idempotencia se hace consultando pg_constraint.
     await q.query(`
-      ALTER TABLE shared_document_links
-        ADD CONSTRAINT IF NOT EXISTS shared_document_links_source_xor
-          CHECK (
-            (consultation_id IS NOT NULL) <> (standalone_document_id IS NOT NULL)
-          )
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint
+           WHERE conname = 'shared_document_links_source_xor'
+             AND conrelid = 'shared_document_links'::regclass
+        ) THEN
+          ALTER TABLE shared_document_links
+            ADD CONSTRAINT shared_document_links_source_xor
+              CHECK ((consultation_id IS NOT NULL) <> (standalone_document_id IS NOT NULL));
+        END IF;
+      END
+      $$;
     `);
 
     // 4. Index for lookups by standalone_document_id
