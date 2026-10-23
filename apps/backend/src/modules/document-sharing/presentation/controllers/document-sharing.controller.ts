@@ -94,7 +94,6 @@ export class DocumentSharingController {
       consultationId,
       doctorId: user.sub,
       dto,
-      doctorName: user.email, // used as fallback name; email is non-PHI in this context
     });
     return {
       success: true,
@@ -134,7 +133,6 @@ export class DocumentSharingController {
     const result = await this.shareStandaloneDocument.execute({
       standaloneDocumentId: id,
       doctorId: user.sub,
-      doctorName: user.email,
     });
     return {
       success: true,
