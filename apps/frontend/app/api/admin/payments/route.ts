@@ -71,7 +71,7 @@ export async function GET(req: NextRequest) {
   const status = new URL(req.url).searchParams.get('status') || 'pending';
 
   const result = await backendGet<BackendPayment[]>(
-    `/api/admin/subscription-payments?status=${encodeURIComponent(status)}&limit=100`,
+    `/api/admin/subscription-payments?status=${encodeURIComponent(status)}&limit=1000`,
   );
 
   if (!result.ok) {

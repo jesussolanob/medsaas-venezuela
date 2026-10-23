@@ -23,6 +23,10 @@ export async function GET() {
         lastSignInAt: string | null;
         /** Doctor identity document — PII, admin-only context. */
         cedula: string | null;
+        /** Profile registration date (ISO string). Added in contract update Oct-2026. */
+        createdAt?: string | null;
+        /** Doctor contact phone — PII, admin-only context. */
+        phone?: string | null;
       }[]
     >('/api/admin/doctors?limit=1000');
 
@@ -46,7 +50,8 @@ export async function GET() {
       is_active: d.activityStatus !== 'inactive',
       last_sign_in_at: d.lastSignInAt ?? null,
       cedula: d.cedula ?? null,
-      created_at: null,
+      created_at: d.createdAt ?? null,
+      phone: d.phone ?? null,
     }));
 
     return NextResponse.json(enriched);
