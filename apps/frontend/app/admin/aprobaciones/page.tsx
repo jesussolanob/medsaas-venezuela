@@ -12,7 +12,7 @@
  * Campos añadidos al tipo: bcv_rate, period, bank_code, bank_name, receipt_path.
  */
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   ClipboardCheck,
   CheckCircle2,
@@ -21,11 +21,11 @@ import {
   Loader2,
   AlertTriangle,
   Calendar,
-  ChevronDown,
-  Filter,
 } from 'lucide-react';
 import { PageHead, Btn, StatCard, Card, StatusPill } from '@/components/dh';
 import { showToast } from '@/components/ui/Toaster';
+import DateRangeFilter, { type DateRangeValue } from '@/components/admin/DateRangeFilter';
+import { isWithinRange } from '@/lib/date-range';
 
 type PaymentRow = {
   id: string;
@@ -81,9 +81,19 @@ export default function AprobacionesPage() {
   const [loading, setLoading] = useState(true);
   const [actioning, setActioning] = useState<string | null>(null);
   const [fetchingReceiptId, setFetchingReceiptId] = useState<string | null>(null);
+  const [dateRange, setDateRange] = useState<DateRangeValue>({ from: null, to: null });
 
   // Counts (para los tabs)
   const [counts, setCounts] = useState({ pending: 0, approved: 0, rejected: 0 });
+
+  // Client-side date filter applied on top of server tab filter.
+  const visiblePayments = useMemo(
+    () =>
+      dateRange.from || dateRange.to
+        ? payments.filter((p) => isWithinRange(p.created_at, dateRange.from, dateRange.to))
+        : payments,
+    [payments, dateRange],
+  );
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -297,14 +307,7 @@ export default function AprobacionesPage() {
                 : 'Rechazados'}
           </div>
           <div className="flex items-center gap-2">
-            <button
-              className="flex items-center gap-2 px-3.5 py-2 bg-white rounded-full text-xs font-medium cursor-pointer"
-              style={{ border: '1.5px solid var(--dh-gray-100)', color: 'var(--dh-gray-800)' }}
-            >
-              <Filter className="w-3 h-3" />
-              Más recientes
-              <ChevronDown className="w-3 h-3" style={{ color: 'var(--dh-gray-400)' }} />
-            </button>
+            <DateRangeFilter value={dateRange} onChange={setDateRange} />
           </div>
         </div>
 
@@ -315,21 +318,34 @@ export default function AprobacionesPage() {
               style={{ color: 'var(--dh-gray-300)' }}
             />
           </div>
-        ) : payments.length === 0 ? (
+        ) : visiblePayments.length === 0 ? (
           <div className="p-16 text-center">
             <CheckCircle2
               className="w-10 h-10 mx-auto mb-3"
               style={{ color: 'var(--dh-gray-200)' }}
             />
             <p className="text-sm" style={{ color: 'var(--dh-gray-400)' }}>
-              {tab === 'pending'
-                ? 'No hay pagos pendientes — ¡todo al día!'
-                : `Sin ${tab === 'approved' ? 'aprobados' : 'rechazados'} aún.`}
+              {dateRange.from || dateRange.to
+                ? 'No hay resultados en ese rango'
+                : tab === 'pending'
+                  ? 'No hay pagos pendientes — ¡todo al día!'
+                  : `Sin ${tab === 'approved' ? 'aprobados' : 'rechazados'} aún.`}
             </p>
           </div>
         ) : (
           <div className="divide-y" style={{ borderColor: 'var(--dh-gray-100)' }}>
-            {payments.map((p) => {
+            {(dateRange.from || dateRange.to) && visiblePayments.length < payments.length && (
+              <div
+                className="px-6 py-2 text-xs"
+                style={{
+                  color: 'var(--dh-gray-500)',
+                  borderBottom: '1px solid var(--dh-gray-100)',
+                }}
+              >
+                {visiblePayments.length} de {payments.length} comprobantes en el rango
+              </div>
+            )}
+            {visiblePayments.map((p) => {
               const fullName = p.profiles?.full_name || 'Doctor/a';
               const specialty = p.profiles?.specialty || '—';
               const submittedDate = new Intl.DateTimeFormat('es-VE', {

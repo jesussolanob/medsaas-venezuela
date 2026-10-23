@@ -18,6 +18,8 @@ import {
   AlertTriangle,
 } from 'lucide-react';
 import { reportError } from '@/lib/report-error';
+import DateRangeFilter, { type DateRangeValue } from '@/components/admin/DateRangeFilter';
+import { isWithinRange, startOfCurrentMonthCaracasMs } from '@/lib/date-range';
 import NewDoctorModal from './NewDoctorModal';
 import DoctorDetailDrawer from './DoctorDetailDrawer';
 import { PageHead, Btn, StatCard, Card, StatusPill } from '@/components/dh';
@@ -38,11 +40,13 @@ interface Doctor {
   email: string;
   specialty?: string;
   is_active: boolean;
-  created_at?: string;
+  created_at?: string | null;
   /** Real last login timestamp from the backend (null until Auth0 Fase 4). */
   last_sign_in_at?: string | null;
   /** Doctor identity document in canonical form (e.g. "V-12345678"). PII. */
   cedula?: string | null;
+  /** Doctor contact phone — available since contract update Oct-2026. PII. */
+  phone?: string | null;
   plan?: string;
   subscription_status?: string;
   subscription_expires_at?: string;
@@ -171,7 +175,7 @@ function subscriptionPillStatus(
 // 'all'         → sin filtro adicional
 // 'active'      → is_active === true
 // 'inactive_7d' → sin actividad ≥7 días (y is_active)
-// 'new_month'   → registrado en el mes actual
+// 'new_month'   → registrado en el mes actual (Caracas timezone)
 type ActiveFilter = 'all' | 'active' | 'inactive_7d' | 'new_month';
 
 export default function UsersPanel() {
@@ -180,6 +184,7 @@ export default function UsersPanel() {
   const [selectedDoctor, setSelectedDoctor] = useState<Doctor | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState<ActiveFilter>('all');
+  const [dateRange, setDateRange] = useState<DateRangeValue>({ from: null, to: null });
 
   const loadDoctors = async () => {
     try {
@@ -219,19 +224,18 @@ export default function UsersPanel() {
     // they are new accounts that have never signed in. Only count those with real data.
     return days !== null && days >= 7 && d.is_active;
   }).length;
+  // "Nuevos este mes" uses Caracas timezone so viewers outside Venezuela
+  // see the same count as local admins.
   const newThisMonth = useMemo(() => {
-    const now = new Date();
-    const startMonth = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
-    return doctors.filter((d) => d.created_at && new Date(d.created_at).getTime() >= startMonth)
+    const startMs = startOfCurrentMonthCaracasMs();
+    return doctors.filter((d) => d.created_at && new Date(d.created_at).getTime() >= startMs)
       .length;
   }, [doctors]);
 
-  // Aplica primero el filtro de chip y luego el de búsqueda de texto. El orden
-  // importa porque la exportación de CSV/PDF usa `filteredDoctors`, así el export
-  // siempre refleja lo que el usuario está viendo en pantalla.
+  // Aplica chip, búsqueda de texto y rango de fechas. El orden importa porque
+  // la exportación de CSV/PDF usa `filteredDoctors`, reflejando la vista activa.
   const filteredDoctors = useMemo(() => {
-    const now = new Date();
-    const startMonth = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+    const startMs = startOfCurrentMonthCaracasMs();
 
     let result = doctors;
 
@@ -243,7 +247,7 @@ export default function UsersPanel() {
         return days !== null && days >= 7 && d.is_active;
       });
     } else if (activeFilter === 'new_month') {
-      result = result.filter((d) => d.created_at && new Date(d.created_at).getTime() >= startMonth);
+      result = result.filter((d) => d.created_at && new Date(d.created_at).getTime() >= startMs);
     }
 
     if (searchQuery) {
@@ -256,8 +260,13 @@ export default function UsersPanel() {
       );
     }
 
+    // Date-range filter on created_at (Registro)
+    if (dateRange.from || dateRange.to) {
+      result = result.filter((d) => isWithinRange(d.created_at, dateRange.from, dateRange.to));
+    }
+
     return result;
-  }, [doctors, activeFilter, searchQuery]);
+  }, [doctors, activeFilter, searchQuery, dateRange]);
 
   return (
     <>
@@ -319,6 +328,11 @@ export default function UsersPanel() {
           delta="Registros recientes"
           deltaColor="turquoise"
         />
+      </div>
+
+      {/* Date range filter */}
+      <div className="mb-3">
+        <DateRangeFilter value={dateRange} onChange={setDateRange} />
       </div>
 
       {/* Search + filtros */}
@@ -388,6 +402,7 @@ export default function UsersPanel() {
                   'Especialista',
                   'Especialidad',
                   'Plan / Estado',
+                  'Registro',
                   'Vencimiento',
                   'Actividad',
                   '',
@@ -415,7 +430,7 @@ export default function UsersPanel() {
               {loading ? (
                 <tr>
                   <td
-                    colSpan={6}
+                    colSpan={7}
                     className="text-center py-12"
                     style={{ color: 'var(--dh-gray-400)' }}
                   >
@@ -424,7 +439,7 @@ export default function UsersPanel() {
                 </tr>
               ) : filteredDoctors.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="text-center py-16">
+                  <td colSpan={7} className="text-center py-16">
                     <div className="flex flex-col items-center gap-3">
                       <div
                         className="w-12 h-12 rounded-full flex items-center justify-center"
@@ -433,7 +448,11 @@ export default function UsersPanel() {
                         <UserCheck className="w-6 h-6" style={{ color: 'var(--dh-gray-400)' }} />
                       </div>
                       <p className="text-sm" style={{ color: 'var(--dh-gray-400)' }}>
-                        {searchQuery ? 'Sin resultados' : 'Aún no hay especialistas registrados'}
+                        {dateRange.from || dateRange.to
+                          ? 'No hay resultados en ese rango'
+                          : searchQuery
+                            ? 'Sin resultados'
+                            : 'Aún no hay especialistas registrados'}
                       </p>
                     </div>
                   </td>
@@ -494,6 +513,26 @@ export default function UsersPanel() {
                       </td>
                       <td style={{ padding: '16px 20px', color: 'var(--dh-gray-800)' }}>
                         {d.specialty ?? '—'}
+                      </td>
+                      <td style={{ padding: '16px 20px' }}>
+                        {d.created_at ? (
+                          <span
+                            className="text-[12px]"
+                            style={{
+                              fontFamily: 'var(--dh-font-mono)',
+                              color: 'var(--dh-gray-600)',
+                            }}
+                          >
+                            {new Date(d.created_at).toLocaleDateString('es-VE', {
+                              day: '2-digit',
+                              month: 'short',
+                              year: 'numeric',
+                              timeZone: 'America/Caracas',
+                            })}
+                          </span>
+                        ) : (
+                          <span style={{ color: 'var(--dh-gray-400)' }}>—</span>
+                        )}
                       </td>
                       <td style={{ padding: '16px 20px' }}>
                         <div className="flex flex-col gap-1.5 items-start">
@@ -573,7 +612,9 @@ export default function UsersPanel() {
               }}
             >
               <span>
-                Mostrando {filteredDoctors.length} de {doctors.length}
+                {filteredDoctors.length < doctors.length
+                  ? `${filteredDoctors.length} de ${doctors.length} especialistas`
+                  : `${doctors.length} especialistas`}
               </span>
             </div>
           )}
