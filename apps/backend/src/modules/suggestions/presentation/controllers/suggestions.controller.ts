@@ -41,7 +41,8 @@ export class SuggestionsController {
   @Get()
   async list(@CurrentUser() user: CurrentUserPayload): Promise<SuccessResponse<unknown[]>> {
     const suggestions = await this.listMySuggestions.execute({ doctorId: user.sub });
-    return { success: true, data: suggestions.map(toSuggestionResponse) };
+    // No profile passed — this is the doctor's own listing.
+    return { success: true, data: suggestions.map((s) => toSuggestionResponse(s)) };
   }
 
   /**

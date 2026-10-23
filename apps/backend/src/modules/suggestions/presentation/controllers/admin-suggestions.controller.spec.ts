@@ -53,7 +53,7 @@ describe('AdminSuggestionsController', () => {
   describe('listAll', () => {
     it('returns all suggestions in a success envelope', async () => {
       const suggestions = [makeSuggestion()];
-      mockListAll.execute.mockResolvedValue(suggestions);
+      mockListAll.execute.mockResolvedValue({ suggestions, profiles: new Map() });
 
       const result = await controller.listAll();
 
@@ -63,7 +63,7 @@ describe('AdminSuggestionsController', () => {
     });
 
     it('passes status filter when provided as a valid value', async () => {
-      mockListAll.execute.mockResolvedValue([]);
+      mockListAll.execute.mockResolvedValue({ suggestions: [], profiles: new Map() });
 
       await controller.listAll('reviewed');
 
@@ -71,7 +71,7 @@ describe('AdminSuggestionsController', () => {
     });
 
     it('ignores invalid status query param (passes undefined)', async () => {
-      mockListAll.execute.mockResolvedValue([]);
+      mockListAll.execute.mockResolvedValue({ suggestions: [], profiles: new Map() });
 
       await controller.listAll('invalid_status');
 
@@ -79,12 +79,34 @@ describe('AdminSuggestionsController', () => {
     });
 
     it('returns empty data array when no suggestions', async () => {
-      mockListAll.execute.mockResolvedValue([]);
+      mockListAll.execute.mockResolvedValue({ suggestions: [], profiles: new Map() });
 
       const result = await controller.listAll();
 
       expect(result.success).toBe(true);
       expect(result.data).toHaveLength(0);
+    });
+
+    it('includes profiles in the response when the use case returns them', async () => {
+      const suggestion = makeSuggestion();
+      const profile = {
+        id: DOCTOR_ID,
+        fullName: 'Dra. Smith',
+        email: 'smith@clinic.com',
+        specialty: 'Cardio',
+      };
+      mockListAll.execute.mockResolvedValue({
+        suggestions: [suggestion],
+        profiles: new Map([[DOCTOR_ID, profile]]),
+      });
+
+      const result = await controller.listAll();
+
+      const item = result.data[0] as Record<string, unknown>;
+      const profiles = item['profiles'] as Record<string, unknown>;
+      expect(profiles).toBeDefined();
+      expect(profiles['full_name']).toBe('Dra. Smith');
+      expect(profiles['specialty']).toBe('Cardio');
     });
   });
 
