@@ -80,6 +80,7 @@ function makeActivePanelData(): SubscriptionPanelData {
         discountPct: 0,
         promotionId: null,
         label: null,
+        compareAtPriceUsd: null,
       },
       {
         durationMonths: 3,
@@ -88,6 +89,7 @@ function makeActivePanelData(): SubscriptionPanelData {
         discountPct: 20,
         promotionId: 'promo-uuid-1',
         label: '3 meses – 20% OFF',
+        compareAtPriceUsd: null,
       },
     ],
     payments: [
@@ -200,6 +202,7 @@ describe('GetDoctorSubscriptionPanelUseCase', () => {
       expect(monthly.discount_pct).toBe(0);
       expect(monthly.promotion_id).toBeNull();
       expect(monthly.label).toBeNull();
+      expect(monthly.compare_at_price).toBeNull();
 
       const quarterly = result.pricing.duration_options[1]!;
       expect(quarterly.duration_months).toBe(3);
@@ -207,6 +210,7 @@ describe('GetDoctorSubscriptionPanelUseCase', () => {
       expect(quarterly.discount_pct).toBe(20);
       expect(quarterly.promotion_id).toBe('promo-uuid-1');
       expect(quarterly.label).toBe('3 meses – 20% OFF');
+      expect(quarterly.compare_at_price).toBeNull();
     });
 
     it('maps payment history items to snake_case output shape', async () => {
@@ -250,6 +254,57 @@ describe('GetDoctorSubscriptionPanelUseCase', () => {
       expect(result.payment_methods.config['zelle']).toEqual({
         email: 'pagos@delta.com',
       });
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // compare_at_price — launch promo field
+  // ---------------------------------------------------------------------------
+
+  describe('compare_at_price on duration options', () => {
+    it('propagates compare_at_price when it is greater than final_price_usd', async () => {
+      mockRepo.findPanelData.mockResolvedValue(
+        makeTrialPanelData({
+          durationOptions: [
+            {
+              durationMonths: 1,
+              basePriceUsd: 10,
+              finalPriceUsd: 10,
+              discountPct: 0,
+              promotionId: null,
+              label: null,
+              compareAtPriceUsd: 20,
+            },
+          ],
+        }),
+      );
+
+      const result = await useCase.execute(DOCTOR_ID);
+
+      expect(result.pricing.duration_options[0]!.compare_at_price).toBe(20);
+      expect(result.pricing.duration_options[0]!.final_price_usd).toBe(10);
+    });
+
+    it('propagates compare_at_price as null when absent', async () => {
+      mockRepo.findPanelData.mockResolvedValue(
+        makeTrialPanelData({
+          durationOptions: [
+            {
+              durationMonths: 1,
+              basePriceUsd: 10,
+              finalPriceUsd: 10,
+              discountPct: 0,
+              promotionId: null,
+              label: null,
+              compareAtPriceUsd: null,
+            },
+          ],
+        }),
+      );
+
+      const result = await useCase.execute(DOCTOR_ID);
+
+      expect(result.pricing.duration_options[0]!.compare_at_price).toBeNull();
     });
   });
 

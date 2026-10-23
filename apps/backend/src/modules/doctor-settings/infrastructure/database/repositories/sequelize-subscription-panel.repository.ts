@@ -30,6 +30,8 @@ interface DefaultPlanRow {
 interface PlanPriceRow {
   period: string;
   price_usd: string;
+  /** NUMERIC columns come back as strings from pg — convert with Number() before use. */
+  compare_at_price: string | null;
 }
 
 interface PlanPromotionRow {
@@ -239,7 +241,7 @@ export class SequelizeSubscriptionPanelRepository implements ISubscriptionPanelR
   private async buildDurationOptions(planKey: string): Promise<DurationOption[]> {
     const [priceRows, promoRows] = await Promise.all([
       this.sequelize.query<PlanPriceRow>(
-        `SELECT period, price_usd
+        `SELECT period, price_usd, compare_at_price
            FROM plan_prices
           WHERE plan_key = :planKey
             AND is_active = true
@@ -259,12 +261,15 @@ export class SequelizeSubscriptionPanelRepository implements ISubscriptionPanelR
 
     const options: DurationOption[] = [];
 
-    // Build options from plan_prices, merging promotions when duration matches
+    // Build options from plan_prices, merging promotions when duration matches.
+    // compare_at_price always comes from the plan_prices row (not from plan_promotions).
     for (const row of priceRows) {
       const months = PERIOD_TO_MONTHS[row.period] ?? null;
       if (months === null) continue;
 
       const basePriceUsd = Number(row.price_usd);
+      // NUMERIC columns return as strings — convert null-safely
+      const compareAtPriceUsd = row.compare_at_price != null ? Number(row.compare_at_price) : null;
       const promo = promoRows.find((pr) => pr.duration_months === months);
 
       if (promo) {
@@ -282,6 +287,7 @@ export class SequelizeSubscriptionPanelRepository implements ISubscriptionPanelR
           discountPct,
           promotionId: promo.id,
           label: promo.label,
+          compareAtPriceUsd,
         });
       } else {
         options.push({
@@ -291,11 +297,13 @@ export class SequelizeSubscriptionPanelRepository implements ISubscriptionPanelR
           discountPct: 0,
           promotionId: null,
           label: null,
+          compareAtPriceUsd,
         });
       }
     }
 
-    // Add promotions for durations not covered by plan_prices
+    // Add promotions for durations not covered by plan_prices.
+    // No plan_prices row → no compare_at_price source.
     for (const promo of promoRows) {
       const alreadyCovered = options.some((o) => o.durationMonths === promo.duration_months);
       if (!alreadyCovered) {
@@ -313,6 +321,7 @@ export class SequelizeSubscriptionPanelRepository implements ISubscriptionPanelR
           discountPct,
           promotionId: promo.id,
           label: promo.label,
+          compareAtPriceUsd: null,
         });
       }
     }

@@ -121,6 +121,10 @@ El proceso de pago es **manual**, no hay pasarela automatica todavia. La seccion
 
 Es decir: pagas por transferencia o Pago Movil, envias el comprobante y un administrador aprueba tu pago; al aprobarlo, tu plan se activa.
 
+### Precio de lanzamiento
+
+Cuando el administrador habilita un precio de lanzamiento para un periodo, ese periodo muestra el precio anterior tachado, una etiqueta **Precio de lanzamiento** y el porcentaje de ahorro. Esto aparece tanto en la pantalla **Mejora tu plan** (/doctor/upgrade) como en la seccion **Suscripcion** de Configuracion.
+
 ### Panel de suscripcion y downgrade perezoso
 
 - Mientras tu suscripcion este activa, tienes acceso a todos los modulos de tu plan.
