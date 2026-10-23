@@ -1802,7 +1802,9 @@ function ContactarModal({ doctorId, onClose }: { doctorId: string; onClose: () =
   useEffect(() => {
     const returnTo = document.activeElement as HTMLElement | null;
     return () => {
-      returnTo?.focus();
+      // Si el botón que lo abrió ya no está en pantalla (re-render de la tabla),
+      // no hay a dónde devolver el foco.
+      if (returnTo?.isConnected) returnTo.focus();
     };
   }, []);
 

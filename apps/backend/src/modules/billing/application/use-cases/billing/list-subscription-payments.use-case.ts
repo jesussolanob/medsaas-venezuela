@@ -14,6 +14,9 @@ import {
   type DoctorProfileSnapshot,
 } from '../../../domain/repositories/profile-lookup.repository';
 
+/** Max page size for the super_admin payments list (mirrors the admin controllers). */
+const ADMIN_PAYMENTS_MAX_LIMIT = 1000;
+
 export interface ListSubscriptionPaymentsInput {
   status?: SubscriptionPaymentStatus;
   page?: number;
@@ -56,7 +59,10 @@ export class ListSubscriptionPaymentsUseCase {
     const filters: SubscriptionPaymentListFilters = {
       status: input.status,
       page: Math.max(1, input.page ?? 1),
-      limit: Math.min(1000, Math.max(1, input.limit ?? 20)),
+      // Tope alto a propósito: la pantalla de Aprobaciones filtra por fecha en el
+      // cliente y necesita la lista completa — con el tope viejo de 100 el filtro
+      // habría ocultado pagos en silencio. Solo super_admin llega acá.
+      limit: Math.min(ADMIN_PAYMENTS_MAX_LIMIT, Math.max(1, input.limit ?? 20)),
     };
 
     const result = await this.repo.list(filters);
