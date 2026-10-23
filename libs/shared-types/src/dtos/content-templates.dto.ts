@@ -140,7 +140,8 @@ export type CreateContentTemplateDto = z.infer<typeof CreateContentTemplateDtoSc
 export const UpdateContentTemplateDtoSchema = z
   .object({
     name: z.string().trim().min(1, 'El nombre es requerido').max(120).optional(),
-    // content is accepted as-is; validated against the template's type in use case
+    // Pre-parsed as union here; cross-type validation (ensuring the content matches the
+    // stored template type) is enforced in UpdateContentTemplateUseCase.
     content: z
       .union([
         RecipeContentSchema,
@@ -206,7 +207,8 @@ export type CreateStandaloneDocumentDto = z.infer<typeof CreateStandaloneDocumen
 
 export const UpdateStandaloneDocumentDtoSchema = z
   .object({
-    // content is validated against the document's type in use case
+    // Pre-parsed as union here; cross-type validation (ensuring the content matches the
+    // stored document type) is enforced in UpdateStandaloneDocumentUseCase.
     content: z.union([RecipeContentSchema, ParaclinicalContentSchema, ReposoDocumentContentSchema]),
   })
   .strict();
@@ -232,6 +234,10 @@ export const ListStandaloneDocumentsQuerySchema = z
     patient_id: z.string().uuid().optional(),
     type: StandaloneDocumentTypeSchema.optional(),
     status: StandaloneDocumentStatusSchema.optional(),
+    /** Maximum records to return. Default 200, hard cap 500. */
+    limit: z.coerce.number().int().min(1).max(500).default(200),
+    /** Number of records to skip. Default 0. */
+    offset: z.coerce.number().int().min(0).default(0),
   })
   .strict();
 export type ListStandaloneDocumentsQuery = z.infer<typeof ListStandaloneDocumentsQuerySchema>;

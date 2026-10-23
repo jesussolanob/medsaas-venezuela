@@ -96,7 +96,7 @@ describe('StandaloneDocumentsController', () => {
       };
       listUseCase.execute.mockResolvedValue([summary]);
 
-      const result = await controller.index({}, user);
+      const result = await controller.index({ limit: 200, offset: 0 }, user);
 
       expect(result).toEqual({ success: true, data: [summary] });
     });

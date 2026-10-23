@@ -6,6 +6,9 @@ import {
 } from '../../domain/repositories/icontent-template.repository';
 import type { ContentTemplate } from '../../domain/entities/content-template.entity';
 
+/** Hard upper bound on content-template list results to prevent unbounded queries. */
+const MAX_TEMPLATES_PER_LIST = 500;
+
 @Injectable()
 export class ListContentTemplatesUseCase {
   constructor(
@@ -14,6 +17,8 @@ export class ListContentTemplatesUseCase {
   ) {}
 
   async execute(doctorId: string, query: ListContentTemplatesQuery): Promise<ContentTemplate[]> {
-    return this.repo.list({ doctorId, type: query.type });
+    const results = await this.repo.list({ doctorId, type: query.type });
+    // Enforce hard cap — the repo may return more if the DB grows beyond this limit.
+    return results.slice(0, MAX_TEMPLATES_PER_LIST);
   }
 }

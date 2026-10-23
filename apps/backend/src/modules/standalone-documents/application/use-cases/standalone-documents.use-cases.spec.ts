@@ -5,6 +5,7 @@ import { StandaloneDocumentNotIssuedError } from '../../domain/errors/standalone
 import { StandaloneDocumentCodeConflictError } from '../../domain/errors/standalone-document-code-conflict.error';
 import { StandaloneDocumentCodeExhaustedError } from '../../domain/errors/standalone-document-code-exhausted.error';
 import { PatientNotOwnedByDoctorError } from '../../domain/errors/patient-not-owned-by-doctor.error';
+import { InvalidDocumentContentError } from '../../domain/errors/invalid-document-content.error';
 import type { IStandaloneDocumentRepository } from '../../domain/repositories/istandalone-document.repository';
 import type { IPatientRepository } from '../../../patients/domain/repositories/patient.repository';
 import { ListStandaloneDocumentsUseCase } from './list-standalone-documents.use-case';
@@ -62,6 +63,7 @@ function mockDocRepo(): jest.Mocked<IStandaloneDocumentRepository> {
     persistVoided: jest.fn(),
     delete: jest.fn(),
     getMaxSequenceForMonth: jest.fn(),
+    revokeActiveLinksForDocument: jest.fn().mockResolvedValue(undefined),
   } as jest.Mocked<IStandaloneDocumentRepository>;
 }
 
@@ -110,15 +112,27 @@ describe('ListStandaloneDocumentsUseCase', () => {
     repo.list.mockResolvedValue([summary]);
     const uc = new ListStandaloneDocumentsUseCase(repo);
 
-    const result = await uc.execute(DOCTOR_ID, {});
+    const result = await uc.execute(DOCTOR_ID, { limit: 200, offset: 0 });
 
     expect(repo.list).toHaveBeenCalledWith({
       doctorId: DOCTOR_ID,
       patientId: undefined,
       type: undefined,
       status: undefined,
+      limit: 200,
+      offset: 0,
     });
     expect(result).toHaveLength(1);
+  });
+
+  it('passes custom limit and offset through to the repository', async () => {
+    const repo = mockDocRepo();
+    repo.list.mockResolvedValue([]);
+    const uc = new ListStandaloneDocumentsUseCase(repo);
+
+    await uc.execute(DOCTOR_ID, { limit: 50, offset: 100 });
+
+    expect(repo.list).toHaveBeenCalledWith(expect.objectContaining({ limit: 50, offset: 100 }));
   });
 });
 
@@ -200,7 +214,10 @@ describe('UpdateStandaloneDocumentUseCase', () => {
     const uc = new UpdateStandaloneDocumentUseCase(repo);
 
     await uc.execute(DOC_ID, DOCTOR_ID, { content: { medications: [], notes: 'Test' } });
-    expect(repo.updateContent).toHaveBeenCalledWith(DOC_ID, { medications: [], notes: 'Test' });
+    expect(repo.updateContent).toHaveBeenCalledWith(
+      DOC_ID,
+      expect.objectContaining({ medications: [], notes: 'Test' }),
+    );
   });
 
   it('throws StandaloneDocumentNotDraftError for issued document', async () => {
@@ -221,6 +238,22 @@ describe('UpdateStandaloneDocumentUseCase', () => {
     await expect(
       uc.execute(DOC_ID, OTHER_DOCTOR, { content: { medications: [], notes: '' } }),
     ).rejects.toBeInstanceOf(StandaloneDocumentNotFoundError);
+  });
+
+  it('throws InvalidDocumentContentError when content type mismatches stored type', async () => {
+    const repo = mockDocRepo();
+    // recipe document — paraclinical content should be rejected
+    const recipeDraft = makeDraft(); // type = 'recipe'
+    repo.findById.mockResolvedValue(recipeDraft);
+    const uc = new UpdateStandaloneDocumentUseCase(repo);
+
+    // Paraclinical content is invalid for a recipe doc
+    await expect(
+      uc.execute(DOC_ID, DOCTOR_ID, {
+        content: { items: [{ exam_name: 'Hemograma', notes: '' }] } as never,
+      }),
+    ).rejects.toBeInstanceOf(InvalidDocumentContentError);
+    expect(repo.updateContent).not.toHaveBeenCalled();
   });
 });
 
@@ -334,6 +367,25 @@ describe('VoidStandaloneDocumentUseCase', () => {
 
     expect(repo.persistVoided).toHaveBeenCalledWith(DOC_ID, 'Error', expect.any(Date));
     expect(result.status).toBe('voided');
+  });
+
+  it('revokes active shared links after voiding', async () => {
+    const repo = mockDocRepo();
+    repo.findById.mockResolvedValue(makeIssued());
+    const voided = StandaloneDocument.create({
+      ...makeIssued(),
+      status: 'voided',
+      voidReason: null,
+      voidedAt: new Date(),
+    });
+    repo.persistVoided.mockResolvedValue(voided);
+    const uc = new VoidStandaloneDocumentUseCase(repo);
+
+    await uc.execute(DOC_ID, DOCTOR_ID, {});
+
+    // Fire-and-forget — flush microtasks before asserting
+    await Promise.resolve();
+    expect(repo.revokeActiveLinksForDocument).toHaveBeenCalledWith(DOC_ID);
   });
 
   it('throws StandaloneDocumentNotIssuedError when trying to void a draft', async () => {

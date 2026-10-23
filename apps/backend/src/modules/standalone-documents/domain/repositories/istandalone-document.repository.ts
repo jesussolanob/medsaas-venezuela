@@ -49,6 +49,10 @@ export interface ListStandaloneDocumentsFilters {
   patientId?: string;
   type?: StandaloneDocumentType;
   status?: StandaloneDocumentStatus;
+  /** Maximum number of records to return. Default 200, max 500. */
+  limit?: number;
+  /** Number of records to skip. Default 0. */
+  offset?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -107,6 +111,13 @@ export interface IStandaloneDocumentRepository {
 
   /** Deletes a draft document. No-op when not found. */
   delete(id: string): Promise<void>;
+
+  /**
+   * Revokes all active shared_document_links for the given standalone document.
+   * Called after voiding a document so active links immediately stop working.
+   * No-op when no active links exist.
+   */
+  revokeActiveLinksForDocument(standaloneDocumentId: string): Promise<void>;
 
   /**
    * Returns the maximum sequence number for a given doctor + prefix + yearMonth.

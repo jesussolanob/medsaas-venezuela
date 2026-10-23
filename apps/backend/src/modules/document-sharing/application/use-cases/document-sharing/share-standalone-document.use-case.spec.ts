@@ -41,6 +41,7 @@ const mockStandaloneDocRepo: jest.Mocked<IStandaloneDocumentRepository> = {
   persistVoided: jest.fn(),
   delete: jest.fn(),
   getMaxSequenceForMonth: jest.fn(),
+  revokeActiveLinksForDocument: jest.fn(),
 };
 
 const mockPatientRepo: jest.Mocked<IPatientRepository> = {
