@@ -1948,6 +1948,48 @@ button { font-family: var(--dh-font-body); cursor: pointer; border: none; }
     font-weight: 600;
     display: inline-block;
   }
+  /* Pastilla "Precio de lanzamiento" — visible solo cuando compare_at_price > price_usd.
+     La lógica de visibilidad vive en launchPromo() (ver apps/frontend/lib/launch-price.ts). */
+  .pricing-card .launch-badge {
+    display: inline-flex;
+    align-items: center;
+    margin-top: 8px;
+    padding: 5px 12px;
+    background: linear-gradient(135deg,var(--dh-turquoise),var(--dh-turquoise-700));
+    color: #fff;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+    text-transform: uppercase;
+  }
+  /* Pastilla "Ahorras X%" junto a la de lanzamiento */
+  .pricing-card .savings-pill {
+    display: inline-flex;
+    align-items: center;
+    margin-top: 8px;
+    margin-left: 6px;
+    padding: 4px 9px;
+    background: rgba(6,182,212,0.10);
+    color: var(--dh-turquoise-700);
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 600;
+  }
+  /* Marcador de lanzamiento en la cabecera de la tabla comparativa */
+  .th-launch {
+    display: inline-block;
+    margin-left: 4px;
+    padding: 1px 6px;
+    background: rgba(6,182,212,0.12);
+    color: var(--dh-turquoise-700);
+    border-radius: 6px;
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    vertical-align: middle;
+    letter-spacing: 0.3px;
+  }
   .pricing-card .plan-features {
     list-style: none;
     margin: 18px 0 0;
@@ -2199,6 +2241,13 @@ button { font-family: var(--dh-font-body); cursor: pointer; border: none; }
         const c = m && m.compare_at_price;
         return (typeof c === 'number' && c > (m.price_usd || 0)) ? c : null;
       };
+      // Versión vanilla de getLaunchPromo() — ver apps/frontend/lib/launch-price.ts.
+      // Si se modifica la lógica, actualizar el archivo TS también.
+      // Retorna { savingsPct } cuando compareAtPrice > priceUsd, null en caso contrario.
+      const launchPromo = (priceUsd, compareAtPrice) => {
+        if (compareAtPrice == null || compareAtPrice <= priceUsd) return null;
+        return { savingsPct: Math.round((compareAtPrice - priceUsd) / compareAtPrice * 100) };
+      };
       // Orden por precio ascendente (Free, Base, Plus). El de mayor precio (Plus) = recomendado.
       plans.sort((a, b) => monthly(a) - monthly(b));
       const featuredIdx = plans.length >= 2 ? plans.length - 1 : -1;
@@ -2209,12 +2258,16 @@ button { font-family: var(--dh-font-body); cursor: pointer; border: none; }
         const antes = compareAt(p);
         const featured = i === featuredIdx ? 'featured' : '';
         const isFree = price === 0;
+        const promo = (!isFree && antes) ? launchPromo(price, antes) : null;
         return [
           '<div class="pricing-card ' + featured + '">',
           featured ? '<div class="badge">Recomendado</div>' : '',
           '<div class="duration">' + p.name + '</div>',
           '<div class="price">' + (isFree ? 'Gratis' : '$' + price + '<small> /mes</small>') + '</div>',
           (!isFree && antes) ? '<div class="original">Antes $' + antes + '</div>' : '',
+          // Badge de lanzamiento: solo cuando el admin cargó compare_at_price > price_usd.
+          // Muestra "Precio de lanzamiento" + "Ahorras X%" (calculado, nunca hardcodeado).
+          promo ? '<div><span class="launch-badge">Precio de lanzamiento</span><span class="savings-pill">Ahorras ' + promo.savingsPct + '%</span></div>' : '',
           p.description ? '<div class="per-month">' + p.description + '</div>' : '',
           '<a href="/register" target="_top" class="plan-cta">' + (isFree ? 'Comenzar gratis' : 'Elegir ' + p.name) + '</a>',
           '</div>',
@@ -2238,7 +2291,16 @@ button { font-family: var(--dh-font-body); cursor: pointer; border: none; }
         const inclCount = (key) => enabledOf.reduce((n, m) => n + (m[key] ? 1 : 0), 0);
         const idx = {}; order.forEach((k, n) => { idx[k] = n; });
         order.sort((a, b) => (inclCount(b) - inclCount(a)) || (idx[a] - idx[b]));
-        const priceLabel = (p) => { const v = monthly(p); return v === 0 ? 'Gratis' : '$' + v + '/mes'; };
+        // En la cabecera de la tabla también mostramos el tachado + marcador de
+        // lanzamiento para los planes con compare_at_price — misma regla que en tarjetas.
+        const priceLabel = (p) => {
+          const v = monthly(p);
+          if (v === 0) return 'Gratis';
+          const ca = compareAt(p);
+          const pr = launchPromo(v, ca);
+          if (!pr) return '$' + v + '/mes';
+          return '<span style="text-decoration:line-through;opacity:0.55;font-size:10px;margin-right:2px">$' + ca + '</span>$' + v + '/mes<span class="th-launch">Lanzamiento</span>';
+        };
         let html = '<thead><tr><th style="text-align:left">Característica</th>';
         plans.forEach((p, i) => {
           html += '<th class="' + (i === featuredIdx ? 'plan-featured' : '') + '">' + p.name + '<span class="th-price">' + priceLabel(p) + '</span></th>';

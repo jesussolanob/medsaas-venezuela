@@ -9,6 +9,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
+import { getLaunchPromo } from '@/lib/launch-price';
 import {
   Check,
   X,
@@ -399,6 +400,7 @@ export default function UpgradeClient({ plans, currentPlanKey }: UpgradeClientPr
                       const discount = getDiscountPct(plan, effectivePeriod);
                       const months = PERIOD_MONTHS[effectivePeriod];
                       const compareAt = getCompareAtForPeriod(plan, effectivePeriod);
+                      const launchPromo = getLaunchPromo(price, compareAt);
                       return (
                         <div>
                           {compareAt !== null && (
@@ -423,6 +425,22 @@ export default function UpgradeClient({ plans, currentPlanKey }: UpgradeClientPr
                               </span>
                             </div>
                           ) : null}
+                          {/* Badge de precio de lanzamiento: visible solo cuando
+                              el admin cargó un compare_at_price para ese período. */}
+                          {launchPromo !== null && (
+                            <div
+                              className="mt-2 flex flex-wrap items-center gap-1.5"
+                              role="note"
+                              aria-label={`Precio de lanzamiento: ahorras ${launchPromo.savingsPct}%`}
+                            >
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold tracking-wide bg-teal-500 text-white uppercase">
+                                Precio de lanzamiento
+                              </span>
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-teal-50 text-teal-700 text-[11px] font-semibold border border-teal-100">
+                                Ahorras {launchPromo.savingsPct}%
+                              </span>
+                            </div>
+                          )}
                         </div>
                       );
                     })()
