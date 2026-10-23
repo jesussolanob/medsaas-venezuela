@@ -2,6 +2,7 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as crypto from 'crypto';
 import { randomUUID } from 'crypto';
+import { formatShareExpiryCaracas } from '../../utils/format-share-expiry-caracas';
 import {
   SHARED_DOCUMENT_LINK_REPOSITORY,
   type ISharedDocumentLinkRepository,
@@ -132,13 +133,7 @@ export class RequestNewCodeUseCase {
         return;
       }
 
-      const expiresAtStr = params.expiresAt.toLocaleString('es-VE', {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-      });
+      const expiresAtStr = formatShareExpiryCaracas(params.expiresAt);
 
       await this.mailer.sendTemplate(
         'shared_documents_code',

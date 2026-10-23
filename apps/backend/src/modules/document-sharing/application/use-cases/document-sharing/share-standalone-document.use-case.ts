@@ -20,22 +20,48 @@ import {
   PATIENT_REPOSITORY,
   type IPatientRepository,
 } from '../../../../patients/domain/repositories/patient.repository';
+import {
+  DOCTOR_PROFILE_REPOSITORY,
+  type IDoctorProfileRepository,
+} from '../../../../doctor-settings/domain/repositories/doctor-profile.repository';
 import { MailerService } from '../../../../email/application/services/mailer.service';
 import { DocumentLinkNotFoundError } from '../../../domain/errors/document-link-not-found.error';
 import { StandaloneDocumentNotIssuedError } from '../../../../standalone-documents/domain/errors/standalone-document-not-issued.error';
 import { PatientCedulaRequiredForSharingError } from '../../../domain/errors/patient-cedula-required.error';
 import type { StandaloneDocumentType } from '../../../../standalone-documents/domain/entities/standalone-document.entity';
+import { formatShareExpiryCaracas } from '../../utils/format-share-expiry-caracas';
 
 export interface ShareStandaloneDocumentInput {
   standaloneDocumentId: string;
   doctorId: string;
-  doctorName: string;
+  /** @deprecated Use case resolves the doctor display name from the profile. This
+   * field is accepted for backward compatibility but is no longer used. */
+  doctorName?: string;
 }
 
 export interface ShareStandaloneDocumentOutput {
   url: string;
   code: string;
   expiresAt: Date;
+}
+
+/**
+ * Builds the display name for the doctor shown in patient-facing emails.
+ * Mirrors the pattern used in the frontend (ConsultationsClient, standalone-pdf, reminders).
+ *
+ * Format: "<professionalTitle> <fullName>" (trimmed).
+ * Falls back to profile email when fullName is absent, and to a generic label
+ * when no profile is available.
+ */
+function buildDoctorDisplayName(
+  profile: { fullName: string; professionalTitle: string | null; email: string } | null,
+): string {
+  if (profile?.fullName?.trim()) {
+    const title = profile.professionalTitle?.trim() ?? '';
+    const name = profile.fullName.trim();
+    return title ? `${title} ${name}` : name;
+  }
+  return profile?.email ?? 'Su especialista';
 }
 
 /** Maps standalone document type to the docSelection type key expected by the PDF viewer. */
@@ -86,6 +112,8 @@ export class ShareStandaloneDocumentUseCase {
     private readonly standaloneDocRepo: IStandaloneDocumentRepository,
     @Inject(PATIENT_REPOSITORY)
     private readonly patientRepo: IPatientRepository,
+    @Inject(DOCTOR_PROFILE_REPOSITORY)
+    private readonly doctorProfileRepo: IDoctorProfileRepository,
     private readonly mailer: MailerService,
     private readonly config: ConfigService,
   ) {}
@@ -158,7 +186,6 @@ export class ShareStandaloneDocumentUseCase {
     void this.sendEmailToPatient({
       patientId: doc.patientId,
       doctorId: input.doctorId,
-      doctorName: input.doctorName,
       url,
       code: rawCode,
       expiresAt,
@@ -170,32 +197,30 @@ export class ShareStandaloneDocumentUseCase {
   private async sendEmailToPatient(params: {
     patientId: string;
     doctorId: string;
-    doctorName: string;
     url: string;
     code: string;
     expiresAt: Date;
   }): Promise<void> {
     try {
-      const patient = await this.patientRepo.findById(params.patientId, params.doctorId);
+      const [patient, doctorProfile] = await Promise.all([
+        this.patientRepo.findById(params.patientId, params.doctorId),
+        this.doctorProfileRepo.findByDoctorId(params.doctorId),
+      ]);
+
       if (!patient?.email) {
         this.logger.debug('[share-standalone] patient has no email — skipping notification');
         return;
       }
 
-      const expiresAtStr = params.expiresAt.toLocaleString('es-VE', {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-      });
+      const doctorName = buildDoctorDisplayName(doctorProfile);
+      const expiresAtStr = formatShareExpiryCaracas(params.expiresAt);
 
       await this.mailer.sendTemplate(
         'shared_documents_code',
         patient.email,
         {
           patientName: patient.fullName,
-          doctorName: params.doctorName,
+          doctorName,
           code: params.code,
           url: params.url,
           expiresAt: expiresAtStr,

@@ -4,6 +4,7 @@ import type { ISharedDocumentLinkRepository } from '../../../domain/repositories
 import type { IDocumentAccessCodeRepository } from '../../../domain/repositories/document-access-code.repository';
 import type { IStandaloneDocumentRepository } from '../../../../standalone-documents/domain/repositories/istandalone-document.repository';
 import type { IPatientRepository } from '../../../../patients/domain/repositories/patient.repository';
+import type { IDoctorProfileRepository } from '../../../../doctor-settings/domain/repositories/doctor-profile.repository';
 import type { MailerService } from '../../../../email/application/services/mailer.service';
 import { SharedDocumentLink } from '../../../domain/entities/shared-document-link.entity';
 import { DocumentAccessCode } from '../../../domain/entities/document-access-code.entity';
@@ -54,6 +55,10 @@ const mockPatientRepo: jest.Mocked<IPatientRepository> = {
   update: jest.fn(),
   softDelete: jest.fn(),
   logReveal: jest.fn(),
+};
+
+const mockDoctorProfileRepo: jest.Mocked<Pick<IDoctorProfileRepository, 'findByDoctorId'>> = {
+  findByDoctorId: jest.fn(),
 };
 
 const mockMailer: jest.Mocked<Pick<MailerService, 'sendTemplate'>> = {
@@ -143,6 +148,7 @@ describe('ShareStandaloneDocumentUseCase', () => {
       mockCodeRepo,
       mockStandaloneDocRepo,
       mockPatientRepo,
+      mockDoctorProfileRepo as unknown as IDoctorProfileRepository,
       mockMailer as unknown as MailerService,
       mockConfig,
     );
@@ -151,6 +157,12 @@ describe('ShareStandaloneDocumentUseCase', () => {
     mockPatientRepo.findById.mockResolvedValue(makePatientWithCedula());
     mockLinkRepo.save.mockResolvedValue(makeSavedLink());
     mockCodeRepo.save.mockResolvedValue(makeSavedCode());
+    // Doctor profile: title + name for email display name.
+    mockDoctorProfileRepo.findByDoctorId.mockResolvedValue({
+      fullName: 'Carlos López',
+      professionalTitle: 'Dr.',
+      email: 'carlos.lopez@clinic.com',
+    } as Awaited<ReturnType<typeof mockDoctorProfileRepo.findByDoctorId>>);
   });
 
   // -----------------------------------------------------------------------
@@ -161,7 +173,6 @@ describe('ShareStandaloneDocumentUseCase', () => {
     const result = await useCase.execute({
       standaloneDocumentId: 'doc-1',
       doctorId: 'doctor-1',
-      doctorName: 'Dr. García',
     });
 
     expect(result.url).toMatch(/^http:\/\/localhost:3000\/documents\//);
@@ -173,7 +184,6 @@ describe('ShareStandaloneDocumentUseCase', () => {
     await useCase.execute({
       standaloneDocumentId: 'doc-1',
       doctorId: 'doctor-1',
-      doctorName: 'Dr. García',
     });
 
     const savedLink = mockLinkRepo.save.mock.calls[0]?.[0] as SharedDocumentLink;
@@ -185,7 +195,6 @@ describe('ShareStandaloneDocumentUseCase', () => {
     await useCase.execute({
       standaloneDocumentId: 'doc-1',
       doctorId: 'doctor-1',
-      doctorName: 'Dr. García',
     });
 
     const savedLink = mockLinkRepo.save.mock.calls[0]?.[0] as SharedDocumentLink;
@@ -199,7 +208,6 @@ describe('ShareStandaloneDocumentUseCase', () => {
     await useCase.execute({
       standaloneDocumentId: 'doc-1',
       doctorId: 'doctor-1',
-      doctorName: 'Dr. García',
     });
 
     const savedLink = mockLinkRepo.save.mock.calls[0]?.[0] as SharedDocumentLink;
@@ -212,7 +220,6 @@ describe('ShareStandaloneDocumentUseCase', () => {
     await useCase.execute({
       standaloneDocumentId: 'doc-1',
       doctorId: 'doctor-1',
-      doctorName: 'Dr. García',
     });
 
     const savedLink = mockLinkRepo.save.mock.calls[0]?.[0] as SharedDocumentLink;
@@ -223,7 +230,6 @@ describe('ShareStandaloneDocumentUseCase', () => {
     await useCase.execute({
       standaloneDocumentId: 'doc-1',
       doctorId: 'doctor-1',
-      doctorName: 'Dr. García',
     });
 
     expect(mockLinkRepo.save).toHaveBeenCalledTimes(1);
@@ -235,8 +241,62 @@ describe('ShareStandaloneDocumentUseCase', () => {
     mockMailer.sendTemplate.mockRejectedValue(new Error('SMTP error'));
 
     await expect(
-      useCase.execute({ standaloneDocumentId: 'doc-1', doctorId: 'doctor-1', doctorName: 'Dr.' }),
+      useCase.execute({ standaloneDocumentId: 'doc-1', doctorId: 'doctor-1' }),
     ).resolves.toBeDefined();
+  });
+
+  it('sends email with doctor display name built from profile (professionalTitle + fullName)', async () => {
+    mockPatientRepo.findById.mockResolvedValue(makePatientWithCedula({ email: 'ana@test.com' }));
+    mockMailer.sendTemplate.mockResolvedValue(undefined);
+
+    await useCase.execute({ standaloneDocumentId: 'doc-1', doctorId: 'doctor-1' });
+
+    await new Promise((r) => setImmediate(r));
+
+    expect(mockMailer.sendTemplate).toHaveBeenCalledWith(
+      'shared_documents_code',
+      'ana@test.com',
+      expect.objectContaining({ doctorName: 'Dr. Carlos López' }),
+      expect.anything(),
+    );
+  });
+
+  it('falls back to profile email when doctor fullName is absent', async () => {
+    mockDoctorProfileRepo.findByDoctorId.mockResolvedValue({
+      fullName: '',
+      professionalTitle: null,
+      email: 'noprofile@clinic.com',
+    } as Awaited<ReturnType<typeof mockDoctorProfileRepo.findByDoctorId>>);
+    mockPatientRepo.findById.mockResolvedValue(makePatientWithCedula({ email: 'ana@test.com' }));
+    mockMailer.sendTemplate.mockResolvedValue(undefined);
+
+    await useCase.execute({ standaloneDocumentId: 'doc-1', doctorId: 'doctor-1' });
+
+    await new Promise((r) => setImmediate(r));
+
+    expect(mockMailer.sendTemplate).toHaveBeenCalledWith(
+      'shared_documents_code',
+      'ana@test.com',
+      expect.objectContaining({ doctorName: 'noprofile@clinic.com' }),
+      expect.anything(),
+    );
+  });
+
+  it('falls back to "Su especialista" when profile is null', async () => {
+    mockDoctorProfileRepo.findByDoctorId.mockResolvedValue(null);
+    mockPatientRepo.findById.mockResolvedValue(makePatientWithCedula({ email: 'ana@test.com' }));
+    mockMailer.sendTemplate.mockResolvedValue(undefined);
+
+    await useCase.execute({ standaloneDocumentId: 'doc-1', doctorId: 'doctor-1' });
+
+    await new Promise((r) => setImmediate(r));
+
+    expect(mockMailer.sendTemplate).toHaveBeenCalledWith(
+      'shared_documents_code',
+      'ana@test.com',
+      expect.objectContaining({ doctorName: 'Su especialista' }),
+      expect.anything(),
+    );
   });
 
   // -----------------------------------------------------------------------
@@ -247,7 +307,7 @@ describe('ShareStandaloneDocumentUseCase', () => {
     mockStandaloneDocRepo.findById.mockResolvedValue(null);
 
     await expect(
-      useCase.execute({ standaloneDocumentId: 'doc-1', doctorId: 'doctor-1', doctorName: 'Dr.' }),
+      useCase.execute({ standaloneDocumentId: 'doc-1', doctorId: 'doctor-1' }),
     ).rejects.toBeInstanceOf(DocumentLinkNotFoundError);
 
     expect(mockLinkRepo.save).not.toHaveBeenCalled();
@@ -257,7 +317,7 @@ describe('ShareStandaloneDocumentUseCase', () => {
     mockStandaloneDocRepo.findById.mockResolvedValue(makeIssuedDoc({ doctorId: 'other-doctor' }));
 
     await expect(
-      useCase.execute({ standaloneDocumentId: 'doc-1', doctorId: 'doctor-1', doctorName: 'Dr.' }),
+      useCase.execute({ standaloneDocumentId: 'doc-1', doctorId: 'doctor-1' }),
     ).rejects.toBeInstanceOf(DocumentLinkNotFoundError);
 
     expect(mockLinkRepo.save).not.toHaveBeenCalled();
@@ -271,7 +331,7 @@ describe('ShareStandaloneDocumentUseCase', () => {
     mockStandaloneDocRepo.findById.mockResolvedValue(makeIssuedDoc({ status: 'draft' }));
 
     await expect(
-      useCase.execute({ standaloneDocumentId: 'doc-1', doctorId: 'doctor-1', doctorName: 'Dr.' }),
+      useCase.execute({ standaloneDocumentId: 'doc-1', doctorId: 'doctor-1' }),
     ).rejects.toBeInstanceOf(StandaloneDocumentNotIssuedError);
 
     expect(mockLinkRepo.save).not.toHaveBeenCalled();
@@ -281,7 +341,7 @@ describe('ShareStandaloneDocumentUseCase', () => {
     mockStandaloneDocRepo.findById.mockResolvedValue(makeIssuedDoc({ status: 'voided' }));
 
     await expect(
-      useCase.execute({ standaloneDocumentId: 'doc-1', doctorId: 'doctor-1', doctorName: 'Dr.' }),
+      useCase.execute({ standaloneDocumentId: 'doc-1', doctorId: 'doctor-1' }),
     ).rejects.toBeInstanceOf(StandaloneDocumentNotIssuedError);
 
     expect(mockLinkRepo.save).not.toHaveBeenCalled();
@@ -295,7 +355,7 @@ describe('ShareStandaloneDocumentUseCase', () => {
     mockPatientRepo.findById.mockResolvedValue(makePatientWithCedula({ cedula: null }));
 
     await expect(
-      useCase.execute({ standaloneDocumentId: 'doc-1', doctorId: 'doctor-1', doctorName: 'Dr.' }),
+      useCase.execute({ standaloneDocumentId: 'doc-1', doctorId: 'doctor-1' }),
     ).rejects.toBeInstanceOf(PatientCedulaRequiredForSharingError);
 
     expect(mockLinkRepo.save).not.toHaveBeenCalled();
@@ -305,7 +365,7 @@ describe('ShareStandaloneDocumentUseCase', () => {
     mockPatientRepo.findById.mockResolvedValue(null);
 
     await expect(
-      useCase.execute({ standaloneDocumentId: 'doc-1', doctorId: 'doctor-1', doctorName: 'Dr.' }),
+      useCase.execute({ standaloneDocumentId: 'doc-1', doctorId: 'doctor-1' }),
     ).rejects.toBeInstanceOf(PatientCedulaRequiredForSharingError);
 
     expect(mockLinkRepo.save).not.toHaveBeenCalled();
