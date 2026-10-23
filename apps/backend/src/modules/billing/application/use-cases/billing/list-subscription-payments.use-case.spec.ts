@@ -1,6 +1,10 @@
 import { ListSubscriptionPaymentsUseCase } from './list-subscription-payments.use-case';
 import { SubscriptionPayment } from '../../../domain/entities/subscription-payment.entity';
 import type { ISubscriptionPaymentRepository } from '../../../domain/repositories/subscription-payment.repository';
+import type {
+  IProfileLookupRepository,
+  DoctorProfileSnapshot,
+} from '../../../domain/repositories/profile-lookup.repository';
 
 function makePayment(id: string, status: 'pending' | 'approved' | 'rejected'): SubscriptionPayment {
   return SubscriptionPayment.create({
@@ -18,8 +22,16 @@ function makePayment(id: string, status: 'pending' | 'approved' | 'rejected'): S
   });
 }
 
+const PROFILE_SNAPSHOT: DoctorProfileSnapshot = {
+  id: 'doc-1',
+  fullName: 'Dr. House',
+  email: 'house@hospital.com',
+  specialty: 'Diagnóstico',
+};
+
 describe('ListSubscriptionPaymentsUseCase', () => {
   let mockRepo: jest.Mocked<ISubscriptionPaymentRepository>;
+  let mockProfileLookup: jest.Mocked<IProfileLookupRepository>;
   let useCase: ListSubscriptionPaymentsUseCase;
 
   beforeEach(() => {
@@ -35,7 +47,11 @@ describe('ListSubscriptionPaymentsUseCase', () => {
       reject: jest.fn(),
       getFinanceStats: jest.fn(),
     };
-    useCase = new ListSubscriptionPaymentsUseCase(mockRepo);
+    mockProfileLookup = {
+      findById: jest.fn(),
+      findByIds: jest.fn().mockResolvedValue([]),
+    };
+    useCase = new ListSubscriptionPaymentsUseCase(mockRepo, mockProfileLookup);
   });
 
   it('returns all payments when no filter is applied', async () => {
@@ -66,12 +82,12 @@ describe('ListSubscriptionPaymentsUseCase', () => {
     expect(mockRepo.list).toHaveBeenCalledWith(expect.objectContaining({ page: 1 }));
   });
 
-  it('clamps limit to maximum 100', async () => {
-    mockRepo.list.mockResolvedValue({ items: [], total: 0, page: 1, limit: 100 });
+  it('clamps limit to maximum 1000', async () => {
+    mockRepo.list.mockResolvedValue({ items: [], total: 0, page: 1, limit: 1000 });
 
-    await useCase.execute({ limit: 999 });
+    await useCase.execute({ limit: 9999 });
 
-    expect(mockRepo.list).toHaveBeenCalledWith(expect.objectContaining({ limit: 100 }));
+    expect(mockRepo.list).toHaveBeenCalledWith(expect.objectContaining({ limit: 1000 }));
   });
 
   it('returns empty result when repository returns nothing', async () => {
@@ -81,5 +97,47 @@ describe('ListSubscriptionPaymentsUseCase', () => {
 
     expect(result.items).toEqual([]);
     expect(result.total).toBe(0);
+  });
+
+  // ---------------------------------------------------------------------------
+  // Profile enrichment
+  // ---------------------------------------------------------------------------
+
+  it('calls findByIds with distinct doctorIds from payment list', async () => {
+    const payments = [makePayment('p1', 'pending'), makePayment('p2', 'approved')];
+    mockRepo.list.mockResolvedValue({ items: payments, total: 2, page: 1, limit: 20 });
+
+    await useCase.execute({});
+
+    // Both payments share doctorId 'doc-1' — deduplication means exactly one call
+    expect(mockProfileLookup.findByIds).toHaveBeenCalledWith(['doc-1']);
+  });
+
+  it('returns profiles map keyed by doctorId', async () => {
+    const payments = [makePayment('p1', 'pending')];
+    mockRepo.list.mockResolvedValue({ items: payments, total: 1, page: 1, limit: 20 });
+    mockProfileLookup.findByIds.mockResolvedValue([PROFILE_SNAPSHOT]);
+
+    const result = await useCase.execute({});
+
+    expect(result.profiles.get('doc-1')).toEqual(PROFILE_SNAPSHOT);
+  });
+
+  it('does not call findByIds when payment list is empty', async () => {
+    mockRepo.list.mockResolvedValue({ items: [], total: 0, page: 1, limit: 20 });
+
+    await useCase.execute({});
+
+    expect(mockProfileLookup.findByIds).toHaveBeenCalledWith([]);
+  });
+
+  it('returns empty profiles map when profile lookup returns no rows', async () => {
+    const payments = [makePayment('p1', 'pending')];
+    mockRepo.list.mockResolvedValue({ items: payments, total: 1, page: 1, limit: 20 });
+    mockProfileLookup.findByIds.mockResolvedValue([]);
+
+    const result = await useCase.execute({});
+
+    expect(result.profiles.size).toBe(0);
   });
 });

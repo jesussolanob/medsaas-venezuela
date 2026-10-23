@@ -22,13 +22,28 @@ export class SequelizeProfileLookupRepository implements IProfileLookupRepositor
 
   async findById(userId: string): Promise<DoctorProfileSnapshot | null> {
     const row = await this.model.findByPk(userId, {
-      attributes: ['id', 'fullName', 'email'],
+      attributes: ['id', 'fullName', 'email', 'specialty'],
     });
     if (!row) return null;
     return {
       id: row.id,
       fullName: row.fullName,
       email: row.email,
+      specialty: row.specialty ?? null,
     };
+  }
+
+  async findByIds(userIds: string[]): Promise<DoctorProfileSnapshot[]> {
+    if (userIds.length === 0) return [];
+    const rows = await this.model.findAll({
+      where: { id: userIds },
+      attributes: ['id', 'fullName', 'email', 'specialty'],
+    });
+    return rows.map((row) => ({
+      id: row.id,
+      fullName: row.fullName,
+      email: row.email,
+      specialty: row.specialty ?? null,
+    }));
   }
 }

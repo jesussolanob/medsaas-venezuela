@@ -6,9 +6,7 @@
  * ETAPA 1 — thin-proxy al módulo NestJS `billing` (subscription-payments).
  * RBAC (super_admin) enforced both here and in the backend.
  *
- * Known backend gaps (report to lead — do NOT fix here):
- *   - `profiles` join (doctor name/email) not returned — always null.
- *   - `notes` field not returned by toOutput() — always null.
+ * Note: `notes` field is not returned by toOutput() — always null (minor gap).
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { requireRole } from '@/lib/auth-guards';
@@ -32,6 +30,11 @@ interface BackendPayment {
   reviewedBy: string | null;
   reviewedAt: string | null;
   createdAt: string;
+  /** PII — doctor full name resolved by the backend in a batched profile query. */
+  doctorName: string | null;
+  /** PII — doctor email. Admin-only context. */
+  doctorEmail: string | null;
+  doctorSpecialty: string | null;
 }
 
 function toPaymentRow(p: BackendPayment) {
@@ -59,8 +62,10 @@ function toPaymentRow(p: BackendPayment) {
     rejection_reason: p.rejectionReason ?? null,
     created_at: p.createdAt,
     reviewed_at: p.reviewedAt,
-    // profiles join not returned by backend — backend gap
-    profiles: null as { full_name: string; email: string; specialty: string | null } | null,
+    // profiles: resolved from backend batched query (no longer a gap).
+    profiles: p.doctorName
+      ? { full_name: p.doctorName, email: p.doctorEmail ?? '', specialty: p.doctorSpecialty }
+      : null,
   };
 }
 

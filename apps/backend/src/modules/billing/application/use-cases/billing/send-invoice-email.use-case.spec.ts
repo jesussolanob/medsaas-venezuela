@@ -41,6 +41,7 @@ function makeDoctorProfile(): DoctorProfileSnapshot {
     id: 'doc-1',
     fullName: 'Dr. Juan Pérez',
     email: 'doctor@example.com',
+    specialty: null,
   };
 }
 
@@ -66,6 +67,7 @@ describe('SendInvoiceEmailUseCase (MailerService refactor)', () => {
 
     profileRepo = {
       findById: jest.fn(),
+      findByIds: jest.fn().mockResolvedValue([]),
     };
 
     mailerService = {
