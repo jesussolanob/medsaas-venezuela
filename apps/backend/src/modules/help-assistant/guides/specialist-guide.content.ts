@@ -101,7 +101,7 @@ En la parte inferior del menu lateral siempre ves tu plan activo (por ejemplo 'P
   - Incluye: Inicio (Dashboard), Pacientes, Consultas, Consultorios, Plantillas y Configuracion.
   - NO incluye: Agenda, Cobros, Finanzas, Servicios, Recordatorios, booking online (reservas de pacientes), compartir documentos ni IA.
 - **Delta Base** (aproximadamente 10 USD al mes):
-  - Incluye todo lo de Free, mas: Agenda, Cobros, Finanzas, Servicios, Recordatorios, Mensajes, historia clinica EHR, booking online y compartir documentos.
+  - Incluye todo lo de Free, mas: Agenda, Cobros, Finanzas, Servicios, Recordatorios, Mensajes, historia clinica EHR, booking online, compartir documentos, **Plantillas de contenido** y **Recipes y paraclínicos sin consulta**.
   - NO incluye IA.
 - **Delta Plus** (aproximadamente 30 USD al mes):
   - Incluye todo lo de Base, mas la inteligencia artificial: Mejorar texto con IA, Transcripcion de audio y Resumen de informes.
@@ -500,6 +500,61 @@ Permite pedirle al paciente que suba documentos (examenes, resultados, comproban
 
 ---
 
+### 6.19 Plantillas de contenido — /doctor/content-templates
+
+Disponible en planes **Delta Base y Delta Plus** (y durante el periodo de prueba). Aparece en el menu como **Plantillas de contenido** (dentro de Consultorio o en la seccion de herramientas clinicas).
+
+Permite guardar estructuras reutilizables para cuatro tipos de documento: **Recipe medico** (receta), **Paraclínicos** (examenes solicitados), **Reposo medico** y **Presupuesto**. Son privadas: solo las ve el especialista que las creo.
+
+**Tipos de plantilla:**
+- **Recipe:** lista de medicamentos con nombre, dosis, frecuencia y duracion.
+- **Paraclínicos:** lista de examenes con nombre y descripcion opcional.
+- **Reposo:** diagnostico, numero de dias y observaciones (sin fechas — las fechas se ponen al emitir el documento real).
+- **Presupuesto:** lista de items con descripcion, cantidad y precio unitario (en USD). Cuando usas una plantilla de presupuesto para crear un presupuesto, los precios que se copian son los de la plantilla en ese momento — no se actualizan solos si cambias la plantilla despues.
+
+**Crear una plantilla:**
+1. En /doctor/content-templates pulsa **Nueva plantilla**.
+2. Elige el tipo, escribe el nombre y completa los campos del contenido.
+3. Guarda. La plantilla queda disponible para usar en cualquier documento del mismo tipo.
+
+**Usar una plantilla:**
+Al crear un recipe, orden de paraclínicos, reposo o presupuesto, el formulario ofrece el boton **Usar plantilla**. Al pulsarlo, se muestra la lista de tus plantillas del mismo tipo. Al seleccionar una, el sistema copia el contenido en el formulario. Si el formulario ya tenia contenido, el sistema te avisa y te pregunta si deseas reemplazarlo antes de copiar.
+
+**Editar o eliminar plantillas:**
+Desde la lista de plantillas pulsa el icono de lapiz (editar) o de papelera (eliminar). La eliminacion es definitiva y no afecta documentos ya emitidos que usaron esa plantilla.
+
+---
+
+### 6.20 Recipes y paraclínicos sin consulta — /doctor/standalone-documents
+
+Disponible en planes **Delta Base y Delta Plus** (y durante el periodo de prueba). Acceso desde el boton **Crear** en la pantalla **Inicio** o desde el menu **Consultorio** → **Recipes y paraclínicos**. Tambien visible en la ficha del paciente en la pestana **Recipes y paraclínicos**.
+
+Permite emitir un recipe, una orden de paraclínicos o un reposo medico **sin necesidad de tener una consulta abierta**. Util para pacientes de seguimiento o cuando el documento se extiende fuera de una cita.
+
+**Tipos de documento:**
+- **Recipe medico (REC):** receta con lista de medicamentos.
+- **Paraclínicos (PAR):** solicitud de examenes.
+- **Reposo medico (REP):** certificado de reposo con diagnostico, fechas y dias de reposo.
+
+**Estados de un documento:**
+- **Borrador (draft):** recien creado, todavia editable. No tiene codigo asignado.
+- **Emitido (issued):** firmado y sellado con un codigo unico (ej. REC-202610-0001). **Un documento emitido NO se puede editar** — solo se puede anular.
+- **Anulado (voided):** fue invalidado despues de emitirse. Queda en el historial pero sin efecto clinico. Se puede indicar un motivo de anulacion.
+
+**Crear un documento:**
+1. Pulsa **Nuevo recipe** (o **Nueva orden** / **Nuevo reposo**), elige el paciente y completa el contenido.
+2. Guarda como borrador con **Guardar**.
+3. Cuando este listo, pulsa **Emitir**: el sistema asigna un codigo y cambia el estado a Emitido.
+4. Opcionalmente pulsa **Crear y emitir** para hacer los dos pasos a la vez.
+
+**Codigos de documento:**
+Cada documento emitido recibe un codigo con formato TIPO-AAAAMM-NNNN (ej. REC-202610-0001). El numero es secuencial por tipo y por mes, dentro de tu cuenta. Los codigos son utiles para referencia y para verificar la autenticidad del documento.
+
+**Anular un documento emitido:**
+Abre el documento y pulsa **Anular documento**. Puedes escribir un motivo opcional. La anulacion es definitiva y no se puede deshacer.
+
+---
+
 ## 7. Flujos completos paso a paso
 
 ### 7.1 Crear / agendar una cita (a traves del flujo de Nueva consulta)
@@ -752,4 +807,19 @@ Son las sesiones 2..N de un paquete de varias sesiones que el paciente ya compro
 
 **Puedo pedir documentos a un paciente sin que el tenga cuenta en Delta?**
 Si. Desde **Solicitudes** (/doctor/patient-requests) crea una solicitud: el paciente recibe un correo con un enlace y un codigo de 6 digitos. Con eso abre la pagina, sube los archivos y escribe su respuesta, sin necesidad de registrarse en la plataforma.
+
+**Para que sirven las plantillas de contenido?**
+Las plantillas de contenido (/doctor/content-templates) guardan estructuras reutilizables para recipes, ordenes de paraclínicos, reposos y presupuestos. Cuando creas uno de esos documentos, puedes cargar una plantilla para no volver a escribir siempre los mismos medicamentos, examenes o items. Son privadas (solo las ves tu) y requieren plan Delta Base o Delta Plus.
+
+**Puedo editar una plantilla de presupuesto y que se actualicen los presupuestos que ya use con ella?**
+No. Los presupuestos existentes conservan los precios que tenian cuando se creo el presupuesto. Cambiar la plantilla solo afecta los nuevos presupuestos que la usen a partir de ese momento.
+
+**Puedo crear un recipe sin tener una consulta abierta?**
+Si. Desde **Inicio** (boton Crear) o desde el menu Consultorio → Recipes y paraclínicos, puedes emitir un recipe, orden de paraclínicos o reposo medico de forma independiente. Estos documentos sin consulta estan disponibles en plan Delta Base y Delta Plus.
+
+**Por que no puedo editar un recipe que ya emiti?**
+Los documentos en estado Emitido estan bloqueados para garantizar su integridad. Si necesitas corregirlo, anulalo (boton Anular documento) y crea uno nuevo con el contenido correcto. El documento anulado queda en el historial con el motivo.
+
+**Que significa el codigo REC-202610-0001 en un recipe?**
+Es el codigo unico del documento: tipo (REC = recipe, PAR = paraclínicos, REP = reposo), anio y mes de emision (202610 = octubre 2026) y numero secuencial del mes (0001 = el primero de ese mes en tu cuenta). Sirve como referencia y para verificar autenticidad.
 `;

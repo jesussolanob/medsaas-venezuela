@@ -348,9 +348,12 @@ está activo). Botón **Guardar precios** cuando hay cambios.
 **Planes de referencia (catálogo típico):**
 - **Delta Free:** gratis, permanente. Incluye lo básico (dashboard, settings, pacientes,
   consultas) pero NO incluye reservas en línea (booking), IA ni finanzas avanzadas.
-- **Delta Base:** plan de pago. Incluye casi todo excepto las funciones de IA.
-- **Delta Plus:** plan de pago superior. Incluye todo, más las funciones de IA (asistente de IA,
-  transcripción por voz, reportes con IA).
+- **Delta Base:** plan de pago. Incluye casi todo excepto las funciones de IA. Incluye además
+  **Plantillas de contenido** (para recipes, paraclínicos, reposos y presupuestos) y
+  **Recipes y paraclínicos sin consulta** (documentos clínicos independientes con código único).
+- **Delta Plus:** plan de pago superior. Incluye todo lo de Base más las funciones de IA (asistente
+  de IA, transcripción por voz, reportes con IA). También incluye Plantillas de contenido y
+  Recipes y paraclínicos sin consulta.
 
 ### Flujo: configurar un plan y sus precios (paso a paso)
 
