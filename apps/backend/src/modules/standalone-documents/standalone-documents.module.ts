@@ -50,5 +50,11 @@ import { PatientsModule } from '../patients/patients.module';
     IssueStandaloneDocumentUseCase,
     VoidStandaloneDocumentUseCase,
   ],
+  /**
+   * Export the repository token so DocumentSharingModule can inject it into
+   * GetDocumentRenderDataUseCase (standalone document render path) and
+   * ShareStandaloneDocumentUseCase.
+   */
+  exports: [STANDALONE_DOCUMENT_REPOSITORY],
 })
 export class StandaloneDocumentsModule {}
