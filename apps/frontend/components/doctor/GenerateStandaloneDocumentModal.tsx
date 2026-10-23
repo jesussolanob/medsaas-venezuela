@@ -363,8 +363,10 @@ export default function GenerateStandaloneDocumentModal({
           return;
         }
         setIssuedDoc(res.document);
-        onSuccess?.();
-
+        // `onSuccess` NO se llama acá: las pantallas que abren este modal lo
+        // cierran en su onSuccess, y entonces "Crear y enviar" emitía pero el
+        // paso de enviar nunca aparecía (visto en QA de staging, 23/10). Se avisa
+        // al cerrar la vista de resultado (handleClose).
         if (andShare) {
           setShowShare(true);
         }
@@ -373,7 +375,7 @@ export default function GenerateStandaloneDocumentModal({
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [patient, docType, saveDraft, onSuccess],
+    [patient, docType, saveDraft],
   );
 
   // ── Close / discard ────────────────────────────────────────────────────
@@ -385,6 +387,7 @@ export default function GenerateStandaloneDocumentModal({
 
   async function handleClose() {
     if (issuedDoc) {
+      onSuccess?.();
       doClose();
       return;
     }
