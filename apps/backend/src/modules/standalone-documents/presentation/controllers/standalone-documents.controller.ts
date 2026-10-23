@@ -47,6 +47,22 @@ interface SuccessResponse<T> {
   data: T;
 }
 
+/** Respuesta del detalle según el contrato F: plana, sin los métodos de la entidad. */
+interface StandaloneDocumentDetailResponse {
+  id: string;
+  type: StandaloneDocument['type'];
+  code: string | null;
+  status: StandaloneDocument['status'];
+  patientId: string;
+  patientName: string;
+  content: Record<string, unknown>;
+  voidReason: string | null;
+  createdAt: Date;
+  issuedAt: Date | null;
+  voidedAt: Date | null;
+  patient: StandaloneDocumentDetail['patient'];
+}
+
 /**
  * StandaloneDocumentsController — CRUD + issue + void for standalone documents.
  *
@@ -114,9 +130,29 @@ export class StandaloneDocumentsController {
   async show(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: CurrentUserPayload,
-  ): Promise<SuccessResponse<StandaloneDocumentDetail>> {
+  ): Promise<SuccessResponse<StandaloneDocumentDetailResponse>> {
     const detail = await this.getUseCase.execute(id, user.sub);
-    return { success: true, data: detail };
+    // Contrato F: el detalle va PLANO (campos del documento + `patientName` +
+    // `patient`). Devolver `{ document, patient }` anidado dejaba al frontend sin
+    // `type` ni `content`: el modal de "Editar borrador" abría vacío y el PDF no
+    // se podía generar (visto en QA de staging, 23/10).
+    return {
+      success: true,
+      data: {
+        id: detail.document.id,
+        type: detail.document.type,
+        code: detail.document.code,
+        status: detail.document.status,
+        patientId: detail.document.patientId,
+        patientName: detail.patient.fullName,
+        content: detail.document.content,
+        voidReason: detail.document.voidReason,
+        createdAt: detail.document.createdAt,
+        issuedAt: detail.document.issuedAt,
+        voidedAt: detail.document.voidedAt,
+        patient: detail.patient,
+      },
+    };
   }
 
   /**

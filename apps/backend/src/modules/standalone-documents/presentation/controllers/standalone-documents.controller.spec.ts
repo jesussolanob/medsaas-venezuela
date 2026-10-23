@@ -126,7 +126,27 @@ describe('StandaloneDocumentsController', () => {
 
       const result = await controller.show(DOC_ID, user);
 
-      expect(result).toEqual({ success: true, data: detail });
+      // Contrato F: detalle PLANO (el anidado { document, patient } dejaba al
+      // frontend sin `type`/`content` y el modal "Editar borrador" abría vacío).
+      const doc = detail.document;
+      expect(result).toEqual({
+        success: true,
+        data: {
+          id: doc.id,
+          type: doc.type,
+          code: doc.code,
+          status: doc.status,
+          patientId: doc.patientId,
+          patientName: 'Juan Pérez',
+          content: doc.content,
+          voidReason: doc.voidReason,
+          createdAt: doc.createdAt,
+          issuedAt: doc.issuedAt,
+          voidedAt: doc.voidedAt,
+          patient: detail.patient,
+        },
+      });
+      expect(result.data).not.toHaveProperty('document');
     });
 
     it('propagates StandaloneDocumentNotFoundError', async () => {

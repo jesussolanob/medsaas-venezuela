@@ -39,7 +39,7 @@ export function PatientSearchOrCreate({ value, onSelect }: PatientSearchOrCreate
   const [results, setResults] = useState<PatientLookup[]>([]);
   const [searching, setSearching] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
-  const [newPatient, setNewPatient] = useState({ full_name: '', cedula: '', phone: '' });
+  const [newPatient, setNewPatient] = useState({ full_name: '', cedula: '', phone: '', email: '' });
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState('');
 
@@ -78,7 +78,7 @@ export function PatientSearchOrCreate({ value, onSelect }: PatientSearchOrCreate
     setQuery('');
     setResults([]);
     setShowCreate(false);
-    setNewPatient({ full_name: '', cedula: '', phone: '' });
+    setNewPatient({ full_name: '', cedula: '', phone: '', email: '' });
     setError('');
   }, [onSelect]);
 
@@ -87,13 +87,25 @@ export function PatientSearchOrCreate({ value, onSelect }: PatientSearchOrCreate
       setError('El nombre y la cédula son obligatorios.');
       return;
     }
+    const email = newPatient.email.trim();
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setError('El correo no es válido.');
+      return;
+    }
     setCreating(true);
     setError('');
     try {
       const res = await fetch('/api/patients', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newPatient),
+        // El correo es opcional, pero sin él "Crear y enviar" no puede mandar el
+        // documento: se envía solo si se escribió (un "" lo rechazaría el DTO).
+        body: JSON.stringify({
+          full_name: newPatient.full_name,
+          cedula: newPatient.cedula,
+          phone: newPatient.phone,
+          ...(email ? { email } : {}),
+        }),
       });
       const json = (await res.json()) as { data?: Record<string, unknown> };
       if (!res.ok || !json.data) {
@@ -101,7 +113,7 @@ export function PatientSearchOrCreate({ value, onSelect }: PatientSearchOrCreate
         return;
       }
       handleSelect(normalizePatient(json.data));
-      setNewPatient({ full_name: '', cedula: '', phone: '' });
+      setNewPatient({ full_name: '', cedula: '', phone: '', email: '' });
     } catch {
       setError('No se pudo crear el paciente.');
     } finally {
@@ -218,6 +230,17 @@ export function PatientSearchOrCreate({ value, onSelect }: PatientSearchOrCreate
               className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:border-teal-400 outline-none"
             />
           </div>
+          <input
+            name="deltaNewPatientEmailStandalone"
+            type="email"
+            autoComplete="off"
+            data-lpignore="true"
+            data-1p-ignore
+            value={newPatient.email}
+            onChange={(e) => setNewPatient({ ...newPatient, email: e.target.value })}
+            placeholder="Correo (para enviarle el documento)"
+            className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:border-teal-400 outline-none"
+          />
 
           {error && <p className="text-xs text-red-500">{error}</p>}
 
@@ -239,7 +262,7 @@ export function PatientSearchOrCreate({ value, onSelect }: PatientSearchOrCreate
               type="button"
               onClick={() => {
                 setShowCreate(false);
-                setNewPatient({ full_name: '', cedula: '', phone: '' });
+                setNewPatient({ full_name: '', cedula: '', phone: '', email: '' });
                 setError('');
               }}
               className="px-3 py-2 text-xs font-semibold border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-50 transition-colors"
