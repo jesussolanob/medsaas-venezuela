@@ -126,7 +126,7 @@ import PaymentMethodModal from './PaymentMethodModal';
 import ChangeServiceModal from './ChangeServiceModal';
 import IncomeModal, { type IncomeForm } from '@/components/finances/IncomeModal';
 import { UseTemplateButton } from '@/components/doctor/document-editors/UseTemplateButton';
-import { todayCaracas } from '@/lib/date-range';
+import { formatYmdEs, todayCaracas } from '@/lib/date-range';
 import {
   getIncomeConcepts,
   addIncome,
@@ -2483,8 +2483,8 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
         if (reposoDiagnosis || reposoDays > 0 || reposoFrom) {
           content =
             `Diagnóstico: ${reposoDiagnosis || '-'}<br>Días: ${reposoDays}` +
-            (reposoFrom ? `<br>Desde: ${new Date(reposoFrom).toLocaleDateString('es-VE')}` : '') +
-            (reposoTo ? `<br>Hasta: ${new Date(reposoTo).toLocaleDateString('es-VE')}` : '');
+            (reposoFrom ? `<br>Desde: ${formatYmdEs(reposoFrom)}` : '') +
+            (reposoTo ? `<br>Hasta: ${formatYmdEs(reposoTo)}` : '');
         }
       } else if (blockKey === 'prescription' && recipe.medications.length > 0) {
         content = recipe.medications
@@ -3725,12 +3725,8 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                     reposoDays > 0
                       ? [
                           `Reposo de ${reposoDays} día${reposoDays !== 1 ? 's' : ''}`,
-                          reposoFrom
-                            ? `desde ${new Date(reposoFrom).toLocaleDateString('es-VE', { day: '2-digit', month: '2-digit', year: 'numeric' })}`
-                            : null,
-                          reposoTo
-                            ? `hasta ${new Date(reposoTo).toLocaleDateString('es-VE', { day: '2-digit', month: '2-digit', year: 'numeric' })}`
-                            : null,
+                          reposoFrom ? `desde ${formatYmdEs(reposoFrom)}` : null,
+                          reposoTo ? `hasta ${formatYmdEs(reposoTo)}` : null,
                           reposoDiagnosis ? `Diagnóstico: ${reposoDiagnosis}` : null,
                         ]
                           .filter(Boolean)
@@ -4868,10 +4864,8 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                                 label: 'Período de reposo',
                                 value:
                                   `${reposoDays} día${reposoDays !== 1 ? 's' : ''}` +
-                                  ` — desde ${new Date(reposoFrom).toLocaleDateString('es-VE', { day: '2-digit', month: '2-digit', year: 'numeric' })}` +
-                                  (reposoTo
-                                    ? ` hasta ${new Date(reposoTo).toLocaleDateString('es-VE', { day: '2-digit', month: '2-digit', year: 'numeric' })}`
-                                    : ''),
+                                  ` — desde ${formatYmdEs(reposoFrom)}` +
+                                  (reposoTo ? ` hasta ${formatYmdEs(reposoTo)}` : ''),
                               },
                               ...(reposoComments
                                 ? [

@@ -41,6 +41,28 @@ export function todayCaracas(): string {
 }
 
 /**
+ * Formats a calendar date (YYYY-MM-DD, as stored by `<input type="date">`) as
+ * DD/MM/YYYY without going through `Date`.
+ *
+ * `new Date('2026-10-23')` is parsed as UTC midnight, so formatting it in
+ * Venezuela (UTC-4) prints the PREVIOUS day — reposo PDFs showed 22/10 for a
+ * rest starting 23/10. Non date-only input (full ISO timestamps) falls back to
+ * a Caracas-zoned format.
+ */
+export function formatYmdEs(value: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value.trim());
+  if (m) return `${m[3]}/${m[2]}/${m[1]}`;
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return value;
+  return d.toLocaleDateString('es-VE', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    timeZone: 'America/Caracas',
+  });
+}
+
+/**
  * Returns the first day of the current month in Caracas time as YYYY-MM-DD.
  */
 export function startOfCurrentMonthCaracas(): string {
