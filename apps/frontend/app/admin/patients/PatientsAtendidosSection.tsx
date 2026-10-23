@@ -169,7 +169,10 @@ export default function PatientsAtendidosSection() {
               {selectedDoctor.specialty ? ` · ${selectedDoctor.specialty}` : ''}
             </p>
             {/* DoctorPatientsList handles lazy load + expand/collapse internally */}
-            <DoctorPatientsList doctorId={selectedDoctor.id} />
+            {/* key = id del especialista: sin esto el componente guardaba "ya
+                cargué" y al elegir otro especialista seguía mostrando los
+                pacientes del anterior (verificado en staging, 22/10). */}
+            <DoctorPatientsList key={selectedDoctor.id} doctorId={selectedDoctor.id} />
           </div>
         ) : (
           <div className="p-6 text-center text-sm text-slate-400">

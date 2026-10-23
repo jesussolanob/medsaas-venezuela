@@ -258,7 +258,11 @@ export default function DoctorDetailDrawer({
               </div>
 
               {/* Pacientes atendidos — carga perezosa al expandir */}
-              <DoctorPatientsList doctorId={profile?.id ?? doctor?.id} />
+              {/* key: reinicia la lista al abrir otro especialista (ver PatientsAtendidosSection). */}
+              <DoctorPatientsList
+                key={profile?.id ?? doctor?.id}
+                doctorId={profile?.id ?? doctor?.id}
+              />
             </>
           )}
         </div>

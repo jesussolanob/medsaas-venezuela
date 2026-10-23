@@ -1798,15 +1798,23 @@ function ContactarModal({ doctorId, onClose }: { doctorId: string; onClose: () =
   const [error, setError] = useState('');
   const [copiedField, setCopiedField] = useState<string | null>(null);
 
+  // Botón que abrió el modal. Se captura en el PRIMER RENDER (inicializador de
+  // useState), no en un efecto: el autoFocus del botón "Cerrar" se aplica en el
+  // commit, antes de que corran los efectos, así que dentro de un useEffect
+  // `document.activeElement` ya era "Cerrar" y el foco nunca volvía al
+  // "Contactar" (verificado en staging, 22/10).
+  const [returnTo] = useState<HTMLElement | null>(() =>
+    typeof document === 'undefined' ? null : (document.activeElement as HTMLElement | null),
+  );
+
   // Return focus to the element that had it before the modal opened.
   useEffect(() => {
-    const returnTo = document.activeElement as HTMLElement | null;
     return () => {
       // Si el botón que lo abrió ya no está en pantalla (re-render de la tabla),
       // no hay a dónde devolver el foco.
       if (returnTo?.isConnected) returnTo.focus();
     };
-  }, []);
+  }, [returnTo]);
 
   // Tab / Shift+Tab focus trap — queries focusable elements dynamically so it
   // works correctly while the dialog contents change (loading → loaded).
