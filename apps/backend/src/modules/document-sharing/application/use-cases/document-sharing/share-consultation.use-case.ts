@@ -30,32 +30,7 @@ import {
 } from '../../../../doctor-settings/domain/repositories/doctor-profile.repository';
 import { MailerService } from '../../../../email/application/services/mailer.service';
 import { formatShareExpiryCaracas } from '../../utils/format-share-expiry-caracas';
-
-/**
- * Builds the display name for the doctor shown in patient-facing emails.
- *
- * Format: "<professionalTitle> <fullName>" (trimmed), matching the frontend
- * pattern used in ConsultationsClient, standalone-pdf, and reminders pages.
- *
- * Falls back to the profile email when no fullName is set (e.g. during onboarding),
- * and finally to a generic label when no profile is available.
- *
- * Examples:
- *   professionalTitle="Dr.", fullName="Juan Pérez" → "Dr. Juan Pérez"
- *   professionalTitle=null,  fullName="María González" → "María González"
- *   professionalTitle=null,  fullName=null, email="dr@clinic.com" → "dr@clinic.com"
- *   profile=null → "Su especialista"
- */
-function buildDoctorDisplayName(
-  profile: { fullName: string; professionalTitle: string | null; email: string } | null,
-): string {
-  if (profile?.fullName?.trim()) {
-    const title = profile.professionalTitle?.trim() ?? '';
-    const name = profile.fullName.trim();
-    return title ? `${title} ${name}` : name;
-  }
-  return profile?.email ?? 'Su especialista';
-}
+import { buildDoctorDisplayName } from '../../utils/build-doctor-display-name';
 
 export interface ShareConsultationInput {
   consultationId: string;

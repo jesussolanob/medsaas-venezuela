@@ -30,6 +30,7 @@ import { StandaloneDocumentNotIssuedError } from '../../../../standalone-documen
 import { PatientCedulaRequiredForSharingError } from '../../../domain/errors/patient-cedula-required.error';
 import type { StandaloneDocumentType } from '../../../../standalone-documents/domain/entities/standalone-document.entity';
 import { formatShareExpiryCaracas } from '../../utils/format-share-expiry-caracas';
+import { buildDoctorDisplayName } from '../../utils/build-doctor-display-name';
 
 export interface ShareStandaloneDocumentInput {
   standaloneDocumentId: string;
@@ -43,25 +44,6 @@ export interface ShareStandaloneDocumentOutput {
   url: string;
   code: string;
   expiresAt: Date;
-}
-
-/**
- * Builds the display name for the doctor shown in patient-facing emails.
- * Mirrors the pattern used in the frontend (ConsultationsClient, standalone-pdf, reminders).
- *
- * Format: "<professionalTitle> <fullName>" (trimmed).
- * Falls back to profile email when fullName is absent, and to a generic label
- * when no profile is available.
- */
-function buildDoctorDisplayName(
-  profile: { fullName: string; professionalTitle: string | null; email: string } | null,
-): string {
-  if (profile?.fullName?.trim()) {
-    const title = profile.professionalTitle?.trim() ?? '';
-    const name = profile.fullName.trim();
-    return title ? `${title} ${name}` : name;
-  }
-  return profile?.email ?? 'Su especialista';
 }
 
 /** Maps standalone document type to the docSelection type key expected by the PDF viewer. */

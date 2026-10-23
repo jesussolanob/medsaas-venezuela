@@ -318,7 +318,7 @@ describe('ShareConsultationUseCase', () => {
 
   it('sends email with doctor display name built from profile (professionalTitle + fullName)', async () => {
     mockPatientRepo.findById.mockResolvedValue(makePatient({ email: 'patient@test.com' }));
-    mockMailer.sendTemplate.mockResolvedValue(undefined);
+    mockMailer.sendTemplate.mockResolvedValue({ id: 'msg-1' });
 
     await useCase.execute({
       consultationId: 'consult-1',
@@ -344,7 +344,7 @@ describe('ShareConsultationUseCase', () => {
       email: 'fallback@clinic.com',
     } as Awaited<ReturnType<typeof mockDoctorProfileRepo.findByDoctorId>>);
     mockPatientRepo.findById.mockResolvedValue(makePatient({ email: 'patient@test.com' }));
-    mockMailer.sendTemplate.mockResolvedValue(undefined);
+    mockMailer.sendTemplate.mockResolvedValue({ id: 'msg-1' });
 
     await useCase.execute({
       consultationId: 'consult-1',
@@ -365,7 +365,7 @@ describe('ShareConsultationUseCase', () => {
   it('falls back to "Su especialista" when profile is null', async () => {
     mockDoctorProfileRepo.findByDoctorId.mockResolvedValue(null);
     mockPatientRepo.findById.mockResolvedValue(makePatient({ email: 'patient@test.com' }));
-    mockMailer.sendTemplate.mockResolvedValue(undefined);
+    mockMailer.sendTemplate.mockResolvedValue({ id: 'msg-1' });
 
     await useCase.execute({
       consultationId: 'consult-1',

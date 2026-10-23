@@ -247,7 +247,7 @@ describe('ShareStandaloneDocumentUseCase', () => {
 
   it('sends email with doctor display name built from profile (professionalTitle + fullName)', async () => {
     mockPatientRepo.findById.mockResolvedValue(makePatientWithCedula({ email: 'ana@test.com' }));
-    mockMailer.sendTemplate.mockResolvedValue(undefined);
+    mockMailer.sendTemplate.mockResolvedValue({ id: 'msg-1' });
 
     await useCase.execute({ standaloneDocumentId: 'doc-1', doctorId: 'doctor-1' });
 
@@ -268,7 +268,7 @@ describe('ShareStandaloneDocumentUseCase', () => {
       email: 'noprofile@clinic.com',
     } as Awaited<ReturnType<typeof mockDoctorProfileRepo.findByDoctorId>>);
     mockPatientRepo.findById.mockResolvedValue(makePatientWithCedula({ email: 'ana@test.com' }));
-    mockMailer.sendTemplate.mockResolvedValue(undefined);
+    mockMailer.sendTemplate.mockResolvedValue({ id: 'msg-1' });
 
     await useCase.execute({ standaloneDocumentId: 'doc-1', doctorId: 'doctor-1' });
 
@@ -285,7 +285,7 @@ describe('ShareStandaloneDocumentUseCase', () => {
   it('falls back to "Su especialista" when profile is null', async () => {
     mockDoctorProfileRepo.findByDoctorId.mockResolvedValue(null);
     mockPatientRepo.findById.mockResolvedValue(makePatientWithCedula({ email: 'ana@test.com' }));
-    mockMailer.sendTemplate.mockResolvedValue(undefined);
+    mockMailer.sendTemplate.mockResolvedValue({ id: 'msg-1' });
 
     await useCase.execute({ standaloneDocumentId: 'doc-1', doctorId: 'doctor-1' });
 
