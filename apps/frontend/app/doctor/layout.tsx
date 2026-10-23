@@ -92,6 +92,12 @@ const navSections: NavSection[] = [
       { name: 'Consultas por agendar', href: '/doctor/pending-consultations', icon: CalendarClock },
       // Solicitudes de documentos al paciente. Sin moduleKey → siempre visible.
       { name: 'Solicitudes', href: '/doctor/patient-requests', icon: FileUp },
+      {
+        name: 'Recipes y paraclínicos',
+        href: '/doctor/standalone-documents',
+        icon: FileText,
+        moduleKey: 'standalone_documents',
+      },
     ],
   },
   {
@@ -141,6 +147,7 @@ const PLAN_GATED_ROUTES: ReadonlyArray<{ prefix: string; moduleKey: string }> = 
   { prefix: '/doctor/consultations', moduleKey: 'consultations' },
   { prefix: '/doctor/inventory', moduleKey: 'inventory' },
   { prefix: '/doctor/quotes', moduleKey: 'quotes' },
+  { prefix: '/doctor/standalone-documents', moduleKey: 'standalone_documents' },
 ];
 
 /** Resuelve la feature key de plan que gatea una ruta del doctor, o null si es libre. */

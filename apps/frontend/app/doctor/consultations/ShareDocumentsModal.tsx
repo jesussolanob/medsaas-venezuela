@@ -44,6 +44,13 @@ interface ShareResult {
 
 interface Props {
   consultationId: string;
+  /**
+   * ADDITIVE (2026-10): cuando se pasa, el botón de compartir llama a
+   * POST /api/standalone-documents/:id/share en vez de la ruta de consulta.
+   * El tipo de documento está fijo (no se muestra el selector de tipos).
+   * El comportamiento de consulta es IDÉNTICO cuando este prop está ausente.
+   */
+  standaloneDocumentId?: string;
   /** Teléfono del paciente para ofrecer envío por WhatsApp (opcional). */
   patientPhone?: string | null;
   /** Nombre del paciente para personalizar el mensaje de WhatsApp (opcional). */
@@ -180,6 +187,7 @@ function BlockSubSelector({ informeContent, checkedKeys, onToggle }: BlockSubSel
 
 export default function ShareDocumentsModal({
   consultationId,
+  standaloneDocumentId,
   patientPhone,
   patientName,
   doctorName,
@@ -285,7 +293,13 @@ export default function ShareDocumentsModal({
     };
 
     try {
-      const res = await fetch(`/api/consultations/${consultationId}/share`, {
+      // ADDITIVE (2026-10): when standaloneDocumentId is provided, route to the
+      // standalone share endpoint. Consultation path is byte-identical to before.
+      const shareUrl = standaloneDocumentId
+        ? `/api/standalone-documents/${standaloneDocumentId}/share`
+        : `/api/consultations/${consultationId}/share`;
+
+      const res = await fetch(shareUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sections, doc_selection }),
