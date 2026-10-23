@@ -25,6 +25,9 @@ import type { RichTextBlock, RichTextRun } from '@delta/shared-utils';
 // Types
 // ---------------------------------------------------------------------------
 
+/** Codes of documents issued WITHOUT a consultation (REC-/PAR-/REP-YYYYMM-NNNN). */
+const STANDALONE_CODE_RE = /^(REC|PAR|REP)-\d{6}-\d+$/;
+
 export interface TemplateConfigPdf {
   header_text: string;
   footer_text: string;
@@ -451,7 +454,9 @@ function PageContent({
         </View>
         {consultationCode ? (
           <View style={styles.metaItem}>
-            <Text style={styles.metaLabel}>N° Consulta</Text>
+            <Text style={styles.metaLabel}>
+              {STANDALONE_CODE_RE.test(consultationCode) ? 'N° Documento' : 'N° Consulta'}
+            </Text>
             <Text style={styles.metaValueMono}>{consultationCode}</Text>
           </View>
         ) : null}

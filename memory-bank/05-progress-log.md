@@ -4,6 +4,43 @@
 > ⚠️ Orden: **la entrada más nueva va ARRIBA**. La del 2026-08-11 quedó al final
 > del archivo por error; no se movió para no ensuciar el diff.
 
+## 2026-10-23 — Entregas 2 y 3 de "Cambios 12-10": plantillas de contenido y documentos sin consulta
+
+> Rama `feature/plantillas-y-documentos` → `develop` → `staging` (NO en `main`). 2 migraciones
+> (`20261022000001` tablas `content_templates` + `standalone_documents` y seeds de
+> features/capabilities; `20261022000002` `shared_document_links.standalone_document_id` + CHECK
+> XOR). 481 suites / 4681 tests.
+
+**Entrega 2 — "Mis plantillas"** (pestaña en Plantillas): récipe, paraclínicos, reposo y
+presupuesto, privadas por especialista. "Usar plantilla" en los bloques de la consulta (récipe,
+paraclínico, reposo) y en el modal de presupuesto. Aplicar = **agrega**; reemplazar pide
+confirmación; reposo es solo-reemplazo. Presupuesto toma el **precio actual** del catálogo
+(los ítems manuales guardan su precio; ítem borrado del catálogo → aviso fuera del nombre).
+
+**Entrega 3 — "Recipes y paraclínicos"** (menú + botón en Inicio + 4ª pestaña en la ficha del
+paciente): récipe / paraclínico / reposo sin consulta. Guardar = borrador editable; Crear =
+emitido con código propio `REC-|PAR-|REP-YYYYMM-NNNN` (mes de Caracas, secuencia por doctor y
+prefijo); Crear y enviar = emitido + Compartir documentos (enlace + código + cédula por correo).
+Emitido no se edita: solo se **anula** (queda en historial, revoca los enlaces activos y el
+visor responde "no disponible"). Planes: delta_base, delta_plus y free_trial (gating solo en
+frontend, igual que presupuestos).
+
+**Defectos encontrados en QA de navegador (staging) y corregidos:** migración con `ADD
+CONSTRAINT IF NOT EXISTS` (no existe en Postgres: habría bloqueado todos los deploys);
+"Editar borrador" abría vacío (GET /:id devolvía `{document, patient}` y el test afirmaba esa
+forma); "Crear y enviar" emitía pero nunca mostraba el paso de enviar; la vista de emitido
+rompía (POST /issue no trae `patient`); el selector de presupuesto en "Nueva plantilla" decía
+"Sin servicios" al cambiar el tipo adentro; el correo mostraba el **email** del doctor en vez
+del nombre y la expiración en UTC con "a. m.." (también en el compartir de consultas).
+
+**Bug preexistente en producción, corregido:** el PDF del reposo (consulta, informe y
+compartido) imprimía las fechas **un día antes** — `new Date('YYYY-MM-DD')` es medianoche UTC.
+Helper `formatYmdEs` en `lib/date-range.ts`.
+
+Pendiente/observaciones: ver el resumen de QA del 23/10 (panel del visor vacío para
+documentos sueltos, etiqueta "N° CONSULTA" en el PDF, convención de "hasta" del reposo
+distinta entre consulta (desde+días) y documento suelto (inclusivo), listas topadas en 200).
+
 ## 2026-10-22 — Entrega 1 de "Cambios 12-10": nota de precio de lanzamiento
 
 > Rama `feature/precio-lanzamiento`. Sin migraciones. 471 suites / 4556 tests.

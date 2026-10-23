@@ -853,10 +853,15 @@ export function StandaloneSharePanel({
     window.open(url, '_blank', 'noopener,noreferrer');
   }
 
+  // Same format as the patient's email (formatShareExpiryCaracas in the
+  // backend): Caracas time, 24h — "a. m." + the sentence's period printed "a. m..".
   function formatDate(iso: string): string {
-    return new Intl.DateTimeFormat('es-VE', { dateStyle: 'long', timeStyle: 'short' }).format(
-      new Date(iso),
-    );
+    return new Intl.DateTimeFormat('es-VE', {
+      dateStyle: 'long',
+      timeStyle: 'short',
+      hourCycle: 'h23',
+      timeZone: 'America/Caracas',
+    }).format(new Date(iso));
   }
 
   if (result) {
