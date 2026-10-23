@@ -160,14 +160,18 @@ export async function createOfficeForOnboarding(
  * The backend validates ≥1 active office and ≥1 active service exist,
  * sets onboardingCompleted = true on the profile, and returns 422 if not.
  */
-export async function completeOnboarding(): Promise<{ ok: boolean; error?: string }> {
+export async function completeOnboarding(): Promise<{
+  ok: boolean;
+  error?: string;
+  code?: string;
+}> {
   const result = await backendPost<{ success: boolean }>('/api/doctor/onboarding/complete', {});
   if (!result.ok) {
     log.error('[completeOnboarding] backend error', {
       code: result.error.code,
       status: result.error.status,
     });
-    return { ok: false, error: result.error.message };
+    return { ok: false, error: result.error.message, code: result.error.code };
   }
   return { ok: true };
 }

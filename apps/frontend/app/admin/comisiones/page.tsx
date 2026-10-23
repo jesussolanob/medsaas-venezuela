@@ -17,7 +17,7 @@
  *     el total seleccionado se actualiza en tiempo real con los checkboxes.
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, useMemo } from 'react';
 import {
   ChevronDown,
   Handshake,
@@ -34,6 +34,8 @@ import {
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { showToast } from '@/components/ui/Toaster';
+import DateRangeFilter, { type DateRangeValue } from '@/components/admin/DateRangeFilter';
+import { isWithinRange } from '@/lib/date-range';
 import {
   activeMethodsOf,
   entriesOf,
@@ -322,6 +324,9 @@ export default function ComisionesPage() {
   // Opening a receipt from history (on-demand signed URL)
   const [fetchingReceiptId, setFetchingReceiptId] = useState<string | null>(null);
 
+  // Date-range filter: commissions by earnedAt, history by paidAt.
+  const [dateRange, setDateRange] = useState<DateRangeValue>({ from: null, to: null });
+
   // ---------------------------------------------------------------------------
   // Load pending sellers
   // ---------------------------------------------------------------------------
@@ -602,6 +607,26 @@ export default function ComisionesPage() {
   // ---------------------------------------------------------------------------
 
   const totalGlobalPending = sellers.reduce((acc, s) => acc + s.totalPendingUsd, 0);
+
+  // Sellers whose commissions intersect the date range (earnedAt).
+  // When no range is set → all sellers. Otherwise hide sellers with 0 visible commissions.
+  const visibleSellers = useMemo(() => {
+    if (!dateRange.from && !dateRange.to) return sellers;
+    return sellers
+      .map((s) => ({
+        ...s,
+        commissions: s.commissions.filter((c) =>
+          isWithinRange(c.earnedAt, dateRange.from, dateRange.to),
+        ),
+      }))
+      .filter((s) => s.commissions.length > 0);
+  }, [sellers, dateRange]);
+
+  // History filtered by paidAt.
+  const filteredHistory = useMemo(() => {
+    if (!dateRange.from && !dateRange.to) return history;
+    return history.filter((p) => isWithinRange(p.paidAt, dateRange.from, dateRange.to));
+  }, [history, dateRange]);
   // La tasa sigue llegando y se usa en el formulario de pago (`hasBcv`), que es el
   // único lugar donde los bolívares son reales. Acá arriba ya no se convierte nada.
 
@@ -619,6 +644,20 @@ export default function ComisionesPage() {
           </p>
         </div>
       </header>
+
+      {/* Date-range filter — earnedAt for commissions tab, paidAt for history tab */}
+      {!loading && !loadError && (
+        <div className="bg-white border border-slate-200 rounded-xl px-4 py-3">
+          <DateRangeFilter value={dateRange} onChange={setDateRange} />
+          {(dateRange.from || dateRange.to) && (
+            <p className="text-[11px] text-slate-400 mt-2">
+              {activeTab === 'history'
+                ? 'Filtrando pagos por fecha de liquidación (en el rango)'
+                : 'Filtrando comisiones por fecha de generación — totales actualizados'}
+            </p>
+          )}
+        </div>
+      )}
 
       {/* Loading */}
       {loading && (
@@ -643,22 +682,24 @@ export default function ComisionesPage() {
       )}
 
       {/* Empty state */}
-      {!loading && !loadError && sellers.length === 0 && (
+      {!loading && !loadError && visibleSellers.length === 0 && (
         <div className="bg-white border border-slate-200 rounded-xl p-12 text-center">
           <div className="w-14 h-14 rounded-2xl bg-teal-50 text-teal-400 flex items-center justify-center mx-auto mb-5">
             <Handshake className="w-7 h-7" />
           </div>
-          <h2 className="text-base font-bold text-slate-800">Sin comisiones pendientes</h2>
+          <h2 className="text-base font-bold text-slate-800">
+            {sellers.length === 0 ? 'Sin comisiones pendientes' : 'No hay resultados en ese rango'}
+          </h2>
           <p className="text-sm text-slate-500 mt-2 max-w-sm mx-auto">
-            Por ahora no hay vendedores con comisiones por cobrar. Las comisiones se generan
-            automáticamente cuando un especialista atribuido completa el onboarding o activa un plan
-            pago.
+            {sellers.length === 0
+              ? 'Por ahora no hay vendedores con comisiones por cobrar. Las comisiones se generan automáticamente cuando un especialista atribuido completa el onboarding o activa un plan pago.'
+              : 'Ajusta el rango de fechas para ver más resultados.'}
           </p>
         </div>
       )}
 
       {/* Content */}
-      {!loading && !loadError && sellers.length > 0 && (
+      {!loading && !loadError && visibleSellers.length > 0 && (
         <>
           {/* Global stats */}
           {/* Dos columnas: quedaron dos tarjetas al sacar la del equivalente en Bs. */}
@@ -686,13 +727,20 @@ export default function ComisionesPage() {
               <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">
                 Vendedores con saldo
               </p>
-              <p className="text-2xl font-bold text-slate-800 mt-1">{sellers.length}</p>
+              <p className="text-2xl font-bold text-slate-800 mt-1">
+                {(dateRange.from || dateRange.to) && visibleSellers.length < sellers.length
+                  ? `${visibleSellers.length} de ${sellers.length}`
+                  : sellers.length}
+                {(dateRange.from || dateRange.to) && (
+                  <span className="text-xs font-normal text-slate-400 ml-1">en el rango</span>
+                )}
+              </p>
             </div>
           </div>
 
           {/* Seller list */}
           <div className="space-y-3">
-            {sellers.map((seller) => {
+            {visibleSellers.map((seller) => {
               const isExpanded = expandedId === seller.sellerId;
               const marcadas = seller.commissions.filter((c) => selectedIds.has(c.commissionId));
               const aprobadasMarcadas = marcadas.filter((c) => c.status === 'approved');
@@ -964,7 +1012,7 @@ export default function ComisionesPage() {
                         <HistoryTab
                           loading={historyLoading}
                           error={historyError}
-                          payments={historyLoadedFor === seller.sellerId ? history : []}
+                          payments={historyLoadedFor === seller.sellerId ? filteredHistory : []}
                           fetchingReceiptId={fetchingReceiptId}
                           onRetry={() => {
                             setHistoryLoadedFor(null);

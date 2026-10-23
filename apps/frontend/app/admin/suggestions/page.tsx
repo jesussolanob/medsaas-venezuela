@@ -1,8 +1,10 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { MessageSquarePlus, Clock, CheckCircle2, Send, Loader2, MessageCircle } from 'lucide-react';
 import { showToast } from '@/components/ui/Toaster';
+import DateRangeFilter, { type DateRangeValue } from '@/components/admin/DateRangeFilter';
+import { isWithinRange } from '@/lib/date-range';
 
 type Suggestion = {
   id: string;
@@ -36,6 +38,15 @@ export default function AdminSuggestionsPage() {
   const [responding, setResponding] = useState<string | null>(null);
   const [responseText, setResponseText] = useState('');
   const [saving, setSaving] = useState(false);
+  const [dateRange, setDateRange] = useState<DateRangeValue>({ from: null, to: null });
+
+  const visibleSuggestions = useMemo(
+    () =>
+      dateRange.from || dateRange.to
+        ? suggestions.filter((s) => isWithinRange(s.created_at, dateRange.from, dateRange.to))
+        : suggestions,
+    [suggestions, dateRange],
+  );
 
   const load = async () => {
     try {
@@ -101,7 +112,7 @@ export default function AdminSuggestionsPage() {
         </div>
       </div>
 
-      {/* Stats */}
+      {/* Stats — always show totals (not filtered) to avoid confusion */}
       <div className="grid grid-cols-3 gap-4">
         {Object.entries(STATUSES).map(([key, config]) => (
           <div
@@ -111,23 +122,42 @@ export default function AdminSuggestionsPage() {
             <p className="text-2xl font-bold text-slate-900">
               {suggestions.filter((s) => s.status === key).length}
             </p>
-            <p className="text-xs text-slate-400 mt-1">{config.label}</p>
+            <p className="text-xs text-slate-400 mt-1">
+              {config.label}
+              {(dateRange.from || dateRange.to) && (
+                <span className="ml-1 text-[10px] text-slate-400">(total)</span>
+              )}
+            </p>
           </div>
         ))}
+      </div>
+
+      {/* Date-range filter */}
+      <div className="bg-white rounded-xl border border-slate-200 px-4 py-3">
+        <DateRangeFilter value={dateRange} onChange={setDateRange} />
       </div>
 
       {loading ? (
         <div className="bg-white rounded-xl border border-slate-200 p-12 text-center">
           <Loader2 className="w-6 h-6 animate-spin text-teal-500 mx-auto" />
         </div>
-      ) : suggestions.length === 0 ? (
+      ) : visibleSuggestions.length === 0 ? (
         <div className="bg-white rounded-xl border border-slate-200 p-12 text-center">
           <MessageCircle className="w-10 h-10 text-slate-300 mx-auto mb-3" />
-          <p className="text-slate-400 text-sm">No hay sugerencias todavía</p>
+          <p className="text-slate-400 text-sm">
+            {dateRange.from || dateRange.to
+              ? 'No hay resultados en ese rango'
+              : 'No hay sugerencias todavía'}
+          </p>
         </div>
       ) : (
         <div className="space-y-3">
-          {suggestions.map((s) => {
+          {(dateRange.from || dateRange.to) && visibleSuggestions.length < suggestions.length && (
+            <p className="text-xs text-slate-500 px-1">
+              {visibleSuggestions.length} de {suggestions.length} sugerencias en el rango
+            </p>
+          )}
+          {visibleSuggestions.map((s) => {
             const cat = CATEGORIES[s.category] || CATEGORIES.general;
             const st = STATUSES[s.status] || STATUSES.pending;
 

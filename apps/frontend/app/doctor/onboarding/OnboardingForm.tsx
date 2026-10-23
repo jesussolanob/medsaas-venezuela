@@ -56,6 +56,8 @@ interface Props {
   specialties: Specialty[];
   /** Step to begin on (computed from profile state in page.tsx). */
   initialStep?: 1 | 2 | 3;
+  /** Error message shown at top of step 1 (e.g. phone required). */
+  initialErrorMessage?: string;
 }
 
 interface FieldErrors {
@@ -449,6 +451,7 @@ export default function OnboardingForm({
   initialPhone = '',
   specialties,
   initialStep = 1,
+  initialErrorMessage,
 }: Props) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -545,7 +548,7 @@ export default function OnboardingForm({
     return () => clearTimeout(timer);
   }, [sellerCode]);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
-  const [serverError, setServerError] = useState<string | null>(null);
+  const [serverError, setServerError] = useState<string | null>(initialErrorMessage ?? null);
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [termsError, setTermsError] = useState(false);
   const [termsShakeKey, setTermsShakeKey] = useState(0);
