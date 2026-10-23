@@ -55,6 +55,8 @@ import { InventoryModule } from './modules/inventory/inventory.module';
 import { QuotesModule } from './modules/quotes/quotes.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { InfraAuthModule } from './infrastructure/auth/infra-auth.module';
+import { ContentTemplatesModule } from './modules/content-templates/content-templates.module';
+import { StandaloneDocumentsModule } from './modules/standalone-documents/standalone-documents.module';
 
 @Module({
   imports: [
@@ -118,6 +120,8 @@ import { InfraAuthModule } from './infrastructure/auth/infra-auth.module';
     InventoryModule,
     QuotesModule,
     NotificationsModule,
+    ContentTemplatesModule,
+    StandaloneDocumentsModule,
   ],
   controllers: [HealthController],
   providers: [

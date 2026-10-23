@@ -25,12 +25,14 @@ import {
   Loader2,
   Plus,
   Lock,
+  FilePlus,
 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { StatCard, Card } from '@/components/dh';
 import NewAppointmentFlow from '@/components/appointment-flow/NewAppointmentFlow';
 import ImmediateConsultationModal from '@/components/doctor/ImmediateConsultationModal';
+import GenerateStandaloneDocumentModal from '@/components/doctor/GenerateStandaloneDocumentModal';
 import AppointmentDetailModal, {
   type RescheduleRequest,
 } from '@/components/doctor/AppointmentDetailModal';
@@ -167,6 +169,8 @@ export default function DoctorDashboard() {
   // Controla si el doctor descartó el banner de plantillas en esta sesión.
   // Modal de consulta inmediata (paciente sin cita).
   const [showImmediate, setShowImmediate] = useState(false);
+  // Modal de generación de recipe/paraclínico/reposo sin consulta.
+  const [showStandaloneDoc, setShowStandaloneDoc] = useState(false);
 
   // Modal "Nueva consulta"
   const [showNewFlow, setShowNewFlow] = useState(false);
@@ -910,6 +914,19 @@ export default function DoctorDashboard() {
                 <Zap className="w-4 h-4" />
                 <span>Consulta Inmediata</span>
               </button>
+              {planUnlocks(planFeatures, 'standalone_documents') && (
+                <button
+                  onClick={() => setShowStandaloneDoc(true)}
+                  className="flex items-center justify-center sm:justify-start gap-2 backdrop-blur text-white font-semibold text-[13px] px-4 py-2.5 rounded-full transition-colors"
+                  style={{
+                    background: 'rgba(255,255,255,0.18)',
+                    border: '1px solid rgba(255,255,255,0.28)',
+                  }}
+                >
+                  <FilePlus className="w-4 h-4" />
+                  <span>Generar recipe/paraclínico</span>
+                </button>
+              )}
               <button
                 onClick={() => setShowPatientForm(true)}
                 className="flex items-center justify-center sm:justify-start gap-2 backdrop-blur text-white font-semibold text-[13px] px-4 py-2.5 rounded-full transition-colors"
@@ -1451,6 +1468,18 @@ export default function DoctorDashboard() {
             }
             // Sin consulta creada no hay a dónde ir: se cierra y se refresca.
             setShowImmediate(false);
+            setRefreshKey((k) => k + 1);
+          }}
+        />
+      )}
+
+      {/* Modal: generar recipe/paraclínico sin consulta */}
+      {showStandaloneDoc && (
+        <GenerateStandaloneDocumentModal
+          open={showStandaloneDoc}
+          onClose={() => setShowStandaloneDoc(false)}
+          onSuccess={() => {
+            setShowStandaloneDoc(false);
             setRefreshKey((k) => k + 1);
           }}
         />

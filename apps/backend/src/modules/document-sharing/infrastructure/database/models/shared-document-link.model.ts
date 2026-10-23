@@ -28,8 +28,22 @@ export class SharedDocumentLinkModel extends Model {
   @Column(DataType.UUID)
   declare id: string;
 
-  @Column({ type: DataType.UUID, allowNull: false, field: 'consultation_id' })
-  declare consultationId: string;
+  /**
+   * Null when this link points to a standalone document.
+   * All pre-existing rows have this set.
+   * The XOR DB constraint prevents both consultation_id and standalone_document_id being null.
+   */
+  @AllowNull(true)
+  @Column({ type: DataType.UUID, allowNull: true, field: 'consultation_id' })
+  declare consultationId: string | null;
+
+  /**
+   * Set when this link points to a standalone document.
+   * Null when it points to a consultation.
+   */
+  @AllowNull(true)
+  @Column({ type: DataType.UUID, allowNull: true, field: 'standalone_document_id' })
+  declare standaloneDocumentId: string | null;
 
   @Column({ type: DataType.UUID, allowNull: false, field: 'doctor_id' })
   declare doctorId: string;

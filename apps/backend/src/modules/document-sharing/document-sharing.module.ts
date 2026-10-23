@@ -12,6 +12,7 @@ import { PdfGeneratorService } from './infrastructure/pdf/pdf-generator.service'
 import { SessionTokenValidatorService } from './application/services/session-token-validator.service';
 
 import { ShareConsultationUseCase } from './application/use-cases/document-sharing/share-consultation.use-case';
+import { ShareStandaloneDocumentUseCase } from './application/use-cases/document-sharing/share-standalone-document.use-case';
 import { VerifyCodeUseCase } from './application/use-cases/document-sharing/verify-code.use-case';
 import { DownloadDocumentUseCase } from './application/use-cases/document-sharing/download-document.use-case';
 import { RequestNewCodeUseCase } from './application/use-cases/document-sharing/request-new-code.use-case';
@@ -29,6 +30,7 @@ import { DoctorSettingsModule } from '../doctor-settings/doctor-settings.module'
 import { DoctorTemplatesModule } from '../doctor-templates/doctor-templates.module';
 import { StorageModule } from '../storage/storage.module';
 import { ConsultationBlocksModule } from '../consultation-blocks/consultation-blocks.module';
+import { StandaloneDocumentsModule } from '../standalone-documents/standalone-documents.module';
 
 /**
  * DocumentSharingModule — allows doctors to share consultation documents
@@ -60,6 +62,9 @@ import { ConsultationBlocksModule } from '../consultation-blocks/consultation-bl
     DoctorTemplatesModule,
     StorageModule,
     ConsultationBlocksModule,
+    // Provides STANDALONE_DOCUMENT_REPOSITORY for GetDocumentRenderDataUseCase
+    // (standalone document render path) and ShareStandaloneDocumentUseCase.
+    StandaloneDocumentsModule,
   ],
   controllers: [DocumentSharingController],
   providers: [
@@ -81,6 +86,7 @@ import { ConsultationBlocksModule } from '../consultation-blocks/consultation-bl
 
     // Use cases
     ShareConsultationUseCase,
+    ShareStandaloneDocumentUseCase,
     VerifyCodeUseCase,
     DownloadDocumentUseCase,
     RequestNewCodeUseCase,

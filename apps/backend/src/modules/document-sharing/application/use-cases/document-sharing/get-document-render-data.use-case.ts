@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import {
   SHARED_DOCUMENT_LINK_REPOSITORY,
   type ISharedDocumentLinkRepository,
@@ -40,7 +40,14 @@ import {
 } from '../../../../storage/application/ports/storage.port';
 import { resignGcsImageUrl } from '../../../../storage/application/helpers/resign-gcs-image.helper';
 import { GetConsultationBlocksUseCase } from '../../../../consultation-blocks/application/use-cases/consultation-blocks/get-consultation-blocks.use-case';
+import type { ConsultationBlock } from '../../../../consultation-blocks/domain/entities/consultation-block.entity';
+import type { EhrRecord } from '../../../../ehr/domain/entities/ehr-record.entity';
 import { htmlToPlainText, isProbablyHtml } from '@delta/shared-utils';
+import {
+  STANDALONE_DOCUMENT_REPOSITORY,
+  type IStandaloneDocumentRepository,
+} from '../../../../standalone-documents/domain/repositories/istandalone-document.repository';
+import type { StandaloneDocumentType } from '../../../../standalone-documents/domain/entities/standalone-document.entity';
 
 export interface GetDocumentRenderDataInput {
   token: string;
@@ -87,6 +94,8 @@ export interface RenderPrescriptionItem {
   frequency: string | null;
   duration: string | null;
   notes: string | null;
+  /** Medication presentation form (e.g. "tabletas", "cápsulas"). Standalone docs only. */
+  presentation?: string;
 }
 
 /** EHR record for render. */
@@ -200,6 +209,15 @@ export class GetDocumentRenderDataUseCase {
     private readonly storage: IStoragePort,
     private readonly sessionTokenValidator: SessionTokenValidatorService,
     private readonly getConsultationBlocks: GetConsultationBlocksUseCase,
+    /**
+     * Optional — only injected when StandaloneDocumentsModule is imported.
+     * Existing test suites that instantiate this class directly with 10 args
+     * will receive undefined here, which is safe because the standalone branch
+     * is only entered when link.standaloneDocumentId is non-null.
+     */
+    @Optional()
+    @Inject(STANDALONE_DOCUMENT_REPOSITORY)
+    private readonly standaloneDocRepo?: IStandaloneDocumentRepository,
   ) {}
 
   async execute(input: GetDocumentRenderDataInput): Promise<DocumentRenderData> {
@@ -215,7 +233,23 @@ export class GetDocumentRenderDataUseCase {
     // 2. Validate session token (presence + HMAC + expiry + resource match)
     this.sessionTokenValidator.validate(input.sessionToken, link.id, input.token);
 
+    // EARLY BRANCH: standalone document path
+    // If the link points to a standalone document, build render data from it.
+    // The consultation path below is untouched.
+    if (link.standaloneDocumentId) {
+      return this.buildRenderDataFromStandaloneDocument(link);
+    }
+
     // 3. Fetch all live data in parallel (doctorId scoped throughout — anti-IDOR)
+    // At this point link.consultationId is guaranteed non-null:
+    // the standalone branch returned early above.
+    if (!link.consultationId) {
+      // Should never happen: the DB XOR constraint ensures exactly one source is set.
+      this.logger.error('[render-data] link has neither consultationId nor standaloneDocumentId');
+      throw new DocumentLinkNotFoundError();
+    }
+    const consultationId = link.consultationId;
+
     const [
       consultation,
       prescriptions,
@@ -225,8 +259,8 @@ export class GetDocumentRenderDataUseCase {
       informeTemplate,
       blocksOutput,
     ] = await Promise.all([
-      this.consultationRepo.findById(link.consultationId, link.doctorId),
-      this.prescriptionRepo.findByConsultation(link.consultationId, link.doctorId),
+      this.consultationRepo.findById(consultationId, link.doctorId),
+      this.prescriptionRepo.findByConsultation(consultationId, link.doctorId),
       // Historia clínica = historial EHR del PACIENTE (no de esta sola consulta),
       // consistente con la descarga del doctor (/api/ehr/patient/:id).
       this.ehrRepo.findByPatient(link.patientId, link.doctorId),
@@ -304,18 +338,274 @@ export class GetDocumentRenderDataUseCase {
         duration: p.duration,
         notes: p.notes,
       })),
-      ehrRecords: ehrRecords.map((r) => ({
+      ehrRecords: ehrRecords.map((r: EhrRecord) => ({
         id: r.id,
         diagnosis: r.diagnosis,
         treatmentPlan: r.treatmentPlan,
       })),
-      consultationBlocks: blocksOutput.resolved.map((b) => ({
+      consultationBlocks: blocksOutput.resolved.map((b: ConsultationBlock) => ({
         key: b.key,
         label: b.label,
         printable: b.printable,
         sortOrder: b.sortOrder,
       })),
       templateConfig,
+    };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Standalone document render path
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Builds a DocumentRenderData payload from a standalone document.
+   *
+   * The output shape is identical to the consultation render path so the existing
+   * frontend PDF viewer (/api/documents/[token]/pdf and /documents/[token]) works
+   * without modification.
+   *
+   * Mapping by document type:
+   *
+   *   recipe:
+   *     - docSelection.types = ['recipe']
+   *     - prescriptions  = one row per medication in content.medications
+   *       (field mapping: medication←name, dosage←dose, frequency, duration, notes←indications)
+   *     - blocksSnapshot = null
+   *     - consultationBlocks = []
+   *
+   *   paraclinical:
+   *     - docSelection.types = ['paraclinical']
+   *     - blocksSnapshot.paraclinical = items serialized as "exam_name — notes" (or plain exam_name)
+   *     - consultationBlocks includes a synthetic { key:'paraclinical', label:'Exámenes solicitados' }
+   *       so buildInformeContent() produces the block the frontend PDF route expects
+   *     - prescriptions = []
+   *
+   *   reposo:
+   *     - docSelection.types = ['rest']
+   *     - blocksSnapshot.reposo = { diagnosis, days, from, to, comments } (exact shape readRestFromSnapshot expects)
+   *     - prescriptions = []
+   *     - consultationBlocks = []
+   *
+   * consultationCode   ← doc.code (used as filename by frontend; never null for issued docs)
+   * consultationDate   ← doc.issuedAt (always set for issued)
+   * ehrRecords         ← [] (not applicable for standalone)
+   * sections (legacy)  ← { report:false, prescriptions:false, ehr:false }
+   *                      (frontend uses docSelection when present — legacy field is ignored)
+   *
+   * Voided / draft documents: if the document is not in 'issued' state, the render is
+   * blocked with the same opaque error as a revoked link (DocumentLinkNotActiveError).
+   * VoidStandaloneDocumentUseCase also revokes active links on void, so under normal
+   * conditions this guard is reached only if revocation was delayed.
+   *
+   * Access audit: logs with a label that includes the document type,
+   * e.g. 'shared_document_render:standalone_recipe'.
+   */
+  private async buildRenderDataFromStandaloneDocument(
+    link: import('../../../domain/entities/shared-document-link.entity').SharedDocumentLink,
+  ): Promise<DocumentRenderData> {
+    if (!this.standaloneDocRepo) {
+      // Should never happen in production (module is always imported together).
+      this.logger.error('[render-data] standaloneDocRepo not injected for standalone link');
+      throw new DocumentLinkNotFoundError();
+    }
+
+    // Fetch standalone doc + patient in parallel with doctor profile + template
+    const [detail, doctorProfile, informeTemplate] = await Promise.all([
+      this.standaloneDocRepo.findByIdWithPatient(link.standaloneDocumentId!, link.doctorId),
+      this.doctorProfileRepo.findByDoctorId(link.doctorId),
+      this.doctorTemplateRepo.findByDoctorAndType(link.doctorId, 'informe'),
+    ]);
+
+    if (!detail) {
+      this.logger.warn('[render-data] standalone document not found for active link');
+      throw new DocumentLinkNotFoundError();
+    }
+
+    const { document: doc, patient } = detail;
+
+    // Security: only issued documents may be rendered via shared link.
+    // Voided or draft documents return the same opaque 404 as a revoked link —
+    // prevents leaking whether the document was voided or never existed.
+    if (doc.status !== 'issued') {
+      throw new DocumentLinkNotActiveError();
+    }
+
+    // Resolve signed URLs
+    const [logoUrl, signatureUrl, templateLogoUrl, templateSignatureUrl] = await Promise.all([
+      this.resolveSignedUrl(doctorProfile?.logoUrl ?? null, 'doctor.logoUrl'),
+      this.resolveSignedUrl(doctorProfile?.signatureUrl ?? null, 'doctor.signatureUrl'),
+      this.resolveSignedUrl(informeTemplate?.logoUrl ?? null, 'template.logoUrl'),
+      this.resolveSignedUrl(informeTemplate?.signatureUrl ?? null, 'template.signatureUrl'),
+    ]);
+
+    // Audit log — fire-and-forget; label includes the document type for traceability
+    void this.logRenderAccess(
+      link.doctorId,
+      link.patientId,
+      link.sections,
+      `shared_document_render:standalone_${doc.type}`,
+    );
+
+    // Build type-specific render fields
+    const { prescriptions, blocksSnapshot, consultationBlocks } =
+      this.buildStandaloneTypeFields(doc);
+
+    const doctor: RenderDoctorProfile = {
+      fullName: doctorProfile?.fullName ?? 'Dr./Dra.',
+      professionalTitle: doctorProfile?.professionalTitle ?? null,
+      specialty: doctorProfile?.specialty ?? null,
+      licenseNumber: doctorProfile?.licenseNumber ?? null,
+      logoUrl,
+      signatureUrl,
+    };
+
+    const templateConfig: RenderTemplateConfig | null = informeTemplate
+      ? {
+          headerText: informeTemplate.headerText,
+          footerText: informeTemplate.footerText,
+          primaryColor: informeTemplate.primaryColor,
+          fontFamily: informeTemplate.fontFamily,
+          showLogo: informeTemplate.showLogo,
+          showSignature: informeTemplate.showSignature,
+          logoUrl: templateLogoUrl,
+          signatureUrl: templateSignatureUrl,
+        }
+      : null;
+
+    // docSelection — carries the document type; the frontend PDF route uses this
+    // instead of the legacy sections field.
+    const docSelection: DocSelection = {
+      types: [this.standaloneTypeToDocSelectionKey(doc.type)],
+      informeBlockKeys: [],
+    };
+
+    return {
+      sections: link.sections, // legacy placeholder; docSelection is used by the viewer
+      docSelection,
+      consultation: {
+        id: doc.id,
+        // code is always non-null for issued docs; fall back to doc ID for safety
+        consultationCode: doc.code ?? doc.id,
+        consultationDate: (doc.issuedAt ?? doc.createdAt).toISOString(),
+        chiefComplaint: null,
+        diagnosis: null,
+        treatment: null,
+        notes: null,
+        blocksSnapshot,
+      },
+      patient: {
+        fullName: patient.fullName,
+        cedula: patient.cedula,
+      },
+      doctor,
+      prescriptions,
+      ehrRecords: [],
+      consultationBlocks,
+      templateConfig,
+    };
+  }
+
+  /**
+   * Maps standalone document type to the doc selection key used by the frontend viewer.
+   *
+   * recipe       → 'recipe'      (buildDocumentPages handles savedPrescriptions)
+   * paraclinical → 'paraclinical' (buildDocumentPages reads informeContent['paraclinical'])
+   * reposo       → 'rest'         (buildDocumentPages reads blocksSnapshot['reposo'])
+   */
+  private standaloneTypeToDocSelectionKey(type: StandaloneDocumentType): string {
+    switch (type) {
+      case 'recipe':
+        return 'recipe';
+      case 'paraclinical':
+        return 'paraclinical';
+      case 'reposo':
+        return 'rest';
+    }
+  }
+
+  /**
+   * Builds the type-specific render fields from a standalone document.
+   *
+   * Returns:
+   *   prescriptions     — for recipe: one row per medication; otherwise []
+   *   blocksSnapshot    — for paraclinical: { paraclinical: string[] }
+   *                       for reposo: { reposo: { diagnosis, days, from, to, comments } }
+   *                       for recipe: null
+   *   consultationBlocks — for paraclinical: synthetic block so buildInformeContent works;
+   *                         for others: []
+   */
+  private buildStandaloneTypeFields(doc: {
+    id: string;
+    type: StandaloneDocumentType;
+    content: Record<string, unknown>;
+  }): {
+    prescriptions: RenderPrescriptionItem[];
+    blocksSnapshot: Record<string, unknown> | null;
+    consultationBlocks: RenderConsultationBlock[];
+  } {
+    const { type, content } = doc;
+
+    if (type === 'recipe') {
+      // content = { medications: Medication[], notes: string }
+      // Medication = { name, dose, route, frequency, duration, presentation, indications }
+      const medications = Array.isArray(content['medications'])
+        ? (content['medications'] as Record<string, unknown>[])
+        : [];
+
+      const prescriptions: RenderPrescriptionItem[] = medications.map((med, i) => ({
+        id: `${doc.id}-med-${i}`,
+        medication: typeof med['name'] === 'string' ? med['name'] : '',
+        dosage: typeof med['dose'] === 'string' && med['dose'] ? med['dose'] : null,
+        frequency:
+          typeof med['frequency'] === 'string' && med['frequency'] ? med['frequency'] : null,
+        duration: typeof med['duration'] === 'string' && med['duration'] ? med['duration'] : null,
+        // 'indications' in standalone content maps to 'notes' in the render item;
+        // the frontend mapPrescriptions() reads rx.notes as indications.
+        notes:
+          typeof med['indications'] === 'string' && med['indications'] ? med['indications'] : null,
+        presentation:
+          typeof med['presentation'] === 'string' && med['presentation']
+            ? med['presentation']
+            : undefined,
+      }));
+
+      return { prescriptions, blocksSnapshot: null, consultationBlocks: [] };
+    }
+
+    if (type === 'paraclinical') {
+      // content = { items: { exam_name: string; notes?: string }[] }
+      // The frontend PDF route reads blocksSnapshot['paraclinical'] via buildInformeContent(),
+      // which expects an array of strings (serialized as "exam_name — notes" or plain exam_name).
+      // A synthetic consultationBlocks entry with key='paraclinical' is required for
+      // buildInformeContent() to iterate over that key.
+      const items = Array.isArray(content['items'])
+        ? (content['items'] as Record<string, unknown>[])
+        : [];
+
+      const serialized: string[] = items.map((item) => {
+        const examName = typeof item['exam_name'] === 'string' ? item['exam_name'] : '';
+        const notes = typeof item['notes'] === 'string' && item['notes'] ? item['notes'] : null;
+        return notes ? `${examName} — ${notes}` : examName;
+      });
+
+      const consultationBlocks: RenderConsultationBlock[] = [
+        { key: 'paraclinical', label: 'Exámenes solicitados', printable: true, sortOrder: 0 },
+      ];
+
+      return {
+        prescriptions: [],
+        blocksSnapshot: { paraclinical: serialized },
+        consultationBlocks,
+      };
+    }
+
+    // type === 'reposo'
+    // content = { diagnosis, days, from, to, comments }
+    // readRestFromSnapshot() reads blocksSnapshot['reposo'] and expects exactly this shape.
+    return {
+      prescriptions: [],
+      blocksSnapshot: { reposo: content },
+      consultationBlocks: [],
     };
   }
 
@@ -375,25 +665,40 @@ export class GetDocumentRenderDataUseCase {
     }
   }
 
+  /**
+   * Logs a render access audit entry.
+   *
+   * @param labelOverride - When provided, used as the fieldRevealed value directly.
+   *   Used by the standalone branch to record the document type, e.g.
+   *   'shared_document_render:standalone_recipe'. When absent, the label is
+   *   built from the sections flags (consultation path).
+   */
   private async logRenderAccess(
     doctorId: string,
     patientId: string,
     sections: { report: boolean; prescriptions: boolean; ehr: boolean },
+    labelOverride?: string,
   ): Promise<void> {
     try {
-      const sectionsLabel = [
-        sections.report ? 'report' : null,
-        sections.prescriptions ? 'prescriptions' : null,
-        sections.ehr ? 'ehr' : null,
-      ]
-        .filter(Boolean)
-        .join(',');
+      let fieldRevealed: string;
+      if (labelOverride !== undefined) {
+        fieldRevealed = labelOverride;
+      } else {
+        const sectionsLabel = [
+          sections.report ? 'report' : null,
+          sections.prescriptions ? 'prescriptions' : null,
+          sections.ehr ? 'ehr' : null,
+        ]
+          .filter(Boolean)
+          .join(',');
+        fieldRevealed = `shared_document_render:${sectionsLabel}`;
+      }
 
       await this.patientRepo.logReveal({
         actorId: doctorId,
         actorRole: 'doctor',
         patientId,
-        fieldRevealed: `shared_document_render:${sectionsLabel}`,
+        fieldRevealed,
         ipAddress: null,
         userAgent: null,
       });

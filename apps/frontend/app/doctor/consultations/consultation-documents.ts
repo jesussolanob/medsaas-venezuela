@@ -139,6 +139,25 @@ export function buildRecetasContent(prescriptions: SavedPrescription[]): Content
 }
 
 /**
+ * Construye ContentBlock[] para un documento de paraclínicos standalone.
+ * Recibe el array de exámenes directamente (en vez de leer desde informeContent).
+ * Export puro, aditivo — no toca ningún export existente.
+ *
+ * Mirrors the paraclinical rendering inside buildConsolidatedContent (~line 412).
+ */
+export function buildParaclinicalContent(
+  items: Array<{ exam_name: string; notes: string }>,
+): ContentBlock[] {
+  const nonEmpty = items.filter((it) => it.exam_name.trim().length > 0);
+  if (nonEmpty.length === 0) return [];
+
+  const value = nonEmpty.map((it) =>
+    it.notes.trim() ? `${it.exam_name.trim()} — ${it.notes.trim()}` : it.exam_name.trim(),
+  );
+  return [{ key: 'paraclinical', label: 'Exámenes solicitados', value }];
+}
+
+/**
  * Construye ContentBlock[] para la HOJA 2 del récipe ("Indicaciones").
  * Por cada medicamento incluye: nombre + dosis + frecuencia + duración + indicaciones + presentación.
  * Esta hoja reemplaza al antiguo doc suelto "Indicaciones".

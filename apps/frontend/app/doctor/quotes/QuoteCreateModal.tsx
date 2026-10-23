@@ -19,9 +19,15 @@
  */
 
 import { useState, useEffect } from 'react';
-import { X, Plus, Trash2, Loader2, Info, Search, Send } from 'lucide-react';
+import { X, Plus, Trash2, Loader2, Info, Search, Send, BookMarked } from 'lucide-react';
 import { cedulaSchema } from '@delta/shared-types';
 import { showToast } from '@/components/ui/Toaster';
+import { useDoctorFeatures } from '@/hooks/useDoctorFeatures';
+import {
+  listContentTemplates,
+  type ContentTemplate,
+  type PresupuestoTemplateItem,
+} from '@/app/doctor/templates/content-actions';
 import {
   getQuoteFormOptions,
   createQuote,
@@ -58,6 +64,18 @@ interface FormItem {
   description: string;
   quantity: string;
   unit_price_usd: string;
+  /**
+   * Solo de pantalla (no viaja al backend — `itemToInput` copia campo por campo):
+   * el ítem venía de una plantilla y ya no existe en el catálogo, así que entró
+   * como manual con precio 0. El aviso NO va en el nombre: el nombre se imprime
+   * en el presupuesto que recibe el paciente.
+   */
+  catalogMissing?: boolean;
+  /**
+   * Solo de pantalla: el producto del catálogo está registrado en Bs, no en USD.
+   * El especialista debe ingresar el equivalente en USD manualmente.
+   */
+  bsPricedNote?: boolean;
 }
 
 function newItem(overrides: Partial<FormItem> = {}): FormItem {
@@ -153,6 +171,14 @@ export default function QuoteCreateModal({ onClose, onCreated }: Props) {
   // Items
   const [items, setItems] = useState<FormItem[]>([newItem()]);
 
+  // ── Plantillas de presupuesto (feature-gated) ────────────────────────────
+  const { features: planFeatures, loading: planFeaturesLoading } = useDoctorFeatures();
+  const [presupuestoTemplates, setPresupuestoTemplates] = useState<ContentTemplate[]>([]);
+  const [templatesLoaded, setTemplatesLoaded] = useState(false);
+  const [templatesLoading, setTemplatesLoading] = useState(false);
+  /** Pending template to apply — set after confirm "replace if items exist". */
+  const [pendingTemplate, setPendingTemplate] = useState<ContentTemplate | null>(null);
+
   // Quote fields
   const [discountType, setDiscountType] = useState<QuoteDiscountType>('amount');
   const [discountValue, setDiscountValue] = useState('0');
@@ -236,20 +262,35 @@ export default function QuoteCreateModal({ onClose, onCreated }: Props) {
   }
 
   function addFromProduct(prod: ProductRow) {
-    // Only auto-fill price for USD products; VES products need manual price
-    const price = prod.sale_price_currency === 'USD' ? String(prod.sale_price_amount) : '';
-    setItems((prev) =>
-      appendItem(
-        prev,
-        newItem({
-          kind: 'product',
-          source_id: prod.id,
-          name: prod.name,
-          description: prod.description ?? '',
-          unit_price_usd: price,
-        }),
-      ),
-    );
+    if (prod.sale_price_currency !== 'USD') {
+      // Bs-priced product: leave price empty and show a per-item note
+      setItems((prev) =>
+        appendItem(
+          prev,
+          newItem({
+            kind: 'product',
+            source_id: prod.id,
+            name: prod.name,
+            description: prod.description ?? '',
+            unit_price_usd: '',
+            bsPricedNote: true,
+          }),
+        ),
+      );
+    } else {
+      setItems((prev) =>
+        appendItem(
+          prev,
+          newItem({
+            kind: 'product',
+            source_id: prod.id,
+            name: prod.name,
+            description: prod.description ?? '',
+            unit_price_usd: String(prod.sale_price_amount),
+          }),
+        ),
+      );
+    }
   }
 
   function removeItem(key: string) {
@@ -258,6 +299,114 @@ export default function QuoteCreateModal({ onClose, onCreated }: Props) {
 
   function updateItem(key: string, patch: Partial<FormItem>) {
     setItems((prev) => prev.map((it) => (it._key === key ? { ...it, ...patch } : it)));
+  }
+
+  // ---------------------------------------------------------------------------
+  // Presupuesto templates helpers (feature-gated)
+  // ---------------------------------------------------------------------------
+
+  async function loadPresupuestoTemplates() {
+    if (templatesLoaded || templatesLoading) return;
+    setTemplatesLoading(true);
+    try {
+      const list = await listContentTemplates('presupuesto');
+      setPresupuestoTemplates(list);
+      setTemplatesLoaded(true);
+    } finally {
+      setTemplatesLoading(false);
+    }
+  }
+
+  /** Resolve template items into FormItem[], resolving catalog prices. */
+  function resolveTemplateItems(template: ContentTemplate): FormItem[] {
+    const content = template.content as { items?: PresupuestoTemplateItem[] };
+    const tplItems: PresupuestoTemplateItem[] = content.items ?? [];
+    return tplItems.map((tItem) => {
+      if (tItem.kind === 'manual') {
+        return newItem({
+          kind: 'manual',
+          source_id: null,
+          name: tItem.name,
+          description: tItem.description ?? '',
+          quantity: String(tItem.quantity ?? 1),
+          unit_price_usd: String(tItem.unit_price_usd ?? ''),
+        });
+      }
+      if (tItem.kind === 'service') {
+        const svc = options?.services.find((s) => s.id === tItem.source_id);
+        if (!svc) {
+          return newItem({
+            kind: 'manual',
+            source_id: null,
+            name: tItem.name,
+            catalogMissing: true,
+            description: tItem.description ?? '',
+            quantity: String(tItem.quantity ?? 1),
+            unit_price_usd: '0',
+          });
+        }
+        return newItem({
+          kind: 'service',
+          source_id: svc.id,
+          name: svc.name,
+          description: svc.description ?? '',
+          quantity: String(tItem.quantity ?? 1),
+          unit_price_usd: String(svc.price_usd),
+        });
+      }
+      // kind === 'product'
+      const prod = options?.products.find((p) => p.id === tItem.source_id);
+      if (!prod) {
+        return newItem({
+          kind: 'manual',
+          source_id: null,
+          name: tItem.name,
+          catalogMissing: true,
+          description: tItem.description ?? '',
+          quantity: String(tItem.quantity ?? 1),
+          unit_price_usd: '0',
+        });
+      }
+      if (prod.sale_price_currency !== 'USD') {
+        return newItem({
+          kind: 'product',
+          source_id: prod.id,
+          name: prod.name,
+          description: prod.description ?? '',
+          quantity: String(tItem.quantity ?? 1),
+          unit_price_usd: '',
+          bsPricedNote: true,
+        });
+      }
+      return newItem({
+        kind: 'product',
+        source_id: prod.id,
+        name: prod.name,
+        description: prod.description ?? '',
+        quantity: String(tItem.quantity ?? 1),
+        unit_price_usd: String(prod.sale_price_amount),
+      });
+    });
+  }
+
+  function applyPresupuestoTemplate(template: ContentTemplate, replace: boolean) {
+    const resolved = resolveTemplateItems(template);
+    if (replace) {
+      setItems(resolved.length > 0 ? resolved : [newItem()]);
+    } else {
+      setItems((prev) => [...prev, ...resolved]);
+    }
+    setPendingTemplate(null);
+  }
+
+  function handleTemplateSelect(template: ContentTemplate, detailsEl: HTMLDetailsElement) {
+    detailsEl.open = false;
+    const hasItems = items.length > 0 && !(items.length === 1 && !items[0].name);
+    if (hasItems) {
+      setPendingTemplate(template);
+    } else {
+      applyPresupuestoTemplate(template, true);
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -715,6 +864,56 @@ export default function QuoteCreateModal({ onClose, onCreated }: Props) {
                     </div>
                   </details>
 
+                  {/* Add from presupuesto templates (feature-gated) */}
+                  {!planFeaturesLoading && planFeatures.content_templates && (
+                    <details
+                      className="relative group"
+                      onToggle={(e) => {
+                        if ((e.currentTarget as HTMLDetailsElement).open) {
+                          void loadPresupuestoTemplates();
+                        }
+                      }}
+                    >
+                      <summary className="list-none cursor-pointer flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-semibold text-amber-700 border border-amber-200 rounded-lg hover:bg-amber-50 transition-colors">
+                        <BookMarked className="w-3.5 h-3.5" />
+                        Plantillas
+                      </summary>
+                      <div className="absolute right-0 top-full mt-1 w-72 bg-white border border-slate-200 rounded-xl shadow-lg z-10 max-h-52 overflow-y-auto">
+                        {templatesLoading && (
+                          <div className="flex items-center justify-center py-4 gap-2 text-xs text-slate-400">
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            Cargando…
+                          </div>
+                        )}
+                        {!templatesLoading && presupuestoTemplates.length === 0 && (
+                          <p className="px-3 py-3 text-xs text-slate-400">
+                            Sin plantillas de presupuesto
+                          </p>
+                        )}
+                        {!templatesLoading &&
+                          presupuestoTemplates.map((tpl) => (
+                            <button
+                              key={tpl.id}
+                              type="button"
+                              onClick={(e) => {
+                                handleTemplateSelect(
+                                  tpl,
+                                  e.currentTarget.closest('details') as HTMLDetailsElement,
+                                );
+                              }}
+                              className="w-full text-left px-3 py-2.5 text-xs hover:bg-slate-50 transition-colors"
+                            >
+                              <div className="font-semibold text-slate-800">{tpl.name}</div>
+                              <div className="text-slate-400">
+                                {((tpl.content as { items?: unknown[] }).items ?? []).length}{' '}
+                                ítem(s)
+                              </div>
+                            </button>
+                          ))}
+                      </div>
+                    </details>
+                  )}
+
                   <button
                     type="button"
                     onClick={addManualItem}
@@ -757,6 +956,16 @@ export default function QuoteCreateModal({ onClose, onCreated }: Props) {
                         required
                         className="w-full text-xs border border-slate-200 rounded-lg py-2 px-2.5 outline-none focus:border-teal-400 bg-white placeholder:text-slate-300"
                       />
+                      {item.catalogMissing && (
+                        <p className="mt-1 text-[10px] font-semibold text-amber-700" role="note">
+                          ⚠ Ya no está en tu catálogo — revisa el precio
+                        </p>
+                      )}
+                      {item.bsPricedNote && (
+                        <p className="mt-1 text-[10px] font-semibold text-amber-700" role="note">
+                          ⚠ Precio en Bs en el inventario — ingresa el equivalente en USD
+                        </p>
+                      )}
                     </div>
                     {/* Quantity */}
                     <div className="col-span-2">
@@ -783,7 +992,11 @@ export default function QuoteCreateModal({ onClose, onCreated }: Props) {
                         value={item.unit_price_usd}
                         onChange={(e) => {
                           const v = e.target.value.replace(/[^0-9.]/g, '');
-                          updateItem(item._key, { unit_price_usd: v });
+                          updateItem(item._key, {
+                            unit_price_usd: v,
+                            catalogMissing: false,
+                            bsPricedNote: false,
+                          });
                         }}
                         placeholder="0.00"
                         className="w-full text-xs border border-slate-200 rounded-lg py-2 pl-5 pr-2.5 outline-none focus:border-teal-400 bg-white text-right"
@@ -990,6 +1203,48 @@ export default function QuoteCreateModal({ onClose, onCreated }: Props) {
           </form>
         )}
       </div>
+
+      {/* ── Confirm dialog: apply presupuesto template ── */}
+      {pendingTemplate && (
+        <div
+          className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-[60]"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Aplicar plantilla de presupuesto"
+        >
+          <div className="bg-white rounded-xl max-w-sm w-full shadow-2xl p-5 space-y-4">
+            <h3 className="text-sm font-bold text-slate-900">
+              Aplicar plantilla &ldquo;{pendingTemplate.name}&rdquo;
+            </h3>
+            <p className="text-xs text-slate-600">
+              Ya tienes ítems en el presupuesto. ¿Qué deseas hacer?
+            </p>
+            <div className="flex flex-col gap-2">
+              <button
+                type="button"
+                onClick={() => applyPresupuestoTemplate(pendingTemplate, false)}
+                className="w-full py-2.5 bg-teal-500 hover:bg-teal-600 text-white rounded-xl text-xs font-bold transition-colors"
+              >
+                Agregar al presupuesto actual
+              </button>
+              <button
+                type="button"
+                onClick={() => applyPresupuestoTemplate(pendingTemplate, true)}
+                className="w-full py-2.5 border border-amber-300 text-amber-700 hover:bg-amber-50 rounded-xl text-xs font-semibold transition-colors"
+              >
+                Reemplazar ítems actuales
+              </button>
+              <button
+                type="button"
+                onClick={() => setPendingTemplate(null)}
+                className="w-full py-2 text-xs text-slate-500 hover:text-slate-700 transition-colors"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

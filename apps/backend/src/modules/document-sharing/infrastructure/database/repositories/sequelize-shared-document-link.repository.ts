@@ -29,6 +29,7 @@ export class SequelizeSharedDocumentLinkRepository implements ISharedDocumentLin
     const row = await this.linkModel.create({
       id: link.id,
       consultationId: link.consultationId,
+      standaloneDocumentId: link.standaloneDocumentId,
       doctorId: link.doctorId,
       patientId: link.patientId,
       token: link.token,
@@ -84,6 +85,7 @@ export class SequelizeSharedDocumentLinkRepository implements ISharedDocumentLin
     const params: SharedDocumentLinkCreateParams = {
       id: row.id,
       consultationId: row.consultationId,
+      standaloneDocumentId: row.standaloneDocumentId ?? null,
       doctorId: row.doctorId,
       patientId: row.patientId,
       token: row.token,

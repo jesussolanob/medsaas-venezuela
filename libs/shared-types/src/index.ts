@@ -64,3 +64,4 @@ export * from './dtos/venezuelan-banks';
 export * from './dtos/create-immediate-appointment.dto';
 export * from './dtos/inventory.dto';
 export * from './dtos/quotes.dto';
+export * from './dtos/content-templates.dto';

@@ -125,6 +125,8 @@ import ApprovePaymentModal, { type ExistingExtraItem } from './ApprovePaymentMod
 import PaymentMethodModal from './PaymentMethodModal';
 import ChangeServiceModal from './ChangeServiceModal';
 import IncomeModal, { type IncomeForm } from '@/components/finances/IncomeModal';
+import { UseTemplateButton } from '@/components/doctor/document-editors/UseTemplateButton';
+import { todayCaracas } from '@/lib/date-range';
 import {
   getIncomeConcepts,
   addIncome,
@@ -4338,13 +4340,35 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                           <Pill className="w-4 h-4 text-slate-400" />
                           <p className="text-sm font-bold text-slate-800">Récipe</p>
                         </div>
-                        <button
-                          onClick={() => setShowRecipe(true)}
-                          className="flex items-center gap-2 px-3 py-1.5 g-bg rounded-lg text-xs font-bold text-white hover:opacity-90"
-                        >
-                          <Pill className="w-3.5 h-3.5" />{' '}
-                          {recipe.medications.length > 0 ? 'Editar receta' : 'Generar receta'}
-                        </button>
+                        <div className="flex items-center gap-2">
+                          {!planLoading && planFeatures.content_templates && (
+                            <UseTemplateButton
+                              type="recipe"
+                              hasExistingContent={recipe.medications.length > 0}
+                              onApply={(tpl, action) => {
+                                const c = tpl.content as Recipe;
+                                if (action === 'replace') {
+                                  setRecipe({ medications: c.medications, notes: c.notes });
+                                } else {
+                                  setRecipe((prev) => ({
+                                    medications: [...prev.medications, ...c.medications],
+                                    notes:
+                                      prev.notes && c.notes
+                                        ? `${prev.notes}\n${c.notes}`
+                                        : prev.notes || c.notes,
+                                  }));
+                                }
+                              }}
+                            />
+                          )}
+                          <button
+                            onClick={() => setShowRecipe(true)}
+                            className="flex items-center gap-2 px-3 py-1.5 g-bg rounded-lg text-xs font-bold text-white hover:opacity-90"
+                          >
+                            <Pill className="w-3.5 h-3.5" />{' '}
+                            {recipe.medications.length > 0 ? 'Editar recipe' : 'Generar recipe'}
+                          </button>
+                        </div>
                       </div>
 
                       {/* Show saved medications summary */}
@@ -4614,6 +4638,26 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                         + Agregar examen
                       </button>
 
+                      {!planLoading && planFeatures.content_templates && (
+                        <UseTemplateButton
+                          type="paraclinical"
+                          hasExistingContent={prescripciones.length > 0}
+                          onApply={(tpl, action) => {
+                            const c = tpl.content as { items: Prescripcion[] };
+                            if (action === 'replace') {
+                              setPrescripciones(
+                                c.items.map((i) => ({ exam_name: i.exam_name, notes: i.notes })),
+                              );
+                            } else {
+                              setPrescripciones((prev) => [
+                                ...prev,
+                                ...c.items.map((i) => ({ exam_name: i.exam_name, notes: i.notes })),
+                              ]);
+                            }
+                          }}
+                        />
+                      )}
+
                       {prescripciones.length > 0 && (
                         <div className="flex gap-3 pt-2">
                           <button
@@ -4685,6 +4729,32 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                           </span>
                         )}
                       </div>
+                      {!planLoading && planFeatures.content_templates && (
+                        <UseTemplateButton
+                          type="reposo"
+                          allowAppend={false}
+                          hasExistingContent={
+                            reposoDiagnosis.trim() !== '' || reposoDays > 0 || !!reposoFrom
+                          }
+                          onApply={(tpl) => {
+                            const c = tpl.content as {
+                              diagnosis: string;
+                              days: number;
+                              comments: string;
+                            };
+                            // "Hoy" en Caracas: con toISOString() (UTC), después de las
+                            // 8 p. m. el reposo arrancaba al día siguiente.
+                            const today = todayCaracas();
+                            const toDate = new Date(today);
+                            toDate.setDate(toDate.getDate() + c.days);
+                            setReposoDiagnosis(c.diagnosis);
+                            setReposoDays(c.days);
+                            setReposoFrom(today);
+                            setReposoTo(toDate.toISOString().split('T')[0]);
+                            setReposoComments(c.comments);
+                          }}
+                        />
+                      )}
                       <div className="bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 text-xs text-blue-800">
                         Los datos de reposo se guardan automáticamente en la consulta. Quedan
                         disponibles aunque cierres y vuelvas.
