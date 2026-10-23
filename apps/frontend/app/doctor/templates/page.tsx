@@ -24,10 +24,24 @@ import {
   Image as ImageIcon,
   Receipt,
   Calculator,
+  BookMarked,
+  Plus,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { reportError } from '@/lib/report-error';
 import { showToast } from '@/components/ui/Toaster';
+import { useDoctorFeatures } from '@/hooks/useDoctorFeatures';
+import type { ContentTemplateType } from './content-actions';
+import ContentTemplatesTab from './ContentTemplatesTab';
+import ContentTemplateModal from './ContentTemplateModal';
+
+/** Maps a branding template tab key to its content template type, if any. */
+const BRANDING_TAB_TO_CONTENT_TYPE: Record<string, ContentTemplateType | undefined> = {
+  recipe: 'recipe',
+  prescripciones: 'paraclinical',
+  reposo: 'reposo',
+  presupuesto: 'presupuesto',
+};
 
 // El preview PDF se carga solo en cliente (react-pdf no soporta SSR).
 const TemplatePdfPreview = dynamic(
@@ -213,6 +227,18 @@ export default function TemplatesPage() {
   const [enabledBlocks, setEnabledBlocks] = useState<Array<{ key: string; label: string }>>([]);
   const logoRef = useRef<HTMLInputElement>(null);
   const signatureRef = useRef<HTMLInputElement>(null);
+
+  // ── Plantillas de contenido (feature gated) ─────────────────────────────
+  const { features: planFeatures, loading: planLoading } = useDoctorFeatures();
+  /** True when the "Mis plantillas" tab is shown instead of the branding UI. */
+  const [showContentTab, setShowContentTab] = useState(false);
+  /**
+   * When set, opens the create modal directly from a branding tab "Crear plantilla" button.
+   * Cleared after the modal closes (created or cancelled).
+   */
+  const [createFromBrandingType, setCreateFromBrandingType] = useState<ContentTemplateType | null>(
+    null,
+  );
 
   const config = configs[activeTab] || DEFAULT_CONFIG;
 
@@ -559,11 +585,14 @@ export default function TemplatesPage() {
         <div className="flex gap-2 overflow-x-auto pb-1">
           {templateTabs.map((tab) => {
             const Icon = tab.icon;
-            const isActive = activeTab === tab.key;
+            const isActive = !showContentTab && activeTab === tab.key;
             return (
               <button
                 key={tab.key}
-                onClick={() => setActiveTab(tab.key)}
+                onClick={() => {
+                  setActiveTab(tab.key);
+                  setShowContentTab(false);
+                }}
                 className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold whitespace-nowrap transition-all ${
                   isActive
                     ? 'bg-teal-500 text-white shadow-md'
@@ -575,348 +604,402 @@ export default function TemplatesPage() {
               </button>
             );
           })}
+          {/* "Mis plantillas" tab — gated by plan feature content_templates */}
+          {!planLoading && planFeatures.content_templates && (
+            <button
+              onClick={() => setShowContentTab(true)}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold whitespace-nowrap transition-all ${
+                showContentTab
+                  ? 'bg-teal-500 text-white shadow-md'
+                  : 'bg-white border border-teal-200 text-teal-600 hover:bg-teal-50'
+              }`}
+            >
+              <BookMarked className="w-4 h-4" />
+              Mis plantillas
+            </button>
+          )}
         </div>
 
-        {/* Template description */}
-        <div className="bg-white border border-slate-200 rounded-xl p-4 flex items-start gap-3">
-          <tabInfo.icon className="w-5 h-5 text-teal-500 shrink-0 mt-0.5" />
-          <div>
-            <p className="text-sm font-bold text-slate-800">{tabInfo.label}</p>
-            <p className="text-xs text-slate-500 mt-0.5">{tabInfo.description}</p>
-          </div>
-        </div>
+        {/* ── "Mis plantillas" content tab UI ─────────────────────────────── */}
+        {showContentTab && <ContentTemplatesTab />}
 
-        {/* (Aviso "guardada localmente" del recibo eliminado por pedido del usuario.) */}
+        {/* ── Branding tabs UI (hidden when content tab is active) ─────────── */}
+        {!showContentTab && (
+          <>
+            {/* Template description */}
+            <div className="bg-white border border-slate-200 rounded-xl p-4 flex items-start gap-3">
+              <tabInfo.icon className="w-5 h-5 text-teal-500 shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm font-bold text-slate-800">{tabInfo.label}</p>
+                <p className="text-xs text-slate-500 mt-0.5">{tabInfo.description}</p>
+              </div>
+            </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Left: Configuration */}
-          <div className="space-y-5">
-            {/* === LOGO + FIRMA — Source of truth: PERFIL del doctor (RONDA 17) ===
+            {/* (Aviso "guardada localmente" del recibo eliminado por pedido del usuario.) */}
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Left: Configuration */}
+              <div className="space-y-5">
+                {/* === LOGO + FIRMA — Source of truth: PERFIL del doctor (RONDA 17) ===
                 Antes cada plantilla pedia su propio logo/firma. Ahora se cargan UNA SOLA vez
                 en /doctor/settings y aqui solo mostramos preview + toggles para mostrar/ocultar
                 en este tipo de documento especifico. */}
-            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 flex items-start gap-3">
-              <ImageIcon className="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0" />
-              <div className="flex-1 text-xs text-blue-800">
-                <p className="font-semibold mb-1">Logo y firma centralizados</p>
-                <p>
-                  Estos assets se gestionan desde tu Configuración de Perfil para que se apliquen
-                  automáticamente a todos los documentos.
-                </p>
-                <a
-                  href="/doctor/settings?tab=profile"
-                  className="inline-flex items-center gap-1 mt-2 text-[11px] font-bold text-blue-700 hover:text-blue-900 underline underline-offset-2"
-                >
-                  Ir a Perfil →
-                </a>
-              </div>
-            </div>
-
-            {/* Logo — preview read-only desde perfil */}
-            <div className="bg-white border border-slate-200 rounded-xl p-5 space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <ImageIcon className="w-4 h-4 text-slate-400" />
-                  <p className="text-sm font-bold text-slate-800">Logo</p>
-                </div>
-                <button
-                  onClick={() => updateConfig('show_logo', !config.show_logo)}
-                  className={`text-xs font-semibold px-3 py-1 rounded-full transition-all ${
-                    config.show_logo ? 'bg-teal-100 text-teal-700' : 'bg-slate-100 text-slate-400'
-                  }`}
-                >
-                  {config.show_logo ? 'Visible en este doc' : 'Oculto en este doc'}
-                </button>
-              </div>
-
-              {profileLogoUrl ? (
-                <div className="flex items-center gap-3">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={profileLogoUrl}
-                    alt="Logo"
-                    className="h-16 object-contain rounded-lg border border-slate-200 bg-slate-50 p-1"
-                  />
-                  <p className="text-xs text-slate-500">Cargado desde tu perfil</p>
-                </div>
-              ) : (
-                <div className="border-2 border-dashed border-slate-200 rounded-xl py-5 px-4 text-center text-xs text-slate-400">
-                  No has cargado un logo todavía.
-                  <br />
-                  <a
-                    href="/doctor/settings?tab=profile"
-                    className="text-blue-600 hover:underline font-semibold"
-                  >
-                    Súbelo desde tu perfil
-                  </a>
-                </div>
-              )}
-            </div>
-
-            {/* Firma — preview read-only desde perfil */}
-            <div className="bg-white border border-slate-200 rounded-xl p-5 space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <FileEdit className="w-4 h-4 text-slate-400" />
-                  <p className="text-sm font-bold text-slate-800">Firma digital</p>
-                </div>
-                <button
-                  onClick={() => updateConfig('show_signature', !config.show_signature)}
-                  className={`text-xs font-semibold px-3 py-1 rounded-full transition-all ${
-                    config.show_signature
-                      ? 'bg-teal-100 text-teal-700'
-                      : 'bg-slate-100 text-slate-400'
-                  }`}
-                >
-                  {config.show_signature ? 'Visible en este doc' : 'Oculta en este doc'}
-                </button>
-              </div>
-
-              {profileSignatureUrl ? (
-                <div className="flex items-center gap-3">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={profileSignatureUrl}
-                    alt="Firma"
-                    className="h-20 object-contain rounded-lg border border-slate-200 bg-white p-2"
-                  />
-                  <p className="text-xs text-slate-500">Cargada desde tu perfil</p>
-                </div>
-              ) : (
-                <div className="border-2 border-dashed border-slate-200 rounded-xl py-5 px-4 text-center text-xs text-slate-400">
-                  No has cargado una firma todavía.
-                  <br />
-                  <a
-                    href="/doctor/settings?tab=profile"
-                    className="text-blue-600 hover:underline font-semibold"
-                  >
-                    Súbela desde tu perfil
-                  </a>
-                </div>
-              )}
-            </div>
-
-            {/* Typography & Color */}
-            <div className="bg-white border border-slate-200 rounded-xl p-5 space-y-4">
-              <div className="flex items-center gap-2">
-                <Type className="w-4 h-4 text-slate-400" />
-                <p className="text-sm font-bold text-slate-800">Tipografía y color</p>
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1.5">Fuente</label>
-                <select
-                  value={config.font_family}
-                  onChange={(e) => updateConfig('font_family', e.target.value)}
-                  className={inp}
-                >
-                  {FONT_OPTIONS.map((f) => (
-                    <option key={f.value} value={f.value}>
-                      {f.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1.5">
-                  Color principal
-                </label>
-                <div className="flex items-center gap-3">
-                  <input
-                    type="color"
-                    value={config.primary_color}
-                    onChange={(e) => updateConfig('primary_color', e.target.value)}
-                    className="w-10 h-10 rounded-lg border border-slate-200 cursor-pointer"
-                  />
-                  <input
-                    type="text"
-                    value={config.primary_color}
-                    onChange={(e) => updateConfig('primary_color', e.target.value)}
-                    className={inp + ' flex-1'}
-                    placeholder="#0891b2"
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Header & Footer text */}
-            <div className="bg-white border border-slate-200 rounded-xl p-5 space-y-4">
-              <div className="flex items-center gap-2">
-                <FileText className="w-4 h-4 text-slate-400" />
-                <p className="text-sm font-bold text-slate-800">Encabezado y pie</p>
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1.5">
-                  Texto del encabezado
-                </label>
-                <input
-                  value={config.header_text}
-                  onChange={(e) => updateConfig('header_text', e.target.value)}
-                  placeholder="Ej: Consultorio Dr. Pérez — Cardiología"
-                  className={inp}
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1.5">
-                  Texto del pie de página
-                </label>
-                <input
-                  value={config.footer_text}
-                  onChange={(e) => updateConfig('footer_text', e.target.value)}
-                  placeholder="Ej: Av. Libertador, Torre Médica, Piso 3 — Tel: 0212-1234567"
-                  className={inp}
-                />
-              </div>
-            </div>
-
-            {/* Save Buttons */}
-            <div className="flex gap-3">
-              <button
-                onClick={saveTemplate}
-                disabled={saving}
-                className="flex-1 flex items-center justify-center gap-2 g-bg px-4 py-2.5 rounded-xl text-sm font-bold text-white hover:opacity-90 disabled:opacity-60"
-              >
-                {saved ? (
-                  <>
-                    <CheckCircle className="w-4 h-4" /> Guardado
-                  </>
-                ) : saving ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" /> Guardando...
-                  </>
-                ) : (
-                  <>
-                    <Save className="w-4 h-4" /> Guardar {tabInfo.label}
-                  </>
-                )}
-              </button>
-              <button
-                onClick={applyToAll}
-                disabled={saving}
-                className="flex items-center justify-center gap-2 border border-slate-300 px-4 py-2.5 rounded-xl text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
-              >
-                Aplicar a todos
-              </button>
-            </div>
-          </div>
-
-          {/* Right: PDF Preview real con @react-pdf/renderer */}
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <p className="text-sm font-bold text-slate-700">Vista previa PDF</p>
-              <button
-                onClick={() => {
-                  if (!showPreview) {
-                    setPreviewLoading(true);
-                    setShowPreview(true);
-                  } else {
-                    setShowPreview(false);
-                    setPreviewLoading(false);
-                  }
-                }}
-                aria-expanded={showPreview}
-                className="flex items-center gap-1.5 text-xs font-semibold text-teal-600 hover:text-teal-700 transition-colors"
-              >
-                {showPreview ? (
-                  <>
-                    <EyeOff className="w-3.5 h-3.5" />
-                    Ocultar
-                  </>
-                ) : (
-                  <>
-                    <Eye className="w-3.5 h-3.5" />
-                    Ver vista previa
-                  </>
-                )}
-              </button>
-            </div>
-
-            {showPreview && (
-              // Contenedor relativo: el spinner de carga se muestra como overlay
-              // DENTRO del mismo rectángulo que el PDFViewer — nunca fuera del recuadro.
-              <div className="relative">
-                {/* Overlay de carga — visible mientras previewLoading, sobre el viewer.
-                    El recibo usa iframe (no react-pdf) y no dispara onReady → sin overlay. */}
-                {previewLoading && activeTab !== 'recibo' && (
-                  <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 bg-slate-50/90 rounded-xl border border-slate-200">
-                    <Loader2 className="w-5 h-5 animate-spin text-teal-500" />
-                    <p className="text-sm text-slate-500">Cargando vista previa…</p>
+                <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 flex items-start gap-3">
+                  <ImageIcon className="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0" />
+                  <div className="flex-1 text-xs text-blue-800">
+                    <p className="font-semibold mb-1">Logo y firma centralizados</p>
+                    <p>
+                      Estos assets se gestionan desde tu Configuración de Perfil para que se
+                      apliquen automáticamente a todos los documentos.
+                    </p>
+                    <a
+                      href="/doctor/settings?tab=profile"
+                      className="inline-flex items-center gap-1 mt-2 text-[11px] font-bold text-blue-700 hover:text-blue-900 underline underline-offset-2"
+                    >
+                      Ir a Perfil →
+                    </a>
                   </div>
-                )}
-                {/* El recibo usa su generador REAL (buildReceiptHtml en iframe) para que
+                </div>
+
+                {/* Logo — preview read-only desde perfil */}
+                <div className="bg-white border border-slate-200 rounded-xl p-5 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <ImageIcon className="w-4 h-4 text-slate-400" />
+                      <p className="text-sm font-bold text-slate-800">Logo</p>
+                    </div>
+                    <button
+                      onClick={() => updateConfig('show_logo', !config.show_logo)}
+                      className={`text-xs font-semibold px-3 py-1 rounded-full transition-all ${
+                        config.show_logo
+                          ? 'bg-teal-100 text-teal-700'
+                          : 'bg-slate-100 text-slate-400'
+                      }`}
+                    >
+                      {config.show_logo ? 'Visible en este doc' : 'Oculto en este doc'}
+                    </button>
+                  </div>
+
+                  {profileLogoUrl ? (
+                    <div className="flex items-center gap-3">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={profileLogoUrl}
+                        alt="Logo"
+                        className="h-16 object-contain rounded-lg border border-slate-200 bg-slate-50 p-1"
+                      />
+                      <p className="text-xs text-slate-500">Cargado desde tu perfil</p>
+                    </div>
+                  ) : (
+                    <div className="border-2 border-dashed border-slate-200 rounded-xl py-5 px-4 text-center text-xs text-slate-400">
+                      No has cargado un logo todavía.
+                      <br />
+                      <a
+                        href="/doctor/settings?tab=profile"
+                        className="text-blue-600 hover:underline font-semibold"
+                      >
+                        Súbelo desde tu perfil
+                      </a>
+                    </div>
+                  )}
+                </div>
+
+                {/* Firma — preview read-only desde perfil */}
+                <div className="bg-white border border-slate-200 rounded-xl p-5 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <FileEdit className="w-4 h-4 text-slate-400" />
+                      <p className="text-sm font-bold text-slate-800">Firma digital</p>
+                    </div>
+                    <button
+                      onClick={() => updateConfig('show_signature', !config.show_signature)}
+                      className={`text-xs font-semibold px-3 py-1 rounded-full transition-all ${
+                        config.show_signature
+                          ? 'bg-teal-100 text-teal-700'
+                          : 'bg-slate-100 text-slate-400'
+                      }`}
+                    >
+                      {config.show_signature ? 'Visible en este doc' : 'Oculta en este doc'}
+                    </button>
+                  </div>
+
+                  {profileSignatureUrl ? (
+                    <div className="flex items-center gap-3">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={profileSignatureUrl}
+                        alt="Firma"
+                        className="h-20 object-contain rounded-lg border border-slate-200 bg-white p-2"
+                      />
+                      <p className="text-xs text-slate-500">Cargada desde tu perfil</p>
+                    </div>
+                  ) : (
+                    <div className="border-2 border-dashed border-slate-200 rounded-xl py-5 px-4 text-center text-xs text-slate-400">
+                      No has cargado una firma todavía.
+                      <br />
+                      <a
+                        href="/doctor/settings?tab=profile"
+                        className="text-blue-600 hover:underline font-semibold"
+                      >
+                        Súbela desde tu perfil
+                      </a>
+                    </div>
+                  )}
+                </div>
+
+                {/* Typography & Color */}
+                <div className="bg-white border border-slate-200 rounded-xl p-5 space-y-4">
+                  <div className="flex items-center gap-2">
+                    <Type className="w-4 h-4 text-slate-400" />
+                    <p className="text-sm font-bold text-slate-800">Tipografía y color</p>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1.5">
+                      Fuente
+                    </label>
+                    <select
+                      value={config.font_family}
+                      onChange={(e) => updateConfig('font_family', e.target.value)}
+                      className={inp}
+                    >
+                      {FONT_OPTIONS.map((f) => (
+                        <option key={f.value} value={f.value}>
+                          {f.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1.5">
+                      Color principal
+                    </label>
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="color"
+                        value={config.primary_color}
+                        onChange={(e) => updateConfig('primary_color', e.target.value)}
+                        className="w-10 h-10 rounded-lg border border-slate-200 cursor-pointer"
+                      />
+                      <input
+                        type="text"
+                        value={config.primary_color}
+                        onChange={(e) => updateConfig('primary_color', e.target.value)}
+                        className={inp + ' flex-1'}
+                        placeholder="#0891b2"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Header & Footer text */}
+                <div className="bg-white border border-slate-200 rounded-xl p-5 space-y-4">
+                  <div className="flex items-center gap-2">
+                    <FileText className="w-4 h-4 text-slate-400" />
+                    <p className="text-sm font-bold text-slate-800">Encabezado y pie</p>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1.5">
+                      Texto del encabezado
+                    </label>
+                    <input
+                      value={config.header_text}
+                      onChange={(e) => updateConfig('header_text', e.target.value)}
+                      placeholder="Ej: Consultorio Dr. Pérez — Cardiología"
+                      className={inp}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1.5">
+                      Texto del pie de página
+                    </label>
+                    <input
+                      value={config.footer_text}
+                      onChange={(e) => updateConfig('footer_text', e.target.value)}
+                      placeholder="Ej: Av. Libertador, Torre Médica, Piso 3 — Tel: 0212-1234567"
+                      className={inp}
+                    />
+                  </div>
+                </div>
+
+                {/* Save Buttons */}
+                <div className="flex gap-3">
+                  <button
+                    onClick={saveTemplate}
+                    disabled={saving}
+                    className="flex-1 flex items-center justify-center gap-2 g-bg px-4 py-2.5 rounded-xl text-sm font-bold text-white hover:opacity-90 disabled:opacity-60"
+                  >
+                    {saved ? (
+                      <>
+                        <CheckCircle className="w-4 h-4" /> Guardado
+                      </>
+                    ) : saving ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" /> Guardando...
+                      </>
+                    ) : (
+                      <>
+                        <Save className="w-4 h-4" /> Guardar {tabInfo.label}
+                      </>
+                    )}
+                  </button>
+                  <button
+                    onClick={applyToAll}
+                    disabled={saving}
+                    className="flex items-center justify-center gap-2 border border-slate-300 px-4 py-2.5 rounded-xl text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+                  >
+                    Aplicar a todos
+                  </button>
+                </div>
+              </div>
+
+              {/* Right: PDF Preview real con @react-pdf/renderer */}
+              <div className="space-y-3">
+                {/* "Crear plantilla" — only for tabs that have a matching content type */}
+                {!planLoading &&
+                  planFeatures.content_templates &&
+                  BRANDING_TAB_TO_CONTENT_TYPE[activeTab] && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setCreateFromBrandingType(
+                          BRANDING_TAB_TO_CONTENT_TYPE[activeTab] as ContentTemplateType,
+                        )
+                      }
+                      className="w-full flex items-center justify-center gap-2 border border-teal-200 text-teal-700 bg-teal-50 hover:bg-teal-100 rounded-xl py-2.5 text-sm font-semibold transition-colors"
+                    >
+                      <Plus className="w-4 h-4" /> Crear plantilla de {tabInfo.label.toLowerCase()}
+                    </button>
+                  )}
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-bold text-slate-700">Vista previa PDF</p>
+                  <button
+                    onClick={() => {
+                      if (!showPreview) {
+                        setPreviewLoading(true);
+                        setShowPreview(true);
+                      } else {
+                        setShowPreview(false);
+                        setPreviewLoading(false);
+                      }
+                    }}
+                    aria-expanded={showPreview}
+                    className="flex items-center gap-1.5 text-xs font-semibold text-teal-600 hover:text-teal-700 transition-colors"
+                  >
+                    {showPreview ? (
+                      <>
+                        <EyeOff className="w-3.5 h-3.5" />
+                        Ocultar
+                      </>
+                    ) : (
+                      <>
+                        <Eye className="w-3.5 h-3.5" />
+                        Ver vista previa
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                {showPreview && (
+                  // Contenedor relativo: el spinner de carga se muestra como overlay
+                  // DENTRO del mismo rectángulo que el PDFViewer — nunca fuera del recuadro.
+                  <div className="relative">
+                    {/* Overlay de carga — visible mientras previewLoading, sobre el viewer.
+                    El recibo usa iframe (no react-pdf) y no dispara onReady → sin overlay. */}
+                    {previewLoading && activeTab !== 'recibo' && (
+                      <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 bg-slate-50/90 rounded-xl border border-slate-200">
+                        <Loader2 className="w-5 h-5 animate-spin text-teal-500" />
+                        <p className="text-sm text-slate-500">Cargando vista previa…</p>
+                      </div>
+                    )}
+                    {/* El recibo usa su generador REAL (buildReceiptHtml en iframe) para que
                     la vista previa coincida con lo que se descarga en Cobros. El presupuesto
                     usa el mismo componente react-pdf (QuotePdf) que la descarga real desde
                     /doctor/quotes. Los demás tipos usan el preview react-pdf de MedicalDocumentPdf. */}
-                {activeTab === 'recibo' ? (
-                  <ReceiptPreview
-                    templateConfig={{
-                      header_text: config.header_text,
-                      footer_text: config.footer_text,
-                      primary_color: config.primary_color,
-                      logo_url: profileLogoUrl,
-                      signature_url: profileSignatureUrl,
-                      show_logo: config.show_logo,
-                      show_signature: config.show_signature,
-                    }}
-                    doctor={{
-                      fullName: doctorName || 'Dr. Nombre Apellido',
-                      specialty: doctorSpecialty || null,
-                      licenseNumber: doctorLicense,
-                    }}
-                  />
-                ) : activeTab === 'presupuesto' ? (
-                  <QuotePreview
-                    key={activeTab}
-                    onReady={() => setPreviewLoading(false)}
-                    templateConfig={{
-                      header_text: config.header_text,
-                      footer_text: config.footer_text,
-                      primary_color: config.primary_color,
-                      font_family: config.font_family,
-                      logo_url: profileLogoUrl,
-                      signature_url: profileSignatureUrl,
-                      show_logo: config.show_logo,
-                      show_signature: config.show_signature,
-                    }}
-                    doctor={{
-                      fullName: doctorName || 'Dr. Nombre Apellido',
-                      specialty: doctorSpecialty || null,
-                      licenseNumber: doctorLicense,
-                    }}
-                  />
-                ) : (
-                  /* key={activeTab} forces a full remount when the tab changes,
+                    {activeTab === 'recibo' ? (
+                      <ReceiptPreview
+                        templateConfig={{
+                          header_text: config.header_text,
+                          footer_text: config.footer_text,
+                          primary_color: config.primary_color,
+                          logo_url: profileLogoUrl,
+                          signature_url: profileSignatureUrl,
+                          show_logo: config.show_logo,
+                          show_signature: config.show_signature,
+                        }}
+                        doctor={{
+                          fullName: doctorName || 'Dr. Nombre Apellido',
+                          specialty: doctorSpecialty || null,
+                          licenseNumber: doctorLicense,
+                        }}
+                      />
+                    ) : activeTab === 'presupuesto' ? (
+                      <QuotePreview
+                        key={activeTab}
+                        onReady={() => setPreviewLoading(false)}
+                        templateConfig={{
+                          header_text: config.header_text,
+                          footer_text: config.footer_text,
+                          primary_color: config.primary_color,
+                          font_family: config.font_family,
+                          logo_url: profileLogoUrl,
+                          signature_url: profileSignatureUrl,
+                          show_logo: config.show_logo,
+                          show_signature: config.show_signature,
+                        }}
+                        doctor={{
+                          fullName: doctorName || 'Dr. Nombre Apellido',
+                          specialty: doctorSpecialty || null,
+                          licenseNumber: doctorLicense,
+                        }}
+                      />
+                    ) : (
+                      /* key={activeTab} forces a full remount when the tab changes,
                      preventing react-pdf from showing a stale/blank render. */
-                  <TemplatePdfPreview
-                    key={activeTab}
-                    onReady={() => setPreviewLoading(false)}
-                    docType={activeTab}
-                    docTypeLabel={tabInfo.label}
-                    enabledBlocks={enabledBlocks}
-                    templateConfig={{
-                      header_text: config.header_text,
-                      footer_text: config.footer_text,
-                      primary_color: config.primary_color,
-                      font_family: config.font_family,
-                      logo_url: profileLogoUrl,
-                      signature_url: profileSignatureUrl,
-                      show_logo: config.show_logo,
-                      show_signature: config.show_signature,
-                    }}
-                    doctor={{
-                      fullName: doctorName || 'Dr. Nombre Apellido',
-                      specialty: doctorSpecialty || null,
-                      licenseNumber: doctorLicense,
-                    }}
-                  />
+                      <TemplatePdfPreview
+                        key={activeTab}
+                        onReady={() => setPreviewLoading(false)}
+                        docType={activeTab}
+                        docTypeLabel={tabInfo.label}
+                        enabledBlocks={enabledBlocks}
+                        templateConfig={{
+                          header_text: config.header_text,
+                          footer_text: config.footer_text,
+                          primary_color: config.primary_color,
+                          font_family: config.font_family,
+                          logo_url: profileLogoUrl,
+                          signature_url: profileSignatureUrl,
+                          show_logo: config.show_logo,
+                          show_signature: config.show_signature,
+                        }}
+                        doctor={{
+                          fullName: doctorName || 'Dr. Nombre Apellido',
+                          specialty: doctorSpecialty || null,
+                          licenseNumber: doctorLicense,
+                        }}
+                      />
+                    )}
+                  </div>
                 )}
               </div>
-            )}
-          </div>
-        </div>
+            </div>
+          </> /* end !showContentTab */
+        )}
+
+        {/* Modal: "Crear plantilla" triggered directly from a branding tab button */}
+        {createFromBrandingType && (
+          <ContentTemplateModal
+            mode="create"
+            initialType={createFromBrandingType}
+            onClose={() => setCreateFromBrandingType(null)}
+            onSaved={() => {
+              setCreateFromBrandingType(null);
+            }}
+          />
+        )}
       </div>
     </>
   );
