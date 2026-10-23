@@ -24,13 +24,21 @@ import {
   PATIENT_REPOSITORY,
   type IPatientRepository,
 } from '../../../../patients/domain/repositories/patient.repository';
+import {
+  DOCTOR_PROFILE_REPOSITORY,
+  type IDoctorProfileRepository,
+} from '../../../../doctor-settings/domain/repositories/doctor-profile.repository';
 import { MailerService } from '../../../../email/application/services/mailer.service';
+import { formatShareExpiryCaracas } from '../../utils/format-share-expiry-caracas';
+import { buildDoctorDisplayName } from '../../utils/build-doctor-display-name';
 
 export interface ShareConsultationInput {
   consultationId: string;
   doctorId: string;
   dto: ShareConsultationDto;
-  doctorName: string;
+  /** @deprecated Use case resolves the doctor display name from the profile. This
+   * field is accepted for backward compatibility but is no longer used. */
+  doctorName?: string;
 }
 
 export interface ShareConsultationOutput {
@@ -70,6 +78,8 @@ export class ShareConsultationUseCase {
     private readonly consultationRepo: IConsultationRepository,
     @Inject(PATIENT_REPOSITORY)
     private readonly patientRepo: IPatientRepository,
+    @Inject(DOCTOR_PROFILE_REPOSITORY)
+    private readonly doctorProfileRepo: IDoctorProfileRepository,
     private readonly mailer: MailerService,
     private readonly config: ConfigService,
   ) {}
@@ -156,7 +166,6 @@ export class ShareConsultationUseCase {
       consultation,
       patientId: consultation.patientId,
       doctorId: input.doctorId,
-      doctorName: input.doctorName,
       url,
       code: rawCode,
       expiresAt,
@@ -169,32 +178,30 @@ export class ShareConsultationUseCase {
     consultation: import('../../../../consultations/domain/entities/consultation.entity').Consultation;
     patientId: string;
     doctorId: string;
-    doctorName: string;
     url: string;
     code: string;
     expiresAt: Date;
   }): Promise<void> {
     try {
-      const patient = await this.patientRepo.findById(params.patientId, params.doctorId);
+      const [patient, doctorProfile] = await Promise.all([
+        this.patientRepo.findById(params.patientId, params.doctorId),
+        this.doctorProfileRepo.findByDoctorId(params.doctorId),
+      ]);
+
       if (!patient?.email) {
         this.logger.debug('[share] patient has no email — skipping notification');
         return;
       }
 
-      const expiresAtStr = params.expiresAt.toLocaleString('es-VE', {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-      });
+      const doctorName = buildDoctorDisplayName(doctorProfile);
+      const expiresAtStr = formatShareExpiryCaracas(params.expiresAt);
 
       await this.mailer.sendTemplate(
         'shared_documents_code',
         patient.email,
         {
           patientName: patient.fullName,
-          doctorName: params.doctorName,
+          doctorName,
           code: params.code,
           url: params.url,
           expiresAt: expiresAtStr,

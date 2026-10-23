@@ -4,6 +4,7 @@ import type { ISharedDocumentLinkRepository } from '../../../domain/repositories
 import type { IDocumentAccessCodeRepository } from '../../../domain/repositories/document-access-code.repository';
 import type { IConsultationRepository } from '../../../../consultations/domain/repositories/consultation.repository';
 import type { IPatientRepository } from '../../../../patients/domain/repositories/patient.repository';
+import type { IDoctorProfileRepository } from '../../../../doctor-settings/domain/repositories/doctor-profile.repository';
 import type { MailerService } from '../../../../email/application/services/mailer.service';
 import { SharedDocumentLink } from '../../../domain/entities/shared-document-link.entity';
 import { DocumentAccessCode } from '../../../domain/entities/document-access-code.entity';
@@ -57,6 +58,10 @@ const mockPatientRepo = {
   softDelete: jest.fn(),
   logReveal: jest.fn(),
 } as jest.Mocked<IPatientRepository>;
+
+const mockDoctorProfileRepo: jest.Mocked<Pick<IDoctorProfileRepository, 'findByDoctorId'>> = {
+  findByDoctorId: jest.fn(),
+};
 
 const mockMailer = {
   sendTemplate: jest.fn(),
@@ -140,6 +145,7 @@ describe('ShareConsultationUseCase', () => {
       mockCodeRepo,
       mockConsultationRepo,
       mockPatientRepo,
+      mockDoctorProfileRepo as unknown as IDoctorProfileRepository,
       mockMailer as unknown as MailerService,
       mockConfig,
     );
@@ -149,6 +155,12 @@ describe('ShareConsultationUseCase', () => {
     mockConsultationRepo.findById.mockResolvedValue(makeConsultation());
     // Patient has a cédula (required to share) but no email → notification skipped.
     mockPatientRepo.findById.mockResolvedValue(makePatient());
+    // Doctor profile: title + name for email display name.
+    mockDoctorProfileRepo.findByDoctorId.mockResolvedValue({
+      fullName: 'Ana Romero',
+      professionalTitle: 'Dra.',
+      email: 'ana.romero@clinic.com',
+    } as Awaited<ReturnType<typeof mockDoctorProfileRepo.findByDoctorId>>);
   });
 
   it('returns url, code, expiresAt on success', async () => {
@@ -156,7 +168,6 @@ describe('ShareConsultationUseCase', () => {
       consultationId: 'consult-1',
       doctorId: 'doctor-1',
       dto: { sections: { report: true, prescriptions: false, ehr: false } },
-      doctorName: 'Dr. Test',
     });
 
     expect(result.url).toMatch(/^http:\/\/localhost:3000\/documents\//);
@@ -172,7 +183,6 @@ describe('ShareConsultationUseCase', () => {
         consultationId: 'consult-1',
         doctorId: 'doctor-1',
         dto: { sections: { report: true, prescriptions: false, ehr: false } },
-        doctorName: 'Dr. Test',
       }),
     ).rejects.toBeInstanceOf(ConsultationNotOwnedError);
   });
@@ -185,7 +195,6 @@ describe('ShareConsultationUseCase', () => {
         consultationId: 'consult-1',
         doctorId: 'doctor-1',
         dto: { sections: { report: true, prescriptions: false, ehr: false } },
-        doctorName: 'Dr. Test',
       }),
     ).rejects.toBeInstanceOf(ConsultationNotOwnedError);
   });
@@ -198,7 +207,6 @@ describe('ShareConsultationUseCase', () => {
         consultationId: 'consult-1',
         doctorId: 'doctor-1',
         dto: { sections: { report: true, prescriptions: false, ehr: false } },
-        doctorName: 'Dr. Test',
       }),
     ).rejects.toBeInstanceOf(PatientCedulaRequiredForSharingError);
 
@@ -215,7 +223,6 @@ describe('ShareConsultationUseCase', () => {
         consultationId: 'consult-1',
         doctorId: 'doctor-1',
         dto: { sections: { report: true, prescriptions: false, ehr: false } },
-        doctorName: 'Dr. Test',
       }),
     ).rejects.toBeInstanceOf(PatientCedulaRequiredForSharingError);
   });
@@ -226,7 +233,6 @@ describe('ShareConsultationUseCase', () => {
         consultationId: 'consult-1',
         doctorId: 'doctor-1',
         dto: { sections: { report: false, prescriptions: false, ehr: false } },
-        doctorName: 'Dr. Test',
       }),
     ).rejects.toBeInstanceOf(NoSectionsSelectedError);
   });
@@ -236,7 +242,6 @@ describe('ShareConsultationUseCase', () => {
       consultationId: 'consult-1',
       doctorId: 'doctor-1',
       dto: { sections: { report: true, prescriptions: true, ehr: true } },
-      doctorName: 'Dr. Test',
     });
 
     expect(mockLinkRepo.save).toHaveBeenCalledTimes(1);
@@ -254,7 +259,6 @@ describe('ShareConsultationUseCase', () => {
           informeBlockKeys: ['diagnosis', 'treatment'],
         },
       },
-      doctorName: 'Dr. Test',
     });
 
     const savedLink = mockLinkRepo.save.mock.calls[0]?.[0] as SharedDocumentLink;
@@ -270,7 +274,6 @@ describe('ShareConsultationUseCase', () => {
       consultationId: 'consult-1',
       doctorId: 'doctor-1',
       dto: { sections: { report: true, prescriptions: false, ehr: false } },
-      doctorName: 'Dr. Test',
     });
 
     const savedLink = mockLinkRepo.save.mock.calls[0]?.[0] as SharedDocumentLink;
@@ -289,7 +292,6 @@ describe('ShareConsultationUseCase', () => {
           restContent: 'Reposo médico por 5 días',
         },
       },
-      doctorName: 'Dr. Test',
     });
 
     const savedLink = mockLinkRepo.save.mock.calls[0]?.[0] as SharedDocumentLink;
@@ -310,8 +312,74 @@ describe('ShareConsultationUseCase', () => {
         consultationId: 'consult-1',
         doctorId: 'doctor-1',
         dto: { sections: { report: true, prescriptions: false, ehr: false } },
-        doctorName: 'Dr. Test',
       }),
     ).resolves.toBeDefined();
+  });
+
+  it('sends email with doctor display name built from profile (professionalTitle + fullName)', async () => {
+    mockPatientRepo.findById.mockResolvedValue(makePatient({ email: 'patient@test.com' }));
+    mockMailer.sendTemplate.mockResolvedValue({ id: 'msg-1' });
+
+    await useCase.execute({
+      consultationId: 'consult-1',
+      doctorId: 'doctor-1',
+      dto: { sections: { report: true, prescriptions: false, ehr: false } },
+    });
+
+    // Allow fire-and-forget to settle
+    await new Promise((r) => setImmediate(r));
+
+    expect(mockMailer.sendTemplate).toHaveBeenCalledWith(
+      'shared_documents_code',
+      'patient@test.com',
+      expect.objectContaining({ doctorName: 'Dra. Ana Romero' }),
+      expect.anything(),
+    );
+  });
+
+  it('falls back to profile email when doctor fullName is absent', async () => {
+    mockDoctorProfileRepo.findByDoctorId.mockResolvedValue({
+      fullName: '',
+      professionalTitle: null,
+      email: 'fallback@clinic.com',
+    } as Awaited<ReturnType<typeof mockDoctorProfileRepo.findByDoctorId>>);
+    mockPatientRepo.findById.mockResolvedValue(makePatient({ email: 'patient@test.com' }));
+    mockMailer.sendTemplate.mockResolvedValue({ id: 'msg-1' });
+
+    await useCase.execute({
+      consultationId: 'consult-1',
+      doctorId: 'doctor-1',
+      dto: { sections: { report: true, prescriptions: false, ehr: false } },
+    });
+
+    await new Promise((r) => setImmediate(r));
+
+    expect(mockMailer.sendTemplate).toHaveBeenCalledWith(
+      'shared_documents_code',
+      'patient@test.com',
+      expect.objectContaining({ doctorName: 'fallback@clinic.com' }),
+      expect.anything(),
+    );
+  });
+
+  it('falls back to "Su especialista" when profile is null', async () => {
+    mockDoctorProfileRepo.findByDoctorId.mockResolvedValue(null);
+    mockPatientRepo.findById.mockResolvedValue(makePatient({ email: 'patient@test.com' }));
+    mockMailer.sendTemplate.mockResolvedValue({ id: 'msg-1' });
+
+    await useCase.execute({
+      consultationId: 'consult-1',
+      doctorId: 'doctor-1',
+      dto: { sections: { report: true, prescriptions: false, ehr: false } },
+    });
+
+    await new Promise((r) => setImmediate(r));
+
+    expect(mockMailer.sendTemplate).toHaveBeenCalledWith(
+      'shared_documents_code',
+      'patient@test.com',
+      expect.objectContaining({ doctorName: 'Su especialista' }),
+      expect.anything(),
+    );
   });
 });
