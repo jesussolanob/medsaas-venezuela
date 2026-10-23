@@ -4,6 +4,36 @@
 > ⚠️ Orden: **la entrada más nueva va ARRIBA**. La del 2026-08-11 quedó al final
 > del archivo por error; no se movió para no ensuciar el diff.
 
+## 2026-10-22 — Lote admin: filtros de fecha, Contactar, teléfono obligatorio y nombres
+
+> Rama `feature/admin-observaciones-oct` → `develop` → `staging`. Sin migraciones.
+> 471 suites / 4554 tests, builds OK, lint en línea base (backend 3, frontend 297/122/175).
+> Revisión de código (2 rondas) + seguridad: aprobado, 0 CRITICAL/HIGH abiertos.
+
+- **"Nuevos este mes" siempre en 0 (bug en prod):** el BFF `api/admin/doctors` escribía
+  `created_at: null` a mano y el backend no devolvía la fecha. Ahora el listado trae
+  `createdAt` (lo genera Postgres con `now()` al crear el perfil; nadie lo envía). En prod
+  había 16 registros en octubre mostrando 0. Inicio de mes calculado en hora de Caracas.
+- **Tope oculto de 100 filas** en listas del admin (especialistas, suscripciones, pagos):
+  subido a 1000 (`ADMIN_LIST_MAX_LIMIT`). Con el tope, un filtro de fechas habría mentido.
+- **Filtro "Desde / Hasta"** (`components/admin/DateRangeFilter.tsx` + `lib/date-range.ts`,
+  días de Caracas inclusivos) en Especialistas (registro), Suscripciones (registro o
+  vencimiento, avisa cuántos quedan fuera por no tener fecha), Aprobaciones (fecha del pago),
+  Comisiones (generada / pagada en historial — rangos independientes; los totales se
+  recalculan "en el rango"), Pacientes atendidos (última atención) y Sugerencias (envío).
+- **"Contactar" en Suscripciones:** modal con nombre, cédula, correo y teléfono; copiar,
+  correo, WhatsApp (`normalizePhoneIntl`) y llamar. Carga el detalle solo al abrir.
+- **Teléfono obligatorio:** `CompleteOnboardingUseCase` exige teléfono
+  (`OnboardingPhoneRequiredError`, 422 `ONBOARDING_PHONE_REQUIRED`). Se podía saltar el
+  paso 1 si el perfil ya tenía especialidad u oficina — 10 especialistas activos en prod
+  sin teléfono (el del 11/10 ya con la regla vigente). Los existentes NO se bloquean: ven
+  la tarea "Agrega tu teléfono de contacto" en pasos por completar (sin modal, decisión
+  del dueño). De paso: dos enlaces rotos de esos pasos (`?tab=templates`, `?tab=payments`).
+- **Nombre del especialista** en Aprobaciones (decía "Doctor/a") y en Sugerencias
+  (lookups por lotes, sin N+1; la lista propia del doctor no expone a otros).
+- **Plan del listado/export de especialistas sale de `profiles`** (ADR-042): estaba
+  `subscriptions` primero. Validado contra prod: hoy no cambia ninguna fila (preventivo).
+
 ## 2026-10-07 — Datos de producción: tachado, consulta 3/3, duplicados y plan Base
 
 Cambios de DATOS (sin código), hechos directo en `delta-db` con aprobación del dueño:
