@@ -330,9 +330,17 @@ export default function UsersPanel() {
         />
       </div>
 
-      {/* Date range filter */}
+      {/* Date range filter — clears the "Nuevos este mes" chip to avoid a silent zero */}
       <div className="mb-3">
-        <DateRangeFilter value={dateRange} onChange={setDateRange} />
+        <DateRangeFilter
+          value={dateRange}
+          onChange={(v) => {
+            setDateRange(v);
+            if ((v.from || v.to) && activeFilter === 'new_month') {
+              setActiveFilter('all');
+            }
+          }}
+        />
       </div>
 
       {/* Search + filtros */}
@@ -366,7 +374,12 @@ export default function UsersPanel() {
           return (
             <button
               key={key}
-              onClick={() => setActiveFilter(key)}
+              onClick={() => {
+                setActiveFilter(key);
+                // Selecting "Nuevos este mes" with a date range active would produce an
+                // unexplained zero (two conflicting date filters). Clear the range.
+                if (key === 'new_month') setDateRange({ from: null, to: null });
+              }}
               className={clsx(
                 'flex items-center gap-1.5 px-3.5 py-2 rounded-full text-[13px] font-medium transition-colors cursor-pointer',
                 isSelected ? 'text-white' : 'bg-white',

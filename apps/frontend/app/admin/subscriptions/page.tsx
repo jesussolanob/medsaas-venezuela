@@ -39,6 +39,7 @@ import { showToast } from '@/components/ui/Toaster';
 import { reportError } from '@/lib/report-error';
 import DateRangeFilter, { type DateRangeValue } from '@/components/admin/DateRangeFilter';
 import { isWithinRange } from '@/lib/date-range';
+import { normalizePhoneIntl } from '@/lib/phone-utils';
 
 /** Pause after the last keystroke before searching. */
 const SEARCH_DEBOUNCE_MS = 300;
@@ -368,6 +369,14 @@ function DoctorsTab() {
         )
       : doctors;
 
+  // Rows excluded because their selected date field is null (silently vanish without this).
+  const nullDateCount =
+    dateRange.from || dateRange.to
+      ? doctors.filter(
+          (d) => !(dateFilterField === 'created_at' ? d.created_at : d.current_period_end),
+        ).length
+      : 0;
+
   return (
     <>
       {/* Modal extender suscripción */}
@@ -485,9 +494,18 @@ function DoctorsTab() {
         ) : (
           <>
             {/* N de M count when filtered */}
-            {(dateRange.from || dateRange.to) && visibleDoctors.length < doctors.length && (
+            {(dateRange.from || dateRange.to) && (
               <div className="px-4 py-2 text-xs text-slate-500 border-b border-slate-100 bg-slate-50">
                 {visibleDoctors.length} de {doctors.length} especialistas en el rango
+                {nullDateCount > 0 && (
+                  <span className="ml-1">
+                    · {nullDateCount} sin{' '}
+                    {dateFilterField === 'created_at'
+                      ? 'fecha de registro'
+                      : 'fecha de vencimiento'}{' '}
+                    (excluidos)
+                  </span>
+                )}
               </div>
             )}
             {/* Desktop ≥ md: tabla */}
@@ -1760,7 +1778,9 @@ function ConfigTab() {
  *   - Quick actions: WhatsApp, email, phone call
  *
  * PII is never pre-fetched for all rows — only fetched on open.
- * Accessible: focus trap via autoFocus, Esc closes, role=dialog, aria-labelledby.
+ * Accessible: real focus trap (Tab/Shift+Tab cycle), initial focus on close
+ * button (autoFocus), Esc closes, role=dialog, aria-labelledby.
+ * Returns focus to the element that opened it on close.
  */
 
 interface DoctorContact {
@@ -1771,23 +1791,53 @@ interface DoctorContact {
   cedula: string | null;
 }
 
-function normalizeToWaNumber(phone: string | null): string | null {
-  if (!phone) return null;
-  // Strip non-digit characters
-  const digits = phone.replace(/\D/g, '');
-  if (!digits) return null;
-  // Venezuelan local starting with 0 → 58...
-  if (digits.startsWith('0') && digits.length >= 11) {
-    return '58' + digits.slice(1);
-  }
-  return digits;
-}
-
 function ContactarModal({ doctorId, onClose }: { doctorId: string; onClose: () => void }) {
+  const dialogRef = useRef<HTMLDivElement>(null);
   const [contact, setContact] = useState<DoctorContact | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [copiedField, setCopiedField] = useState<string | null>(null);
+
+  // Return focus to the element that had it before the modal opened.
+  useEffect(() => {
+    const returnTo = document.activeElement as HTMLElement | null;
+    return () => {
+      returnTo?.focus();
+    };
+  }, []);
+
+  // Tab / Shift+Tab focus trap — queries focusable elements dynamically so it
+  // works correctly while the dialog contents change (loading → loaded).
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Tab') return;
+      const focusable = Array.from(
+        dialog.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), input:not([disabled]), ' +
+            'select:not([disabled]), textarea:not([disabled]), ' +
+            '[tabindex]:not([tabindex="-1"])',
+        ),
+      ).filter((el) => el.offsetParent !== null);
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (e.shiftKey) {
+        if (document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        }
+      } else {
+        if (document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, []); // runs once — focusable elements are queried dynamically inside the handler
 
   useEffect(() => {
     let cancelled = false;
@@ -1835,7 +1885,9 @@ function ContactarModal({ doctorId, onClose }: { doctorId: string; onClose: () =
     }
   }
 
-  const waNumber = contact ? normalizeToWaNumber(contact.phone) : null;
+  // Use the shared normalizePhoneIntl helper (handles VE local + international E.164).
+  // Returns '' for invalid numbers → convert to null so the WhatsApp button stays hidden.
+  const waNumber = contact?.phone ? normalizePhoneIntl(contact.phone) || null : null;
 
   return (
     <div
@@ -1846,6 +1898,7 @@ function ContactarModal({ doctorId, onClose }: { doctorId: string; onClose: () =
       }}
     >
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="contactar-title"
@@ -1935,7 +1988,10 @@ function ContactarModal({ doctorId, onClose }: { doctorId: string; onClose: () =
         {/* Actions footer */}
         {contact && !loading && !error && (
           <div className="px-6 py-4 border-t border-slate-100 flex flex-wrap gap-2">
-            {contact.email && (
+            {/* Only render the mailto link when the address passes a safe-pattern check
+                (no `?`, `&`, `#`, whitespace, CR/LF) to prevent href injection.
+                The copy button above always shows regardless. */}
+            {contact.email && /^[^\s&#?'<>\r\n]+@[^\s&#?'<>\r\n]+$/.test(contact.email) && (
               <a
                 href={`mailto:${contact.email}`}
                 className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition-colors"

@@ -324,8 +324,15 @@ export default function ComisionesPage() {
   // Opening a receipt from history (on-demand signed URL)
   const [fetchingReceiptId, setFetchingReceiptId] = useState<string | null>(null);
 
-  // Date-range filter: commissions by earnedAt, history by paidAt.
-  const [dateRange, setDateRange] = useState<DateRangeValue>({ from: null, to: null });
+  // Independent date ranges: commissions tab filters by earnedAt, history tab by paidAt.
+  const [commissionsDateRange, setCommissionsDateRange] = useState<DateRangeValue>({
+    from: null,
+    to: null,
+  });
+  const [historyDateRange, setHistoryDateRange] = useState<DateRangeValue>({
+    from: null,
+    to: null,
+  });
 
   // ---------------------------------------------------------------------------
   // Load pending sellers
@@ -364,6 +371,15 @@ export default function ComisionesPage() {
     setLoadError(null);
     applyPending(await fetchPending());
   }, [applyPending]);
+
+  // Clears the commission selection whenever the date range changes — IDs that
+  // were selected under one range may no longer be visible in the new range.
+  // Called from the DateRangeFilter onChange (event handler context), not inside
+  // a useEffect, to avoid the react-hooks/set-state-in-effect lint rule.
+  function handleCommissionsDateRangeChange(v: DateRangeValue) {
+    setCommissionsDateRange(v);
+    setSelectedIds(new Set());
+  }
 
   // ---------------------------------------------------------------------------
   // Expand / collapse seller card
@@ -430,12 +446,19 @@ export default function ComisionesPage() {
   }
 
   function handleSelectAll(seller: PendingBySeller) {
-    const allSelected = seller.commissions.every((c) => selectedIds.has(c.commissionId));
-    if (allSelected) {
-      setSelectedIds(new Set());
-    } else {
-      setSelectedIds(new Set(seller.commissions.map((c) => c.commissionId)));
-    }
+    // seller.commissions is already the range-filtered set (from visibleSellers).
+    // Add/remove only THIS seller's visible IDs — never touch other sellers' selections.
+    const visibleIds = seller.commissions.map((c) => c.commissionId);
+    const allSelected = visibleIds.every((id) => selectedIds.has(id));
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (allSelected) {
+        visibleIds.forEach((id) => next.delete(id));
+      } else {
+        visibleIds.forEach((id) => next.add(id));
+      }
+      return next;
+    });
   }
 
   // ---------------------------------------------------------------------------
@@ -606,27 +629,38 @@ export default function ComisionesPage() {
   // Render
   // ---------------------------------------------------------------------------
 
-  const totalGlobalPending = sellers.reduce((acc, s) => acc + s.totalPendingUsd, 0);
-
-  // Sellers whose commissions intersect the date range (earnedAt).
+  // Sellers whose commissions intersect the commissions date range (earnedAt).
   // When no range is set → all sellers. Otherwise hide sellers with 0 visible commissions.
+  // Also recomputes each seller's totalPendingUsd from the filtered commissions so the
+  // per-seller total and the global StatCard total are always in sync with the view.
   const visibleSellers = useMemo(() => {
-    if (!dateRange.from && !dateRange.to) return sellers;
+    if (!commissionsDateRange.from && !commissionsDateRange.to) return sellers;
     return sellers
-      .map((s) => ({
-        ...s,
-        commissions: s.commissions.filter((c) =>
-          isWithinRange(c.earnedAt, dateRange.from, dateRange.to),
-        ),
-      }))
+      .map((s) => {
+        const filteredCommissions = s.commissions.filter((c) =>
+          isWithinRange(c.earnedAt, commissionsDateRange.from, commissionsDateRange.to),
+        );
+        return {
+          ...s,
+          commissions: filteredCommissions,
+          // Recompute from filtered set (field: amountUsd).
+          totalPendingUsd: filteredCommissions.reduce((acc, c) => acc + c.amountUsd, 0),
+        };
+      })
       .filter((s) => s.commissions.length > 0);
-  }, [sellers, dateRange]);
+  }, [sellers, commissionsDateRange]);
 
-  // History filtered by paidAt.
+  // Global total derived from the filtered sellers list — shows the filtered sum when
+  // a range is active, the full sum otherwise.
+  const totalGlobalPending = visibleSellers.reduce((acc, s) => acc + s.totalPendingUsd, 0);
+
+  // History filtered by paidAt (independent range from the commissions filter).
   const filteredHistory = useMemo(() => {
-    if (!dateRange.from && !dateRange.to) return history;
-    return history.filter((p) => isWithinRange(p.paidAt, dateRange.from, dateRange.to));
-  }, [history, dateRange]);
+    if (!historyDateRange.from && !historyDateRange.to) return history;
+    return history.filter((p) =>
+      isWithinRange(p.paidAt, historyDateRange.from, historyDateRange.to),
+    );
+  }, [history, historyDateRange]);
   // La tasa sigue llegando y se usa en el formulario de pago (`hasBcv`), que es el
   // único lugar donde los bolívares son reales. Acá arriba ya no se convierte nada.
 
@@ -645,15 +679,17 @@ export default function ComisionesPage() {
         </div>
       </header>
 
-      {/* Date-range filter — earnedAt for commissions tab, paidAt for history tab */}
+      {/* Date-range filter for commissions (earnedAt). The history tab has its own
+          independent filter shown inline within the expanded panel. */}
       {!loading && !loadError && (
         <div className="bg-white border border-slate-200 rounded-xl px-4 py-3">
-          <DateRangeFilter value={dateRange} onChange={setDateRange} />
-          {(dateRange.from || dateRange.to) && (
+          <DateRangeFilter
+            value={commissionsDateRange}
+            onChange={handleCommissionsDateRangeChange}
+          />
+          {(commissionsDateRange.from || commissionsDateRange.to) && (
             <p className="text-[11px] text-slate-400 mt-2">
-              {activeTab === 'history'
-                ? 'Filtrando pagos por fecha de liquidación (en el rango)'
-                : 'Filtrando comisiones por fecha de generación — totales actualizados'}
+              Filtrando comisiones por fecha de generación — totales actualizados
             </p>
           )}
         </div>
@@ -708,6 +744,9 @@ export default function ComisionesPage() {
             <div className="bg-white border border-slate-200 rounded-xl px-5 py-4">
               <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">
                 Total pendiente (USD)
+                {(commissionsDateRange.from || commissionsDateRange.to) && (
+                  <span className="ml-1 normal-case font-normal text-teal-500">en el rango</span>
+                )}
               </p>
               <p className="text-2xl font-bold text-teal-600 mt-1">
                 {formatUsd(totalGlobalPending)}
@@ -728,10 +767,11 @@ export default function ComisionesPage() {
                 Vendedores con saldo
               </p>
               <p className="text-2xl font-bold text-slate-800 mt-1">
-                {(dateRange.from || dateRange.to) && visibleSellers.length < sellers.length
+                {(commissionsDateRange.from || commissionsDateRange.to) &&
+                visibleSellers.length < sellers.length
                   ? `${visibleSellers.length} de ${sellers.length}`
                   : sellers.length}
-                {(dateRange.from || dateRange.to) && (
+                {(commissionsDateRange.from || commissionsDateRange.to) && (
                   <span className="text-xs font-normal text-slate-400 ml-1">en el rango</span>
                 )}
               </p>
@@ -801,7 +841,11 @@ export default function ComisionesPage() {
                         Los bolívares aparecen recién al registrar el pago, con la
                         tasa de ese momento — que es la que se va a transferir.
                       */}
-                      <p className="text-xs text-slate-400 mt-0.5">por cobrar</p>
+                      <p className="text-xs text-slate-400 mt-0.5">
+                        {commissionsDateRange.from || commissionsDateRange.to
+                          ? 'por cobrar · en el rango'
+                          : 'por cobrar'}
+                      </p>
                     </div>
 
                     <ChevronDown
@@ -1009,17 +1053,28 @@ export default function ComisionesPage() {
 
                       {/* History tab */}
                       {activeTab === 'history' && (
-                        <HistoryTab
-                          loading={historyLoading}
-                          error={historyError}
-                          payments={historyLoadedFor === seller.sellerId ? filteredHistory : []}
-                          fetchingReceiptId={fetchingReceiptId}
-                          onRetry={() => {
-                            setHistoryLoadedFor(null);
-                            void handleTabChange('history', seller.sellerId);
-                          }}
-                          onOpenReceipt={(paymentId) => void openReceipt(paymentId)}
-                        />
+                        <div>
+                          {/* Independent date filter for payment history (paidAt).
+                              syncUrl=false avoids colliding with the commissions ?desde/?hasta params. */}
+                          <div className="px-5 pt-4 pb-2 border-b border-slate-100">
+                            <DateRangeFilter
+                              value={historyDateRange}
+                              onChange={setHistoryDateRange}
+                              syncUrl={false}
+                            />
+                          </div>
+                          <HistoryTab
+                            loading={historyLoading}
+                            error={historyError}
+                            payments={historyLoadedFor === seller.sellerId ? filteredHistory : []}
+                            fetchingReceiptId={fetchingReceiptId}
+                            onRetry={() => {
+                              setHistoryLoadedFor(null);
+                              void handleTabChange('history', seller.sellerId);
+                            }}
+                            onOpenReceipt={(paymentId) => void openReceipt(paymentId)}
+                          />
+                        </div>
                       )}
                     </div>
                   )}

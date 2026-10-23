@@ -229,6 +229,9 @@ function SettingsPageInner() {
   const [tab, setTab] = useState<TabId>(initialTab);
   const [doctorId, setDoctorId] = useState<string | null>(null);
 
+  // Used by the ?focus=phone effect to run the scroll+focus only once.
+  const focusPhoneRanRef = useRef(false);
+
   // Logo upload
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [logoError, setLogoError] = useState('');
@@ -333,22 +336,20 @@ function SettingsPageInner() {
 
   // Scroll and focus the phone section when ?focus=phone is present in the URL.
   // This is used by the SetupStepper "telefono" step link.
+  // Depends on `loading` so it fires once the profile form is actually rendered,
+  // not on a fixed arbitrary timer. The ref ensures it runs at most once.
   useEffect(() => {
+    if (loading) return;
+    if (focusPhoneRanRef.current) return;
     const focusParam = searchParams.get('focus');
-    if (focusParam === 'phone') {
-      // Delay slightly to ensure the profile tab is active and section is rendered.
-      const timer = setTimeout(() => {
-        const el = document.getElementById('phone-section');
-        if (el) {
-          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          // Try to focus the first input or interactive element inside.
-          const input = el.querySelector('input, button') as HTMLElement | null;
-          input?.focus({ preventScroll: true });
-        }
-      }, 300);
-      return () => clearTimeout(timer);
-    }
-  }, [searchParams]);
+    if (focusParam !== 'phone') return;
+    const el = document.getElementById('phone-section');
+    if (!el) return;
+    focusPhoneRanRef.current = true;
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    const input = el.querySelector('input, button') as HTMLElement | null;
+    input?.focus({ preventScroll: true });
+  }, [loading, searchParams]);
 
   // Load all data
   useEffect(() => {
