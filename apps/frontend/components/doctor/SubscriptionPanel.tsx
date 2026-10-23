@@ -15,6 +15,7 @@
 
 import Link from 'next/link';
 import { useEffect, useState, useCallback } from 'react';
+import { getLaunchPromo } from '@/lib/launch-price';
 import {
   CreditCard,
   Clock,
@@ -53,6 +54,7 @@ type SubscriptionData = {
       discount_pct: number;
       promotion_id: string | null;
       label: string | null;
+      compare_at_price: number | null;
     }>;
   };
   payment_methods: {
@@ -503,13 +505,44 @@ function CheckoutModal({ data, onClose }: { data: SubscriptionData; onClose: () 
                         <div className="text-xs text-slate-500 mt-0.5">
                           ${(opt.final_price_usd / opt.duration_months).toFixed(2)} USD/mes
                         </div>
+                        {/* Badge de precio de lanzamiento: visible solo cuando el admin cargó un
+                            compare_at_price para ese período y NO hay descuento por plan_promotion.
+                            Si coexisten plan_promotion y compare_at, mostramos la promo existente
+                            para evitar doble-badge (compare_at queda implícito en el tachado). */}
+                        {(() => {
+                          const launchPromo = getLaunchPromo(
+                            opt.final_price_usd,
+                            opt.compare_at_price,
+                          );
+                          if (launchPromo === null || opt.discount_pct > 0) return null;
+                          return (
+                            <div
+                              className="mt-1.5 flex flex-wrap items-center gap-1.5"
+                              role="note"
+                              aria-label={`Precio de lanzamiento: ahorras ${launchPromo.savingsPct}%`}
+                            >
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold tracking-wide bg-teal-500 text-white uppercase">
+                                Precio de lanzamiento
+                              </span>
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-teal-50 text-teal-700 text-[11px] font-semibold border border-teal-100">
+                                Ahorras {launchPromo.savingsPct}%
+                              </span>
+                            </div>
+                          );
+                        })()}
                       </div>
                       <div className="text-right">
-                        {opt.discount_pct > 0 && (
+                        {/* Show compare_at crossed out when no plan_promotion discount applies */}
+                        {opt.discount_pct > 0 ? (
                           <div className="text-xs text-slate-400 line-through">
                             ${opt.base_price_usd}
                           </div>
-                        )}
+                        ) : opt.compare_at_price != null &&
+                          opt.compare_at_price > opt.final_price_usd ? (
+                          <div className="text-xs text-slate-400 line-through">
+                            ${opt.compare_at_price}
+                          </div>
+                        ) : null}
                         <div className="text-xl font-bold text-slate-900">
                           ${opt.final_price_usd}
                         </div>

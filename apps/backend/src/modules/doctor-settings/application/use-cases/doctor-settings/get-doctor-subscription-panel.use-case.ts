@@ -31,6 +31,8 @@ export interface DurationOptionOutput {
   discount_pct: number;
   promotion_id: string | null;
   label: string | null;
+  /** Crossed-out price for launch promo display. Present only when plan_prices.compare_at_price > price_usd. */
+  compare_at_price: number | null;
 }
 
 export interface PaymentItemOutput {
@@ -114,6 +116,7 @@ export class GetDoctorSubscriptionPanelUseCase {
           discount_pct: opt.discountPct,
           promotion_id: opt.promotionId,
           label: opt.label,
+          compare_at_price: opt.compareAtPriceUsd,
         })),
       },
       payment_methods: {

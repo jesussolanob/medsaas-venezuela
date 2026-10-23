@@ -25,6 +25,8 @@ export interface DurationOption {
   discountPct: number;
   promotionId: string | null;
   label: string | null;
+  /** Price to show as crossed-out when running a launch promotion (from plan_prices.compare_at_price). */
+  compareAtPriceUsd: number | null;
 }
 
 export interface PaymentHistoryItem {

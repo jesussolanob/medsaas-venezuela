@@ -9,6 +9,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
+import { getLaunchPromo } from '@/lib/launch-price';
 import {
   Check,
   X,
@@ -399,9 +400,12 @@ export default function UpgradeClient({ plans, currentPlanKey }: UpgradeClientPr
                       const discount = getDiscountPct(plan, effectivePeriod);
                       const months = PERIOD_MONTHS[effectivePeriod];
                       const compareAt = getCompareAtForPeriod(plan, effectivePeriod);
+                      const launchPromo = getLaunchPromo(price, compareAt);
                       return (
                         <div>
-                          {compareAt !== null && (
+                          {/* Mismo criterio que el badge: un tachado menor o igual al
+                              precio real sería un descuento al revés. */}
+                          {launchPromo !== null && compareAt !== null && (
                             <span
                               className="text-base font-semibold text-slate-400 line-through mr-2"
                               aria-label={`Precio anterior ${compareAt} dólares`}
@@ -413,16 +417,38 @@ export default function UpgradeClient({ plans, currentPlanKey }: UpgradeClientPr
                           <span className="text-sm text-slate-500 ml-1">
                             USD / {PERIOD_LABELS[effectivePeriod]?.toLowerCase()}
                           </span>
+                          {/* Con precio de lanzamiento, el ahorro que se muestra es el
+                              del tachado: sumarle el "Ahorra N%" por pagar el período
+                              entero dejaba dos porcentajes distintos a la vez (anual de
+                              Base: 20% contra 12 meses y 60% contra el tachado de $240). */}
                           {discount ? (
                             <div className="mt-1 flex items-center gap-2">
-                              <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-[11px] font-semibold border border-emerald-100">
-                                Ahorra {discount}%
-                              </span>
+                              {launchPromo === null && (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-[11px] font-semibold border border-emerald-100">
+                                  Ahorra {discount}%
+                                </span>
+                              )}
                               <span className="text-xs text-slate-400">
                                 ≈ ${(price / months).toFixed(0)}/mes
                               </span>
                             </div>
                           ) : null}
+                          {/* Badge de precio de lanzamiento: visible solo cuando
+                              el admin cargó un compare_at_price para ese período. */}
+                          {launchPromo !== null && (
+                            <div
+                              className="mt-2 flex flex-wrap items-center gap-1.5"
+                              role="note"
+                              aria-label={`Precio de lanzamiento: ahorras ${launchPromo.savingsPct}%`}
+                            >
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold tracking-wide bg-teal-500 text-white uppercase">
+                                Precio de lanzamiento
+                              </span>
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-teal-50 text-teal-700 text-[11px] font-semibold border border-teal-100">
+                                Ahorras {launchPromo.savingsPct}%
+                              </span>
+                            </div>
+                          )}
                         </div>
                       );
                     })()
