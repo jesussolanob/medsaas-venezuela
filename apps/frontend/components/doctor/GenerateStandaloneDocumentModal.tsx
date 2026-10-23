@@ -44,6 +44,7 @@ import {
   updateDraftStandaloneDocument,
   issueStandaloneDocument,
   deleteDraftStandaloneDocument,
+  shareStandaloneDocument,
   type StandaloneDocumentType,
   type StandaloneDocumentContent,
   type StandaloneDocument,
@@ -101,18 +102,6 @@ interface ReposoDocumentEditorProps {
 }
 
 function ReposoDocumentEditor({ value, onChange }: ReposoDocumentEditorProps) {
-  function handleTemplateChange(tv: ReposoTemplateContent) {
-    // When the template editor changes, keep our from/to but recalculate to from days
-    const newTo = addDays(value.from, tv.days - 1);
-    onChange({
-      ...value,
-      diagnosis: tv.diagnosis,
-      days: tv.days,
-      comments: tv.comments,
-      to: newTo,
-    });
-  }
-
   return (
     <div className="space-y-4">
       {/* Template-compatible fields */}
@@ -175,19 +164,6 @@ function ReposoDocumentEditor({ value, onChange }: ReposoDocumentEditorProps) {
           className={`${fi} resize-none`}
         />
       </div>
-      {/* Hidden — allows applying a reposo template which updates the non-date fields */}
-      <div className="hidden">
-        <button
-          type="button"
-          onClick={() =>
-            handleTemplateChange({
-              diagnosis: value.diagnosis,
-              days: value.days,
-              comments: value.comments,
-            })
-          }
-        />
-      </div>
     </div>
   );
 }
@@ -197,6 +173,12 @@ function ReposoDocumentEditor({ value, onChange }: ReposoDocumentEditorProps) {
 // ---------------------------------------------------------------------------
 
 interface GenerateStandaloneDocumentModalProps {
+  /**
+   * Controlled open state. When provided the component renders no trigger button
+   * and opens/closes based on this prop. When undefined the component renders its
+   * own trigger button and manages open state internally.
+   */
+  open?: boolean;
   /** When provided, opens modal pre-filled with this draft for editing. */
   initialDraft?: StandaloneDocument;
   /** When provided, pre-selects this patient (skips patient step if also type is given). */
@@ -206,16 +188,21 @@ interface GenerateStandaloneDocumentModalProps {
 }
 
 export default function GenerateStandaloneDocumentModal({
+  open: controlledOpen,
   initialDraft,
   preselectedPatient,
   onClose,
   onSuccess,
 }: GenerateStandaloneDocumentModalProps) {
+  const isControlled = controlledOpen !== undefined;
+
   // Capture opener element for dialog focus management
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
   const [openerEl] = useState<Element | null>(() =>
     typeof document !== 'undefined' ? document.activeElement : null,
   );
+
+  const open = isControlled ? controlledOpen : internalOpen;
 
   // Step state
   const [step, setStep] = useState<Step>(() => {
@@ -375,20 +362,22 @@ export default function GenerateStandaloneDocumentModal({
   );
 
   // ── Close / discard ────────────────────────────────────────────────────
+  function doClose() {
+    if (!isControlled) setInternalOpen(false);
+    onClose?.();
+    if (openerEl instanceof HTMLElement) openerEl.focus();
+  }
+
   async function handleClose() {
     if (issuedDoc) {
-      setOpen(false);
-      onClose?.();
-      if (openerEl instanceof HTMLElement) openerEl.focus();
+      doClose();
       return;
     }
     if (draftId) {
       setConfirmDiscard(true);
       return;
     }
-    setOpen(false);
-    onClose?.();
-    if (openerEl instanceof HTMLElement) openerEl.focus();
+    doClose();
   }
 
   async function discardDraft() {
@@ -396,9 +385,7 @@ export default function GenerateStandaloneDocumentModal({
       await deleteDraftStandaloneDocument(draftId);
     }
     setConfirmDiscard(false);
-    setOpen(false);
-    onClose?.();
-    if (openerEl instanceof HTMLElement) openerEl.focus();
+    doClose();
   }
 
   // ── PDF download ───────────────────────────────────────────────────────
@@ -439,17 +426,19 @@ export default function GenerateStandaloneDocumentModal({
   // ── Render ─────────────────────────────────────────────────────────────
   return (
     <>
-      <button
-        onClick={() => setOpen(true)}
-        className="flex items-center gap-2 px-4 py-2.5 rounded-full backdrop-blur text-white font-semibold text-[13px] transition-colors"
-        style={{
-          background: 'rgba(255,255,255,0.18)',
-          border: '1px solid rgba(255,255,255,0.28)',
-        }}
-      >
-        <FilePlus className="w-4 h-4" />
-        <span>Generar recipe/paraclínico</span>
-      </button>
+      {!isControlled && (
+        <button
+          onClick={() => setInternalOpen(true)}
+          className="flex items-center gap-2 px-4 py-2.5 rounded-full backdrop-blur text-white font-semibold text-[13px] transition-colors"
+          style={{
+            background: 'rgba(255,255,255,0.18)',
+            border: '1px solid rgba(255,255,255,0.28)',
+          }}
+        >
+          <FilePlus className="w-4 h-4" />
+          <span>Generar recipe/paraclínico</span>
+        </button>
+      )}
 
       {open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40">
@@ -763,7 +752,7 @@ interface StandaloneSharePanelProps {
   doctorName: string | null;
 }
 
-function StandaloneSharePanel({
+export function StandaloneSharePanel({
   docId,
   patientPhone,
   patientName,
@@ -781,24 +770,12 @@ function StandaloneSharePanel({
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/standalone-documents/${encodeURIComponent(docId)}/share`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sections: { report: true, prescriptions: true, ehr: false },
-          doc_selection: {
-            types: ['recipe', 'paraclinical', 'rest'],
-            informeBlockKeys: [],
-            restContent: null,
-          },
-        }),
-      });
-      const json = (await res.json()) as { success: true; data: typeof result } | { error: string };
-      if (!res.ok || !('success' in json)) {
-        setError('error' in json ? json.error : 'Error al generar el enlace.');
+      const res = await shareStandaloneDocument(docId);
+      if (!res.ok || !res.data) {
+        setError(res.error ?? 'Error al generar el enlace.');
         return;
       }
-      setResult(json.data);
+      setResult(res.data);
     } catch {
       setError('No se pudo conectar con el servidor.');
     } finally {

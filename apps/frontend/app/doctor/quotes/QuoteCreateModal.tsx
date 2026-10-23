@@ -71,6 +71,11 @@ interface FormItem {
    * en el presupuesto que recibe el paciente.
    */
   catalogMissing?: boolean;
+  /**
+   * Solo de pantalla: el producto del catálogo está registrado en Bs, no en USD.
+   * El especialista debe ingresar el equivalente en USD manualmente.
+   */
+  bsPricedNote?: boolean;
 }
 
 function newItem(overrides: Partial<FormItem> = {}): FormItem {
@@ -257,20 +262,35 @@ export default function QuoteCreateModal({ onClose, onCreated }: Props) {
   }
 
   function addFromProduct(prod: ProductRow) {
-    // Only auto-fill price for USD products; VES products need manual price
-    const price = prod.sale_price_currency === 'USD' ? String(prod.sale_price_amount) : '';
-    setItems((prev) =>
-      appendItem(
-        prev,
-        newItem({
-          kind: 'product',
-          source_id: prod.id,
-          name: prod.name,
-          description: prod.description ?? '',
-          unit_price_usd: price,
-        }),
-      ),
-    );
+    if (prod.sale_price_currency !== 'USD') {
+      // Bs-priced product: leave price empty and show a per-item note
+      setItems((prev) =>
+        appendItem(
+          prev,
+          newItem({
+            kind: 'product',
+            source_id: prod.id,
+            name: prod.name,
+            description: prod.description ?? '',
+            unit_price_usd: '',
+            bsPricedNote: true,
+          }),
+        ),
+      );
+    } else {
+      setItems((prev) =>
+        appendItem(
+          prev,
+          newItem({
+            kind: 'product',
+            source_id: prod.id,
+            name: prod.name,
+            description: prod.description ?? '',
+            unit_price_usd: String(prod.sale_price_amount),
+          }),
+        ),
+      );
+    }
   }
 
   function removeItem(key: string) {
@@ -347,14 +367,24 @@ export default function QuoteCreateModal({ onClose, onCreated }: Props) {
           unit_price_usd: '0',
         });
       }
-      const price = prod.sale_price_currency === 'USD' ? String(prod.sale_price_amount) : '';
+      if (prod.sale_price_currency !== 'USD') {
+        return newItem({
+          kind: 'product',
+          source_id: prod.id,
+          name: prod.name,
+          description: prod.description ?? '',
+          quantity: String(tItem.quantity ?? 1),
+          unit_price_usd: '',
+          bsPricedNote: true,
+        });
+      }
       return newItem({
         kind: 'product',
         source_id: prod.id,
         name: prod.name,
         description: prod.description ?? '',
         quantity: String(tItem.quantity ?? 1),
-        unit_price_usd: price,
+        unit_price_usd: String(prod.sale_price_amount),
       });
     });
   }
@@ -931,6 +961,11 @@ export default function QuoteCreateModal({ onClose, onCreated }: Props) {
                           ⚠ Ya no está en tu catálogo — revisa el precio
                         </p>
                       )}
+                      {item.bsPricedNote && (
+                        <p className="mt-1 text-[10px] font-semibold text-amber-700" role="note">
+                          ⚠ Precio en Bs en el inventario — ingresa el equivalente en USD
+                        </p>
+                      )}
                     </div>
                     {/* Quantity */}
                     <div className="col-span-2">
@@ -957,7 +992,11 @@ export default function QuoteCreateModal({ onClose, onCreated }: Props) {
                         value={item.unit_price_usd}
                         onChange={(e) => {
                           const v = e.target.value.replace(/[^0-9.]/g, '');
-                          updateItem(item._key, { unit_price_usd: v, catalogMissing: false });
+                          updateItem(item._key, {
+                            unit_price_usd: v,
+                            catalogMissing: false,
+                            bsPricedNote: false,
+                          });
                         }}
                         placeholder="0.00"
                         className="w-full text-xs border border-slate-200 rounded-lg py-2 pl-5 pr-2.5 outline-none focus:border-teal-400 bg-white text-right"

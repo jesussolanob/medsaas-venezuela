@@ -270,19 +270,16 @@ export async function voidStandaloneDocument(
 /**
  * Shares an issued standalone document. Returns a public URL, code, and expiry.
  * Only 'issued' documents can be shared.
+ *
+ * NOTE: the backend builds docSelection from the document type server-side
+ * and ignores any body payload — we POST an empty body.
  */
 export async function shareStandaloneDocument(
   id: string,
-  docSelection: {
-    types: string[];
-    informeBlockKeys: string[];
-    restContent: string | null;
-  },
-  sections: { report: boolean; prescriptions: boolean; ehr: boolean },
 ): Promise<MutationResult & { data?: ShareResult }> {
   const result = await backendPost<ShareResult>(
     `/api/standalone-documents/${encodeURIComponent(id)}/share`,
-    { doc_selection: docSelection, sections },
+    {},
   );
 
   if (!result.ok) {

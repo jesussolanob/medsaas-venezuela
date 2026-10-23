@@ -78,6 +78,7 @@ interface DocumentRenderData {
     dosage: string | null;
     frequency: string | null;
     duration: string | null;
+    presentation: string | null;
     notes: string | null;
   }>;
   ehrRecords: Array<{
@@ -186,6 +187,7 @@ function mapPrescriptions(prescriptions: DocumentRenderData['prescriptions']): S
         dose: rx.dosage ?? '',
         frequency: rx.frequency ?? '',
         duration: rx.duration ?? '',
+        presentation: rx.presentation ?? undefined,
         indications: rx.notes ?? '',
       },
     ],

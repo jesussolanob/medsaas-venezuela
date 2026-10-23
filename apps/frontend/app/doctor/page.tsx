@@ -1476,6 +1476,7 @@ export default function DoctorDashboard() {
       {/* Modal: generar recipe/paraclínico sin consulta */}
       {showStandaloneDoc && (
         <GenerateStandaloneDocumentModal
+          open={showStandaloneDoc}
           onClose={() => setShowStandaloneDoc(false)}
           onSuccess={() => {
             setShowStandaloneDoc(false);

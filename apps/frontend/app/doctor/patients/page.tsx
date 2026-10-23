@@ -41,6 +41,7 @@ import {
   XCircle,
   Download,
   RefreshCw,
+  Share2,
 } from 'lucide-react';
 // Etapa 1: Supabase removed.
 // - pricing_plans → GET /api/doctor/services  (getDoctorServices)
@@ -70,7 +71,9 @@ import { getDoctorServices } from '@/app/doctor/services/actions';
 import { getDoctorProfile } from '@/app/doctor/actions';
 import { useDoctorFeatures } from '@/hooks/useDoctorFeatures';
 import NewAppointmentFlow from '@/components/appointment-flow/NewAppointmentFlow';
-import GenerateStandaloneDocumentModal from '@/components/doctor/GenerateStandaloneDocumentModal';
+import GenerateStandaloneDocumentModal, {
+  StandaloneSharePanel,
+} from '@/components/doctor/GenerateStandaloneDocumentModal';
 import {
   listStandaloneDocuments,
   deleteDraftStandaloneDocument,
@@ -253,6 +256,9 @@ export default function PatientsPage() {
   const [standaloneLoading, setStandaloneLoading] = useState(false);
   const [standaloneDownloadingId, setStandaloneDownloadingId] = useState<string | null>(null);
   const [showStandaloneModal, setShowStandaloneModal] = useState(false);
+  const [shareStandaloneDoc, setShareStandaloneDoc] = useState<StandaloneDocumentSummary | null>(
+    null,
+  );
   const [newInstructionTitle, setNewInstructionTitle] = useState('');
   const [newInstructionDesc, setNewInstructionDesc] = useState('');
   const [savingInstruction, setSavingInstruction] = useState(false);
@@ -2363,23 +2369,32 @@ export default function PatientsPage() {
                         </button>
                       )}
                       {doc.status === 'issued' && (
-                        <button
-                          onClick={() => {
-                            if (!confirm(`¿Anular el documento ${doc.code ?? ''}?`)) return;
-                            void voidStandaloneDocument(doc.id).then((res) => {
-                              if (res.ok) {
-                                showToast({ type: 'success', message: 'Documento anulado' });
-                                void loadStandaloneDocs(selected.id);
-                              } else {
-                                showToast({ type: 'error', message: res.error ?? 'Error' });
-                              }
-                            });
-                          }}
-                          className="p-1.5 text-red-400 hover:text-red-600 transition-colors"
-                          title="Anular"
-                        >
-                          <XCircle className="w-4 h-4" />
-                        </button>
+                        <>
+                          <button
+                            onClick={() => setShareStandaloneDoc(doc)}
+                            className="p-1.5 text-teal-500 hover:text-teal-700 transition-colors"
+                            title="Compartir"
+                          >
+                            <Share2 className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => {
+                              if (!confirm(`¿Anular el documento ${doc.code ?? ''}?`)) return;
+                              void voidStandaloneDocument(doc.id).then((res) => {
+                                if (res.ok) {
+                                  showToast({ type: 'success', message: 'Documento anulado' });
+                                  void loadStandaloneDocs(selected.id);
+                                } else {
+                                  showToast({ type: 'error', message: res.error ?? 'Error' });
+                                }
+                              });
+                            }}
+                            className="p-1.5 text-red-400 hover:text-red-600 transition-colors"
+                            title="Anular"
+                          >
+                            <XCircle className="w-4 h-4" />
+                          </button>
+                        </>
                       )}
                       {doc.status === 'draft' && (
                         <button
@@ -2412,6 +2427,7 @@ export default function PatientsPage() {
       {/* Modal: generar standalone doc desde el detalle del paciente */}
       {showStandaloneModal && selected && (
         <GenerateStandaloneDocumentModal
+          open={showStandaloneModal}
           preselectedPatient={{
             id: selected.id,
             full_name:
@@ -2428,6 +2444,37 @@ export default function PatientsPage() {
             void loadStandaloneDocs(selected.id);
           }}
         />
+      )}
+
+      {/* Dialog: compartir documento emitido desde el detalle del paciente */}
+      {shareStandaloneDoc && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-5 space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-base font-bold text-slate-800">Compartir documento</h2>
+                {shareStandaloneDoc.code && (
+                  <p className="text-xs text-slate-400 font-mono mt-0.5">
+                    {shareStandaloneDoc.code}
+                  </p>
+                )}
+              </div>
+              <button
+                onClick={() => setShareStandaloneDoc(null)}
+                className="w-7 h-7 rounded-full flex items-center justify-center hover:bg-slate-100 transition-colors text-slate-400"
+              >
+                <XCircle className="w-4 h-4" />
+              </button>
+            </div>
+            <StandaloneSharePanel
+              docId={shareStandaloneDoc.id}
+              docType={shareStandaloneDoc.type}
+              patientPhone={null}
+              patientName={shareStandaloneDoc.patientName}
+              doctorName={null}
+            />
+          </div>
+        </div>
       )}
 
       {/* RONDA 40 — Modal de subida de archivo (doctor) */}

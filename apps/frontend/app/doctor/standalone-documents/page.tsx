@@ -25,10 +25,13 @@ import {
   AlertCircle,
   FilePlus,
   RefreshCw,
+  Share2,
 } from 'lucide-react';
 import { showToast } from '@/components/ui/Toaster';
 import { useDoctorFeatures } from '@/hooks/useDoctorFeatures';
-import GenerateStandaloneDocumentModal from '@/components/doctor/GenerateStandaloneDocumentModal';
+import GenerateStandaloneDocumentModal, {
+  StandaloneSharePanel,
+} from '@/components/doctor/GenerateStandaloneDocumentModal';
 import {
   listStandaloneDocuments,
   getStandaloneDocument,
@@ -157,6 +160,7 @@ export default function StandaloneDocumentsPage() {
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState<StandaloneDocument | null>(null);
   const [showModal, setShowModal] = useState(false);
+  const [shareDoc, setShareDoc] = useState<StandaloneDocumentSummary | null>(null);
 
   const loadDocs = useCallback(async () => {
     setLoading(true);
@@ -384,13 +388,22 @@ export default function StandaloneDocumentsPage() {
                   </button>
                 )}
                 {doc.status === 'issued' && (
-                  <button
-                    onClick={() => setVoidTarget(doc)}
-                    className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-red-500 border border-red-200 rounded-lg hover:bg-red-50 transition-colors"
-                  >
-                    <XCircle className="w-3.5 h-3.5" />
-                    Anular
-                  </button>
+                  <>
+                    <button
+                      onClick={() => setShareDoc(doc)}
+                      className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-teal-600 border border-teal-200 rounded-lg hover:bg-teal-50 transition-colors"
+                    >
+                      <Share2 className="w-3.5 h-3.5" />
+                      Compartir
+                    </button>
+                    <button
+                      onClick={() => setVoidTarget(doc)}
+                      className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-red-500 border border-red-200 rounded-lg hover:bg-red-50 transition-colors"
+                    >
+                      <XCircle className="w-3.5 h-3.5" />
+                      Anular
+                    </button>
+                  </>
                 )}
                 {doc.status === 'draft' && (
                   <>
@@ -417,29 +430,27 @@ export default function StandaloneDocumentsPage() {
 
       {/* Modal: generate new */}
       {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40">
-          <GenerateStandaloneDocumentModal
-            onClose={() => setShowModal(false)}
-            onSuccess={() => {
-              setShowModal(false);
-              refresh();
-            }}
-          />
-        </div>
+        <GenerateStandaloneDocumentModal
+          open={showModal}
+          onClose={() => setShowModal(false)}
+          onSuccess={() => {
+            setShowModal(false);
+            refresh();
+          }}
+        />
       )}
 
       {/* Modal: edit draft */}
       {editDraft && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40">
-          <GenerateStandaloneDocumentModal
-            initialDraft={editDraft}
-            onClose={() => setEditDraft(null)}
-            onSuccess={() => {
-              setEditDraft(null);
-              refresh();
-            }}
-          />
-        </div>
+        <GenerateStandaloneDocumentModal
+          open={!!editDraft}
+          initialDraft={editDraft}
+          onClose={() => setEditDraft(null)}
+          onSuccess={() => {
+            setEditDraft(null);
+            refresh();
+          }}
+        />
       )}
 
       {/* Void dialog */}
@@ -449,6 +460,35 @@ export default function StandaloneDocumentsPage() {
           onConfirm={(reason) => handleVoid(voidTarget, reason)}
           onCancel={() => setVoidTarget(null)}
         />
+      )}
+
+      {/* Share dialog: re-share an issued document from the list */}
+      {shareDoc && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-5 space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-base font-bold text-slate-800">Compartir documento</h2>
+                {shareDoc.code && (
+                  <p className="text-xs text-slate-400 font-mono mt-0.5">{shareDoc.code}</p>
+                )}
+              </div>
+              <button
+                onClick={() => setShareDoc(null)}
+                className="w-7 h-7 rounded-full flex items-center justify-center hover:bg-slate-100 transition-colors text-slate-400"
+              >
+                <XCircle className="w-4 h-4" />
+              </button>
+            </div>
+            <StandaloneSharePanel
+              docId={shareDoc.id}
+              docType={shareDoc.type}
+              patientPhone={null}
+              patientName={shareDoc.patientName}
+              doctorName={null}
+            />
+          </div>
+        </div>
       )}
     </div>
   );
