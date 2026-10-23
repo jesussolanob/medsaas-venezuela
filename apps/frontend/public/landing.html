@@ -2245,7 +2245,7 @@ button { font-family: var(--dh-font-body); cursor: pointer; border: none; }
       // Si se modifica la lógica, actualizar el archivo TS también.
       // Retorna { savingsPct } cuando compareAtPrice > priceUsd, null en caso contrario.
       const launchPromo = (priceUsd, compareAtPrice) => {
-        if (compareAtPrice == null || compareAtPrice <= priceUsd) return null;
+        if (compareAtPrice == null || !isFinite(compareAtPrice) || !isFinite(priceUsd) || compareAtPrice <= priceUsd) return null;
         return { savingsPct: Math.round((compareAtPrice - priceUsd) / compareAtPrice * 100) };
       };
       // Orden por precio ascendente (Free, Base, Plus). El de mayor precio (Plus) = recomendado.
@@ -2267,7 +2267,7 @@ button { font-family: var(--dh-font-body); cursor: pointer; border: none; }
           (!isFree && antes) ? '<div class="original">Antes $' + antes + '</div>' : '',
           // Badge de lanzamiento: solo cuando el admin cargó compare_at_price > price_usd.
           // Muestra "Precio de lanzamiento" + "Ahorras X%" (calculado, nunca hardcodeado).
-          promo ? '<div><span class="launch-badge">Precio de lanzamiento</span><span class="savings-pill">Ahorras ' + promo.savingsPct + '%</span></div>' : '',
+          promo ? '<div role="note" aria-label="Precio de lanzamiento: ahorras ' + promo.savingsPct + '%"><span class="launch-badge">Precio de lanzamiento</span><span class="savings-pill">Ahorras ' + promo.savingsPct + '%</span></div>' : '',
           p.description ? '<div class="per-month">' + p.description + '</div>' : '',
           '<a href="/register" target="_top" class="plan-cta">' + (isFree ? 'Comenzar gratis' : 'Elegir ' + p.name) + '</a>',
           '</div>',

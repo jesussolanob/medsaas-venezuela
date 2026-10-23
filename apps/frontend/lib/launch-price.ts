@@ -35,7 +35,14 @@ export function getLaunchPromo(
   priceUsd: number,
   compareAt: number | null | undefined,
 ): LaunchPromo | null {
-  if (compareAt == null || compareAt <= priceUsd) return null;
+  if (
+    compareAt == null ||
+    !Number.isFinite(compareAt) ||
+    !Number.isFinite(priceUsd) ||
+    compareAt <= priceUsd
+  ) {
+    return null;
+  }
   const savingsPct = Math.round(((compareAt - priceUsd) / compareAt) * 100);
   return { isPromo: true, savingsPct };
 }

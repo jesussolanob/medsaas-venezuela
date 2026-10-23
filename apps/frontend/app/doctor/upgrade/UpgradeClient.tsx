@@ -403,7 +403,9 @@ export default function UpgradeClient({ plans, currentPlanKey }: UpgradeClientPr
                       const launchPromo = getLaunchPromo(price, compareAt);
                       return (
                         <div>
-                          {compareAt !== null && (
+                          {/* Mismo criterio que el badge: un tachado menor o igual al
+                              precio real sería un descuento al revés. */}
+                          {launchPromo !== null && compareAt !== null && (
                             <span
                               className="text-base font-semibold text-slate-400 line-through mr-2"
                               aria-label={`Precio anterior ${compareAt} dólares`}
@@ -415,11 +417,17 @@ export default function UpgradeClient({ plans, currentPlanKey }: UpgradeClientPr
                           <span className="text-sm text-slate-500 ml-1">
                             USD / {PERIOD_LABELS[effectivePeriod]?.toLowerCase()}
                           </span>
+                          {/* Con precio de lanzamiento, el ahorro que se muestra es el
+                              del tachado: sumarle el "Ahorra N%" por pagar el período
+                              entero dejaba dos porcentajes distintos a la vez (anual de
+                              Base: 20% contra 12 meses y 60% contra el tachado de $240). */}
                           {discount ? (
                             <div className="mt-1 flex items-center gap-2">
-                              <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-[11px] font-semibold border border-emerald-100">
-                                Ahorra {discount}%
-                              </span>
+                              {launchPromo === null && (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-[11px] font-semibold border border-emerald-100">
+                                  Ahorra {discount}%
+                                </span>
+                              )}
                               <span className="text-xs text-slate-400">
                                 ≈ ${(price / months).toFixed(0)}/mes
                               </span>
