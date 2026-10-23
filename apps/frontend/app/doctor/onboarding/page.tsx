@@ -67,15 +67,31 @@ export default async function DoctorOnboardingPage() {
   const hasActiveOffice = profile?.hasActiveOffice ?? false;
   const hasActiveService = profile?.hasActiveService ?? false;
 
+  const hasPhone = (profile?.phone ?? '').trim().length > 0;
+
   // Edge case: office + service both exist but onboardingCompleted was never sealed
   // (e.g. the user navigated away between step 3 and success). Seal it server-side
-  // and redirect to the portal — no wizard UI needed.
+  // and redirect to the portal — only when phone is also set, since phone is now
+  // required by the backend (422 ONBOARDING_PHONE_REQUIRED otherwise).
+  let phoneRequiredMessage: string | undefined;
   if (hasActiveOffice && hasActiveService && !profile?.onboardingCompleted) {
-    await completeOnboarding();
-    redirect('/doctor');
+    if (!hasPhone) {
+      // Phone missing — force step 1 so the doctor fills it in.
+      phoneRequiredMessage = 'Falta tu teléfono de contacto. Complétalo para activar tu cuenta.';
+    } else {
+      const result = await completeOnboarding();
+      if (result.ok) {
+        redirect('/doctor');
+      } else if (result.code === 'ONBOARDING_PHONE_REQUIRED') {
+        phoneRequiredMessage = 'Falta tu teléfono de contacto. Complétalo para activar tu cuenta.';
+      }
+      // Other errors: fall through and let the wizard handle them on submit.
+    }
   }
 
-  const initialStep: 1 | 2 | 3 = hasActiveOffice ? 3 : profile?.specialty ? 2 : 1;
+  // Step 1 is forced when phone is missing, regardless of other profile fields.
+  const initialStep: 1 | 2 | 3 =
+    !hasPhone || phoneRequiredMessage ? 1 : hasActiveOffice ? 3 : profile?.specialty ? 2 : 1;
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center px-4 py-12">
@@ -105,6 +121,7 @@ export default async function DoctorOnboardingPage() {
           initialPhone={profile?.phone ?? ''}
           specialties={specialties}
           initialStep={initialStep}
+          initialErrorMessage={phoneRequiredMessage}
         />
 
         <p className="text-center text-xs" style={{ color: 'var(--dh-gray-400)' }}>

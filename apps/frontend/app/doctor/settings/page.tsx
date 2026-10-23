@@ -184,8 +184,18 @@ function SettingsPageInner() {
   const searchParams = useSearchParams();
   // 'notifications' tab is hidden (not functional in Etapa 1). Guard against
   // direct URL navigation (?tab=notifications) so the state never lands there.
-  const rawTab = (searchParams.get('tab') as TabId) || 'profile';
-  const initialTab: TabId = rawTab === 'notifications' ? 'profile' : rawTab;
+  const VALID_TABS: TabId[] = [
+    'profile',
+    'booking',
+    'payment',
+    'subscription',
+    'notifications',
+    'integrations',
+    'assistants',
+  ];
+  const rawTab = searchParams.get('tab') as TabId | null;
+  const initialTab: TabId =
+    rawTab && VALID_TABS.includes(rawTab) && rawTab !== 'notifications' ? rawTab : 'profile';
 
   // OAuth callback feedback — shown when redirected back from Google
   const googleCallbackResult = searchParams.get('google'); // 'connected'
@@ -320,6 +330,25 @@ function SettingsPageInner() {
       cancelled = true;
     };
   }, []);
+
+  // Scroll and focus the phone section when ?focus=phone is present in the URL.
+  // This is used by the SetupStepper "telefono" step link.
+  useEffect(() => {
+    const focusParam = searchParams.get('focus');
+    if (focusParam === 'phone') {
+      // Delay slightly to ensure the profile tab is active and section is rendered.
+      const timer = setTimeout(() => {
+        const el = document.getElementById('phone-section');
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          // Try to focus the first input or interactive element inside.
+          const input = el.querySelector('input, button') as HTMLElement | null;
+          input?.focus({ preventScroll: true });
+        }
+      }, 300);
+      return () => clearTimeout(timer);
+    }
+  }, [searchParams]);
 
   // Load all data
   useEffect(() => {
@@ -980,7 +1009,7 @@ function SettingsPageInner() {
                         className={fi + ' opacity-50 cursor-not-allowed'}
                       />
                     </div>
-                    <div>
+                    <div id="phone-section">
                       <label className="block text-sm font-medium text-slate-700 mb-1.5">
                         Teléfono
                       </label>
