@@ -31,8 +31,8 @@ export async function GET(req: NextRequest) {
   // filtered. The backend does the matching (name or email, accent-insensitive).
   if (search) params.set('search', search);
 
-  // Backend caps at 100 per page.
-  params.set('limit', '100');
+  // Raise limit to 1000 so the full list is loaded without silent truncation.
+  params.set('limit', '1000');
 
   const result = await backendGet<BackendSubscription[]>(
     `/api/admin/subscriptions?${params.toString()}`,
@@ -63,6 +63,10 @@ export async function GET(req: NextRequest) {
       is_expired: isExpired,
       expiring_soon: !isExpired && daysRemaining <= 7,
       is_in_trial: s.status === 'trial' || s.status === 'trialing',
+      /** Profile registration date — for date-range filtering. */
+      created_at: s.createdAt ?? null,
+      /** Trial end date — for date-range filtering. */
+      trial_ends_at: s.trialEndsAt ?? null,
     };
   });
 
@@ -84,4 +88,8 @@ interface BackendSubscription {
   plan: string | null;
   status: string | null;
   currentPeriodEnd: string | null;
+  /** Profile registration date (ISO string). Added in contract update Oct-2026. */
+  createdAt?: string | null;
+  /** Trial end date (ISO string). Added in contract update Oct-2026. */
+  trialEndsAt?: string | null;
 }

@@ -7,6 +7,7 @@
  * `DoctorDetailDrawer`. Sin Supabase.
  */
 import { NextRequest, NextResponse } from 'next/server';
+import { requireSuperAdmin } from '@/lib/auth-guards';
 import { backendGet } from '@/lib/api-client.server';
 
 interface BackendDoctorDetail {
@@ -29,6 +30,9 @@ interface BackendDoctorDetail {
 }
 
 export async function GET(req: NextRequest) {
+  const guard = await requireSuperAdmin();
+  if (!guard.ok) return guard.response;
+
   const doctorId = req.nextUrl.searchParams.get('id');
   if (!doctorId) {
     return NextResponse.json({ error: 'Falta el id del especialista' }, { status: 400 });

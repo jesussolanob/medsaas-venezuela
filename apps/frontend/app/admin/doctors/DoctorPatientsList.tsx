@@ -1,7 +1,9 @@
 'use client';
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { ChevronDown, ChevronUp, Users, Loader2 } from 'lucide-react';
 import { reportError } from '@/lib/report-error';
+import DateRangeFilter, { type DateRangeValue } from '@/components/admin/DateRangeFilter';
+import { isWithinRange } from '@/lib/date-range';
 
 interface DoctorPatientItem {
   id: string;
@@ -59,6 +61,8 @@ export default function DoctorPatientsList({ doctorId }: DoctorPatientsListProps
     }
   }, [doctorId, loadState]);
 
+  const [dateRange, setDateRange] = useState<DateRangeValue>({ from: null, to: null });
+
   const handleToggle = () => {
     const nextOpen = !open;
     setOpen(nextOpen);
@@ -66,6 +70,14 @@ export default function DoctorPatientsList({ doctorId }: DoctorPatientsListProps
       void loadPatients();
     }
   };
+
+  const visiblePatients = useMemo(
+    () =>
+      dateRange.from || dateRange.to
+        ? patients.filter((p) => isWithinRange(p.lastAttendedAt, dateRange.from, dateRange.to))
+        : patients,
+    [patients, dateRange],
+  );
 
   const patientCount = loadState === 'done' ? patients.length : null;
 
@@ -110,18 +122,31 @@ export default function DoctorPatientsList({ doctorId }: DoctorPatientsListProps
             </div>
           )}
 
-          {loadState === 'done' && patients.length === 0 && (
+          {loadState === 'done' && (
+            <div className="px-4 py-2 border-b border-slate-100">
+              <DateRangeFilter value={dateRange} onChange={setDateRange} syncUrl={false} />
+            </div>
+          )}
+
+          {loadState === 'done' && visiblePatients.length === 0 && (
             <p className="text-center text-sm text-slate-400 py-8 px-4">
-              Este especialista aún no tiene pacientes atendidos.
+              {dateRange.from || dateRange.to
+                ? 'No hay resultados en ese rango'
+                : 'Este especialista aún no tiene pacientes atendidos.'}
             </p>
           )}
 
-          {loadState === 'done' && patients.length > 0 && (
+          {loadState === 'done' && visiblePatients.length > 0 && (
             <div className="divide-y divide-slate-100">
               {/* Table header */}
               <div className="grid grid-cols-[1fr_auto_auto] gap-x-3 px-4 py-2 bg-slate-50">
                 <span className="text-xs font-medium text-slate-500 uppercase tracking-wide">
                   Paciente
+                  {(dateRange.from || dateRange.to) && visiblePatients.length < patients.length && (
+                    <span className="ml-1 font-normal text-teal-600">
+                      ({visiblePatients.length} de {patients.length})
+                    </span>
+                  )}
                 </span>
                 <span className="text-xs font-medium text-slate-500 uppercase tracking-wide text-right whitespace-nowrap">
                   Consultas
@@ -132,7 +157,7 @@ export default function DoctorPatientsList({ doctorId }: DoctorPatientsListProps
               </div>
 
               {/* Rows */}
-              {patients.map((patient) => (
+              {visiblePatients.map((patient) => (
                 <div
                   key={patient.id}
                   className="grid grid-cols-[1fr_auto_auto] gap-x-3 px-4 py-3 hover:bg-slate-50 transition-colors"

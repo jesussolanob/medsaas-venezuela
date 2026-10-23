@@ -792,11 +792,18 @@ export default function DoctorDashboard() {
           <SetupStepper
             steps={[
               {
+                id: 'telefono',
+                label: 'Agrega tu teléfono de contacto',
+                hint: 'Delta Salud te contacta por este número; también lo necesitan tus pacientes.',
+                href: '/doctor/settings?tab=profile&focus=phone',
+                done: Boolean(profile.phone),
+              },
+              {
                 id: 'datos',
-                label: 'Completa tu información',
-                hint: 'Título profesional, especialidad y teléfono de contacto.',
+                label: 'Completa tu información profesional',
+                hint: 'Título profesional y especialidad para que tus pacientes te conozcan.',
                 href: '/doctor/settings',
-                done: Boolean(profile.professional_title && profile.specialty && profile.phone),
+                done: Boolean(profile.professional_title && profile.specialty),
               },
               {
                 id: 'consultorio',
@@ -816,14 +823,14 @@ export default function DoctorDashboard() {
                 id: 'branding',
                 label: 'Personaliza tu marca',
                 hint: 'Tu logo y tu firma salen en récipes, informes y constancias.',
-                href: '/doctor/settings?tab=templates',
+                href: '/doctor/templates',
                 done: Boolean(profile.logoUrl && profile.signatureUrl),
               },
               {
                 id: 'pagos',
                 label: 'Registra tus métodos de pago',
                 hint: 'Sin ellos el paciente no sabe cómo pagarte al reservar.',
-                href: '/doctor/settings?tab=payments',
+                href: '/doctor/settings?tab=payment',
                 done: profile.paymentMethods.length > 0,
               },
             ]}

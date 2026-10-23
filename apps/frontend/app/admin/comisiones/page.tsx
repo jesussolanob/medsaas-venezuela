@@ -17,7 +17,7 @@
  *     el total seleccionado se actualiza en tiempo real con los checkboxes.
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, useMemo } from 'react';
 import {
   ChevronDown,
   Handshake,
@@ -34,6 +34,8 @@ import {
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { showToast } from '@/components/ui/Toaster';
+import DateRangeFilter, { type DateRangeValue } from '@/components/admin/DateRangeFilter';
+import { isWithinRange } from '@/lib/date-range';
 import {
   activeMethodsOf,
   entriesOf,
@@ -322,6 +324,16 @@ export default function ComisionesPage() {
   // Opening a receipt from history (on-demand signed URL)
   const [fetchingReceiptId, setFetchingReceiptId] = useState<string | null>(null);
 
+  // Independent date ranges: commissions tab filters by earnedAt, history tab by paidAt.
+  const [commissionsDateRange, setCommissionsDateRange] = useState<DateRangeValue>({
+    from: null,
+    to: null,
+  });
+  const [historyDateRange, setHistoryDateRange] = useState<DateRangeValue>({
+    from: null,
+    to: null,
+  });
+
   // ---------------------------------------------------------------------------
   // Load pending sellers
   // ---------------------------------------------------------------------------
@@ -359,6 +371,15 @@ export default function ComisionesPage() {
     setLoadError(null);
     applyPending(await fetchPending());
   }, [applyPending]);
+
+  // Clears the commission selection whenever the date range changes — IDs that
+  // were selected under one range may no longer be visible in the new range.
+  // Called from the DateRangeFilter onChange (event handler context), not inside
+  // a useEffect, to avoid the react-hooks/set-state-in-effect lint rule.
+  function handleCommissionsDateRangeChange(v: DateRangeValue) {
+    setCommissionsDateRange(v);
+    setSelectedIds(new Set());
+  }
 
   // ---------------------------------------------------------------------------
   // Expand / collapse seller card
@@ -425,12 +446,19 @@ export default function ComisionesPage() {
   }
 
   function handleSelectAll(seller: PendingBySeller) {
-    const allSelected = seller.commissions.every((c) => selectedIds.has(c.commissionId));
-    if (allSelected) {
-      setSelectedIds(new Set());
-    } else {
-      setSelectedIds(new Set(seller.commissions.map((c) => c.commissionId)));
-    }
+    // seller.commissions is already the range-filtered set (from visibleSellers).
+    // Add/remove only THIS seller's visible IDs — never touch other sellers' selections.
+    const visibleIds = seller.commissions.map((c) => c.commissionId);
+    const allSelected = visibleIds.every((id) => selectedIds.has(id));
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (allSelected) {
+        visibleIds.forEach((id) => next.delete(id));
+      } else {
+        visibleIds.forEach((id) => next.add(id));
+      }
+      return next;
+    });
   }
 
   // ---------------------------------------------------------------------------
@@ -601,7 +629,38 @@ export default function ComisionesPage() {
   // Render
   // ---------------------------------------------------------------------------
 
-  const totalGlobalPending = sellers.reduce((acc, s) => acc + s.totalPendingUsd, 0);
+  // Sellers whose commissions intersect the commissions date range (earnedAt).
+  // When no range is set → all sellers. Otherwise hide sellers with 0 visible commissions.
+  // Also recomputes each seller's totalPendingUsd from the filtered commissions so the
+  // per-seller total and the global StatCard total are always in sync with the view.
+  const visibleSellers = useMemo(() => {
+    if (!commissionsDateRange.from && !commissionsDateRange.to) return sellers;
+    return sellers
+      .map((s) => {
+        const filteredCommissions = s.commissions.filter((c) =>
+          isWithinRange(c.earnedAt, commissionsDateRange.from, commissionsDateRange.to),
+        );
+        return {
+          ...s,
+          commissions: filteredCommissions,
+          // Recompute from filtered set (field: amountUsd).
+          totalPendingUsd: filteredCommissions.reduce((acc, c) => acc + c.amountUsd, 0),
+        };
+      })
+      .filter((s) => s.commissions.length > 0);
+  }, [sellers, commissionsDateRange]);
+
+  // Global total derived from the filtered sellers list — shows the filtered sum when
+  // a range is active, the full sum otherwise.
+  const totalGlobalPending = visibleSellers.reduce((acc, s) => acc + s.totalPendingUsd, 0);
+
+  // History filtered by paidAt (independent range from the commissions filter).
+  const filteredHistory = useMemo(() => {
+    if (!historyDateRange.from && !historyDateRange.to) return history;
+    return history.filter((p) =>
+      isWithinRange(p.paidAt, historyDateRange.from, historyDateRange.to),
+    );
+  }, [history, historyDateRange]);
   // La tasa sigue llegando y se usa en el formulario de pago (`hasBcv`), que es el
   // único lugar donde los bolívares son reales. Acá arriba ya no se convierte nada.
 
@@ -619,6 +678,22 @@ export default function ComisionesPage() {
           </p>
         </div>
       </header>
+
+      {/* Date-range filter for commissions (earnedAt). The history tab has its own
+          independent filter shown inline within the expanded panel. */}
+      {!loading && !loadError && (
+        <div className="bg-white border border-slate-200 rounded-xl px-4 py-3">
+          <DateRangeFilter
+            value={commissionsDateRange}
+            onChange={handleCommissionsDateRangeChange}
+          />
+          {(commissionsDateRange.from || commissionsDateRange.to) && (
+            <p className="text-[11px] text-slate-400 mt-2">
+              Filtrando comisiones por fecha de generación — totales actualizados
+            </p>
+          )}
+        </div>
+      )}
 
       {/* Loading */}
       {loading && (
@@ -643,22 +718,24 @@ export default function ComisionesPage() {
       )}
 
       {/* Empty state */}
-      {!loading && !loadError && sellers.length === 0 && (
+      {!loading && !loadError && visibleSellers.length === 0 && (
         <div className="bg-white border border-slate-200 rounded-xl p-12 text-center">
           <div className="w-14 h-14 rounded-2xl bg-teal-50 text-teal-400 flex items-center justify-center mx-auto mb-5">
             <Handshake className="w-7 h-7" />
           </div>
-          <h2 className="text-base font-bold text-slate-800">Sin comisiones pendientes</h2>
+          <h2 className="text-base font-bold text-slate-800">
+            {sellers.length === 0 ? 'Sin comisiones pendientes' : 'No hay resultados en ese rango'}
+          </h2>
           <p className="text-sm text-slate-500 mt-2 max-w-sm mx-auto">
-            Por ahora no hay vendedores con comisiones por cobrar. Las comisiones se generan
-            automáticamente cuando un especialista atribuido completa el onboarding o activa un plan
-            pago.
+            {sellers.length === 0
+              ? 'Por ahora no hay vendedores con comisiones por cobrar. Las comisiones se generan automáticamente cuando un especialista atribuido completa el onboarding o activa un plan pago.'
+              : 'Ajusta el rango de fechas para ver más resultados.'}
           </p>
         </div>
       )}
 
       {/* Content */}
-      {!loading && !loadError && sellers.length > 0 && (
+      {!loading && !loadError && visibleSellers.length > 0 && (
         <>
           {/* Global stats */}
           {/* Dos columnas: quedaron dos tarjetas al sacar la del equivalente en Bs. */}
@@ -667,6 +744,9 @@ export default function ComisionesPage() {
             <div className="bg-white border border-slate-200 rounded-xl px-5 py-4">
               <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">
                 Total pendiente (USD)
+                {(commissionsDateRange.from || commissionsDateRange.to) && (
+                  <span className="ml-1 normal-case font-normal text-teal-500">en el rango</span>
+                )}
               </p>
               <p className="text-2xl font-bold text-teal-600 mt-1">
                 {formatUsd(totalGlobalPending)}
@@ -686,13 +766,21 @@ export default function ComisionesPage() {
               <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">
                 Vendedores con saldo
               </p>
-              <p className="text-2xl font-bold text-slate-800 mt-1">{sellers.length}</p>
+              <p className="text-2xl font-bold text-slate-800 mt-1">
+                {(commissionsDateRange.from || commissionsDateRange.to) &&
+                visibleSellers.length < sellers.length
+                  ? `${visibleSellers.length} de ${sellers.length}`
+                  : sellers.length}
+                {(commissionsDateRange.from || commissionsDateRange.to) && (
+                  <span className="text-xs font-normal text-slate-400 ml-1">en el rango</span>
+                )}
+              </p>
             </div>
           </div>
 
           {/* Seller list */}
           <div className="space-y-3">
-            {sellers.map((seller) => {
+            {visibleSellers.map((seller) => {
               const isExpanded = expandedId === seller.sellerId;
               const marcadas = seller.commissions.filter((c) => selectedIds.has(c.commissionId));
               const aprobadasMarcadas = marcadas.filter((c) => c.status === 'approved');
@@ -753,7 +841,11 @@ export default function ComisionesPage() {
                         Los bolívares aparecen recién al registrar el pago, con la
                         tasa de ese momento — que es la que se va a transferir.
                       */}
-                      <p className="text-xs text-slate-400 mt-0.5">por cobrar</p>
+                      <p className="text-xs text-slate-400 mt-0.5">
+                        {commissionsDateRange.from || commissionsDateRange.to
+                          ? 'por cobrar · en el rango'
+                          : 'por cobrar'}
+                      </p>
                     </div>
 
                     <ChevronDown
@@ -961,17 +1053,28 @@ export default function ComisionesPage() {
 
                       {/* History tab */}
                       {activeTab === 'history' && (
-                        <HistoryTab
-                          loading={historyLoading}
-                          error={historyError}
-                          payments={historyLoadedFor === seller.sellerId ? history : []}
-                          fetchingReceiptId={fetchingReceiptId}
-                          onRetry={() => {
-                            setHistoryLoadedFor(null);
-                            void handleTabChange('history', seller.sellerId);
-                          }}
-                          onOpenReceipt={(paymentId) => void openReceipt(paymentId)}
-                        />
+                        <div>
+                          {/* Independent date filter for payment history (paidAt).
+                              syncUrl=false avoids colliding with the commissions ?desde/?hasta params. */}
+                          <div className="px-5 pt-4 pb-2 border-b border-slate-100">
+                            <DateRangeFilter
+                              value={historyDateRange}
+                              onChange={setHistoryDateRange}
+                              syncUrl={false}
+                            />
+                          </div>
+                          <HistoryTab
+                            loading={historyLoading}
+                            error={historyError}
+                            payments={historyLoadedFor === seller.sellerId ? filteredHistory : []}
+                            fetchingReceiptId={fetchingReceiptId}
+                            onRetry={() => {
+                              setHistoryLoadedFor(null);
+                              void handleTabChange('history', seller.sellerId);
+                            }}
+                            onOpenReceipt={(paymentId) => void openReceipt(paymentId)}
+                          />
+                        </div>
                       )}
                     </div>
                   )}

@@ -1,10 +1,12 @@
 import { CompleteOnboardingUseCase } from './complete-onboarding.use-case';
 import { OnboardingRequirementsNotMetError } from '../../../domain/errors/onboarding-requirements-not-met.error';
+import { OnboardingPhoneRequiredError } from '../../../domain/errors/onboarding-phone-required.error';
 import type { IDoctorProfileRepository } from '../../../domain/repositories/doctor-profile.repository';
 import type { IOfficeRepository } from '../../../../offices/domain/repositories/office.repository';
 import type { IPricingPlanRepository } from '../../../../packages/domain/repositories/pricing-plan.repository';
 import type { Office } from '../../../../offices/domain/entities/office.entity';
 import type { PricingPlan } from '../../../../packages/domain/entities/pricing-plan.entity';
+import type { DoctorProfile } from '../../../domain/entities/doctor-profile.entity';
 import type { AccrueSignupCommissionUseCase } from '../../../../seller-commissions/application/use-cases/accrue-signup-commission.use-case';
 
 const DOCTOR_ID = 'doctor-onboarding-1';
@@ -15,9 +17,17 @@ const ACTIVE_OFFICE = { id: 'office-1', isActive: true } as unknown as Office;
 const ACTIVE_PLAN = { id: 'plan-1', isActive: true } as unknown as PricingPlan;
 const INACTIVE_PLAN = { id: 'plan-2', isActive: false } as unknown as PricingPlan;
 
-function makeRepos() {
+/**
+ * Minimal DoctorProfile stub with phone set.
+ * The use case only reads `.phone`, so a cast is sufficient.
+ */
+function makeProfile(phone: string | null): DoctorProfile {
+  return { phone } as unknown as DoctorProfile;
+}
+
+function makeRepos(profilePhone: string | null = '+58 412 1234567') {
   const profileRepo: jest.Mocked<IDoctorProfileRepository> = {
-    findByDoctorId: jest.fn(),
+    findByDoctorId: jest.fn().mockResolvedValue(makeProfile(profilePhone)),
     update: jest.fn(),
     updateExchangeRate: jest.fn(),
     markOnboardingCompleted: jest.fn().mockResolvedValue(undefined),
@@ -66,7 +76,68 @@ describe('CompleteOnboardingUseCase', () => {
   });
 
   // ---------------------------------------------------------------------------
-  // Requirements not met
+  // Phone validation (checked BEFORE office/service requirements)
+  // ---------------------------------------------------------------------------
+
+  it('throws OnboardingPhoneRequiredError when phone is null', async () => {
+    repos = makeRepos(null);
+    useCase = new CompleteOnboardingUseCase(
+      repos.profileRepo,
+      repos.officeRepo,
+      repos.pricingPlanRepo,
+      null,
+    );
+
+    repos.officeRepo.findActiveByDoctor.mockResolvedValue([ACTIVE_OFFICE]);
+    repos.pricingPlanRepo.findAllByDoctorId.mockResolvedValue([ACTIVE_PLAN]);
+
+    await expect(useCase.execute(DOCTOR_ID)).rejects.toThrow(OnboardingPhoneRequiredError);
+    expect(repos.profileRepo.markOnboardingCompleted).not.toHaveBeenCalled();
+  });
+
+  it('throws OnboardingPhoneRequiredError when phone is empty string', async () => {
+    repos = makeRepos('');
+    useCase = new CompleteOnboardingUseCase(
+      repos.profileRepo,
+      repos.officeRepo,
+      repos.pricingPlanRepo,
+      null,
+    );
+
+    repos.officeRepo.findActiveByDoctor.mockResolvedValue([ACTIVE_OFFICE]);
+    repos.pricingPlanRepo.findAllByDoctorId.mockResolvedValue([ACTIVE_PLAN]);
+
+    await expect(useCase.execute(DOCTOR_ID)).rejects.toThrow(OnboardingPhoneRequiredError);
+    expect(repos.profileRepo.markOnboardingCompleted).not.toHaveBeenCalled();
+  });
+
+  it('throws OnboardingPhoneRequiredError when phone is whitespace only', async () => {
+    repos = makeRepos('   ');
+    useCase = new CompleteOnboardingUseCase(
+      repos.profileRepo,
+      repos.officeRepo,
+      repos.pricingPlanRepo,
+      null,
+    );
+
+    repos.officeRepo.findActiveByDoctor.mockResolvedValue([ACTIVE_OFFICE]);
+    repos.pricingPlanRepo.findAllByDoctorId.mockResolvedValue([ACTIVE_PLAN]);
+
+    await expect(useCase.execute(DOCTOR_ID)).rejects.toThrow(OnboardingPhoneRequiredError);
+    expect(repos.profileRepo.markOnboardingCompleted).not.toHaveBeenCalled();
+  });
+
+  it('throws OnboardingPhoneRequiredError when profile is not found', async () => {
+    repos.profileRepo.findByDoctorId.mockResolvedValue(null);
+    repos.officeRepo.findActiveByDoctor.mockResolvedValue([ACTIVE_OFFICE]);
+    repos.pricingPlanRepo.findAllByDoctorId.mockResolvedValue([ACTIVE_PLAN]);
+
+    await expect(useCase.execute(DOCTOR_ID)).rejects.toThrow(OnboardingPhoneRequiredError);
+    expect(repos.profileRepo.markOnboardingCompleted).not.toHaveBeenCalled();
+  });
+
+  // ---------------------------------------------------------------------------
+  // Requirements not met (phone present, but offices/services missing)
   // ---------------------------------------------------------------------------
 
   it('throws OnboardingRequirementsNotMetError when there is no active office (even with an active service)', async () => {
@@ -97,7 +168,7 @@ describe('CompleteOnboardingUseCase', () => {
   // Requirements met
   // ---------------------------------------------------------------------------
 
-  it('marks onboarding completed and returns { onboardingCompleted: true } when both requirements are met', async () => {
+  it('marks onboarding completed and returns { onboardingCompleted: true } when phone, office and service are present', async () => {
     repos.officeRepo.findActiveByDoctor.mockResolvedValue([ACTIVE_OFFICE]);
     repos.pricingPlanRepo.findAllByDoctorId.mockResolvedValue([INACTIVE_PLAN, ACTIVE_PLAN]);
 
@@ -119,6 +190,7 @@ describe('CompleteOnboardingUseCase', () => {
 
     await useCase.execute(anotherDoctorId);
 
+    expect(repos.profileRepo.findByDoctorId).toHaveBeenCalledWith(anotherDoctorId);
     expect(repos.officeRepo.findActiveByDoctor).toHaveBeenCalledWith(anotherDoctorId);
     expect(repos.pricingPlanRepo.findAllByDoctorId).toHaveBeenCalledWith(anotherDoctorId);
     expect(repos.profileRepo.markOnboardingCompleted).toHaveBeenCalledWith(anotherDoctorId);
@@ -189,6 +261,26 @@ describe('CompleteOnboardingUseCase', () => {
 
       await expect(useCaseWithHook.execute(DOCTOR_ID)).rejects.toThrow(
         OnboardingRequirementsNotMetError,
+      );
+      await flushHook();
+
+      expect(accrue.execute).not.toHaveBeenCalled();
+    });
+
+    it('does NOT accrue when phone is missing', async () => {
+      const accrue = makeAccrue();
+      const reposNoPhone = makeRepos(null);
+      reposNoPhone.officeRepo.findActiveByDoctor.mockResolvedValue([ACTIVE_OFFICE]);
+      reposNoPhone.pricingPlanRepo.findAllByDoctorId.mockResolvedValue([ACTIVE_PLAN]);
+      const useCaseWithHook = new CompleteOnboardingUseCase(
+        reposNoPhone.profileRepo,
+        reposNoPhone.officeRepo,
+        reposNoPhone.pricingPlanRepo,
+        accrue,
+      );
+
+      await expect(useCaseWithHook.execute(DOCTOR_ID)).rejects.toThrow(
+        OnboardingPhoneRequiredError,
       );
       await flushHook();
 

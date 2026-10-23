@@ -30,6 +30,17 @@ export class DoctorWithActivity {
      * PII — admin-only context. Never expose outside super_admin-guarded surfaces.
      */
     public readonly cedula: string | null = null,
+    /**
+     * Timestamp when the profile row was first created (registration date).
+     * Used by the admin panel "Nuevos este mes" KPI and date-range filters.
+     */
+    public readonly createdAt: Date | null = null,
+    /**
+     * Doctor's contact phone number.
+     * PII — admin-only context. Never expose outside super_admin-guarded surfaces.
+     * Null for profiles that predate the phone column or that have not set it.
+     */
+    public readonly phone: string | null = null,
   ) {}
 
   /**

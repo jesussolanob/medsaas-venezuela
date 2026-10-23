@@ -23,6 +23,12 @@ import type { SubscriptionPaymentStatus } from '../../domain/entities/subscripti
 
 const VALID_STATUSES: SubscriptionPaymentStatus[] = ['pending', 'approved', 'rejected'];
 
+/**
+ * Maximum page size for super_admin-only billing list endpoints.
+ * Raised from 100 to 1000 to support client-side date-range filters.
+ */
+const ADMIN_LIST_MAX_LIMIT = 1000;
+
 interface SuccessResponse<T> {
   success: true;
   data: T;
@@ -87,6 +93,12 @@ export class SubscriptionPaymentsController {
 
   /**
    * GET /api/admin/subscription-payments?status=pending|approved|rejected
+   *
+   * Each item includes doctorName, doctorEmail, doctorSpecialty resolved in a
+   * single batched profile query — no N+1.
+   *
+   * SECURITY: doctorName/email/specialty are doctor PII. This endpoint is guarded
+   * at the class level by @Roles('super_admin').
    */
   @Get('subscription-payments')
   async list(
@@ -102,12 +114,20 @@ export class SubscriptionPaymentsController {
     const result = await this.listPayments.execute({
       status,
       page: Math.max(1, parseInt(page, 10) || 1),
-      limit: Math.min(100, Math.max(1, parseInt(limit, 10) || 20)),
+      limit: Math.min(ADMIN_LIST_MAX_LIMIT, Math.max(1, parseInt(limit, 10) || 20)),
     });
 
     return {
       success: true,
-      data: result.items.map((p) => this.toOutput(p.toPlain())),
+      data: result.items.map((p) => {
+        const profile = result.profiles.get(p.doctorId);
+        return this.toOutput({
+          ...p.toPlain(),
+          doctorName: profile?.fullName ?? null,
+          doctorEmail: profile?.email ?? null,
+          doctorSpecialty: profile?.specialty ?? null,
+        });
+      }),
       meta: { total: result.total, page: result.page, limit: result.limit },
     };
   }
@@ -205,6 +225,12 @@ export class SubscriptionPaymentsController {
     period?: string | null;
     rejectionReason?: string | null;
     receiptUrl?: string | null;
+    /** PII — doctor full name. Admin-only context. */
+    doctorName?: string | null;
+    /** PII — doctor email. Admin-only context. Do NOT log. */
+    doctorEmail?: string | null;
+    /** Doctor specialty (may be null for newly-registered doctors). */
+    doctorSpecialty?: string | null;
   }): unknown {
     return {
       id: props.id,
@@ -225,6 +251,10 @@ export class SubscriptionPaymentsController {
       reviewedBy: props.reviewedBy,
       reviewedAt: props.reviewedAt,
       createdAt: props.createdAt,
+      // Doctor identity (PII — super_admin only).
+      doctorName: props.doctorName ?? null,
+      doctorEmail: props.doctorEmail ?? null,
+      doctorSpecialty: props.doctorSpecialty ?? null,
     };
   }
 }

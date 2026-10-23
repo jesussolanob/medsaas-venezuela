@@ -39,6 +39,7 @@ const makeRepo = (): jest.Mocked<ISubscriptionPaymentRepository> =>
     list: jest.fn(),
     listByDoctor: jest.fn(),
     findById: jest.fn(),
+    findByIds: jest.fn().mockResolvedValue([]),
     findPendingByDoctor: jest.fn(),
     save: jest.fn(),
     saveDoctorPayment: jest.fn(),

@@ -48,6 +48,7 @@ import { AccessAuditLogModel } from '../../../../patients/infrastructure/databas
 import { CryptoService } from '../../../../../infrastructure/crypto/crypto.service';
 import type { SubscriptionPlan, SubscriptionStatus } from '@delta/shared-types';
 import { normalizeForSearch } from '@delta/shared-crypto';
+import { resolveSubscriptionFields } from './subscription-precedence.helper';
 
 // Sensitive keys that must never be returned from the settings endpoint
 const HIDDEN_SETTING_KEYS = new Set(['encryption_key', 'jwt_secret', 'usdt_rate_raw']);
@@ -1299,9 +1300,11 @@ export class SequelizeAdminRepository implements IAdminRepository {
          p.email,
          p.cedula,
          p.specialty,
-         COALESCE(s.plan::text, p.plan)                   AS plan,
-         COALESCE(s.status::text, p.subscription_status)  AS subscription_status,
-         COALESCE(s.current_period_end, p.subscription_expires_at) AS subscription_expires_at,
+         -- ADR-042: profiles is the source of truth. Subscription as fallback for
+         -- legacy accounts whose profile columns have not been backfilled yet.
+         COALESCE(p.plan, s.plan::text)                            AS plan,
+         COALESCE(p.subscription_status::text, s.status::text)    AS subscription_status,
+         COALESCE(p.subscription_expires_at, s.current_period_end) AS subscription_expires_at,
          p.last_sign_in_at
        FROM profiles p
        LEFT JOIN subscriptions s ON s.doctor_id = p.id
@@ -1380,12 +1383,17 @@ export class SequelizeAdminRepository implements IAdminRepository {
     row: ProfileAdminModel,
     sub?: AdminSubscriptionModel,
   ): DoctorWithActivity {
-    // Prefer live subscription data; fall back to profile snapshot columns
-    const subscriptionStatus = (sub?.status ??
-      row.subscriptionStatus ??
-      'trial') as SubscriptionStatus;
-    const subscriptionPlan = (sub?.plan ?? row.plan ?? 'trial') as SubscriptionPlan;
-    const subscriptionExpiresAt = sub?.currentPeriodEnd ?? row.subscriptionExpiresAt ?? null;
+    // ADR-042: profiles is the source of truth for plan/status/expiry.
+    // subscriptions is a legacy table that may desync — used only as fallback.
+    const { subscriptionStatus, subscriptionPlan, subscriptionExpiresAt } =
+      resolveSubscriptionFields({
+        profileStatus: row.subscriptionStatus,
+        profilePlan: row.plan,
+        profileExpiresAt: row.subscriptionExpiresAt,
+        subStatus: sub?.status,
+        subPlan: sub?.plan,
+        subExpiresAt: sub?.currentPeriodEnd,
+      });
 
     // Use real last_sign_in_at from the profiles row (column added in migration 20260612000002).
     const lastSignInAt: Date | null = row.lastSignInAt ?? null;
@@ -1393,6 +1401,14 @@ export class SequelizeAdminRepository implements IAdminRepository {
     // cedula is PII — admin-only context. Passed through to the domain entity so
     // the list and export surfaces can surface it when needed.
     const cedula: string | null = row.cedula ?? null;
+
+    // createdAt: profile row creation timestamp (registration date).
+    // Used for "Nuevos este mes" KPI and admin date-range filters.
+    const createdAt: Date | null = row.createdAt ?? null;
+
+    // phone is PII — admin-only context. Available without an extra query
+    // because profile rows already carry the column.
+    const phone: string | null = row.phone ?? null;
 
     return new DoctorWithActivity(
       row.id,
@@ -1404,6 +1420,8 @@ export class SequelizeAdminRepository implements IAdminRepository {
       subscriptionExpiresAt,
       lastSignInAt,
       cedula,
+      createdAt,
+      phone,
     );
   }
 

@@ -15,8 +15,8 @@
  *   in_progress  reviewed | planned
  *   resolved     done | rejected
  *
- * GAP (backend, Fase 5 / mejora): the backend does not join `profiles`
- * (doctor full_name/specialty), so the admin list shows those fields empty.
+ * The backend now joins `profiles` for the admin list (no N+1 batched query),
+ * so the admin list includes doctor full_name and specialty.
  */
 
 import { NextResponse } from 'next/server';
@@ -35,6 +35,8 @@ interface SuggestionDto {
   admin_response?: string | null;
   created_at: string;
   updated_at?: string;
+  /** Doctor identity resolved by the backend (admin listing only). */
+  profiles?: { full_name: string; email: string; specialty: string | null } | null;
 }
 
 /** Map a backend status to the legacy UI status the pages render. */
@@ -64,7 +66,7 @@ function uiToBackendStatus(status: string): 'pending' | 'reviewed' | 'done' {
 }
 
 function toUiSuggestion(s: SuggestionDto): SuggestionDto {
-  return { ...s, status: backendToUiStatus(s.status) };
+  return { ...s, status: backendToUiStatus(s.status), profiles: s.profiles ?? undefined };
 }
 
 // GET: list suggestions (admin → all; doctor → own)

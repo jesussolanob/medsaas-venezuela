@@ -50,6 +50,22 @@ El boton para enviar dice **Activar cuenta y continuar**. Mientras procesa muest
 
 **Correo de bienvenida:** al completar tu registro por primera vez recibes en tu correo un **email de bienvenida** con un **paso a paso** de como empezar a usar Delta (configurar consultorios, servicios, plantillas, agenda, etc.). Revisa tu bandeja de entrada (y la carpeta de spam por si acaso).
 
+**Segundo paso del onboarding: activacion completa del portal**
+
+Despues del formulario inicial, el sistema exige tres requisitos para darte acceso pleno al portal:
+
+1. **Teléfono de contacto** (obligatorio). Debes tener un numero de telefono guardado en tu perfil.
+   Si tu cuenta fue creada sin telefono, el portal muestra en la pantalla de inicio una seccion
+   **"Pasos por completar"** con el paso **"Agrega tu teléfono"** — pulsa ese paso y te lleva a
+   **Configuracion > Mi perfil** (/doctor/settings) donde puedes agregar o editar tu telefono.
+   Sin telefono, el boton para completar el onboarding devuelve el error:
+   **"Falta tu teléfono de contacto. Complétalo para activar tu cuenta."**
+2. **Al menos un consultorio activo.** Crea uno en **Configuracion > Consultorios** (/doctor/settings).
+3. **Al menos un servicio activo.** Crea uno en **Configuracion > Servicios** (/doctor/settings).
+
+Solo cuando los tres requisitos estan cumplidos puedes pulsar **Completar activacion** y acceder
+al resto del portal sin restricciones.
+
 ---
 
 ## 3. Verificacion de credenciales y sus estados
@@ -694,7 +710,11 @@ Tu cuenta fue bloqueada por un administrador. Comunicate con el soporte de Delta
 Significa que aun no se han confirmado tus credenciales (MPPS/colegiado). No te impide usar el portal. Si no se logra verificar, Delta te contactara por correo.
 
 **Que campos del onboarding son obligatorios?**
-Nombre completo, cedula (V/E/P) y especialidad. El numero MPPS y el numero de colegiado son opcionales.
+El formulario inicial exige: nombre completo, cedula (V/E/P) y especialidad. El numero MPPS y el
+numero de colegiado son opcionales. Para completar la activacion del portal (segundo paso del
+onboarding) ademas necesitas: un **telefono de contacto** guardado en tu perfil, al menos un
+**consultorio activo** y al menos un **servicio activo**. Sin telefono, el sistema bloquea la
+activacion y muestra el aviso "Falta tu telefono de contacto. Completalo para activar tu cuenta."
 
 **Donde edito mi perfil, telefono o metodos de pago?**
 En **Configuracion** (/doctor/settings). El email, la cedula y la especialidad no se pueden editar ahi (vienen del login y del onboarding).

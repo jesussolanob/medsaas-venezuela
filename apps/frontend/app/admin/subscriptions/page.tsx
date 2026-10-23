@@ -29,9 +29,17 @@ import {
   DollarSign,
   Percent,
   ArrowLeftRight,
+  Phone,
+  Mail,
+  Copy,
+  X,
+  MessageCircle,
 } from 'lucide-react';
 import { showToast } from '@/components/ui/Toaster';
 import { reportError } from '@/lib/report-error';
+import DateRangeFilter, { type DateRangeValue } from '@/components/admin/DateRangeFilter';
+import { isWithinRange } from '@/lib/date-range';
+import { normalizePhoneIntl } from '@/lib/phone-utils';
 
 /** Pause after the last keystroke before searching. */
 const SEARCH_DEBOUNCE_MS = 300;
@@ -48,6 +56,10 @@ type DoctorRow = {
   is_expired: boolean;
   expiring_soon: boolean;
   is_in_trial: boolean;
+  /** Profile registration date — available since contract update Oct-2026. */
+  created_at?: string | null;
+  /** Trial end date — available since contract update Oct-2026. */
+  trial_ends_at?: string | null;
 };
 
 type PaymentRow = {
@@ -209,6 +221,12 @@ function DoctorsTab() {
     doctor_name: string;
     current_period_end: string | null;
   } | null>(null);
+  // Date-range filter and which date field to filter on.
+  const [dateRange, setDateRange] = useState<DateRangeValue>({ from: null, to: null });
+  type DateFilterField = 'created_at' | 'current_period_end';
+  const [dateFilterField, setDateFilterField] = useState<DateFilterField>('created_at');
+  // Contactar modal — doctor_id being contacted (null = modal closed).
+  const [contactTarget, setContactTarget] = useState<string | null>(null);
 
   // Debounced copy of `search`: one request per pause, not per keystroke.
   const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -339,6 +357,26 @@ function DoctorsTab() {
     });
   }
 
+  // Apply date-range filter after server-side status/search filtering.
+  const visibleDoctors =
+    dateRange.from || dateRange.to
+      ? doctors.filter((d) =>
+          isWithinRange(
+            dateFilterField === 'created_at' ? d.created_at : d.current_period_end,
+            dateRange.from,
+            dateRange.to,
+          ),
+        )
+      : doctors;
+
+  // Rows excluded because their selected date field is null (silently vanish without this).
+  const nullDateCount =
+    dateRange.from || dateRange.to
+      ? doctors.filter(
+          (d) => !(dateFilterField === 'created_at' ? d.created_at : d.current_period_end),
+        ).length
+      : 0;
+
   return (
     <>
       {/* Modal extender suscripción */}
@@ -409,18 +447,67 @@ function DoctorsTab() {
         </div>
       </div>
 
+      {/* Date-range filter + field selector */}
+      <div className="flex flex-wrap items-center gap-3 mb-3 mt-2">
+        <DateRangeFilter value={dateRange} onChange={setDateRange} />
+        <div className="flex items-center gap-1.5 text-xs">
+          <span className="text-slate-500 font-medium whitespace-nowrap">Fecha de:</span>
+          {(
+            [
+              { value: 'created_at', label: 'Registro' },
+              { value: 'current_period_end', label: 'Vencimiento' },
+            ] as { value: DateFilterField; label: string }[]
+          ).map((opt) => (
+            <button
+              key={opt.value}
+              type="button"
+              onClick={() => setDateFilterField(opt.value)}
+              className={`px-2.5 py-1 rounded-lg border font-semibold transition-colors ${
+                dateFilterField === opt.value
+                  ? 'bg-teal-500 text-white border-teal-500'
+                  : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Contactar modal */}
+      {contactTarget && (
+        <ContactarModal doctorId={contactTarget} onClose={() => setContactTarget(null)} />
+      )}
+
       {/* Tabla en desktop, cards en móvil */}
       <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
         {loading ? (
           <div className="p-12 text-center">
             <Loader2 className="w-6 h-6 animate-spin text-slate-300 mx-auto" />
           </div>
-        ) : doctors.length === 0 ? (
+        ) : visibleDoctors.length === 0 ? (
           <div className="p-12 text-center text-slate-400 text-sm">
-            Sin doctores que coincidan con el filtro.
+            {dateRange.from || dateRange.to
+              ? 'No hay resultados en ese rango'
+              : 'Sin doctores que coincidan con el filtro.'}
           </div>
         ) : (
           <>
+            {/* N de M count when filtered */}
+            {(dateRange.from || dateRange.to) && (
+              <div className="px-4 py-2 text-xs text-slate-500 border-b border-slate-100 bg-slate-50">
+                {visibleDoctors.length} de {doctors.length} especialistas en el rango
+                {nullDateCount > 0 && (
+                  <span className="ml-1">
+                    · {nullDateCount} sin{' '}
+                    {dateFilterField === 'created_at'
+                      ? 'fecha de registro'
+                      : 'fecha de vencimiento'}{' '}
+                    (excluidos)
+                  </span>
+                )}
+              </div>
+            )}
             {/* Desktop ≥ md: tabla */}
             <div className="hidden md:block overflow-x-auto">
               <table className="w-full text-sm">
@@ -431,11 +518,12 @@ function DoctorsTab() {
                     <th className="px-4 py-3 text-left">Plan</th>
                     <th className="px-4 py-3 text-right">Días restantes</th>
                     <th className="px-4 py-3 text-left">Vence</th>
+                    <th className="px-4 py-3 text-left">Contacto</th>
                     <th className="px-4 py-3 text-right">Acciones</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {doctors.map((d) => {
+                  {visibleDoctors.map((d) => {
                     const badge = STATUS_BADGES[d.status || 'trial'] || STATUS_BADGES.trial;
                     return (
                       <tr key={d.doctor_id} className="hover:bg-slate-50">
@@ -475,6 +563,15 @@ function DoctorsTab() {
                                 year: 'numeric',
                               })
                             : '—'}
+                        </td>
+                        <td className="px-4 py-3">
+                          <button
+                            type="button"
+                            onClick={() => setContactTarget(d.doctor_id)}
+                            className="px-2.5 py-1 text-xs font-semibold text-teal-700 bg-teal-50 hover:bg-teal-100 rounded-lg border border-teal-100 transition-colors whitespace-nowrap"
+                          >
+                            Contactar
+                          </button>
                         </td>
                         <td className="px-4 py-3 text-right">
                           <div className="inline-flex items-center gap-1">
@@ -530,7 +627,7 @@ function DoctorsTab() {
 
             {/* Móvil < md: cards */}
             <div className="md:hidden divide-y divide-slate-100">
-              {doctors.map((d) => {
+              {visibleDoctors.map((d) => {
                 const badge = STATUS_BADGES[d.status || 'trial'] || STATUS_BADGES.trial;
                 return (
                   <div key={d.doctor_id} className="p-4 space-y-3">
@@ -629,6 +726,13 @@ function DoctorsTab() {
                           <Pause className="w-4 h-4" /> Suspender
                         </button>
                       )}
+                      <button
+                        type="button"
+                        onClick={() => setContactTarget(d.doctor_id)}
+                        className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs font-bold text-teal-700 bg-teal-50 hover:bg-teal-100 rounded-lg border border-teal-100"
+                      >
+                        Contactar
+                      </button>
                     </div>
                   </div>
                 );
@@ -1659,6 +1763,265 @@ function ConfigTab() {
                 </div>
               );
             })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── CONTACTAR MODAL ─────────────────────────────────────────────────────────
+/**
+ * Modal that lazily fetches a doctor's contact details and shows:
+ *   - Nombre, Cédula, Correo, Teléfono
+ *   - Copy-to-clipboard buttons
+ *   - Quick actions: WhatsApp, email, phone call
+ *
+ * PII is never pre-fetched for all rows — only fetched on open.
+ * Accessible: real focus trap (Tab/Shift+Tab cycle), initial focus on close
+ * button (autoFocus), Esc closes, role=dialog, aria-labelledby.
+ * Returns focus to the element that opened it on close.
+ */
+
+interface DoctorContact {
+  id: string;
+  fullName: string;
+  email: string;
+  phone: string | null;
+  cedula: string | null;
+}
+
+function ContactarModal({ doctorId, onClose }: { doctorId: string; onClose: () => void }) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const [contact, setContact] = useState<DoctorContact | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [copiedField, setCopiedField] = useState<string | null>(null);
+
+  // Return focus to the element that had it before the modal opened.
+  useEffect(() => {
+    const returnTo = document.activeElement as HTMLElement | null;
+    return () => {
+      // Si el botón que lo abrió ya no está en pantalla (re-render de la tabla),
+      // no hay a dónde devolver el foco.
+      if (returnTo?.isConnected) returnTo.focus();
+    };
+  }, []);
+
+  // Tab / Shift+Tab focus trap — queries focusable elements dynamically so it
+  // works correctly while the dialog contents change (loading → loaded).
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Tab') return;
+      const focusable = Array.from(
+        dialog.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), input:not([disabled]), ' +
+            'select:not([disabled]), textarea:not([disabled]), ' +
+            '[tabindex]:not([tabindex="-1"])',
+        ),
+      ).filter((el) => el.offsetParent !== null);
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (e.shiftKey) {
+        if (document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        }
+      } else {
+        if (document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, []); // runs once — focusable elements are queried dynamically inside the handler
+
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      try {
+        const res = await fetch(`/api/admin/doctor-details?id=${doctorId}`);
+        const body = await res.json();
+        if (cancelled) return;
+        if (!res.ok) throw new Error(body.error || 'Error al cargar detalles');
+        setContact({
+          id: doctorId,
+          fullName: body.profile?.full_name ?? '—',
+          email: body.profile?.email ?? '',
+          phone: body.profile?.phone ?? null,
+          cedula: body.profile?.cedula ?? null,
+        });
+      } catch (e: unknown) {
+        if (!cancelled) setError(e instanceof Error ? e.message : 'Error al cargar detalles');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [doctorId]);
+
+  // Close on Escape key
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  async function copyToClipboard(value: string, field: string) {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopiedField(field);
+      setTimeout(() => setCopiedField(null), 2000);
+    } catch {
+      // fallback — ignore
+    }
+  }
+
+  // Use the shared normalizePhoneIntl helper (handles VE local + international E.164).
+  // Returns '' for invalid numbers → convert to null so the WhatsApp button stays hidden.
+  const waNumber = contact?.phone ? normalizePhoneIntl(contact.phone) || null : null;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: 'rgba(15,23,42,0.5)' }}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="contactar-title"
+        className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden"
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+          <h2 id="contactar-title" className="text-base font-bold text-slate-900">
+            Información de contacto
+          </h2>
+          <button
+            type="button"
+            onClick={onClose}
+            autoFocus
+            className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors"
+            aria-label="Cerrar"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="px-6 py-5">
+          {loading ? (
+            <div className="flex items-center justify-center gap-2 py-10 text-slate-400">
+              <Loader2 className="w-5 h-5 animate-spin" />
+              <span className="text-sm">Cargando datos…</span>
+            </div>
+          ) : error ? (
+            <div className="py-8 text-center">
+              <p className="text-sm text-red-600">{error}</p>
+            </div>
+          ) : contact ? (
+            <div className="space-y-4">
+              {/* Contact fields */}
+              {[
+                { key: 'name', label: 'Nombre', value: contact.fullName },
+                {
+                  key: 'cedula',
+                  label: 'Identificación',
+                  value: contact.cedula ?? 'No registrado',
+                },
+                { key: 'email', label: 'Correo', value: contact.email || 'No registrado' },
+                {
+                  key: 'phone',
+                  label: 'Teléfono',
+                  value: contact.phone || null,
+                  hint: !contact.phone ? 'El especialista aún no cargó su teléfono' : undefined,
+                },
+              ].map(({ key, label, value, hint }) => (
+                <div key={key} className="flex items-start justify-between gap-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-0.5">
+                      {label}
+                    </div>
+                    {value ? (
+                      <div className="text-sm font-medium text-slate-800 break-all">{value}</div>
+                    ) : (
+                      <div className="text-sm text-slate-400 italic">{hint ?? 'No registrado'}</div>
+                    )}
+                  </div>
+                  {value && (
+                    <button
+                      type="button"
+                      onClick={() => copyToClipboard(value, key)}
+                      className="shrink-0 p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors"
+                      title={`Copiar ${label.toLowerCase()}`}
+                    >
+                      {copiedField === key ? (
+                        <CheckCircle2 className="w-4 h-4 text-teal-500" />
+                      ) : (
+                        <Copy className="w-4 h-4" />
+                      )}
+                    </button>
+                  )}
+                </div>
+              ))}
+
+              {/* Toast feedback */}
+              {copiedField && (
+                <p className="text-xs text-teal-600 font-medium">Copiado al portapapeles</p>
+              )}
+            </div>
+          ) : null}
+        </div>
+
+        {/* Actions footer */}
+        {contact && !loading && !error && (
+          <div className="px-6 py-4 border-t border-slate-100 flex flex-wrap gap-2">
+            {/* Only render the mailto link when the address passes a safe-pattern check
+                (no `?`, `&`, `#`, whitespace, CR/LF) to prevent href injection.
+                The copy button above always shows regardless. */}
+            {contact.email && /^[^\s&#?'<>\r\n]+@[^\s&#?'<>\r\n]+$/.test(contact.email) && (
+              <a
+                href={`mailto:${contact.email}`}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition-colors"
+              >
+                <Mail className="w-3.5 h-3.5" />
+                Escribir correo
+              </a>
+            )}
+            {waNumber && (
+              <a
+                href={`https://wa.me/${waNumber}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs font-semibold transition-colors"
+              >
+                <MessageCircle className="w-3.5 h-3.5" />
+                WhatsApp
+              </a>
+            )}
+            {contact.phone && (
+              <a
+                href={`tel:${contact.phone}`}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-semibold transition-colors"
+              >
+                <Phone className="w-3.5 h-3.5" />
+                Llamar
+              </a>
+            )}
           </div>
         )}
       </div>
