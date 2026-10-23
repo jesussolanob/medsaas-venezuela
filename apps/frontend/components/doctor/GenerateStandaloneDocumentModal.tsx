@@ -212,7 +212,22 @@ export default function GenerateStandaloneDocumentModal({
   });
 
   // Patient
-  const [patient, setPatient] = useState<PatientLookup | null>(preselectedPatient ?? null);
+  // Al editar un borrador el paciente viene en el propio documento. Sin esto
+  // `patient` quedaba en null y Guardar / Crear / Crear y enviar salían en
+  // silencio por la guarda `if (!patient ...)` (visto en QA de staging, 23/10).
+  const [patient, setPatient] = useState<PatientLookup | null>(() => {
+    if (preselectedPatient) return preselectedPatient;
+    if (initialDraft?.patient) {
+      return {
+        id: initialDraft.patient.id,
+        full_name: initialDraft.patient.fullName,
+        cedula: initialDraft.patient.cedula ?? null,
+        email: null,
+        phone: null,
+      };
+    }
+    return null;
+  });
 
   // Doc type
   const [docType, setDocType] = useState<StandaloneDocumentType | null>(
