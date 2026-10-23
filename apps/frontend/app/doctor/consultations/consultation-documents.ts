@@ -10,6 +10,7 @@
 import type { ContentBlock, DocumentPage } from '@/components/pdf/MedicalDocumentPdf';
 import { parseRichHtml } from '@/lib/html-to-rich-text';
 import { htmlToPlainText } from '@delta/shared-utils';
+import { formatYmdEs } from '@/lib/date-range';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -528,12 +529,9 @@ export function buildRestBlocks(rest: RestData | null | undefined): ContentBlock
   const diagRich = parseRichHtml(rest.diagnosis ?? '');
   const commentsRich = rest.comments ? parseRichHtml(rest.comments) : [];
 
-  const fecha = (iso: string): string =>
-    new Date(iso).toLocaleDateString('es-VE', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-    });
+  // YYYY-MM-DD sin pasar por Date: `new Date('2026-10-23')` es medianoche UTC
+  // e imprimía el día anterior en Venezuela.
+  const fecha = formatYmdEs;
 
   const periodo =
     `${rest.days} día${rest.days !== 1 ? 's' : ''}` +
