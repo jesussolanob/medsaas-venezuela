@@ -43,6 +43,7 @@ import {
   createDraftStandaloneDocument,
   updateDraftStandaloneDocument,
   issueStandaloneDocument,
+  getStandaloneDocument,
   deleteDraftStandaloneDocument,
   shareStandaloneDocument,
   type StandaloneDocumentType,
@@ -362,7 +363,23 @@ export default function GenerateStandaloneDocumentModal({
           setError(res.error ?? 'Error al emitir el documento.');
           return;
         }
-        setIssuedDoc(res.document);
+        // POST /:id/issue devuelve la entidad sola, sin `patient` ni
+        // `patientName`: la vista de resultado y el PDF los necesitan, así que
+        // se relee el detalle (GET /:id, forma plana con `patient`). Si esa
+        // lectura falla, se completa con el paciente ya elegido en el modal.
+        const detail = await getStandaloneDocument(savedId);
+        setIssuedDoc(
+          detail ?? {
+            ...res.document,
+            patientName: patient.full_name,
+            patient: {
+              id: patient.id,
+              fullName: patient.full_name,
+              cedula: patient.cedula || null,
+              age: null,
+            },
+          },
+        );
         // `onSuccess` NO se llama acá: las pantallas que abren este modal lo
         // cierran en su onSuccess, y entonces "Crear y enviar" emitía pero el
         // paso de enviar nunca aparecía (visto en QA de staging, 23/10). Se avisa
