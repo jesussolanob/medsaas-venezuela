@@ -441,7 +441,12 @@ export default function GenerateStandaloneDocumentModal({
       )}
 
       {open && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="standalone-doc-modal-title"
+        >
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden max-h-[90vh] flex flex-col">
             {/* Header */}
             <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 shrink-0">
@@ -450,7 +455,10 @@ export default function GenerateStandaloneDocumentModal({
                   <FileText className="w-4 h-4 text-teal-600" />
                 </div>
                 <div>
-                  <h2 className="text-base font-bold text-slate-800">
+                  <h2
+                    id="standalone-doc-modal-title"
+                    className="text-base font-bold text-slate-800"
+                  >
                     {issuedDoc
                       ? 'Documento emitido'
                       : initialDraft
