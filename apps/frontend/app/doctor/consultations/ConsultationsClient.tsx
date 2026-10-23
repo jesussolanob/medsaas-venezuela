@@ -126,6 +126,7 @@ import PaymentMethodModal from './PaymentMethodModal';
 import ChangeServiceModal from './ChangeServiceModal';
 import IncomeModal, { type IncomeForm } from '@/components/finances/IncomeModal';
 import { UseTemplateButton } from '@/components/doctor/document-editors/UseTemplateButton';
+import { todayCaracas } from '@/lib/date-range';
 import {
   getIncomeConcepts,
   addIncome,
@@ -4731,6 +4732,7 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                       {!planLoading && planFeatures.content_templates && (
                         <UseTemplateButton
                           type="reposo"
+                          allowAppend={false}
                           hasExistingContent={
                             reposoDiagnosis.trim() !== '' || reposoDays > 0 || !!reposoFrom
                           }
@@ -4740,7 +4742,9 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                               days: number;
                               comments: string;
                             };
-                            const today = new Date().toISOString().split('T')[0];
+                            // "Hoy" en Caracas: con toISOString() (UTC), después de las
+                            // 8 p. m. el reposo arrancaba al día siguiente.
+                            const today = todayCaracas();
                             const toDate = new Date(today);
                             toDate.setDate(toDate.getDate() + c.days);
                             setReposoDiagnosis(c.diagnosis);

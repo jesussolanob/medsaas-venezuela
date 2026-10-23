@@ -64,6 +64,13 @@ interface FormItem {
   description: string;
   quantity: string;
   unit_price_usd: string;
+  /**
+   * Solo de pantalla (no viaja al backend — `itemToInput` copia campo por campo):
+   * el ítem venía de una plantilla y ya no existe en el catálogo, así que entró
+   * como manual con precio 0. El aviso NO va en el nombre: el nombre se imprime
+   * en el presupuesto que recibe el paciente.
+   */
+  catalogMissing?: boolean;
 }
 
 function newItem(overrides: Partial<FormItem> = {}): FormItem {
@@ -311,7 +318,8 @@ export default function QuoteCreateModal({ onClose, onCreated }: Props) {
           return newItem({
             kind: 'manual',
             source_id: null,
-            name: `${tItem.name} ⚠ Ya no está en tu catálogo — revisa el precio`,
+            name: tItem.name,
+            catalogMissing: true,
             description: tItem.description ?? '',
             quantity: String(tItem.quantity ?? 1),
             unit_price_usd: '0',
@@ -332,7 +340,8 @@ export default function QuoteCreateModal({ onClose, onCreated }: Props) {
         return newItem({
           kind: 'manual',
           source_id: null,
-          name: `${tItem.name} ⚠ Ya no está en tu catálogo — revisa el precio`,
+          name: tItem.name,
+          catalogMissing: true,
           description: tItem.description ?? '',
           quantity: String(tItem.quantity ?? 1),
           unit_price_usd: '0',
@@ -917,6 +926,11 @@ export default function QuoteCreateModal({ onClose, onCreated }: Props) {
                         required
                         className="w-full text-xs border border-slate-200 rounded-lg py-2 px-2.5 outline-none focus:border-teal-400 bg-white placeholder:text-slate-300"
                       />
+                      {item.catalogMissing && (
+                        <p className="mt-1 text-[10px] font-semibold text-amber-700" role="note">
+                          ⚠ Ya no está en tu catálogo — revisa el precio
+                        </p>
+                      )}
                     </div>
                     {/* Quantity */}
                     <div className="col-span-2">
@@ -943,7 +957,7 @@ export default function QuoteCreateModal({ onClose, onCreated }: Props) {
                         value={item.unit_price_usd}
                         onChange={(e) => {
                           const v = e.target.value.replace(/[^0-9.]/g, '');
-                          updateItem(item._key, { unit_price_usd: v });
+                          updateItem(item._key, { unit_price_usd: v, catalogMissing: false });
                         }}
                         placeholder="0.00"
                         className="w-full text-xs border border-slate-200 rounded-lg py-2 pl-5 pr-2.5 outline-none focus:border-teal-400 bg-white text-right"

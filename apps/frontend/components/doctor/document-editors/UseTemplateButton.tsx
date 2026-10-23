@@ -27,6 +27,11 @@ interface UseTemplateButtonProps {
   type: ContentTemplateType;
   hasExistingContent: boolean;
   onApply: (template: ContentTemplate, action: 'append' | 'replace') => void;
+  /**
+   * false cuando "agregar" no tiene sentido (reposo: un solo diagnóstico y un
+   * solo período). Entonces la confirmación ofrece solo Reemplazar / Cancelar.
+   */
+  allowAppend?: boolean;
   className?: string;
 }
 
@@ -34,6 +39,7 @@ export function UseTemplateButton({
   type,
   hasExistingContent,
   onApply,
+  allowAppend = true,
   className = '',
 }: UseTemplateButtonProps) {
   const [open, setOpen] = useState(false);
@@ -182,20 +188,24 @@ export function UseTemplateButton({
                 Ya tienes contenido en este bloque.
                 <br />
                 <strong className="text-slate-900">
-                  ¿Agregar al contenido actual o reemplazarlo?
+                  {allowAppend
+                    ? '¿Agregar al contenido actual o reemplazarlo?'
+                    : '¿Reemplazar el contenido actual con la plantilla?'}
                 </strong>
               </p>
               <p className="text-xs font-semibold text-teal-700 truncate">
                 Plantilla: {confirmTemplate.name}
               </p>
               <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => handleConfirm('append')}
-                  className="flex-1 py-2 text-xs font-bold bg-teal-500 text-white rounded-lg hover:bg-teal-600 transition-colors"
-                >
-                  Agregar
-                </button>
+                {allowAppend && (
+                  <button
+                    type="button"
+                    onClick={() => handleConfirm('append')}
+                    className="flex-1 py-2 text-xs font-bold bg-teal-500 text-white rounded-lg hover:bg-teal-600 transition-colors"
+                  >
+                    Agregar
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => handleConfirm('replace')}
