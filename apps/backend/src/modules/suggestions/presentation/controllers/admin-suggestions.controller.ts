@@ -39,12 +39,20 @@ export class AdminSuggestionsController {
    * GET /api/admin/suggestions?status=
    *
    * Returns all suggestions across all doctors, optionally filtered by status.
+   * Each item includes the doctor's name and specialty resolved from a single
+   * batched profile query — no N+1.
+   *
+   * SECURITY: doctorName/email/specialty are doctor PII. This endpoint is guarded
+   * at the class level by @Roles('super_admin').
    */
   @Get()
   async listAll(@Query('status') statusRaw?: string): Promise<SuccessResponse<unknown[]>> {
     const status = this.parseOptionalStatus(statusRaw);
-    const suggestions = await this.listAllSuggestions.execute({ status });
-    return { success: true, data: suggestions.map(toSuggestionResponse) };
+    const { suggestions, profiles } = await this.listAllSuggestions.execute({ status });
+    return {
+      success: true,
+      data: suggestions.map((s) => toSuggestionResponse(s, profiles.get(s.doctorId))),
+    };
   }
 
   /**

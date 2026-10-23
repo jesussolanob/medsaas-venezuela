@@ -187,9 +187,10 @@ Tiempo promedio de respuesta.
 **Filtro de fecha "Desde / Hasta"** (fecha del pago): disponible en cada pestaña para acotar
 los comprobantes al rango de fechas de envío del pago.
 
-**Cada fila de la cola muestra:** avatar e iniciales del especialista, nombre, especialidad, monto en
-USD (y en Bs si aplica, con la tasa BCV usada), duración en meses, método de pago, número de
-referencia, nota del especialista (si la dejó) y fecha de envío.
+**Cada fila de la cola muestra:** avatar e iniciales del especialista, nombre y especialidad
+(resueltos automáticamente desde el perfil del doctor), monto en USD (y en Bs si aplica, con la
+tasa BCV usada), duración en meses, método de pago, número de referencia, nota del especialista
+(si la dejó) y fecha de envío.
 
 **Botones por fila (solo en la pestaña Pendientes):**
 - Icono de ojo **Ver comprobante** — abre el comprobante subido por el especialista (imagen o PDF) en
@@ -550,8 +551,8 @@ Bandeja de sugerencias enviadas por los especialistas. Sirve para leer, clasific
 enviadas en el rango indicado. Útil para revisar sugerencias de un período específico.
 
 **Cada sugerencia muestra:** categoría (Nueva funcionalidad, Problema, Mejora, General) con color,
-estado, asunto, mensaje, especialista que la envió, su especialidad y fecha. Si ya respondiste, se ve tu
-respuesta resaltada.
+estado, asunto, mensaje, nombre y especialidad del especialista que la envió (resueltos
+automáticamente desde su perfil) y fecha. Si ya respondiste, se ve tu respuesta resaltada.
 
 **Acciones por sugerencia (si no está resuelta):**
 - **Responder** — abre un cuadro de texto para escribir la respuesta y el botón **Responder y

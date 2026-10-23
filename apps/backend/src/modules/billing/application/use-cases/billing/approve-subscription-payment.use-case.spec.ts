@@ -67,6 +67,7 @@ describe('ApproveSubscriptionPaymentUseCase', () => {
 
     mockProfileRepo = {
       findById: jest.fn().mockResolvedValue(makeProfile()),
+      findByIds: jest.fn().mockResolvedValue([]),
     };
 
     mockMailer = {

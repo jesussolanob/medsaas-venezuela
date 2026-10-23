@@ -9,7 +9,7 @@ import type { IProfileLookupRepository } from '../../../domain/repositories/prof
 // ---------------------------------------------------------------------------
 
 function makeProfile() {
-  return { id: 'doc-1', fullName: 'Dr. Gonzalez', email: 'dr@example.com' };
+  return { id: 'doc-1', fullName: 'Dr. Gonzalez', email: 'dr@example.com', specialty: null };
 }
 
 function makeSavedPayment(
@@ -56,6 +56,7 @@ describe('RegisterManualPaymentUseCase', () => {
 
     mockProfileRepo = {
       findById: jest.fn(),
+      findByIds: jest.fn().mockResolvedValue([]),
     };
 
     useCase = new RegisterManualPaymentUseCase(mockRepo, mockProfileRepo);

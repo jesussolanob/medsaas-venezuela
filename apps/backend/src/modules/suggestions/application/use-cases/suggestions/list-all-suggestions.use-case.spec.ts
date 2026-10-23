@@ -1,5 +1,6 @@
 import { ListAllSuggestionsUseCase } from './list-all-suggestions.use-case';
 import type { ISuggestionRepository } from '../../../domain/repositories/suggestion.repository';
+import type { ISuggestionProfileLookupRepository } from '../../../domain/repositories/suggestion-profile-lookup.repository';
 import { Suggestion } from '../../../domain/entities/suggestion.entity';
 
 const DOCTOR_ID_1 = 'dddddddd-0000-0000-0000-000000000001';
@@ -27,6 +28,7 @@ function makeSuggestion(
 describe('ListAllSuggestionsUseCase', () => {
   let useCase: ListAllSuggestionsUseCase;
   let mockRepo: jest.Mocked<ISuggestionRepository>;
+  let mockProfileLookup: jest.Mocked<ISuggestionProfileLookupRepository>;
 
   beforeEach(() => {
     mockRepo = {
@@ -36,7 +38,10 @@ describe('ListAllSuggestionsUseCase', () => {
       create: jest.fn(),
       save: jest.fn(),
     };
-    useCase = new ListAllSuggestionsUseCase(mockRepo);
+    mockProfileLookup = {
+      findByIds: jest.fn().mockResolvedValue([]),
+    };
+    useCase = new ListAllSuggestionsUseCase(mockRepo, mockProfileLookup);
   });
 
   it('returns all suggestions across doctors when no filter given', async () => {
@@ -49,7 +54,7 @@ describe('ListAllSuggestionsUseCase', () => {
     const result = await useCase.execute({});
 
     expect(mockRepo.listAll).toHaveBeenCalledWith({ status: undefined });
-    expect(result).toHaveLength(2);
+    expect(result.suggestions).toHaveLength(2);
   });
 
   it('passes status filter to repository when provided', async () => {
@@ -65,7 +70,7 @@ describe('ListAllSuggestionsUseCase', () => {
 
     const result = await useCase.execute({});
 
-    expect(result).toHaveLength(0);
+    expect(result.suggestions).toHaveLength(0);
   });
 
   it('returns suggestions from multiple doctors', async () => {
@@ -77,7 +82,57 @@ describe('ListAllSuggestionsUseCase', () => {
 
     const result = await useCase.execute({});
 
-    expect(result[0]!.doctorId).toBe(DOCTOR_ID_1);
-    expect(result[1]!.doctorId).toBe(DOCTOR_ID_2);
+    expect(result.suggestions[0]!.doctorId).toBe(DOCTOR_ID_1);
+    expect(result.suggestions[1]!.doctorId).toBe(DOCTOR_ID_2);
+  });
+
+  // ---------------------------------------------------------------------------
+  // Profile enrichment
+  // ---------------------------------------------------------------------------
+
+  it('calls findByIds with distinct doctorIds from suggestions', async () => {
+    const s1 = makeSuggestion('ssssssss-0000-0000-0000-000000000001', DOCTOR_ID_1);
+    const s2 = makeSuggestion('ssssssss-0000-0000-0000-000000000002', DOCTOR_ID_1); // same doctor
+    mockRepo.listAll.mockResolvedValue([s1, s2]);
+
+    await useCase.execute({});
+
+    // Deduplication: only one unique doctorId
+    expect(mockProfileLookup.findByIds).toHaveBeenCalledWith([DOCTOR_ID_1]);
+  });
+
+  it('returns profiles map keyed by doctorId', async () => {
+    mockRepo.listAll.mockResolvedValue([
+      makeSuggestion('ssssssss-0000-0000-0000-000000000001', DOCTOR_ID_1),
+    ]);
+    mockProfileLookup.findByIds.mockResolvedValue([
+      { id: DOCTOR_ID_1, fullName: 'Dra. Smith', email: 'smith@clinic.com', specialty: 'Cardio' },
+    ]);
+
+    const result = await useCase.execute({});
+
+    expect(result.profiles.get(DOCTOR_ID_1)).toMatchObject({
+      fullName: 'Dra. Smith',
+      specialty: 'Cardio',
+    });
+  });
+
+  it('does not call findByIds when suggestion list is empty', async () => {
+    mockRepo.listAll.mockResolvedValue([]);
+
+    await useCase.execute({});
+
+    expect(mockProfileLookup.findByIds).toHaveBeenCalledWith([]);
+  });
+
+  it('returns empty profiles map when profile lookup returns no rows', async () => {
+    mockRepo.listAll.mockResolvedValue([
+      makeSuggestion('ssssssss-0000-0000-0000-000000000001', DOCTOR_ID_1),
+    ]);
+    mockProfileLookup.findByIds.mockResolvedValue([]);
+
+    const result = await useCase.execute({});
+
+    expect(result.profiles.size).toBe(0);
   });
 });

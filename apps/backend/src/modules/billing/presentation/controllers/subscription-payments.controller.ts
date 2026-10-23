@@ -93,6 +93,12 @@ export class SubscriptionPaymentsController {
 
   /**
    * GET /api/admin/subscription-payments?status=pending|approved|rejected
+   *
+   * Each item includes doctorName, doctorEmail, doctorSpecialty resolved in a
+   * single batched profile query — no N+1.
+   *
+   * SECURITY: doctorName/email/specialty are doctor PII. This endpoint is guarded
+   * at the class level by @Roles('super_admin').
    */
   @Get('subscription-payments')
   async list(
@@ -113,7 +119,15 @@ export class SubscriptionPaymentsController {
 
     return {
       success: true,
-      data: result.items.map((p) => this.toOutput(p.toPlain())),
+      data: result.items.map((p) => {
+        const profile = result.profiles.get(p.doctorId);
+        return this.toOutput({
+          ...p.toPlain(),
+          doctorName: profile?.fullName ?? null,
+          doctorEmail: profile?.email ?? null,
+          doctorSpecialty: profile?.specialty ?? null,
+        });
+      }),
       meta: { total: result.total, page: result.page, limit: result.limit },
     };
   }
@@ -211,6 +225,12 @@ export class SubscriptionPaymentsController {
     period?: string | null;
     rejectionReason?: string | null;
     receiptUrl?: string | null;
+    /** PII — doctor full name. Admin-only context. */
+    doctorName?: string | null;
+    /** PII — doctor email. Admin-only context. Do NOT log. */
+    doctorEmail?: string | null;
+    /** Doctor specialty (may be null for newly-registered doctors). */
+    doctorSpecialty?: string | null;
   }): unknown {
     return {
       id: props.id,
@@ -231,6 +251,10 @@ export class SubscriptionPaymentsController {
       reviewedBy: props.reviewedBy,
       reviewedAt: props.reviewedAt,
       createdAt: props.createdAt,
+      // Doctor identity (PII — super_admin only).
+      doctorName: props.doctorName ?? null,
+      doctorEmail: props.doctorEmail ?? null,
+      doctorSpecialty: props.doctorSpecialty ?? null,
     };
   }
 }
