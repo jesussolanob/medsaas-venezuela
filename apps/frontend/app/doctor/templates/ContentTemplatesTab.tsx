@@ -12,7 +12,7 @@
  *   onCreateFromBrandingTab — callback so parent can open create modal directly
  */
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Loader2, Plus, Pencil, Trash2, BookMarked, AlertCircle } from 'lucide-react';
 import { showToast } from '@/components/ui/Toaster';
 import {
@@ -100,21 +100,11 @@ export default function ContentTemplatesTab({
     };
   }, []);
 
-  // Handle parent-driven "create for this type" (from branding tab button)
-  useEffect(() => {
-    if (!openCreateForType) return;
-    // Queue as microtask to avoid synchronous setState inside effect body
-    queueMicrotask(() => {
-      setModalMode('create');
-      setModalInitialType(openCreateForType);
-      setEditingTemplate(null);
-      setShowModal(true);
-      onCreateHandled?.();
-    });
-  }, [openCreateForType, onCreateHandled]);
-
-  // Lazy load catalog when presupuesto modal is needed
-  async function ensureCatalog() {
+  // Load the services/products catalog every time the modal opens, from ANY
+  // entry point (create, edit, branding-tab button): the type can be switched to Presupuesto inside the modal,
+  // so loading only when it opened as presupuesto left the pickers saying
+  // "Sin servicios" (seen in staging QA, 23/10).
+  const ensureCatalog = useCallback(async () => {
     if (catalogLoaded) return;
     try {
       const [services, productsResult] = await Promise.allSettled([
@@ -129,13 +119,27 @@ export default function ContentTemplatesTab({
     } catch {
       /* catalog stays empty — editor handles the empty state */
     }
-  }
+  }, [catalogLoaded]);
+
+  // Handle parent-driven "create for this type" (from branding tab button)
+  useEffect(() => {
+    if (!openCreateForType) return;
+    // Queue as microtask to avoid synchronous setState inside effect body
+    queueMicrotask(() => {
+      setModalMode('create');
+      setModalInitialType(openCreateForType);
+      setEditingTemplate(null);
+      void ensureCatalog();
+      setShowModal(true);
+      onCreateHandled?.();
+    });
+  }, [openCreateForType, onCreateHandled, ensureCatalog]);
 
   function openCreate(type: ContentTemplateType = 'recipe') {
     setModalMode('create');
     setModalInitialType(type);
     setEditingTemplate(null);
-    if (type === 'presupuesto') void ensureCatalog();
+    void ensureCatalog();
     setShowModal(true);
   }
 
@@ -143,7 +147,7 @@ export default function ContentTemplatesTab({
     setModalMode('edit');
     setModalInitialType(tpl.type);
     setEditingTemplate(tpl);
-    if (tpl.type === 'presupuesto') void ensureCatalog();
+    void ensureCatalog();
     setShowModal(true);
   }
 
