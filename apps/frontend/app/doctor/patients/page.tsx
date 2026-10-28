@@ -2256,171 +2256,176 @@ export default function PatientsPage() {
                 )}
               </div>
             )}
-          </div>
-        </div>
-      )}
 
-      {/* Entrega 3 — Tab "Recipes y paraclínicos" (standalone docs sin consulta) */}
-      {detailTab === 'standalone_docs' && selected && planFeatures.standalone_documents && (
-        <div className="mt-4 space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <FilePlus className="w-4 h-4 text-teal-500" />
-              <span className="text-sm font-semibold text-slate-700">Recipes y paraclínicos</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => void loadStandaloneDocs(selected.id)}
-                className="p-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors text-slate-400"
-                aria-label="Actualizar"
-              >
-                <RefreshCw className="w-3.5 h-3.5" />
-              </button>
-              <button
-                onClick={() => setShowStandaloneModal(true)}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-teal-500 hover:bg-teal-600 text-white rounded-lg text-xs font-bold transition-colors"
-              >
-                <FilePlus className="w-3.5 h-3.5" /> Generar
-              </button>
-            </div>
-          </div>
-
-          {standaloneLoading ? (
-            <div className="flex items-center gap-2 py-6 justify-center text-slate-400">
-              <Loader2 className="w-4 h-4 animate-spin" />
-              <span className="text-sm">Cargando…</span>
-            </div>
-          ) : standaloneDocs.length === 0 ? (
-            <div className="border border-dashed border-slate-200 rounded-xl py-8 text-center text-slate-400 text-sm">
-              Sin documentos para este paciente todavía.
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {standaloneDocs.map((doc) => {
-                const typeLabel: Record<StandaloneDocumentType, string> = {
-                  recipe: 'Récipe',
-                  paraclinical: 'Paraclínicos',
-                  reposo: 'Reposo',
-                };
-                const statusClasses: Record<string, string> = {
-                  draft: 'bg-amber-50 text-amber-700 border-amber-200',
-                  issued: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-                  voided: 'bg-slate-100 text-slate-500 border-slate-200',
-                };
-                const statusLabel: Record<string, string> = {
-                  draft: 'Borrador',
-                  issued: 'Emitido',
-                  voided: 'Anulado',
-                };
-                return (
-                  <div
-                    key={doc.id}
-                    className="bg-white border border-slate-200 rounded-xl px-3 py-2.5 flex items-center justify-between gap-3"
-                  >
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-sm font-semibold text-slate-800">
-                          {typeLabel[doc.type]}
-                        </span>
-                        {doc.code && (
-                          <span className="text-xs font-mono text-slate-500">{doc.code}</span>
-                        )}
-                        <span
-                          className={`text-[10px] font-bold border px-1.5 py-0.5 rounded-full ${statusClasses[doc.status] ?? ''}`}
-                        >
-                          {statusLabel[doc.status] ?? doc.status}
-                        </span>
-                      </div>
-                      <p className="text-xs text-slate-400 mt-0.5">
-                        {new Intl.DateTimeFormat('es-VE', {
-                          day: '2-digit',
-                          month: '2-digit',
-                          year: 'numeric',
-                        }).format(new Date(doc.issuedAt ?? doc.createdAt))}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      {(doc.status === 'issued' || doc.status === 'voided') && (
-                        <button
-                          onClick={() => {
-                            setStandaloneDownloadingId(doc.id);
-                            void (async () => {
-                              try {
-                                const full = await getStandaloneDocument(doc.id);
-                                if (!full) return;
-                                const doctorData = await loadStandalonePdfDoctorData();
-                                if (!doctorData) return;
-                                const input = buildStandalonePdfInput(full, doctorData);
-                                await downloadStandalonePdf(input);
-                              } finally {
-                                setStandaloneDownloadingId(null);
-                              }
-                            })();
-                          }}
-                          disabled={standaloneDownloadingId === doc.id}
-                          className="p-1.5 text-slate-400 hover:text-teal-600 transition-colors disabled:opacity-60"
-                          title="Descargar PDF"
-                        >
-                          {standaloneDownloadingId === doc.id ? (
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                          ) : (
-                            <Download className="w-4 h-4" />
-                          )}
-                        </button>
-                      )}
-                      {doc.status === 'issued' && (
-                        <>
-                          <button
-                            onClick={() => setShareStandaloneDoc(doc)}
-                            className="p-1.5 text-teal-500 hover:text-teal-700 transition-colors"
-                            title="Compartir"
-                          >
-                            <Share2 className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => {
-                              if (!confirm(`¿Anular el documento ${doc.code ?? ''}?`)) return;
-                              void voidStandaloneDocument(doc.id).then((res) => {
-                                if (res.ok) {
-                                  showToast({ type: 'success', message: 'Documento anulado' });
-                                  void loadStandaloneDocs(selected.id);
-                                } else {
-                                  showToast({ type: 'error', message: res.error ?? 'Error' });
-                                }
-                              });
-                            }}
-                            className="p-1.5 text-red-400 hover:text-red-600 transition-colors"
-                            title="Anular"
-                          >
-                            <XCircle className="w-4 h-4" />
-                          </button>
-                        </>
-                      )}
-                      {doc.status === 'draft' && (
-                        <button
-                          onClick={() => {
-                            if (!confirm('¿Eliminar este borrador?')) return;
-                            void deleteDraftStandaloneDocument(doc.id).then((res) => {
-                              if (res.ok) {
-                                showToast({ type: 'success', message: 'Borrador eliminado' });
-                                void loadStandaloneDocs(selected.id);
-                              } else {
-                                showToast({ type: 'error', message: res.error ?? 'Error' });
-                              }
-                            });
-                          }}
-                          className="p-1.5 text-red-400 hover:text-red-600 transition-colors"
-                          title="Eliminar borrador"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      )}
-                    </div>
+            {/* Entrega 3 — Tab "Recipes y paraclínicos" (standalone docs sin consulta) */}
+            {detailTab === 'standalone_docs' && selected && planFeatures.standalone_documents && (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <FilePlus className="w-4 h-4 text-teal-500" />
+                    <span className="text-sm font-semibold text-slate-700">
+                      Recipes y paraclínicos
+                    </span>
                   </div>
-                );
-              })}
-            </div>
-          )}
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => void loadStandaloneDocs(selected.id)}
+                      className="p-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors text-slate-400"
+                      aria-label="Actualizar"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      onClick={() => setShowStandaloneModal(true)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-teal-500 hover:bg-teal-600 text-white rounded-lg text-xs font-bold transition-colors"
+                    >
+                      <FilePlus className="w-3.5 h-3.5" /> Generar
+                    </button>
+                  </div>
+                </div>
+
+                {standaloneLoading ? (
+                  <div className="flex items-center gap-2 py-6 justify-center text-slate-400">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span className="text-sm">Cargando…</span>
+                  </div>
+                ) : standaloneDocs.length === 0 ? (
+                  <div className="border border-dashed border-slate-200 rounded-xl py-8 text-center text-slate-400 text-sm">
+                    Sin documentos para este paciente todavía.
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {standaloneDocs.map((doc) => {
+                      const typeLabel: Record<StandaloneDocumentType, string> = {
+                        recipe: 'Récipe',
+                        paraclinical: 'Paraclínicos',
+                        reposo: 'Reposo',
+                      };
+                      const statusClasses: Record<string, string> = {
+                        draft: 'bg-amber-50 text-amber-700 border-amber-200',
+                        issued: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+                        voided: 'bg-slate-100 text-slate-500 border-slate-200',
+                      };
+                      const statusLabel: Record<string, string> = {
+                        draft: 'Borrador',
+                        issued: 'Emitido',
+                        voided: 'Anulado',
+                      };
+                      return (
+                        <div
+                          key={doc.id}
+                          className="bg-white border border-slate-200 rounded-xl px-3 py-2.5 flex items-center justify-between gap-3"
+                        >
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-sm font-semibold text-slate-800">
+                                {typeLabel[doc.type]}
+                              </span>
+                              {doc.code && (
+                                <span className="text-xs font-mono text-slate-500">{doc.code}</span>
+                              )}
+                              <span
+                                className={`text-[10px] font-bold border px-1.5 py-0.5 rounded-full ${statusClasses[doc.status] ?? ''}`}
+                              >
+                                {statusLabel[doc.status] ?? doc.status}
+                              </span>
+                            </div>
+                            <p className="text-xs text-slate-400 mt-0.5">
+                              {new Intl.DateTimeFormat('es-VE', {
+                                day: '2-digit',
+                                month: '2-digit',
+                                year: 'numeric',
+                              }).format(new Date(doc.issuedAt ?? doc.createdAt))}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            {(doc.status === 'issued' || doc.status === 'voided') && (
+                              <button
+                                onClick={() => {
+                                  setStandaloneDownloadingId(doc.id);
+                                  void (async () => {
+                                    try {
+                                      const full = await getStandaloneDocument(doc.id);
+                                      if (!full) return;
+                                      const doctorData = await loadStandalonePdfDoctorData();
+                                      if (!doctorData) return;
+                                      const input = buildStandalonePdfInput(full, doctorData);
+                                      await downloadStandalonePdf(input);
+                                    } finally {
+                                      setStandaloneDownloadingId(null);
+                                    }
+                                  })();
+                                }}
+                                disabled={standaloneDownloadingId === doc.id}
+                                className="p-1.5 text-slate-400 hover:text-teal-600 transition-colors disabled:opacity-60"
+                                title="Descargar PDF"
+                              >
+                                {standaloneDownloadingId === doc.id ? (
+                                  <Loader2 className="w-4 h-4 animate-spin" />
+                                ) : (
+                                  <Download className="w-4 h-4" />
+                                )}
+                              </button>
+                            )}
+                            {doc.status === 'issued' && (
+                              <>
+                                <button
+                                  onClick={() => setShareStandaloneDoc(doc)}
+                                  className="p-1.5 text-teal-500 hover:text-teal-700 transition-colors"
+                                  title="Compartir"
+                                >
+                                  <Share2 className="w-4 h-4" />
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    if (!confirm(`¿Anular el documento ${doc.code ?? ''}?`)) return;
+                                    void voidStandaloneDocument(doc.id).then((res) => {
+                                      if (res.ok) {
+                                        showToast({
+                                          type: 'success',
+                                          message: 'Documento anulado',
+                                        });
+                                        void loadStandaloneDocs(selected.id);
+                                      } else {
+                                        showToast({ type: 'error', message: res.error ?? 'Error' });
+                                      }
+                                    });
+                                  }}
+                                  className="p-1.5 text-red-400 hover:text-red-600 transition-colors"
+                                  title="Anular"
+                                >
+                                  <XCircle className="w-4 h-4" />
+                                </button>
+                              </>
+                            )}
+                            {doc.status === 'draft' && (
+                              <button
+                                onClick={() => {
+                                  if (!confirm('¿Eliminar este borrador?')) return;
+                                  void deleteDraftStandaloneDocument(doc.id).then((res) => {
+                                    if (res.ok) {
+                                      showToast({ type: 'success', message: 'Borrador eliminado' });
+                                      void loadStandaloneDocs(selected.id);
+                                    } else {
+                                      showToast({ type: 'error', message: res.error ?? 'Error' });
+                                    }
+                                  });
+                                }}
+                                className="p-1.5 text-red-400 hover:text-red-600 transition-colors"
+                                title="Eliminar borrador"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
