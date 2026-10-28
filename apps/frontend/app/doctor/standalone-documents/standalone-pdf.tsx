@@ -208,7 +208,9 @@ export async function downloadStandalonePdf(input: StandalonePdfInput): Promise<
   const useDocuments = input.hoja2Content
     ? [
         { docType: input.docType, content: input.content },
-        { docType: input.docType, content: input.hoja2Content },
+        // Hoja 2 = "Indicaciones", same as the consultation recipe PDF. With the
+        // recipe docType it was titled "Récipe" (QA, 28/10).
+        { docType: 'indications', content: input.hoja2Content },
       ]
     : undefined;
 
