@@ -21,6 +21,17 @@
 Preexistente, sin tocar: la receta no guarda la **vía** (la tabla `prescriptions` no tiene
 columna), así que "Vía: Oral" desaparece al reabrir la consulta.
 
+**Deploy a staging:** falló 2 veces el 28/10 en Cloud Build con el mismo error: `next build`
+(Turbopack) no pudo bajar las fuentes de Google (`fonts.gstatic.com` → "Can't resolve
+'@vercel/turbopack-next/internal/font/google/font'"). No es del código: relanzar el run
+(`gh run rerun <id>`) pasó las dos veces. El log se lee con
+`gcloud builds log <build-id> --account=lucas@deltasalud.app`. El `SIGABRT` del paso backend es
+el OOM conocido de ForkTsChecker y no rompe nada. **Pendiente de decisión del dueño:** servir
+las fuentes desde el proyecto (`next/font/local`) para que el build no dependa de Google.
+
+**Estado al cierre del 28/10:** `develop` = `staging` con todo lo de plantillas y documentos;
+`main` sin tocar (`aee24229`). Falta el QA del equipo y promover a producción.
+
 ## 2026-10-23 — Entregas 2 y 3 de "Cambios 12-10": plantillas de contenido y documentos sin consulta
 
 > Rama `feature/plantillas-y-documentos` → `develop` → `staging` (NO en `main`). 2 migraciones
