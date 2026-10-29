@@ -4,6 +4,18 @@
 > ⚠️ Orden: **la entrada más nueva va ARRIBA**. La del 2026-08-11 quedó al final
 > del archivo por error; no se movió para no ensuciar el diff.
 
+## 2026-10-29 — Promoción a producción: lote admin + "Cambios 12-10" completo
+
+> `main` `aee24229` → `1d682771` (fast-forward desde `staging`, aprobado por el QA). 39 commits,
+> 2 migraciones (`20261022000001`, `20261022000002`), ambas `migrated` en el deploy de prod.
+
+Entró: lote admin del 22/10 (filtros de fecha, Contactar, teléfono obligatorio, nombres, plan
+desde `profiles`, "Nuevos este mes"), entrega 1 (nota "Precio de lanzamiento"), entregas 2 y 3
+(Mis plantillas; Recipes y paraclínicos sin consulta con REC/PAR/REP, compartir y anular) y los
+arreglos del QA, incluido el **PDF del reposo con la fecha un día antes**, que ya vivía en prod.
+Verificado tras el deploy: home y `/api/public/plans` 200, rutas nuevas redirigen a login,
+0 errores del backend en Cloud Run (revisiones `delta-backend-00480`, `delta-frontend-00465`).
+
 ## 2026-10-28 — Observaciones del QA sobre plantillas y documentos
 
 > Rama `feature/plantillas-y-documentos` → `develop` → `staging`. Sin migraciones.
@@ -29,8 +41,8 @@ columna), así que "Vía: Oral" desaparece al reabrir la consulta.
 el OOM conocido de ForkTsChecker y no rompe nada. **Pendiente de decisión del dueño:** servir
 las fuentes desde el proyecto (`next/font/local`) para que el build no dependa de Google.
 
-**Estado al cierre del 28/10:** `develop` = `staging` con todo lo de plantillas y documentos;
-`main` sin tocar (`aee24229`). Falta el QA del equipo y promover a producción.
+**Estado al cierre del 28/10:** `develop` = `staging` con todo lo de plantillas y documentos.
+Promovido a producción el 29/10 (ver entrada de arriba).
 
 ## 2026-10-23 — Entregas 2 y 3 de "Cambios 12-10": plantillas de contenido y documentos sin consulta
 
