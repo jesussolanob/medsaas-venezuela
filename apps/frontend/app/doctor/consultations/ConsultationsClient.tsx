@@ -4354,6 +4354,11 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                                         : prev.notes || c.notes,
                                   }));
                                 }
+                                // Applying only fills the on-screen recipe; it is persisted
+                                // by "Guardar receta" in this modal. Without it the document
+                                // lost the Indicaciones page and a reload emptied the recipe
+                                // (QA, 28/10). Open it so the doctor reviews and saves.
+                                setShowRecipe(true);
                               }}
                             />
                           )}
