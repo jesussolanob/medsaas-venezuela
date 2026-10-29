@@ -518,7 +518,7 @@ Permite guardar estructuras reutilizables para cuatro tipos de documento: **Reci
 3. Guarda. La plantilla queda disponible para usar en cualquier documento del mismo tipo.
 
 **Usar una plantilla:**
-Al crear un recipe, orden de paraclínicos, reposo o presupuesto, el formulario ofrece el boton **Usar plantilla**. Al pulsarlo, se muestra la lista de tus plantillas del mismo tipo. Al seleccionar una, el sistema copia el contenido en el formulario. Si el formulario ya tenia contenido, el sistema te avisa y te pregunta si deseas reemplazarlo antes de copiar.
+Al crear un recipe, orden de paraclínicos, reposo o presupuesto, el formulario ofrece el boton **Usar plantilla**. Al pulsarlo, se muestra la lista de tus plantillas del mismo tipo. Al seleccionar una, el sistema copia el contenido en el formulario. Si el formulario ya tenia contenido, el sistema te pregunta si deseas **Agregar** el contenido de la plantilla al que ya tenias o **Reemplazarlo** (en el reposo solo se puede reemplazar). En el recipe de una consulta, al aplicar la plantilla se abre la ventana **Editar recipe** con los medicamentos cargados: revisalos y pulsa **Guardar receta**. Hasta que no guardes la receta, los medicamentos no quedan registrados ni salen en la hoja de Indicaciones del documento.
 
 **Editar o eliminar plantillas:**
 Desde la lista de plantillas pulsa el icono de lapiz (editar) o de papelera (eliminar). La eliminacion es definitiva y no afecta documentos ya emitidos que usaron esa plantilla.
