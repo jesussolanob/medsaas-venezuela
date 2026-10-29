@@ -4,6 +4,23 @@
 > ⚠️ Orden: **la entrada más nueva va ARRIBA**. La del 2026-08-11 quedó al final
 > del archivo por error; no se movió para no ensuciar el diff.
 
+## 2026-10-28 — Observaciones del QA sobre plantillas y documentos
+
+> Rama `feature/plantillas-y-documentos` → `develop` → `staging`. Sin migraciones.
+
+- **Plantilla de récipe en la consulta sin Indicaciones:** "Usar plantilla" (igual que los
+  medicamentos frecuentes) solo llena el récipe en pantalla; se persiste con **Guardar receta**
+  del modal "Editar recipe". Sin guardar, "Generar Documento" sacaba solo la hoja Récipe (la
+  hoja Indicaciones sale de las recetas guardadas) y al recargar el récipe quedaba vacío.
+  Decisión del dueño: al aplicar la plantilla se abre "Editar recipe" para revisar y guardar.
+- **Hoja 2 del récipe sin consulta titulada "Récipe":** ahora `docType: 'indications'`.
+- **Márgenes de la pestaña "Recipes y paraclínicos" del paciente:** se dibujaba fuera del
+  contenedor del detalle; se movió junto a Consultas / Historial / Seguimiento.
+- Guía del especialista: "Usar plantilla" describe Agregar/Reemplazar y el paso de guardar.
+
+Preexistente, sin tocar: la receta no guarda la **vía** (la tabla `prescriptions` no tiene
+columna), así que "Vía: Oral" desaparece al reabrir la consulta.
+
 ## 2026-10-23 — Entregas 2 y 3 de "Cambios 12-10": plantillas de contenido y documentos sin consulta
 
 > Rama `feature/plantillas-y-documentos` → `develop` → `staging` (NO en `main`). 2 migraciones
