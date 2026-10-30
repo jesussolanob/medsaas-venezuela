@@ -18,8 +18,11 @@ const GCS_BASE = 'https://storage.googleapis.com/';
  *   Output: avatar/doctor-123.png
  *
  * Returns null if the URL is not a GCS URL or cannot be parsed safely.
+ *
+ * Exported so callers can normalise a full GCS URL to a bare object path
+ * before persisting (store the path, not the signed URL).
  */
-function extractGcsPath(url: string): string | null {
+export function extractGcsPath(url: string): string | null {
   if (!url.startsWith(GCS_BASE)) return null;
 
   try {
@@ -72,5 +75,54 @@ export async function resignGcsImageUrl(
     // Best-effort: if re-signing fails, return the original stored URL.
     // The image may be expired/broken but the API response remains valid.
     return url;
+  }
+}
+
+/**
+ * Signs a stored image reference for client delivery.
+ *
+ * Handles two storage formats:
+ *   - Bare object path (new format): `logo/userId/ts-file.png`
+ *     → calls `storagePort.getSignedUrl(stored, ttlMs)` directly.
+ *   - Legacy full GCS URL: `https://storage.googleapis.com/<bucket>/<path>?...`
+ *     → extracts the object path, then signs it.
+ *
+ * Unlike `resignGcsImageUrl`, this function falls back to `null` (not the
+ * original stored value) on signing failure, so callers can hide broken images
+ * rather than serving an unexpired path or a non-URL string.
+ *
+ * @param stored    Value stored in the DB column (bare path or legacy GCS URL).
+ * @param storagePort  Active IStoragePort adapter.
+ * @param onWarn    Called (without PII) when signing fails — use for logging.
+ * @param ttlMs     Signed-URL TTL. Default: 7 days (GCS v4 max).
+ */
+export async function signStoredImagePath(
+  stored: string | null | undefined,
+  storagePort: IStoragePort,
+  onWarn: () => void,
+  ttlMs = 7 * 24 * 60 * 60 * 1000,
+): Promise<string | null> {
+  if (!stored) return null;
+
+  // Determine the raw object path to sign.
+  let objectPath: string | null;
+  if (stored.startsWith(GCS_BASE)) {
+    // Legacy format: full GCS URL — extract the bucket-relative path.
+    objectPath = extractGcsPath(stored);
+  } else if (!stored.includes('://')) {
+    // New format: bare object path with no scheme.
+    objectPath = stored;
+  } else {
+    // Unknown URL scheme (MinIO public URL, CDN, etc.) — cannot sign, skip.
+    return stored;
+  }
+
+  if (!objectPath) return null;
+
+  try {
+    return await storagePort.getSignedUrl(objectPath, ttlMs);
+  } catch {
+    onWarn();
+    return null;
   }
 }

@@ -58,6 +58,7 @@ import { InfraAuthModule } from './infrastructure/auth/infra-auth.module';
 import { ContentTemplatesModule } from './modules/content-templates/content-templates.module';
 import { StandaloneDocumentsModule } from './modules/standalone-documents/standalone-documents.module';
 import { ContactRequestsModule } from './modules/contact-requests/contact-requests.module';
+import { ReleaseNotesModule } from './modules/release-notes/release-notes.module';
 
 @Module({
   imports: [
@@ -124,6 +125,7 @@ import { ContactRequestsModule } from './modules/contact-requests/contact-reques
     ContentTemplatesModule,
     StandaloneDocumentsModule,
     ContactRequestsModule,
+    ReleaseNotesModule,
   ],
   controllers: [HealthController],
   providers: [
