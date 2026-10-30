@@ -10,6 +10,7 @@ import type {
   ApplyGraceMonthParams,
   RetentionMetrics,
 } from '../../../domain/repositories/iretention-invite.repository';
+import { GraceMonthAlreadyGrantedError } from '../../../domain/errors/grace-month-already-granted.error';
 import type { SubscriptionPlan, SubscriptionStatus } from '@delta/shared-types';
 import {
   PROMPT_KEY_PRE,
@@ -18,6 +19,22 @@ import {
 
 /** Caracas timezone (UTC-4). */
 const CARACAS_TZ = 'America/Caracas';
+
+/**
+ * Returns true when the error is a PostgreSQL unique-constraint violation (23505).
+ * Works for both raw-query SequelizeDatabaseError and SequelizeUniqueConstraintError.
+ * No Sequelize import needed — we inspect the error shape at runtime.
+ */
+function isPostgresUniqueViolation(err: unknown): boolean {
+  if (typeof err !== 'object' || err === null) return false;
+  const e = err as Record<string, unknown>;
+  if (e['name'] === 'SequelizeUniqueConstraintError') return true;
+  const parent = e['parent'] ?? e['original'];
+  if (typeof parent === 'object' && parent !== null) {
+    return (parent as Record<string, unknown>)['code'] === '23505';
+  }
+  return false;
+}
 
 /** Lifecycle template names used for the one-per-day deduplication check. */
 const LIFECYCLE_TEMPLATES = [
@@ -164,15 +181,16 @@ export class SequelizeRetentionInviteRepository implements IRetentionInviteRepos
   async hasReceivedLifecycleEmailToday(doctorId: string, caracasDateStr: string): Promise<boolean> {
     // Uses the index email_send_log_recipient_created_idx (recipient_id + created_at)
     // template_name IN () is safe with positional params via raw SQL
+    // :tz is bound as a replacement to avoid string interpolation in SQL
     const rows = await this.sequelize.query<{ cnt: string }>(
       `SELECT COUNT(*) AS cnt FROM email_send_log
         WHERE recipient_id = :doctorId
           AND template_name IN ('doctor_inactivity_10d', 'doctor_inactivity_15d', 'retention_meeting_invite')
-          AND DATE(created_at AT TIME ZONE '${CARACAS_TZ}') = :caracasDate::date
+          AND DATE(created_at AT TIME ZONE :tz) = :caracasDate::date
           AND status = 'sent'`,
       {
         type: QueryTypes.SELECT,
-        replacements: { doctorId, caracasDate: caracasDateStr },
+        replacements: { doctorId, caracasDate: caracasDateStr, tz: CARACAS_TZ },
       },
     );
     return parseInt(rows[0]?.cnt ?? '0', 10) > 0;
@@ -271,7 +289,30 @@ export class SequelizeRetentionInviteRepository implements IRetentionInviteRepos
     const t = await this.sequelize.transaction();
     const now = new Date();
     try {
-      // 1. Upsert subscriptions row
+      // 1. INSERT subscription_changes_log FIRST — the partial unique index
+      //    ON subscription_changes_log (doctor_id) WHERE action = 'grace_month'
+      //    guarantees that a second concurrent request fails here (23505) before
+      //    any subscription/profile data is written.  See grace race discussion.
+      await this.sequelize.query(
+        `INSERT INTO subscription_changes_log
+           (id, doctor_id, action, actor_id, actor_role, reason, subscription_expires_at, metadata, created_at)
+         VALUES
+           (uuid_generate_v4(), :doctorId, 'grace_month', :actorId, 'super_admin',
+            'Mes de gracia por reunión de feedback',
+            :expiresAt, '{"source":"team_meeting"}'::jsonb, :now)`,
+        {
+          type: QueryTypes.INSERT,
+          replacements: {
+            doctorId: params.doctorId,
+            actorId: params.actorId,
+            expiresAt: params.newExpiresAt,
+            now,
+          },
+          transaction: t,
+        },
+      );
+
+      // 2. Upsert subscriptions row
       await this.sequelize.query(
         `INSERT INTO subscriptions
            (id, doctor_id, plan, status, price_usd, current_period_start, current_period_end, created_at, updated_at)
@@ -295,7 +336,7 @@ export class SequelizeRetentionInviteRepository implements IRetentionInviteRepos
         },
       );
 
-      // 2. Sync profiles snapshot (profile-first rule)
+      // 3. Sync profiles snapshot (profile-first rule)
       await this.sequelize.query(
         `UPDATE profiles
             SET plan = :plan,
@@ -316,29 +357,12 @@ export class SequelizeRetentionInviteRepository implements IRetentionInviteRepos
         },
       );
 
-      // 3. Append subscription_changes_log with action='grace_month'
-      await this.sequelize.query(
-        `INSERT INTO subscription_changes_log
-           (id, doctor_id, action, actor_id, actor_role, reason, subscription_expires_at, metadata, created_at)
-         VALUES
-           (uuid_generate_v4(), :doctorId, 'grace_month', :actorId, 'super_admin',
-            'Mes de gracia por reunión de feedback',
-            :expiresAt, '{"source":"team_meeting"}'::jsonb, :now)`,
-        {
-          type: QueryTypes.INSERT,
-          replacements: {
-            doctorId: params.doctorId,
-            actorId: params.actorId,
-            expiresAt: params.newExpiresAt,
-            now,
-          },
-          transaction: t,
-        },
-      );
-
       await t.commit();
     } catch (err) {
       await t.rollback();
+      // Map PG unique-violation (23505) from the log INSERT to a domain error.
+      // The second concurrent request changes nothing and returns 409.
+      if (isPostgresUniqueViolation(err)) throw new GraceMonthAlreadyGrantedError();
       throw err;
     }
   }

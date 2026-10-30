@@ -111,6 +111,23 @@ module.exports = {
       `);
 
       // ------------------------------------------------------------------
+      // 3. Partial UNIQUE index: at most one grace_month row per doctor.
+      //    This prevents the grace-month race condition: two concurrent
+      //    admin requests both pass the hasGraceMonth() check (false) but
+      //    only the first INSERT into subscription_changes_log succeeds;
+      //    the second gets PG error 23505, which the repo maps to
+      //    GraceMonthAlreadyGrantedError (409) — no double extension.
+      //
+      //    action is TEXT (no Postgres enum), so no ALTER TYPE needed.
+      //    No existing rows have action='grace_month' (first migration for it).
+      // ------------------------------------------------------------------
+      await q(`
+        CREATE UNIQUE INDEX IF NOT EXISTS grace_month_one_per_doctor_idx
+          ON subscription_changes_log (doctor_id)
+         WHERE action = 'grace_month'
+      `);
+
+      // ------------------------------------------------------------------
       // 3. Seed retention_meeting_invite email template
       // ------------------------------------------------------------------
       const now = new Date();
@@ -140,6 +157,7 @@ module.exports = {
         DELETE FROM email_templates WHERE name = 'retention_meeting_invite'
       `);
 
+      await q(`DROP INDEX IF EXISTS grace_month_one_per_doctor_idx`);
       await q(`DROP INDEX IF EXISTS doctor_prompts_key_idx`);
       await q(`DROP INDEX IF EXISTS email_send_log_recipient_created_idx`);
     });

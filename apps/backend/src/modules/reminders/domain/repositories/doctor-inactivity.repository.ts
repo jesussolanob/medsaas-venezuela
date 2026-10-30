@@ -33,4 +33,14 @@ export interface IDoctorInactivityRepository {
    * a doctor after a notice email has been sent. Idempotent.
    */
   markNoticeSent(doctorId: string, stage: number, sentAt: Date): Promise<void>;
+
+  /**
+   * Returns true if the doctor already received any lifecycle email today
+   * (Caracas date, YYYY-MM-DD format).  Checks email_send_log for inactivity
+   * and retention_meeting_invite template names.
+   *
+   * Used to enforce the one-lifecycle-email-per-doctor-per-Caracas-day rule
+   * across cron retries (the in-memory set covers same-run deduplication only).
+   */
+  hasReceivedLifecycleEmailToday(doctorId: string, caracasDateStr: string): Promise<boolean>;
 }

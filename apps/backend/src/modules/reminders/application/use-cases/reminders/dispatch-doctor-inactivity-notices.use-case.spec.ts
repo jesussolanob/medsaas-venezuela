@@ -24,7 +24,11 @@ function makeCandidate(overrides: Partial<InactiveDoctorCandidate> = {}): Inacti
 
 describe('DispatchDoctorInactivityNoticesUseCase', () => {
   let useCase: DispatchDoctorInactivityNoticesUseCase;
-  let mockInactivityRepo: { findCandidates: jest.Mock; markNoticeSent: jest.Mock };
+  let mockInactivityRepo: {
+    findCandidates: jest.Mock;
+    markNoticeSent: jest.Mock;
+    hasReceivedLifecycleEmailToday: jest.Mock;
+  };
   let mockMailer: { sendTemplate: jest.Mock };
   let mockConfig: { get: jest.Mock };
 
@@ -32,6 +36,7 @@ describe('DispatchDoctorInactivityNoticesUseCase', () => {
     mockInactivityRepo = {
       findCandidates: jest.fn().mockResolvedValue([]),
       markNoticeSent: jest.fn().mockResolvedValue(undefined),
+      hasReceivedLifecycleEmailToday: jest.fn().mockResolvedValue(false),
     };
 
     mockMailer = {
@@ -284,6 +289,21 @@ describe('DispatchDoctorInactivityNoticesUseCase', () => {
 
     expect(result.sent10).toBe(200);
   });
+
+  it('skips inactivity notice on a retried cron run when DB shows lifecycle email sent today', async () => {
+    // Simulates a second cron run the same day: in-memory invitedDoctorIds is
+    // empty (fresh execution), but the DB shows an invite was already sent.
+    const candidate = makeCandidate({ lastSignInAt: daysAgo(10), inactivityNoticeStage: 0 });
+    mockInactivityRepo.findCandidates.mockResolvedValue([candidate]);
+    mockInactivityRepo.hasReceivedLifecycleEmailToday.mockResolvedValue(true);
+
+    const result = await useCase.execute(NOW);
+
+    expect(mockMailer.sendTemplate).not.toHaveBeenCalled();
+    expect(mockInactivityRepo.markNoticeSent).not.toHaveBeenCalled();
+    expect(result.skipped).toBe(1);
+    expect(result.sent10).toBe(0);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -292,7 +312,11 @@ describe('DispatchDoctorInactivityNoticesUseCase', () => {
 
 describe('DispatchDoctorInactivityNoticesUseCase — invite-first integration', () => {
   let useCase: DispatchDoctorInactivityNoticesUseCase;
-  let mockInactivityRepo: { findCandidates: jest.Mock; markNoticeSent: jest.Mock };
+  let mockInactivityRepo: {
+    findCandidates: jest.Mock;
+    markNoticeSent: jest.Mock;
+    hasReceivedLifecycleEmailToday: jest.Mock;
+  };
   let mockMailer: { sendTemplate: jest.Mock };
   let mockConfig: { get: jest.Mock };
   let mockDispatchInvites: { execute: jest.Mock };
@@ -303,6 +327,7 @@ describe('DispatchDoctorInactivityNoticesUseCase — invite-first integration', 
     mockInactivityRepo = {
       findCandidates: jest.fn().mockResolvedValue([]),
       markNoticeSent: jest.fn().mockResolvedValue(undefined),
+      hasReceivedLifecycleEmailToday: jest.fn().mockResolvedValue(false),
     };
     mockMailer = { sendTemplate: jest.fn().mockResolvedValue({ id: 'msg-001' }) };
     mockConfig = { get: jest.fn().mockReturnValue('https://app.deltasalud.app') };

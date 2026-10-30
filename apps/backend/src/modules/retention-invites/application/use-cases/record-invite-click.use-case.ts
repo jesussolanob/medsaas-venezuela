@@ -36,7 +36,12 @@ export class RecordInviteClickUseCase {
 
   async execute(input: RecordInviteClickInput, nowOverride?: Date): Promise<void> {
     const now = nowOverride ?? new Date();
-    const secret = this.config.get<string>('AUTH_RESOLVE_SECRET') ?? '';
+    const secret = this.config.get<string>('AUTH_RESOLVE_SECRET');
+    if (!secret) {
+      // AUTH_RESOLVE_SECRET is not configured — silently ignore.
+      // Still returns 204; never reveals an oracle about the token's validity.
+      return;
+    }
 
     const payload = DispatchMeetingInvitesUseCase.verifyToken(input.token, secret, now);
     if (!payload) {

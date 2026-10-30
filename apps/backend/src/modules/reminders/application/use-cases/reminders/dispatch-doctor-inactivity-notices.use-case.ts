@@ -92,6 +92,8 @@ export class DispatchDoctorInactivityNoticesUseCase {
 
   async execute(nowOverride?: Date): Promise<DispatchDoctorInactivityNoticesResult> {
     const now = nowOverride ?? new Date();
+    // Caracas date string (YYYY-MM-DD) for cross-run one-lifecycle-email-per-day check.
+    const caracasDateStr = now.toLocaleDateString('en-CA', { timeZone: 'America/Caracas' });
 
     // ------------------------------------------------------------------
     // Step 1 — Meeting invite dispatch (runs FIRST per spec decision A.8).
@@ -139,8 +141,17 @@ export class DispatchDoctorInactivityNoticesUseCase {
     let failed = 0;
 
     for (const candidate of candidates) {
-      // One-lifecycle-email-per-day: skip if an invite went out this run
+      // One-lifecycle-email-per-day: skip if an invite went out this run (fast path)
       if (invitedDoctorIds.has(candidate.doctorId)) {
+        skipped++;
+        continue;
+      }
+
+      // One-lifecycle-email-per-day: DB check guards against retried cron runs
+      // where the in-memory set is empty but the email was already sent earlier today.
+      if (
+        await this.inactivityRepo.hasReceivedLifecycleEmailToday(candidate.doctorId, caracasDateStr)
+      ) {
         skipped++;
         continue;
       }

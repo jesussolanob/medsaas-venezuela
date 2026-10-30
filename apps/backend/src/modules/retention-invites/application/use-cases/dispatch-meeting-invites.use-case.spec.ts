@@ -275,6 +275,35 @@ describe('DispatchMeetingInvitesUseCase — expired-window selection', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Fail-closed: missing AUTH_RESOLVE_SECRET
+// ---------------------------------------------------------------------------
+
+describe('DispatchMeetingInvitesUseCase — fail-closed secret', () => {
+  it('throws when AUTH_RESOLVE_SECRET is not configured, never touching candidates', async () => {
+    const configNoSecret = {
+      get: jest.fn().mockReturnValue(undefined),
+    } as unknown as jest.Mocked<ConfigService>;
+    const repo = makeRepo();
+    const mailer = makeMailer();
+    const uc = new DispatchMeetingInvitesUseCase(repo, mailer, configNoSecret);
+
+    await expect(uc.execute(NOW)).rejects.toThrow('AUTH_RESOLVE_SECRET not configured');
+    expect(repo.findPreWindowCandidates).not.toHaveBeenCalled();
+    expect(mailer.sendTemplate).not.toHaveBeenCalled();
+  });
+
+  it('buildToken throws when AUTH_RESOLVE_SECRET is not configured', () => {
+    const configNoSecret = {
+      get: jest.fn().mockReturnValue(undefined),
+    } as unknown as jest.Mocked<ConfigService>;
+    const uc = new DispatchMeetingInvitesUseCase(makeRepo(), makeMailer(), configNoSecret);
+    expect(() => uc.buildToken(DOCTOR_ID, PROMPT_KEY_PRE, NOW)).toThrow(
+      'AUTH_RESOLVE_SECRET not configured',
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
 // One-email-per-day enforcement
 // ---------------------------------------------------------------------------
 
