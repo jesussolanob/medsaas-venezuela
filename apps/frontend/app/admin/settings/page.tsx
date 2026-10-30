@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { showToast } from '@/components/ui/Toaster';
 import { SupportContactSection } from '@/components/admin/SupportContactSection';
+import { MeetingsSettingsSection } from '@/components/admin/MeetingsSettingsSection';
 
 // ---------------------------------------------------------------------------
 // Configuración general — tipos y constantes
@@ -971,6 +972,9 @@ export default function AdminSettingsPage() {
 
         {/* ── Contacto y soporte ── */}
         <SupportContactSection />
+
+        {/* ── Reuniones con especialistas (Fase 3 — retención) ── */}
+        <MeetingsSettingsSection />
       </div>
     </div>
   );

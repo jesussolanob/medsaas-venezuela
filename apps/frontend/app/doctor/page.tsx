@@ -65,6 +65,8 @@ import { showToast } from '@/components/ui/Toaster';
 import { SetupStepper } from '@/components/doctor/SetupStepper';
 import { WelcomeModal } from '@/components/doctor/WelcomeModal';
 import ReleaseNotesModal from '@/components/release-notes/ReleaseNotesModal';
+import MeetingInviteModal from '@/components/team-meetings/MeetingInviteModal';
+import UpcomingMeetingCard from '@/components/team-meetings/UpcomingMeetingCard';
 import { getDoctorPlanFeatures } from '@/app/doctor/plan-features-actions';
 import {
   planUnlocks,
@@ -168,8 +170,8 @@ export default function DoctorDashboard() {
   // no va a mostrarse esta visita (ver B.3 del plan de retencion).
   // false = aun no evaluado o evaluado y sin novedades.
   const [showReleaseNotes, setShowReleaseNotes] = useState(false);
-  // FASE 3 — SLOT: meeting modal state goes here (showMeetingModal, setShowMeetingModal).
-  // It only opens if neither welcome tour nor release notes show in this visit.
+  // FASE 3 — Modal "Queremos conocerte": se abre solo si no hay otro modal esta visita (spec B.3).
+  const [showMeetingModal, setShowMeetingModal] = useState(false);
   const [planFeatures, setPlanFeatures] = useState<PlanFeatures>(EMPTY_PLAN_FEATURES);
   // null = desconocido (cargando o fetch falló), true = tiene consultorios, false = sin consultorios
   const [hasOffices, setHasOffices] = useState<boolean | null>(null);
@@ -328,9 +330,21 @@ export default function DoctorDashboard() {
                   const json = (await res.json()) as { data?: unknown[] };
                   if ((json.data ?? []).length > 0) {
                     setShowReleaseNotes(true);
-                    // FASE 3 — SLOT: if release notes show, skip meeting modal this visit.
+                    // Release notes will show — skip meeting modal this visit (spec B.3).
+                  } else {
+                    // No release notes: check meeting modal conditions (FASE 3, spec B.3).
+                    void fetch('/api/doctor/prompts/meeting', { cache: 'no-store' })
+                      .then(async (mRes) => {
+                        if (!mRes.ok) return;
+                        const mJson = (await mRes.json()) as { data?: { show: boolean } };
+                        if (mJson.data?.show) {
+                          setShowMeetingModal(true);
+                        }
+                      })
+                      .catch(() => {
+                        // Non-critical — skip silently.
+                      });
                   }
-                  // FASE 3 — SLOT: else { check meeting modal conditions here }
                 })
                 .catch(() => {
                   // Network error — silently skip; modal is non-critical.
@@ -868,6 +882,9 @@ export default function DoctorDashboard() {
             ]}
           />
         )}
+        {/* FASE 3 — Próxima reunión con el equipo Delta */}
+        <UpcomingMeetingCard />
+
         {/* Hero welcome card */}
         <div
           className="g-bg p-6 sm:p-8 relative overflow-hidden text-white"
@@ -1947,7 +1964,13 @@ export default function DoctorDashboard() {
         <ReleaseNotesModal onClose={() => setShowReleaseNotes(false)} />
       )}
 
-      {/* FASE 3 — SLOT: meeting modal renders here (showMeetingModal && !showWelcome && !showReleaseNotes). */}
+      {/* FASE 3 — Modal "Queremos conocerte": solo se abre si no hay otro modal esta visita. */}
+      {showMeetingModal && !showWelcome && !showReleaseNotes && (
+        <MeetingInviteModal
+          doctorName={profile?.full_name ?? 'Doctor'}
+          onClose={() => setShowMeetingModal(false)}
+        />
+      )}
     </>
   );
 }
