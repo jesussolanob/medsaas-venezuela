@@ -209,6 +209,9 @@ source (email|modal), notes, created_at, updated_at`):
     siguientes, por si ese día no se pudo enviar).
   - El segundo **no** se envía si ya agendó desde el modal, si ya tiene el mes de gracia, o si
     ya no está vencido (renovó o se le extendió).
+  - **Ninguno** se envía a quien eligió "No me interesa" en el modal: el correo lo invita a un
+    modal que ya no le aparecería (decisión del lead 2026-10-30, **pendiente de confirmar con el
+    dueño**).
 - **Lanzamiento** (decisión 2026-10-30, opción A): el primer día también reciben el correo los
   que **ya** están en la ventana (prueba con ≤ 7 días o vencida hace ≤ 30 días). Antes de activar
   el envío en prod, contar cuántos son y reportarlo al dueño.
