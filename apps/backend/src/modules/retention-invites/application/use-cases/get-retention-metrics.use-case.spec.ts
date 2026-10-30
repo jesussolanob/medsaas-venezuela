@@ -40,14 +40,23 @@ function makeRepo(
 }
 
 describe('GetRetentionMetricsUseCase', () => {
-  it('passes from/to to the repository', async () => {
+  it('expands from/to to whole Caracas days (to includes the whole last day)', async () => {
     const repo = makeRepo();
     const uc = new GetRetentionMetricsUseCase(repo);
     await uc.execute({ from: '2026-10-01', to: '2026-10-31' });
     expect(repo.getRetentionMetrics).toHaveBeenCalledWith(
-      new Date('2026-10-01'),
-      new Date('2026-10-31'),
+      new Date('2026-10-01T04:00:00.000Z'),
+      new Date('2026-11-01T03:59:59.999Z'),
     );
+  });
+
+  it('counts an event at 14:00 Caracas when "to" is that same day', async () => {
+    const repo = makeRepo();
+    const uc = new GetRetentionMetricsUseCase(repo);
+    await uc.execute({ from: '2026-10-30', to: '2026-10-30' });
+    const to = repo.getRetentionMetrics.mock.calls[0]?.[1];
+    expect(to).toBeDefined();
+    expect(new Date('2026-10-30T18:00:00.000Z') <= (to as Date)).toBe(true);
   });
 
   it('returns the repository data unchanged', async () => {

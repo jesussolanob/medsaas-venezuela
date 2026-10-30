@@ -35,9 +35,15 @@ export class GetRetentionMetricsUseCase {
   ) {}
 
   async execute(input: GetRetentionMetricsInput): Promise<RetentionMetrics> {
-    const from = new Date(input.from);
-    const to = new Date(input.to);
+    // `from`/`to` are Caracas calendar days (YYYY-MM-DD). `new Date('YYYY-MM-DD')`
+    // is UTC midnight = 20:00 of the PREVIOUS day in Caracas, so "hasta hoy" left
+    // out everything that happened today (QA, 30/10). Whole days, Caracas time.
+    const from = new Date(`${input.from}T00:00:00.000${CARACAS_OFFSET}`);
+    const to = new Date(`${input.to}T23:59:59.999${CARACAS_OFFSET}`);
 
     return this.repo.getRetentionMetrics(from, to);
   }
 }
+
+/** America/Caracas is UTC-4 with no DST (since 2016). */
+const CARACAS_OFFSET = '-04:00';

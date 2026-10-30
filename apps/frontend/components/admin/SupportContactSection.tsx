@@ -123,7 +123,7 @@ export function SupportContactSection() {
 
   const digitsOnly = whatsapp.replace(/\D/g, '');
   const previewFormatted = digitsOnly.startsWith('58')
-    ? `+${digitsOnly.slice(0, 2)} ${digitsOnly.slice(2, 5)} ${digitsOnly.slice(5, 8)} ${digitsOnly.slice(8)}`
+    ? `${digitsOnly.slice(0, 2)} ${digitsOnly.slice(2, 5)} ${digitsOnly.slice(5, 8)} ${digitsOnly.slice(8)}`
     : digitsOnly;
 
   return (
@@ -186,7 +186,7 @@ export function SupportContactSection() {
                   rel="noopener noreferrer"
                   className="text-teal-600 hover:underline font-mono"
                 >
-                  +{previewFormatted.trimStart()}
+                  +{previewFormatted}
                 </a>
               </p>
             )}
