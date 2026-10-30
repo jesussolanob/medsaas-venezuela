@@ -33,6 +33,7 @@ import {
   Plus,
   ChevronDown,
   Banknote,
+  PhoneCall,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import AdminNotifications from './AdminNotifications';
@@ -91,6 +92,12 @@ const navItems: NavEntry[] = [
       { name: 'Gestión', href: '/admin/sellers', icon: Handshake },
       { name: 'Comisiones', href: '/admin/comisiones', icon: Banknote },
     ],
+  },
+  {
+    name: 'Solicitudes de contacto',
+    href: '/admin/contact-requests',
+    icon: PhoneCall,
+    moduleKey: 'contact_requests',
   },
   { name: 'Roles', href: '/admin/roles', icon: Shield, moduleKey: 'roles' },
   {

@@ -44,6 +44,7 @@ import { blockedLogoutAction } from './blocked-logout-action';
 import DoctorNotificationToast from './DoctorNotificationToast';
 import SearchCommandPalette from './SearchCommandPalette';
 import { HelpButton } from '@/components/help/HelpButton';
+import { ContactarYaButton } from '@/components/contact-ya/ContactarYaButton';
 import { useAccountBlockedGuard, type AccountOffCode } from '@/hooks/useAccountBlockedGuard';
 import { Toaster } from '@/components/ui/Toaster';
 import { DeltaMark } from '@/components/dh';
@@ -834,6 +835,7 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
             </div>
             <div className="flex items-center gap-3">
               <SearchCommandPalette />
+              <ContactarYaButton />
               <HelpButton />
               <DoctorNotifications />
             </div>

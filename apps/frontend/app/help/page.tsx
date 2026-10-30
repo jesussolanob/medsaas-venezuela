@@ -8,6 +8,7 @@ import {
   MessageCircle,
   Mail,
 } from 'lucide-react';
+import { SUPPORT_WHATSAPP_NUMBER, SUPPORT_WHATSAPP_DISPLAY } from '@/lib/support-contact';
 
 export const metadata = { title: 'Centro de ayuda — Delta Salud' };
 
@@ -145,13 +146,13 @@ export default function HelpPage() {
               </div>
             </a>
             <a
-              href="https://wa.me/584145209751"
+              href={`https://wa.me/${SUPPORT_WHATSAPP_NUMBER}`}
               className="flex items-center gap-3 p-4 rounded-xl bg-white border border-slate-200 hover:border-teal-400 transition-colors"
             >
               <MessageCircle className="w-5 h-5 text-teal-600 flex-shrink-0" />
               <div>
                 <p className="text-sm font-semibold text-slate-900">WhatsApp</p>
-                <p className="text-xs text-slate-500">+58 414 520 9751</p>
+                <p className="text-xs text-slate-500">{SUPPORT_WHATSAPP_DISPLAY}</p>
               </div>
             </a>
           </div>
