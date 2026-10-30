@@ -132,7 +132,8 @@ interface MonthlyGrowthRow {
 interface DoctorStatsRow {
   patient_count: string;
   consultation_count: string;
-  monthly_revenue: string | null;
+  // monthly_revenue removed: GetDoctorDetailUseCase now fetches it from
+  // GetFinancialSummaryUseCase so both admin and doctor see the same sources.
 }
 
 /**
@@ -307,12 +308,7 @@ export class SequelizeAdminRepository implements IAdminRepository {
          (SELECT COUNT(*) FROM consultations
            WHERE doctor_id = :doctorId
              AND consultation_date >= :monthStart
-             AND consultation_date < :monthEnd) AS consultation_count,
-         (SELECT COALESCE(SUM(amount), 0) FROM consultations
-           WHERE doctor_id = :doctorId
-             AND payment_status = 'approved'
-             AND consultation_date >= :monthStart
-             AND consultation_date < :monthEnd) AS monthly_revenue`,
+             AND consultation_date < :monthEnd) AS consultation_count`,
       {
         type: QueryTypes.SELECT,
         replacements: { doctorId, monthStart, monthEnd },
@@ -322,7 +318,6 @@ export class SequelizeAdminRepository implements IAdminRepository {
     const stats = statsRows ?? {
       patient_count: '0',
       consultation_count: '0',
-      monthly_revenue: '0',
     };
 
     const base = this.profileRowToDomainWithSub(row, sub ?? undefined);
@@ -363,7 +358,10 @@ export class SequelizeAdminRepository implements IAdminRepository {
       lastSignInAt: base.lastSignInAt,
       patientCount: parseInt(stats.patient_count ?? '0', 10),
       consultationCount: parseInt(stats.consultation_count ?? '0', 10),
-      monthlyRevenue: parseFloat(stats.monthly_revenue ?? '0') || 0,
+      // 0 is a placeholder — GetDoctorDetailUseCase replaces this with the value
+      // from GetFinancialSummaryUseCase (approved consultations + manual income +
+      // orphan payments), matching the doctor's own Finanzas screen exactly.
+      monthlyRevenue: 0,
       soldById,
       soldByName,
       soldBySource,
