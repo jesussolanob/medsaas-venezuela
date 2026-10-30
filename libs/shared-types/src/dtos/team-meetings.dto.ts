@@ -4,6 +4,13 @@ import { z } from 'zod';
  * DTOs for the team-meetings module (Phase 3 — retention plan).
  */
 
+/**
+ * Reason stored on the availability block a team meeting creates in the doctor's
+ * agenda. Shared so the agenda can recognize (and style) it: the backend wrote
+ * "Reunión de equipo Delta" while the agenda looked for this text (QA, 30/10).
+ */
+export const TEAM_MEETING_BLOCK_REASON = 'Reunión con el equipo Delta';
+
 // ---------------------------------------------------------------------------
 // Doctor DTOs
 // ---------------------------------------------------------------------------

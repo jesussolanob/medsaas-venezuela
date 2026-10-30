@@ -44,6 +44,7 @@ import { toLocalHHMM, toLocalYMD } from '@/lib/timezone';
 import { showToast } from '@/components/ui/Toaster';
 import { reportError } from '@/lib/report-error';
 import { useBcvRate } from '@/lib/useBcvRate';
+import { TEAM_MEETING_BLOCK_REASON } from '@delta/shared-types';
 
 // RONDA 19c — Helper UNICO de estilos por status para citas en la agenda.
 // Cancelled: rojo claro fondo, texto rojo oscuro, borde rojo solido + opacity + line-through.
@@ -1752,19 +1753,21 @@ export default function AgendaPage() {
                                     // Team-meeting blocks get a distinct teal style + icon.
                                     (() => {
                                       const isTeamMeeting =
-                                        blockingBlock?.reason === 'Reunión con el equipo Delta';
+                                        blockingBlock?.reason === TEAM_MEETING_BLOCK_REASON;
                                       return isTeamMeeting ? (
                                         <div className="w-full h-12 rounded-lg border border-teal-200 bg-teal-50 flex items-center justify-center gap-2 px-3">
                                           <Video className="w-3.5 h-3.5 text-teal-500 shrink-0" />
                                           <span className="text-xs text-teal-700 font-medium truncate">
-                                            {blockingBlock?.reason ?? 'Reunión con el equipo Delta'}
+                                            {blockingBlock?.reason ?? TEAM_MEETING_BLOCK_REASON}
                                           </span>
                                         </div>
                                       ) : (
                                         <div className="w-full h-12 rounded-lg border border-slate-200 bg-slate-50 flex items-center justify-center gap-2 px-3">
                                           <CalendarX className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                                           <span className="text-xs text-slate-400 font-medium truncate">
-                                            {blockingBlock?.reason ? blockingBlock.reason : 'Bloqueado'}
+                                            {blockingBlock?.reason
+                                              ? blockingBlock.reason
+                                              : 'Bloqueado'}
                                           </span>
                                         </div>
                                       );

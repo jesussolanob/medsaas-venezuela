@@ -9,6 +9,7 @@ import { TeamMeeting } from '../../domain/entities/team-meeting.entity';
 import { AvailabilityBlock } from '../../../availability-blocks/domain/entities/availability-block.entity';
 import { TeamMeetingAlreadyScheduledError } from '../../domain/errors/team-meeting-already-scheduled.error';
 import { TeamMeetingSlotTakenError } from '../../domain/errors/team-meeting-slot-taken.error';
+import { TEAM_MEETING_BLOCK_REASON } from '@delta/shared-types';
 
 const CARACAS_OFFSET = '-04:00';
 
@@ -79,7 +80,7 @@ describe('CreateTeamMeetingUseCase', () => {
           doctorId: 'doctor-1',
           startsAt: new Date(),
           endsAt: new Date(),
-          reason: 'Reunión de equipo Delta',
+          reason: TEAM_MEETING_BLOCK_REASON,
           createdAt: new Date(),
           updatedAt: new Date(),
         }),
@@ -204,7 +205,7 @@ describe('CreateTeamMeetingUseCase', () => {
     expect(blockRepo.create).toHaveBeenCalledWith(
       expect.objectContaining({
         doctorId: 'doctor-1',
-        reason: 'Reunión de equipo Delta',
+        reason: TEAM_MEETING_BLOCK_REASON,
       }),
     );
   });

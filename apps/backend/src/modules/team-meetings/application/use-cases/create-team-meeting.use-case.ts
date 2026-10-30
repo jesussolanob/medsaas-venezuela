@@ -21,7 +21,7 @@ import { MailerService } from '../../../email/application/services/mailer.servic
 import { TeamMeetingAlreadyScheduledError } from '../../domain/errors/team-meeting-already-scheduled.error';
 import { TeamMeetingSlotTakenError } from '../../domain/errors/team-meeting-slot-taken.error';
 import { AvailabilityBlock } from '../../../availability-blocks/domain/entities/availability-block.entity';
-import { MEETING_MODAL_KEY } from '@delta/shared-types';
+import { MEETING_MODAL_KEY, TEAM_MEETING_BLOCK_REASON } from '@delta/shared-types';
 import { CARACAS_OFFSET } from '../../../../domain/caracas-time';
 import { adminMeetingsUrl, doctorMeetingUrl } from '../utils/app-links';
 
@@ -139,7 +139,7 @@ export class CreateTeamMeetingUseCase {
       doctorId: input.doctorId,
       startsAt,
       endsAt,
-      reason: 'Reunión de equipo Delta',
+      reason: TEAM_MEETING_BLOCK_REASON,
       createdAt: now,
       updatedAt: now,
     });

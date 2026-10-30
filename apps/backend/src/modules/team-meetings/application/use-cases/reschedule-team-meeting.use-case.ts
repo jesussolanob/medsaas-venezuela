@@ -21,6 +21,7 @@ import { TeamMeetingSlotTakenError } from '../../domain/errors/team-meeting-slot
 import { randomUUID } from 'crypto';
 import { CARACAS_OFFSET } from '../../../../domain/caracas-time';
 import { adminMeetingsUrl, doctorMeetingUrl } from '../utils/app-links';
+import { TEAM_MEETING_BLOCK_REASON } from '@delta/shared-types';
 
 export interface RescheduleTeamMeetingInput {
   meetingId: string;
@@ -135,7 +136,7 @@ export class RescheduleTeamMeetingUseCase {
       doctorId: meeting.doctorId,
       startsAt: newStartsAt,
       endsAt: newEndsAt,
-      reason: 'Reunión de equipo Delta',
+      reason: TEAM_MEETING_BLOCK_REASON,
       createdAt: now,
       updatedAt: now,
     });

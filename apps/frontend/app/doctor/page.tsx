@@ -168,6 +168,7 @@ export default function DoctorDashboard() {
   const [hasServices, setHasServices] = useState<boolean | null>(null);
   // Modal de bienvenida: se abre si el perfil no tiene welcome_dismissed_at.
   const [showWelcome, setShowWelcome] = useState(false);
+  const [meetingCardKey, setMeetingCardKey] = useState(0);
   // Se evalua UNA sola vez por sesion de pagina: el efecto tambien corre al cambiar
   // de mes y tras cada mutacion, y el modal no debe reaparecer en esos casos.
   const welcomeCheckedRef = useRef(false);
@@ -928,7 +929,9 @@ export default function DoctorDashboard() {
           />
         )}
         {/* FASE 3 — Próxima reunión con el equipo Delta */}
-        <UpcomingMeetingCard />
+        {/* key: remounts (reloads) the card after the meeting modal closes, so a
+            meeting booked there shows up without a page reload (QA, 30/10). */}
+        <UpcomingMeetingCard key={meetingCardKey} />
 
         {/* Hero welcome card */}
         <div
@@ -2013,7 +2016,10 @@ export default function DoctorDashboard() {
       {showMeetingModal && !showWelcome && !showReleaseNotes && (
         <MeetingInviteModal
           doctorName={profile?.full_name ?? 'Doctor'}
-          onClose={() => setShowMeetingModal(false)}
+          onClose={() => {
+            setShowMeetingModal(false);
+            setMeetingCardKey((k) => k + 1);
+          }}
         />
       )}
     </>
