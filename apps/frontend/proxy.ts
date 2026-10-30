@@ -78,11 +78,7 @@ function handleDevMode(request: NextRequest): NextResponse {
 
   if (!isAuthenticated) {
     const loginUrl = new URL('/login', request.url);
-    // Preserve the query string so params like ?from=meeting_invite survive
-    // the login round-trip. The login page validates the `next` param before
-    // using it (same-origin check; no external redirect).
-    const search = request.nextUrl.search;
-    loginUrl.searchParams.set('next', search ? path + search : path);
+    loginUrl.searchParams.set('next', path);
     return NextResponse.redirect(loginUrl);
   }
 

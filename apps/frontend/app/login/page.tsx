@@ -112,19 +112,7 @@ function LoginInner() {
         return;
       }
 
-      // Respect the `next` param set by the middleware when it redirected here
-      // from a protected route (e.g. /doctor?from=meeting_invite). Only allow
-      // same-origin paths (must start with / but not //), and must match the
-      // inferred role's portal prefix to prevent cross-role confusion.
-      const nextParam = searchParams.get('next') ?? '';
-      const safeNext =
-        nextParam.startsWith('/') &&
-        !nextParam.startsWith('//') &&
-        result.destination !== '/login' &&
-        nextParam.startsWith(result.destination.split('?')[0])
-          ? nextParam
-          : result.destination;
-      router.push(safeNext);
+      router.push(result.destination);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Error al iniciar sesión');
       setEmailLoading(false);
