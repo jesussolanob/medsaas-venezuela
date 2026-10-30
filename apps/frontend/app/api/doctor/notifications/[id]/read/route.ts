@@ -16,9 +16,9 @@ interface ReadResult {
 
 export async function POST(
   _req: NextRequest,
-  { params }: { params: { id: string } },
+  { params }: { params: Promise<{ id: string }> },
 ): Promise<NextResponse> {
-  const { id } = params;
+  const { id } = await params; // Next 16: params is a Promise (was undefined before)
 
   if (!id || !/^[0-9a-f-]{36}$/i.test(id)) {
     return NextResponse.json(
