@@ -239,6 +239,79 @@ export class SequelizeContactRequestRepository implements IContactRequestReposit
     return { items, total };
   }
 
+  async findByIdWithDoctor(id: string): Promise<ContactRequestWithDoctor | null> {
+    type RawRow = {
+      id: string;
+      doctor_id: string;
+      doctor_name: string | null;
+      doctor_email: string;
+      doctor_phone: string | null;
+      doctor_plan: string | null;
+      doctor_specialty: string | null;
+      channel: string;
+      message: string | null;
+      status: string;
+      handled_by: string | null;
+      handled_at: Date | null;
+      notes: string | null;
+      notification_count: number;
+      last_notified_at: Date | null;
+      created_at: Date;
+      updated_at: Date;
+    };
+
+    const rows = await this.sequelize.query<RawRow>(
+      `SELECT
+         cr.id,
+         cr.doctor_id,
+         p.full_name AS doctor_name,
+         p.email AS doctor_email,
+         p.phone AS doctor_phone,
+         p.plan AS doctor_plan,
+         p.specialty AS doctor_specialty,
+         cr.channel,
+         cr.message,
+         cr.status,
+         cr.handled_by,
+         cr.handled_at,
+         cr.notes,
+         cr.notification_count,
+         cr.last_notified_at,
+         cr.created_at,
+         cr.updated_at
+       FROM contact_requests cr
+       LEFT JOIN profiles p ON p.id = cr.doctor_id
+       WHERE cr.id = :id`,
+      {
+        type: QueryTypes.SELECT,
+        replacements: { id },
+      },
+    );
+
+    if (rows.length === 0) return null;
+    const r = rows[0]!;
+
+    return {
+      id: r.id,
+      doctorId: r.doctor_id,
+      doctorName: r.doctor_name ?? 'Sin nombre',
+      doctorEmail: r.doctor_email,
+      doctorPhone: r.doctor_phone,
+      doctorPlan: r.doctor_plan ?? 'N/A',
+      doctorSpecialty: r.doctor_specialty,
+      channel: r.channel,
+      message: r.message,
+      status: r.status as ContactRequestWithDoctor['status'],
+      handledBy: r.handled_by,
+      handledAt: r.handled_at,
+      notes: r.notes,
+      notificationCount: r.notification_count,
+      lastNotifiedAt: r.last_notified_at,
+      createdAt: r.created_at,
+      updatedAt: r.updated_at,
+    };
+  }
+
   async countPending(): Promise<number> {
     return this.model.count({ where: { status: 'pending' } });
   }

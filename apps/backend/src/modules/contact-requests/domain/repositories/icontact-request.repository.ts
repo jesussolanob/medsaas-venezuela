@@ -104,6 +104,14 @@ export interface IContactRequestRepository {
   /** Returns a paginated list of contact requests with doctor profile data. */
   listWithDoctor(filter: ListContactRequestsFilter): Promise<ListContactRequestsResult>;
 
+  /**
+   * Returns a single contact request with its doctor profile data joined in.
+   * Returns null when the request does not exist.
+   * Used by notification dispatch to reliably get the correct doctor's data
+   * regardless of other concurrent requests.
+   */
+  findByIdWithDoctor(id: string): Promise<ContactRequestWithDoctor | null>;
+
   /** Returns count of requests with status = 'pending'. */
   countPending(): Promise<number>;
 

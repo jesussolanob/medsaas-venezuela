@@ -106,7 +106,12 @@ export class RequestContactUseCase {
       throw new ContactRequestRateLimitedError();
     }
 
-    // 3. Upsert: update existing pending request, or create a new one
+    // 3. Upsert: update existing pending request, or create a new one.
+    //    A unique partial index on (doctor_id) WHERE status='pending' protects
+    //    against duplicates, but two concurrent POSTs can both see no pending
+    //    row and then race to insert. When that happens, the second insert hits
+    //    a UniqueConstraintError (pg 23505). We catch it here and fall back to
+    //    an update so neither request gets a 500.
     let saved: ContactRequest;
     const existing = await this.repo.findPendingByDoctorId(input.doctorId);
 
@@ -117,18 +122,40 @@ export class RequestContactUseCase {
       });
       saved = updated ?? existing;
     } else {
-      saved = await this.repo.save({
-        id: randomUUID(),
-        doctorId: input.doctorId,
-        channel: input.channel,
-        message: input.message ?? null,
-        status: 'pending',
-        handledBy: null,
-        handledAt: null,
-        notes: null,
-        notificationCount: 0,
-        lastNotifiedAt: null,
-      });
+      try {
+        saved = await this.repo.save({
+          id: randomUUID(),
+          doctorId: input.doctorId,
+          channel: input.channel,
+          message: input.message ?? null,
+          status: 'pending',
+          handledBy: null,
+          handledAt: null,
+          notes: null,
+          notificationCount: 0,
+          lastNotifiedAt: null,
+        });
+      } catch (err: unknown) {
+        // Race condition: another concurrent request already inserted the row
+        const isUniqueViolation =
+          err instanceof Error &&
+          (err.name === 'SequelizeUniqueConstraintError' ||
+            (err as { original?: { code?: string } }).original?.code === '23505');
+        if (!isUniqueViolation) throw err;
+
+        this.logger.warn(
+          '[contact-requests] unique constraint race on insert — falling back to update',
+        );
+        const updated = await this.repo.updatePendingForDoctor(input.doctorId, {
+          channel: input.channel,
+          message: input.message ?? null,
+        });
+        if (!updated) {
+          // Should not happen: the conflicting row must still be pending
+          throw err;
+        }
+        saved = updated;
+      }
     }
 
     // 4. Notify super_admins — fire-and-forget (never blocks the response)
@@ -173,15 +200,14 @@ export class RequestContactUseCase {
 
     const emails = admins.map((a) => a.email);
 
-    // Get doctor info from the contact_requests join — we already have the doctorId
-    // but we need name/phone/plan for the template. Query the joined data:
-    const listResult = await this.repo.listWithDoctor({
-      limit: 1,
-      offset: 0,
-    });
-
-    // Find the specific request
-    const reqWithDoctor = listResult.items.find((i) => i.id === request.id);
+    // Fetch the specific request with doctor profile data joined.
+    // Using findByIdWithDoctor (not listWithDoctor) to guarantee we get
+    // the data for THIS request regardless of newer requests from other
+    // doctors that would appear first in a DESC sort.
+    const reqWithDoctor = await this.repo.findByIdWithDoctor(request.id);
+    if (!reqWithDoctor) {
+      this.logger.warn(`[contact-requests] findByIdWithDoctor returned null for id=REDACTED`);
+    }
 
     const doctorName = reqWithDoctor?.doctorName ?? 'Especialista';
     const doctorPlan = reqWithDoctor?.doctorPlan ?? 'N/A';

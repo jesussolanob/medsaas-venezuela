@@ -42,6 +42,7 @@ describe('RequestContactUseCase', () => {
       getNotificationCountSince: jest.fn(),
       incrementNotificationCount: jest.fn(),
       listWithDoctor: jest.fn(),
+      findByIdWithDoctor: jest.fn(),
       countPending: jest.fn(),
       findAllSuperAdmins: jest.fn(),
       getSettings: jest.fn(),
@@ -63,7 +64,7 @@ describe('RequestContactUseCase', () => {
     mockRepo.findAllSuperAdmins.mockResolvedValue([
       { id: 'admin-1', email: 'admin@test.com', fullName: 'Admin' },
     ]);
-    mockRepo.listWithDoctor.mockResolvedValue({ items: [], total: 0 });
+    mockRepo.findByIdWithDoctor.mockResolvedValue(null);
     mockRepo.incrementNotificationCount.mockResolvedValue();
     mockMailer.sendTemplate.mockResolvedValue({
       id: 'email-1',
@@ -178,6 +179,118 @@ describe('RequestContactUseCase', () => {
       await expect(
         useCase.execute({ doctorId: 'doctor-1', channel: 'email' }),
       ).resolves.toBeDefined();
+    });
+
+    it('uses findByIdWithDoctor for doctor data in email — not the newest request', async () => {
+      // Arrange: there are two requests. req-older belongs to doctor-correct;
+      // a newer request from a different doctor exists but should not affect
+      // the email for req-older.
+      const olderReq = makeRequest({ id: 'req-older', doctorId: 'doctor-correct' });
+      mockRepo.save.mockResolvedValue(olderReq);
+
+      mockRepo.findByIdWithDoctor.mockResolvedValue({
+        id: 'req-older',
+        doctorId: 'doctor-correct',
+        doctorName: 'Dr. Correcto',
+        doctorEmail: 'correcto@test.com',
+        doctorPhone: '+58414000001',
+        doctorPlan: 'delta_plus',
+        doctorSpecialty: 'Cardiología',
+        channel: 'whatsapp',
+        message: null,
+        status: 'pending',
+        handledBy: null,
+        handledAt: null,
+        notes: null,
+        notificationCount: 0,
+        lastNotifiedAt: null,
+        createdAt: new Date('2026-10-30T10:00:00Z'),
+        updatedAt: new Date('2026-10-30T10:00:00Z'),
+      });
+
+      // Act
+      await useCase.execute({ doctorId: 'doctor-correct', channel: 'whatsapp' });
+
+      // Drain microtasks so the fire-and-forget sendAdminNotification completes
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+      // Assert: mailer received the correct doctor name, not a fallback
+      expect(mockMailer.sendTemplate).toHaveBeenCalledWith(
+        'support_contact_request',
+        expect.any(Array),
+        expect.objectContaining({ doctorName: 'Dr. Correcto' }),
+        expect.anything(),
+      );
+
+      // Confirm we used findByIdWithDoctor (not listWithDoctor)
+      expect(mockRepo.findByIdWithDoctor).toHaveBeenCalledWith('req-older');
+      expect(mockRepo.listWithDoctor).not.toHaveBeenCalled();
+    });
+
+    it('sends email with fallback values when findByIdWithDoctor returns null', async () => {
+      mockRepo.save.mockResolvedValue(makeRequest({ id: 'req-missing' }));
+      mockRepo.findByIdWithDoctor.mockResolvedValue(null);
+
+      await useCase.execute({ doctorId: 'doctor-1', channel: 'whatsapp' });
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+      expect(mockMailer.sendTemplate).toHaveBeenCalledWith(
+        'support_contact_request',
+        expect.any(Array),
+        expect.objectContaining({ doctorName: 'Especialista' }),
+        expect.anything(),
+      );
+    });
+  });
+
+  describe('double-click race condition', () => {
+    it('falls back to updatePendingForDoctor when save throws SequelizeUniqueConstraintError', async () => {
+      // Arrange: no pending request visible to this request, but a concurrent
+      // request inserts the row before us → unique constraint violation
+      mockRepo.findPendingByDoctorId.mockResolvedValue(null);
+
+      const uniqueErr = Object.assign(new Error('Validation error'), {
+        name: 'SequelizeUniqueConstraintError',
+      });
+      mockRepo.save.mockRejectedValueOnce(uniqueErr);
+
+      const fallbackReq = makeRequest({ id: 'req-race', channel: 'call' });
+      mockRepo.updatePendingForDoctor.mockResolvedValue(fallbackReq);
+
+      // Act
+      const result = await useCase.execute({ doctorId: 'doctor-1', channel: 'call' });
+
+      // Assert: request succeeds and returns the upserted row
+      expect(result.id).toBe('req-race');
+      expect(mockRepo.save).toHaveBeenCalledTimes(1);
+      expect(mockRepo.updatePendingForDoctor).toHaveBeenCalledTimes(1);
+    });
+
+    it('falls back when save throws with pg code 23505 (original.code)', async () => {
+      mockRepo.findPendingByDoctorId.mockResolvedValue(null);
+
+      const pgErr = Object.assign(new Error('duplicate key'), {
+        name: 'SequelizeDatabaseError',
+        original: { code: '23505' },
+      });
+      mockRepo.save.mockRejectedValueOnce(pgErr);
+
+      const fallbackReq = makeRequest({ id: 'req-pgrace', channel: 'email' });
+      mockRepo.updatePendingForDoctor.mockResolvedValue(fallbackReq);
+
+      const result = await useCase.execute({ doctorId: 'doctor-1', channel: 'email' });
+
+      expect(result.id).toBe('req-pgrace');
+    });
+
+    it('rethrows non-unique-constraint errors from save', async () => {
+      mockRepo.findPendingByDoctorId.mockResolvedValue(null);
+
+      mockRepo.save.mockRejectedValueOnce(new Error('DB connection lost'));
+
+      await expect(useCase.execute({ doctorId: 'doctor-1', channel: 'email' })).rejects.toThrow(
+        'DB connection lost',
+      );
     });
   });
 });
