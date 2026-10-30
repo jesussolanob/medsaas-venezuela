@@ -27,6 +27,7 @@ import {
   RefreshCw,
   ChevronDown,
   CalendarX,
+  Video,
 } from 'lucide-react';
 import AvailabilityBlocks, { type AvailabilityBlock } from '@/components/agenda/AvailabilityBlocks';
 import { getDoctorId as getDevDoctorId } from '@/app/doctor/actions';
@@ -1699,11 +1700,12 @@ export default function AgendaPage() {
                           const slotEndMs = new Date(
                             `${dateToYMD(selectedDate)}T${slot.endTime}:00-04:00`,
                           ).getTime();
-                          const isBlocked = calendarBlocks.some((b) => {
+                          const blockingBlock = calendarBlocks.find((b) => {
                             const bStart = new Date(b.starts_at).getTime();
                             const bEnd = new Date(b.ends_at).getTime();
                             return slotStartMs < bEnd && slotEndMs > bStart;
                           });
+                          const isBlocked = Boolean(blockingBlock);
 
                           return (
                             <div
@@ -1746,13 +1748,27 @@ export default function AgendaPage() {
                                       );
                                     })()
                                   ) : isBlocked ? (
-                                    // Bug 4 fix: show blocked indicator instead of "Disponible"
-                                    <div className="w-full h-12 rounded-lg border border-slate-200 bg-slate-50 flex items-center justify-center gap-2">
-                                      <CalendarX className="w-3.5 h-3.5 text-slate-400" />
-                                      <span className="text-xs text-slate-400 font-medium">
-                                        Bloqueado
-                                      </span>
-                                    </div>
+                                    // Bug 4 fix: show blocked indicator instead of "Disponible".
+                                    // Team-meeting blocks get a distinct teal style + icon.
+                                    (() => {
+                                      const isTeamMeeting =
+                                        blockingBlock?.reason === 'Reunión con el equipo Delta';
+                                      return isTeamMeeting ? (
+                                        <div className="w-full h-12 rounded-lg border border-teal-200 bg-teal-50 flex items-center justify-center gap-2 px-3">
+                                          <Video className="w-3.5 h-3.5 text-teal-500 shrink-0" />
+                                          <span className="text-xs text-teal-700 font-medium truncate">
+                                            {blockingBlock?.reason ?? 'Reunión con el equipo Delta'}
+                                          </span>
+                                        </div>
+                                      ) : (
+                                        <div className="w-full h-12 rounded-lg border border-slate-200 bg-slate-50 flex items-center justify-center gap-2 px-3">
+                                          <CalendarX className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                          <span className="text-xs text-slate-400 font-medium truncate">
+                                            {blockingBlock?.reason ? blockingBlock.reason : 'Bloqueado'}
+                                          </span>
+                                        </div>
+                                      );
+                                    })()
                                   ) : invasora ? (
                                     // Ver citaQueInvadeElSlot: la consulta anterior se
                                     // pasa de este horario. No es un hueco libre.

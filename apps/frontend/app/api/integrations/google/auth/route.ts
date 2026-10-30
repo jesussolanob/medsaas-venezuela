@@ -5,6 +5,23 @@ import { randomUUID } from 'node:crypto';
 // flow starts, and validated against the `state` query param in the callback.
 const STATE_COOKIE = 'g_oauth_state';
 
+/**
+ * Strict allowlist for the optional `returnTo` query parameter.
+ *
+ * Security: only exact path matches are accepted — no wildcards, no external
+ * URLs, no protocol-relative URLs (//). Anything not on this list is silently
+ * ignored and the default /doctor/settings?tab=integrations is used instead.
+ *
+ * NEVER add open-redirect patterns here (e.g. "starts with /").
+ */
+const RETURN_TO_ALLOWLIST: ReadonlySet<string> = new Set([
+  '/admin/settings',
+  '/doctor/settings',
+]);
+
+/** Cookie that persists the returnTo path across the OAuth round-trip. */
+const RETURN_TO_COOKIE = 'g_oauth_return_to';
+
 export async function GET(req: NextRequest) {
   const clientId = process.env.GOOGLE_CLIENT_ID;
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
@@ -32,6 +49,15 @@ export async function GET(req: NextRequest) {
   const redirectUri = `${baseUrl}/api/integrations/google/callback`;
   const state = randomUUID();
 
+  // Optional returnTo: only accepted if it matches the strict allowlist.
+  // This allows admin settings to route back to /admin/settings instead of
+  // the default /doctor/settings after the OAuth round-trip completes.
+  const rawReturnTo = req.nextUrl.searchParams.get('returnTo') ?? '';
+  // Extra guard: reject anything with // (protocol-relative), query strings,
+  // fragments, or non-ASCII characters — exact path match covers most of this
+  // but being explicit avoids subtle bypass patterns.
+  const returnTo = RETURN_TO_ALLOWLIST.has(rawReturnTo) ? rawReturnTo : '';
+
   const googleAuthUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth');
   googleAuthUrl.searchParams.append('client_id', clientId);
   googleAuthUrl.searchParams.append('redirect_uri', redirectUri);
@@ -54,5 +80,16 @@ export async function GET(req: NextRequest) {
     path: '/', // broad path so the cookie is reliably sent on the callback redirect
     maxAge: 600, // 10 min — the OAuth round-trip should complete well within this
   });
+
+  if (returnTo) {
+    res.cookies.set(RETURN_TO_COOKIE, returnTo, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      path: '/',
+      maxAge: 600,
+    });
+  }
+
   return res;
 }

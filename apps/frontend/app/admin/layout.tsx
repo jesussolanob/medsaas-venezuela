@@ -35,6 +35,7 @@ import {
   Banknote,
   PhoneCall,
   Megaphone,
+  Video,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import AdminNotifications from './AdminNotifications';
@@ -105,6 +106,12 @@ const navItems: NavEntry[] = [
     href: '/admin/release-notes',
     icon: Megaphone,
     moduleKey: 'release_notes',
+  },
+  {
+    name: 'Reuniones',
+    href: '/admin/team-meetings',
+    icon: Video,
+    moduleKey: 'team_meetings',
   },
   { name: 'Roles', href: '/admin/roles', icon: Shield, moduleKey: 'roles' },
   {
