@@ -25,6 +25,8 @@ const makeAdminItem = (
   return Object.assign(note, { createdByName: 'Lucas Rivas' }) as AdminListItem;
 };
 
+// UUID that matches the isValidNoteImagePath regex: logo/<uuid>/<file>
+const VALID_UUID = '12345678-1234-1234-1234-123456789012';
 const SIGNED_URL = 'https://storage.googleapis.com/bucket/logo/doc-1/ts-img.jpg?X-Goog-sig=abc';
 
 describe('ListReleaseNotesAdminUseCase', () => {
@@ -109,7 +111,7 @@ describe('ListReleaseNotesAdminUseCase', () => {
   });
 
   it('re-signs stored image path via getSignedUrl', async () => {
-    const storedPath = 'logo/admin-1/1730000000000-note-img.jpg';
+    const storedPath = `logo/${VALID_UUID}/1730000000000-note-img.jpg`;
     mockRepo.adminList.mockResolvedValue({
       items: [makeAdminItem({ imageUrl: storedPath })],
       total: 1,
@@ -122,33 +124,44 @@ describe('ListReleaseNotesAdminUseCase', () => {
     expect(result.items[0]!.imageUrl).toBe(SIGNED_URL);
   });
 
-  it('re-signs legacy full GCS URL by extracting its path', async () => {
+  it('returns null imageUrl for legacy full GCS URL stored in DB (path guard blocks re-signing)', async () => {
+    // A full GCS URL stored before the security fix is blocked by isValidNoteImagePath
+    // because it does not match `logo/<uuid>/<file>`. No signing is attempted.
     const legacyUrl =
       'https://storage.googleapis.com/my-bucket/logo/admin-1/img.jpg?X-Goog-Algorithm=AWS4';
     mockRepo.adminList.mockResolvedValue({
       items: [makeAdminItem({ imageUrl: legacyUrl })],
       total: 1,
     });
-    mockStorage.getSignedUrl.mockResolvedValue(SIGNED_URL);
 
     const result = await useCase.execute({ status: 'all', limit: 50, offset: 0 });
 
-    expect(mockStorage.getSignedUrl).toHaveBeenCalledWith(
-      'logo/admin-1/img.jpg',
-      expect.any(Number),
-    );
-    expect(result.items[0]!.imageUrl).toBe(SIGNED_URL);
+    expect(mockStorage.getSignedUrl).not.toHaveBeenCalled();
+    expect(result.items[0]!.imageUrl).toBeNull();
   });
 
   it('returns null imageUrl when re-signing fails — does not throw', async () => {
     mockRepo.adminList.mockResolvedValue({
-      items: [makeAdminItem({ imageUrl: 'logo/admin-1/img.jpg' })],
+      items: [makeAdminItem({ imageUrl: `logo/${VALID_UUID}/img.jpg` })],
       total: 1,
     });
     mockStorage.getSignedUrl.mockRejectedValue(new Error('GCS unavailable'));
 
     const result = await useCase.execute({ status: 'all', limit: 50, offset: 0 });
 
+    expect(result.items[0]!.imageUrl).toBeNull();
+  });
+
+  it('returns null imageUrl for forbidden stored path — receipt prefix (IDOR guard)', async () => {
+    // A crafted path pointing to another module's storage is blocked at read time.
+    mockRepo.adminList.mockResolvedValue({
+      items: [makeAdminItem({ imageUrl: `receipt/${VALID_UUID}/receipt.pdf` })],
+      total: 1,
+    });
+
+    const result = await useCase.execute({ status: 'all', limit: 50, offset: 0 });
+
+    expect(mockStorage.getSignedUrl).not.toHaveBeenCalled();
     expect(result.items[0]!.imageUrl).toBeNull();
   });
 

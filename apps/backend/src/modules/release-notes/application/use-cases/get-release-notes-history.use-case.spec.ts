@@ -14,6 +14,8 @@ const makeItem = (overrides: Partial<UnseenNoteItem> = {}): UnseenNoteItem => ({
   ...overrides,
 });
 
+// UUID that matches the isValidNoteImagePath regex: logo/<uuid>/<file>
+const VALID_UUID = '12345678-1234-1234-1234-123456789012';
 const SIGNED_URL = 'https://storage.googleapis.com/bucket/logo/doc-1/ts-img.jpg?X-Goog-sig=abc';
 
 describe('GetReleaseNotesHistoryUseCase', () => {
@@ -70,7 +72,7 @@ describe('GetReleaseNotesHistoryUseCase', () => {
   });
 
   it('re-signs stored image path via getSignedUrl', async () => {
-    const storedPath = 'logo/doctor-1/1730000000000-photo.jpg';
+    const storedPath = `logo/${VALID_UUID}/1730000000000-photo.jpg`;
     mockRepo.findPublishedForDoctor.mockResolvedValue([makeItem({ imageUrl: storedPath })]);
     mockStorage.getSignedUrl.mockResolvedValue(SIGNED_URL);
 
@@ -80,29 +82,38 @@ describe('GetReleaseNotesHistoryUseCase', () => {
     expect(result.items[0]!.imageUrl).toBe(SIGNED_URL);
   });
 
-  it('re-signs legacy full GCS URL by extracting its path', async () => {
+  it('returns null imageUrl for legacy full GCS URL stored in DB (path guard blocks re-signing)', async () => {
+    // A full GCS URL stored before the security fix is blocked by isValidNoteImagePath
+    // because it does not match `logo/<uuid>/<file>`. No signing is attempted.
     const legacyUrl =
       'https://storage.googleapis.com/my-bucket/logo/doc-1/photo.jpg?X-Goog-Algorithm=AWS4';
     mockRepo.findPublishedForDoctor.mockResolvedValue([makeItem({ imageUrl: legacyUrl })]);
-    mockStorage.getSignedUrl.mockResolvedValue(SIGNED_URL);
 
     const result = await useCase.execute('doctor-1');
 
-    expect(mockStorage.getSignedUrl).toHaveBeenCalledWith(
-      'logo/doc-1/photo.jpg',
-      expect.any(Number),
-    );
-    expect(result.items[0]!.imageUrl).toBe(SIGNED_URL);
+    expect(mockStorage.getSignedUrl).not.toHaveBeenCalled();
+    expect(result.items[0]!.imageUrl).toBeNull();
   });
 
   it('returns null imageUrl when re-signing fails — does not throw', async () => {
     mockRepo.findPublishedForDoctor.mockResolvedValue([
-      makeItem({ imageUrl: 'logo/doctor-1/photo.jpg' }),
+      makeItem({ imageUrl: `logo/${VALID_UUID}/photo.jpg` }),
     ]);
     mockStorage.getSignedUrl.mockRejectedValue(new Error('GCS unavailable'));
 
     const result = await useCase.execute('doctor-1');
 
+    expect(result.items[0]!.imageUrl).toBeNull();
+  });
+
+  it('returns null imageUrl for forbidden stored path — receipt prefix (IDOR guard)', async () => {
+    // A crafted path pointing to another module's storage is blocked at read time.
+    const forbiddenPath = `receipt/${VALID_UUID}/receipt.pdf`;
+    mockRepo.findPublishedForDoctor.mockResolvedValue([makeItem({ imageUrl: forbiddenPath })]);
+
+    const result = await useCase.execute('doctor-1');
+
+    expect(mockStorage.getSignedUrl).not.toHaveBeenCalled();
     expect(result.items[0]!.imageUrl).toBeNull();
   });
 
@@ -117,8 +128,8 @@ describe('GetReleaseNotesHistoryUseCase', () => {
 
   it('re-signs each item independently — one failure does not break the rest', async () => {
     const items = [
-      makeItem({ id: 'note-1', imageUrl: 'logo/doc-1/photo1.jpg' }),
-      makeItem({ id: 'note-2', imageUrl: 'logo/doc-1/photo2.jpg' }),
+      makeItem({ id: 'note-1', imageUrl: `logo/${VALID_UUID}/photo1.jpg` }),
+      makeItem({ id: 'note-2', imageUrl: `logo/${VALID_UUID}/photo2.jpg` }),
     ];
     mockRepo.findPublishedForDoctor.mockResolvedValue(items);
     mockStorage.getSignedUrl

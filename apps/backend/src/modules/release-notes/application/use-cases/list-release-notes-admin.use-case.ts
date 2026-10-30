@@ -6,6 +6,7 @@ import {
 } from '../../domain/repositories/irelease-note.repository';
 import { STORAGE_PORT, type IStoragePort } from '../../../storage/application/ports/storage.port';
 import { signStoredImagePath } from '../../../storage/application/helpers/resign-gcs-image.helper';
+import { isValidNoteImagePath } from './create-release-note.use-case';
 import type { ListReleaseNotesQuery } from '@delta/shared-types';
 
 export interface AdminListOutput {
@@ -55,11 +56,14 @@ export class ListReleaseNotesAdminUseCase {
     });
 
     const signedUrls = await Promise.all(
-      result.items.map((item) =>
-        signStoredImagePath(item.imageUrl, this.storagePort, () => {
+      result.items.map((item) => {
+        if (item.imageUrl !== null && !isValidNoteImagePath(item.imageUrl)) {
+          return Promise.resolve(null);
+        }
+        return signStoredImagePath(item.imageUrl, this.storagePort, () => {
           this.logger.warn('[release-notes] admin-list — image re-sign failed');
-        }),
-      ),
+        });
+      }),
     );
 
     return {

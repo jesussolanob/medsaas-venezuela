@@ -35,7 +35,8 @@ module.exports = {
           id              UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
           title           TEXT        NOT NULL CHECK (char_length(title) BETWEEN 1 AND 80),
           body            TEXT        NOT NULL CHECK (char_length(body) BETWEEN 1 AND 1500),
-          image_url       TEXT        NULL,
+          image_url       TEXT        NULL
+                              CHECK (image_url IS NULL OR image_url LIKE 'logo/%'),
           audience_plans  TEXT[]      NULL,
           published_at    TIMESTAMPTZ NULL,
           created_by      UUID        NULL REFERENCES profiles(id) ON DELETE SET NULL,

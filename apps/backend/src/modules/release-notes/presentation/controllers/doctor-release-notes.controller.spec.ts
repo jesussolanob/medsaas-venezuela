@@ -1,9 +1,12 @@
+import { ForbiddenException, type ExecutionContext } from '@nestjs/common';
 import { Test, type TestingModule } from '@nestjs/testing';
+import { Reflector } from '@nestjs/core';
 import { DoctorReleaseNotesController } from './doctor-release-notes.controller';
 import { GetUnseenReleaseNotesUseCase } from '../../application/use-cases/get-unseen-release-notes.use-case';
 import { MarkReleaseNotesSeenUseCase } from '../../application/use-cases/mark-release-notes-seen.use-case';
 import { GetReleaseNotesHistoryUseCase } from '../../application/use-cases/get-release-notes-history.use-case';
 import { AppAuthGuard } from '../../../../infrastructure/auth/app-auth.guard';
+import { RolesGuard } from '../../../../presentation/guards/roles.guard';
 import type { CurrentUserPayload } from '../../../../presentation/decorators/current-user.decorator';
 
 const DOCTOR_USER: CurrentUserPayload = {
@@ -41,6 +44,8 @@ describe('DoctorReleaseNotesController', () => {
       ],
     })
       .overrideGuard(AppAuthGuard)
+      .useValue({ canActivate: jest.fn().mockReturnValue(true) })
+      .overrideGuard(RolesGuard)
       .useValue({ canActivate: jest.fn().mockReturnValue(true) })
       .compile();
 
@@ -89,6 +94,43 @@ describe('DoctorReleaseNotesController', () => {
       expect(result.success).toBe(true);
       expect(Array.isArray(result.data)).toBe(true);
       expect(getHistoryUseCase.execute).toHaveBeenCalledWith(DOCTOR_USER.sub);
+    });
+  });
+
+  describe('RBAC — non-doctor roles are blocked by RolesGuard', () => {
+    it('RolesGuard throws ForbiddenException when user has patient role', () => {
+      // Use the REAL RolesGuard + Reflector so the @Roles('doctor') class metadata is read.
+      // This confirms the controller is correctly decorated AND the guard enforces it.
+      const reflector = new Reflector();
+      const guard = new RolesGuard(reflector);
+
+      const PATIENT_USER: CurrentUserPayload = {
+        sub: 'patient-uuid-1',
+        role: 'patient',
+        email: 'patient@dev.local',
+      };
+
+      const mockContext = {
+        switchToHttp: () => ({ getRequest: () => ({ user: PATIENT_USER }) }),
+        // Point at the class itself so getAllAndOverride reads the class-level @Roles('doctor')
+        getHandler: () => DoctorReleaseNotesController.prototype.unseen,
+        getClass: () => DoctorReleaseNotesController,
+      } as unknown as ExecutionContext;
+
+      expect(() => guard.canActivate(mockContext)).toThrow(ForbiddenException);
+    });
+
+    it('RolesGuard allows access when user has doctor role', () => {
+      const reflector = new Reflector();
+      const guard = new RolesGuard(reflector);
+
+      const mockContext = {
+        switchToHttp: () => ({ getRequest: () => ({ user: DOCTOR_USER }) }),
+        getHandler: () => DoctorReleaseNotesController.prototype.unseen,
+        getClass: () => DoctorReleaseNotesController,
+      } as unknown as ExecutionContext;
+
+      expect(guard.canActivate(mockContext)).toBe(true);
     });
   });
 });

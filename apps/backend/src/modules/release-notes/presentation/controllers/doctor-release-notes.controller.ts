@@ -1,5 +1,7 @@
 import { Controller, Get, HttpCode, HttpStatus, Post, UseGuards } from '@nestjs/common';
 import { AppAuthGuard } from '../../../../infrastructure/auth/app-auth.guard';
+import { RolesGuard } from '../../../../presentation/guards/roles.guard';
+import { Roles } from '../../../../presentation/decorators/roles.decorator';
 import {
   CurrentUser,
   type CurrentUserPayload,
@@ -12,7 +14,7 @@ import { GetReleaseNotesHistoryUseCase } from '../../application/use-cases/get-r
  * DoctorReleaseNotesController — doctor-facing release notes endpoints.
  *
  * Global prefix 'api' is set in main.ts — do NOT repeat it here.
- * All endpoints require AppAuthGuard (doctor or any authenticated role).
+ * All endpoints require AppAuthGuard + RolesGuard (doctor role only).
  *
  * ROUTES:
  *   GET  /api/doctor/release-notes/unseen  — unseen notes for the modal (max 5)
@@ -21,10 +23,12 @@ import { GetReleaseNotesHistoryUseCase } from '../../application/use-cases/get-r
  *
  * SECURITY:
  *   - doctorId and plan are ALWAYS taken from the authenticated user — anti-IDOR.
+ *   - Only the 'doctor' role may call these endpoints (patients/admins are rejected 403).
  *   - NEVER log PII.
  */
 @Controller('doctor/release-notes')
-@UseGuards(AppAuthGuard)
+@UseGuards(AppAuthGuard, RolesGuard)
+@Roles('doctor')
 export class DoctorReleaseNotesController {
   constructor(
     private readonly getUnseenUseCase: GetUnseenReleaseNotesUseCase,

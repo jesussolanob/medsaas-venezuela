@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -94,11 +95,23 @@ export class AdminReleaseNotesController {
    */
   @Post('image-upload')
   @HttpCode(HttpStatus.OK)
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(
+    FileInterceptor('file', {
+      limits: {
+        // Buffer at most 10 MB before UploadFileUseCase validates — matches its own limit.
+        // Without this Multer would buffer an arbitrarily large payload before rejection.
+        fileSize: 10 * 1024 * 1024,
+        files: 1,
+      },
+    }),
+  )
   async imageUpload(
-    @UploadedFile() file: Express.Multer.File,
+    @UploadedFile() file: Express.Multer.File | undefined,
     @CurrentUser() user: CurrentUserPayload,
   ): Promise<{ success: true; data: unknown }> {
+    if (!file) {
+      throw new BadRequestException('Se requiere un archivo de imagen (campo multipart: "file").');
+    }
     const data = await this.imageUploadUseCase.execute({
       actorId: user.sub,
       originalname: file.originalname,

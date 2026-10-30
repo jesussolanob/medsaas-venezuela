@@ -6,6 +6,7 @@ import {
 } from '../../domain/repositories/irelease-note.repository';
 import { STORAGE_PORT, type IStoragePort } from '../../../storage/application/ports/storage.port';
 import { signStoredImagePath } from '../../../storage/application/helpers/resign-gcs-image.helper';
+import { isValidNoteImagePath } from './create-release-note.use-case';
 import type { UnseenNoteOutput } from './get-unseen-release-notes.use-case';
 
 /**
@@ -32,11 +33,14 @@ export class GetReleaseNotesHistoryUseCase {
     const items = await this.repo.findPublishedForDoctor(doctorId);
 
     const signedUrls = await Promise.all(
-      items.map((item) =>
-        signStoredImagePath(item.imageUrl, this.storagePort, () => {
+      items.map((item) => {
+        if (item.imageUrl !== null && !isValidNoteImagePath(item.imageUrl)) {
+          return Promise.resolve(null);
+        }
+        return signStoredImagePath(item.imageUrl, this.storagePort, () => {
           this.logger.warn('[release-notes] history — image re-sign failed');
-        }),
-      ),
+        });
+      }),
     );
 
     return {
