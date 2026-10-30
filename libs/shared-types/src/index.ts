@@ -66,3 +66,4 @@ export * from './dtos/inventory.dto';
 export * from './dtos/quotes.dto';
 export * from './dtos/content-templates.dto';
 export * from './dtos/contact-requests.dto';
+export * from './dtos/release-notes.dto';

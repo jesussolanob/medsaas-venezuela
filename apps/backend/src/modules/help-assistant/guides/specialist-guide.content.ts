@@ -863,4 +863,40 @@ de soporte de Delta: +58 422 103 3582. Ese es el unico numero oficial de soporte
 **Donde mas aparece el numero de soporte de Delta?**
 El numero +58 422 103 3582 es el unico numero de contacto oficial. Aparece en el modal de Contactame ya,
 en la pantalla de Ayuda (/doctor/help) y en la pantalla de Actualizacion de plan (/doctor/upgrade).
+
+---
+
+## Novedades de version
+
+**Que son las Novedades de version?**
+Son anuncios del equipo de Delta sobre funciones nuevas, mejoras y cambios en la plataforma.
+Cada novedad tiene fecha, titulo y una descripcion en texto plano. Pueden incluir una imagen.
+
+**Donde veo las Novedades?**
+Al entrar a Inicio (/doctor), si hay novedades que no has visto aparece automaticamente un modal
+llamado "Novedades". Solo aparece una vez por visita (si lo cierras sin pulsar "Entendido",
+vuelve a aparecer la proxima vez que entres).
+Tambien puedes ver el historial completo en Ayuda → Novedades.
+
+**Como funciona el modal de Novedades?**
+El modal muestra las novedades mas recientes que aun no has visto (maximo 5 a la vez), de la mas
+nueva a la mas antigua. Cada novedad muestra la fecha de publicacion, el titulo y el contenido
+en texto plano (con listas con guiones si el redactor las incluyo). Puede haber una imagen.
+El boton "Entendido" cierra el modal y marca todas esas novedades como vistas. Si cierras el
+modal de otra forma (sin pulsar "Entendido"), las novedades vuelven a aparecer la proxima visita.
+
+**Que es el historial de Novedades?**
+En la pantalla de Ayuda hay una seccion "Novedades" donde puedes ver todas las novedades publicadas
+para tu plan, ordenadas de la mas reciente a la mas antigua (limite: 50). Ahi puedes revisar
+cualquier novedad aunque ya la hayas marcado como vista.
+
+**Por que algunas novedades no me aparecen?**
+El equipo de Delta puede publicar novedades dirigidas solo a ciertos planes. Si una novedad es
+solo para Delta Plus y tu tienes Delta Base, no te aparecera ni en el modal ni en el historial.
+Las novedades sin restriccion de plan llegan a todos los especialistas.
+
+**Cuando deja de aparecer el modal de Novedades?**
+El modal no aparece si no hay novedades nuevas para tu plan desde la ultima vez que pulsaste
+"Entendido". Si el equipo publica una novedad nueva, el modal vuelve a aparecer la proxima vez
+que entres a Inicio.
 `;

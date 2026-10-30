@@ -992,4 +992,64 @@ En Admin → Configuracion (/admin/settings), seccion "Contacto y soporte":
   "Llamame ya" en el panel del especialista y cuando el backend acepta ese canal.
 Cambiar estos valores afecta inmediatamente el comportamiento del modal para todos los especialistas.
 El numero correcto y unico de soporte de Delta es +58 422 103 3582 (584221033582 sin el +).
+
+---
+
+## Novedades de version (Admin)
+
+**Que son las Novedades de version en el panel admin?**
+La seccion Admin → Novedades (/admin/release-notes) permite al equipo crear, editar, publicar
+y despublicar anuncios de novedades que los especialistas ven al entrar a su panel.
+Tanto los super_admin como los admin pueden gestionar novedades.
+
+**Como creo una novedad?**
+1. Ve a Admin → Novedades.
+2. Pulsa "Nueva novedad". Se abre el formulario.
+3. Completa: Titulo (max 80 caracteres), Cuerpo (max 1500 caracteres, texto plano, sin HTML).
+4. Opcionalmente sube una imagen (JPG, PNG o WEBP, max 10 MB) y selecciona los planes
+   a los que va dirigida (dejar en blanco = llega a todos los planes).
+5. Pulsa "Guardar como borrador". La novedad se crea como BORRADOR y no es visible para los
+   especialistas hasta que la publiques.
+
+**Como publico o despublico una novedad?**
+- Para publicar: en la lista de novedades, abre el borrador y pulsa "Publicar".
+  El sistema asigna la fecha y hora de publicacion automaticamente (hora del servidor).
+  Desde ese momento los especialistas del plan correspondiente ven la novedad en su modal.
+- Para despublicar: abre la novedad publicada y pulsa "Despublicar". Vuelve a ser un borrador.
+  Los especialistas que ya la vieron no vuelven a verla si la republicas.
+
+**Puedo editar una novedad publicada?**
+Si. Puedes editar el titulo, cuerpo, imagen y planes de una novedad en cualquier momento, tanto
+si esta en borrador como si esta publicada. Editar una novedad publicada NO la re-muestra a los
+especialistas que ya la vieron; solo afecta a quienes aun no la han visto.
+
+**Como elimino una novedad?**
+Solo se pueden eliminar BORRADORES. Si la novedad ya esta publicada, primero despublicala y luego
+eliminala. Esto evita eliminar por error una novedad que los especialistas estan viendo.
+
+**Que significa el filtro de planes (audiencia)?**
+Puedes restringir una novedad a uno o varios planes (por ejemplo, solo Delta Plus). Los especialistas
+con un plan diferente no veran esa novedad ni en el modal ni en su historial.
+Si dejas el campo en blanco (null), la novedad llega a todos los especialistas sin importar el plan.
+
+**El contenido es texto plano. Que significa?**
+No se puede incluir HTML en el titulo ni en el cuerpo. El sistema rechaza cualquier texto que
+contenga etiquetas HTML (como <b>, <p>, <script>, etc.). Si quieres formato visual, usa listas
+con guiones (-) o saltos de linea; el frontend las renderiza como texto con formato basico.
+
+**Para que sirve la imagen en una novedad?**
+La imagen es opcional. Si la subes, aparece en el modal del especialista junto al titulo y el cuerpo.
+Para subir la imagen, usa el boton de carga en el formulario de la novedad (multipart upload).
+La imagen se almacena en GCS y se sirve con una URL permanente.
+
+**Como veo la vista previa de una novedad antes de publicarla?**
+En el formulario de edicion hay una vista previa que muestra como vera el especialista la novedad
+en su modal (fecha, titulo, cuerpo e imagen). Siempre revisa la vista previa antes de publicar.
+
+**Los especialistas ven automaticamente las novedades nuevas?**
+Si. Al entrar a Inicio (/doctor), el sistema verifica si hay novedades publicadas para su plan
+que no ha visto (fecha de publicacion posterior a su ultima marca de "visto"). Si las hay, el
+modal se abre automaticamente mostrando hasta 5 novedades a la vez. El especialista pulsa
+"Entendido" para marcarlas como vistas; si cierra el modal de otra forma, vuelven a aparecer
+la proxima visita.
 `;
