@@ -3,15 +3,18 @@
 /**
  * /admin/team-meetings
  *
- * Admin view for specialist team meetings (phase 3 — retention plan).
+ * Admin view for specialist team meetings (phase 3 + 4 — retention plan).
  *
- * Features:
+ * Features (phase 3):
  *   - Filter by status and date range.
  *   - List with specialist info, date/time (Caracas), source, status pill.
  *   - Actions: "Marcar hecha", "No asistió", "Cancelar" (inline confirm),
  *     edit notes, "Contactar" (reuses ContactarModal).
  *   - Pagination via meta.total.
- *   - Placeholder slot for phase-4 "Otorgar mes de gracia" button on done meetings.
+ *
+ * Features (phase 4):
+ *   - "Otorgar mes de gracia" button on done meetings (inline confirm, no alert()).
+ *   - Retention metrics card at the top with period selector.
  */
 
 import { useEffect, useState } from 'react';
@@ -28,11 +31,15 @@ import {
   ExternalLink,
   RefreshCcw,
   Calendar,
+  Gift,
+  BarChart2,
+  ChevronDown,
 } from 'lucide-react';
 import { ContactarModal } from '@/components/admin/ContactarModal';
 import DateRangeFilter, { type DateRangeValue } from '@/components/admin/DateRangeFilter';
 import Paginator from '@/components/ui/Paginator';
 import { showToast, Toaster } from '@/components/ui/Toaster';
+import { daysAgoCaracas, todayCaracas } from '@/lib/date-range';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -53,6 +60,23 @@ interface AdminTeamMeeting {
   createdAt: string;
   updatedAt: string;
 }
+
+interface RetentionMetrics {
+  invitePreSent: number;
+  inviteExpiredSent: number;
+  inviteClicks: number;
+  meetingsScheduledFromEmail: number;
+  meetingsScheduledFromModal: number;
+  meetingsDone: number;
+  meetingsNoShow: number;
+  graceMonthsGranted: number;
+  contactRequestsPending: number;
+  contactRequestsContacted: number;
+  contactRequestsResolved: number;
+  doctorsReturned: number;
+}
+
+type MetricsPeriod = '30d' | 'custom';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -97,6 +121,19 @@ function formatDateTime(isoStr: string): string {
   }
 }
 
+function formatDate(isoStr: string): string {
+  try {
+    return new Intl.DateTimeFormat(VE_LOCALE, {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+      timeZone: VE_TZ,
+    }).format(new Date(isoStr));
+  } catch {
+    return isoStr;
+  }
+}
+
 function StatusPill({ status }: { status: string }) {
   const map: Record<string, { label: string; cls: string }> = {
     scheduled: { label: 'Agendada', cls: 'bg-blue-50 text-blue-700 border-blue-200' },
@@ -115,7 +152,144 @@ function StatusPill({ status }: { status: string }) {
 }
 
 // ---------------------------------------------------------------------------
-// Component
+// MetricStat sub-component
+// ---------------------------------------------------------------------------
+
+function MetricStat({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="flex flex-col gap-0.5">
+      <span className="text-xl font-bold text-slate-800">{value}</span>
+      <span className="text-[11px] text-slate-500 leading-tight">{label}</span>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// RetentionMetricsCard
+// ---------------------------------------------------------------------------
+
+function RetentionMetricsCard() {
+  const [period, setPeriod] = useState<MetricsPeriod>('30d');
+  const [customRange, setCustomRange] = useState<DateRangeValue>({ from: null, to: null });
+  const [showCustom, setShowCustom] = useState(false);
+  const [metrics, setMetrics] = useState<RetentionMetrics | null>(null);
+  const [loadingMetrics, setLoadingMetrics] = useState(false);
+  const [metricsError, setMetricsError] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadMetrics() {
+      const from = period === '30d' ? daysAgoCaracas(30) : (customRange.from ?? null);
+      const to = period === '30d' ? todayCaracas() : (customRange.to ?? null);
+      if (!from || !to) return;
+
+      setLoadingMetrics(true);
+      setMetricsError('');
+      try {
+        const res = await fetch(`/api/admin/retention/metrics?from=${from}&to=${to}`, {
+          cache: 'no-store',
+        });
+        const json = (await res.json()) as {
+          data?: RetentionMetrics;
+          error?: string;
+        };
+        if (!cancelled) {
+          if (!res.ok) {
+            setMetricsError(json.error ?? 'No se pudieron cargar las métricas.');
+          } else {
+            setMetrics(json.data ?? null);
+          }
+        }
+      } catch {
+        if (!cancelled) setMetricsError('Error de red al cargar métricas.');
+      } finally {
+        if (!cancelled) setLoadingMetrics(false);
+      }
+    }
+
+    void loadMetrics();
+    return () => {
+      cancelled = true;
+    };
+  }, [period, customRange]);
+
+  return (
+    <div className="bg-white border border-slate-200 rounded-xl p-5">
+      {/* Card header */}
+      <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
+        <div className="flex items-center gap-2">
+          <BarChart2 className="w-4 h-4 text-teal-500" />
+          <h2 className="text-sm font-semibold text-slate-700">Retención de especialistas</h2>
+        </div>
+
+        {/* Period selector */}
+        <div className="flex items-center gap-2">
+          <div className="relative">
+            <select
+              value={period}
+              onChange={(e) => {
+                const v = e.target.value as MetricsPeriod;
+                setPeriod(v);
+                setShowCustom(v === 'custom');
+              }}
+              className="pl-3 pr-8 py-1.5 text-xs border border-slate-200 rounded-lg focus:ring-2 focus:ring-teal-500 outline-none bg-white text-slate-700 appearance-none cursor-pointer"
+            >
+              <option value="30d">Últimos 30 días</option>
+              <option value="custom">Desde/Hasta</option>
+            </select>
+            <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-400 pointer-events-none" />
+          </div>
+
+          {showCustom && (
+            <DateRangeFilter
+              value={customRange}
+              onChange={(v) => setCustomRange(v)}
+              syncUrl={false}
+            />
+          )}
+        </div>
+      </div>
+
+      {/* Body */}
+      {loadingMetrics ? (
+        <div className="flex items-center gap-2 text-slate-400 py-2">
+          <Loader2 className="w-4 h-4 animate-spin" />
+          <span className="text-xs">Cargando métricas…</span>
+        </div>
+      ) : metricsError ? (
+        <p className="text-xs text-red-500">{metricsError}</p>
+      ) : metrics ? (
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-x-6 gap-y-4">
+          {/* Invitaciones */}
+          <MetricStat label="Inv. enviadas (7 días)" value={metrics.invitePreSent} />
+          <MetricStat label="Inv. enviadas (vencidas)" value={metrics.inviteExpiredSent} />
+          <MetricStat label="Clics en el correo" value={metrics.inviteClicks} />
+
+          {/* Reuniones */}
+          <MetricStat label="Reuniones (correo)" value={metrics.meetingsScheduledFromEmail} />
+          <MetricStat label="Reuniones (modal)" value={metrics.meetingsScheduledFromModal} />
+          <MetricStat label="Realizadas" value={metrics.meetingsDone} />
+          <MetricStat label="No asistió" value={metrics.meetingsNoShow} />
+          <MetricStat label="Meses de gracia" value={metrics.graceMonthsGranted} />
+
+          {/* Solicitudes de contacto */}
+          <MetricStat label="Solicitudes pendientes" value={metrics.contactRequestsPending} />
+          <MetricStat label="Contactadas" value={metrics.contactRequestsContacted} />
+          <MetricStat label="Resueltas" value={metrics.contactRequestsResolved} />
+
+          {/* Retorno */}
+          <MetricStat label="Volvieron a entrar" value={metrics.doctorsReturned} />
+        </div>
+      ) : (
+        <p className="text-xs text-slate-400">Seleccioná un rango para ver métricas.</p>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Main component
 // ---------------------------------------------------------------------------
 
 export default function AdminTeamMeetingsPage() {
@@ -133,6 +307,13 @@ export default function AdminTeamMeetingsPage() {
   const [editNotesId, setEditNotesId] = useState<string | null>(null);
   const [notesValue, setNotesValue] = useState('');
   const [actionBusy, setActionBusy] = useState<string | null>(null);
+
+  // Phase 4 — grant-grace per-row state
+  const [confirmGraceId, setConfirmGraceId] = useState<string | null>(null);
+  const [graceBusy, setGraceBusy] = useState<string | null>(null);
+  // Track granted rows: meeting id → new expiry ISO string
+  const [grantedGrace, setGrantedGrace] = useState<Record<string, string>>({});
+
   // Incrementing this triggers a data reload from action handlers.
   const [reloadTrigger, setReloadTrigger] = useState(0);
 
@@ -156,7 +337,8 @@ export default function AdminTeamMeetingsPage() {
           cache: 'no-store',
         });
         if (!res.ok) {
-          if (!cancelled) showToast({ type: 'error', message: 'No se pudieron cargar las reuniones.' });
+          if (!cancelled)
+            showToast({ type: 'error', message: 'No se pudieron cargar las reuniones.' });
           return;
         }
         const json = (await res.json()) as {
@@ -175,7 +357,9 @@ export default function AdminTeamMeetingsPage() {
     }
 
     void load();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [page, pageSize, statusFilter, dateRange, reloadTrigger]);
 
   async function patchMeeting(id: string, body: { status?: string; notes?: string | null }) {
@@ -235,6 +419,40 @@ export default function AdminTeamMeetingsPage() {
     }
   }
 
+  // Phase 4 — grant grace month
+  async function handleGrantGrace(meeting: AdminTeamMeeting) {
+    setGraceBusy(meeting.id);
+    try {
+      const res = await fetch(`/api/admin/team-meetings/${meeting.id}/grant-grace`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        cache: 'no-store',
+      });
+      const json = (await res.json()) as {
+        data?: { doctorId: string; newExpiresAt: string };
+        error?: string;
+      };
+      if (!res.ok) {
+        const msg = json.error ?? 'Error al otorgar el mes de gracia.';
+        showToast({ type: 'error', message: msg });
+        setConfirmGraceId(null);
+        return;
+      }
+      const newExpiry = json.data?.newExpiresAt ?? '';
+      setGrantedGrace((prev) => ({ ...prev, [meeting.id]: newExpiry }));
+      setConfirmGraceId(null);
+      showToast({
+        type: 'success',
+        message: `Mes de gracia otorgado a ${meeting.doctorName}. Nuevo vencimiento: ${formatDate(newExpiry)}.`,
+      });
+    } catch {
+      showToast({ type: 'error', message: 'Error de red. Intenta de nuevo.' });
+      setConfirmGraceId(null);
+    } finally {
+      setGraceBusy(null);
+    }
+  }
+
   function handleFilterChange(key: 'status', value: string) {
     setPage(1);
     if (key === 'status') setStatusFilter(value);
@@ -249,17 +467,22 @@ export default function AdminTeamMeetingsPage() {
     <>
       <Toaster />
       <div className="space-y-6">
+        {/* Retention metrics card (phase 4) */}
+        <RetentionMetricsCard />
+
         {/* Header */}
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
             <h1 className="text-2xl font-bold text-slate-800 tracking-tight">Reuniones</h1>
             <p className="text-sm text-slate-500 mt-0.5">
-              Reuniones de especialistas con el equipo Delta (Plan de Retención — Fase 3)
+              Reuniones de especialistas con el equipo Delta (Plan de Retención — Fase 3 + 4)
             </p>
           </div>
           <div className="flex items-center gap-2 text-xs text-slate-500">
             <Video className="w-4 h-4 text-teal-500" />
-            <span>{total} reunión{total !== 1 ? 'es' : ''}</span>
+            <span>
+              {total} reunión{total !== 1 ? 'es' : ''}
+            </span>
           </div>
         </div>
 
@@ -306,7 +529,9 @@ export default function AdminTeamMeetingsPage() {
           ) : meetings.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 gap-3">
               <Calendar className="w-12 h-12 text-slate-200" />
-              <p className="text-sm text-slate-500 font-medium">No hay reuniones con estos filtros.</p>
+              <p className="text-sm text-slate-500 font-medium">
+                No hay reuniones con estos filtros.
+              </p>
             </div>
           ) : (
             <>
@@ -338,196 +563,240 @@ export default function AdminTeamMeetingsPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {meetings.map((m) => (
-                      <tr key={m.id} className="hover:bg-slate-50/50 transition-colors">
-                        {/* Specialist */}
-                        <td className="px-4 py-3">
-                          <p className="font-semibold text-slate-800 text-sm">{m.doctorName}</p>
-                          <p className="text-xs text-slate-400 mt-0.5">
-                            {m.doctorSpecialty ?? '—'} · {m.doctorPlan}
-                          </p>
-                        </td>
+                    {meetings.map((m) => {
+                      const alreadyGranted = Boolean(grantedGrace[m.id]);
+                      return (
+                        <tr key={m.id} className="hover:bg-slate-50/50 transition-colors">
+                          {/* Specialist */}
+                          <td className="px-4 py-3">
+                            <p className="font-semibold text-slate-800 text-sm">{m.doctorName}</p>
+                            <p className="text-xs text-slate-400 mt-0.5">
+                              {m.doctorSpecialty ?? '—'} · {m.doctorPlan}
+                            </p>
+                          </td>
 
-                        {/* Date/time */}
-                        <td className="px-4 py-3 text-sm text-slate-700 whitespace-nowrap">
-                          {formatDateTime(m.startsAt)}
-                        </td>
+                          {/* Date/time */}
+                          <td className="px-4 py-3 text-sm text-slate-700 whitespace-nowrap">
+                            {formatDateTime(m.startsAt)}
+                          </td>
 
-                        {/* Source */}
-                        <td className="px-4 py-3 text-sm text-slate-500">
-                          {SOURCE_LABELS[m.source] ?? m.source}
-                        </td>
+                          {/* Source */}
+                          <td className="px-4 py-3 text-sm text-slate-500">
+                            {SOURCE_LABELS[m.source] ?? m.source}
+                          </td>
 
-                        {/* Status */}
-                        <td className="px-4 py-3">
-                          <StatusPill status={m.status} />
-                        </td>
+                          {/* Status */}
+                          <td className="px-4 py-3">
+                            <StatusPill status={m.status} />
+                          </td>
 
-                        {/* Meeting URL */}
-                        <td className="px-4 py-3">
-                          {m.meetingUrl ? (
-                            <a
-                              href={m.meetingUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1 text-xs text-teal-600 hover:underline font-medium"
-                            >
-                              <Video className="w-3 h-3" />
-                              Unirse
-                              <ExternalLink className="w-3 h-3 opacity-60" />
-                            </a>
-                          ) : (
-                            <span className="text-xs text-slate-300">—</span>
-                          )}
-                        </td>
+                          {/* Meeting URL */}
+                          <td className="px-4 py-3">
+                            {m.meetingUrl ? (
+                              <a
+                                href={m.meetingUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1 text-xs text-teal-600 hover:underline font-medium"
+                              >
+                                <Video className="w-3 h-3" />
+                                Unirse
+                                <ExternalLink className="w-3 h-3 opacity-60" />
+                              </a>
+                            ) : (
+                              <span className="text-xs text-slate-300">—</span>
+                            )}
+                          </td>
 
-                        {/* Notes */}
-                        <td className="px-4 py-3 max-w-[200px]">
-                          {editNotesId === m.id ? (
-                            <div className="flex items-start gap-2">
-                              <textarea
-                                value={notesValue}
-                                onChange={(e) => setNotesValue(e.target.value)}
-                                rows={2}
-                                maxLength={2000}
-                                className="flex-1 px-2 py-1 border border-slate-200 rounded-lg text-xs focus:ring-2 focus:ring-teal-500 outline-none resize-none"
-                                placeholder="Notas del feedback…"
-                              />
-                              <div className="flex flex-col gap-1">
-                                <button
-                                  onClick={() => void handleSaveNotes(m.id)}
-                                  disabled={actionBusy === m.id}
-                                  className="p-1.5 rounded-lg bg-teal-500 text-white hover:bg-teal-600 disabled:opacity-60 transition-colors"
-                                  aria-label="Guardar notas"
-                                >
-                                  {actionBusy === m.id ? (
-                                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                  ) : (
-                                    <Save className="w-3.5 h-3.5" />
-                                  )}
-                                </button>
-                                <button
-                                  onClick={() => setEditNotesId(null)}
-                                  className="p-1.5 rounded-lg border border-slate-200 text-slate-400 hover:bg-slate-50 transition-colors"
-                                  aria-label="Cancelar edición"
-                                >
-                                  <X className="w-3.5 h-3.5" />
-                                </button>
+                          {/* Notes */}
+                          <td className="px-4 py-3 max-w-[200px]">
+                            {editNotesId === m.id ? (
+                              <div className="flex items-start gap-2">
+                                <textarea
+                                  value={notesValue}
+                                  onChange={(e) => setNotesValue(e.target.value)}
+                                  rows={2}
+                                  maxLength={2000}
+                                  className="flex-1 px-2 py-1 border border-slate-200 rounded-lg text-xs focus:ring-2 focus:ring-teal-500 outline-none resize-none"
+                                  placeholder="Notas del feedback…"
+                                />
+                                <div className="flex flex-col gap-1">
+                                  <button
+                                    onClick={() => void handleSaveNotes(m.id)}
+                                    disabled={actionBusy === m.id}
+                                    className="p-1.5 rounded-lg bg-teal-500 text-white hover:bg-teal-600 disabled:opacity-60 transition-colors"
+                                    aria-label="Guardar notas"
+                                  >
+                                    {actionBusy === m.id ? (
+                                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                    ) : (
+                                      <Save className="w-3.5 h-3.5" />
+                                    )}
+                                  </button>
+                                  <button
+                                    onClick={() => setEditNotesId(null)}
+                                    className="p-1.5 rounded-lg border border-slate-200 text-slate-400 hover:bg-slate-50 transition-colors"
+                                    aria-label="Cancelar edición"
+                                  >
+                                    <X className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
                               </div>
-                            </div>
-                          ) : (
-                            <div
-                              className="flex items-start gap-1.5 cursor-pointer group"
-                              onClick={() => {
-                                setEditNotesId(m.id);
-                                setNotesValue(m.notes ?? '');
-                              }}
-                              role="button"
-                              tabIndex={0}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter' || e.key === ' ') {
+                            ) : (
+                              <div
+                                className="flex items-start gap-1.5 cursor-pointer group"
+                                onClick={() => {
                                   setEditNotesId(m.id);
                                   setNotesValue(m.notes ?? '');
-                                }
-                              }}
-                              aria-label="Editar notas"
-                            >
-                              <span className="text-xs text-slate-500 line-clamp-2 flex-1">
-                                {m.notes ?? (
-                                  <span className="text-slate-300 italic">Sin notas</span>
-                                )}
-                              </span>
-                              <Pencil className="w-3 h-3 text-slate-300 group-hover:text-slate-500 shrink-0 mt-0.5 transition-colors" />
-                            </div>
-                          )}
-                        </td>
-
-                        {/* Actions */}
-                        <td className="px-4 py-3">
-                          <div className="flex items-center justify-end gap-1.5 flex-wrap">
-                            {/* Contactar */}
-                            <button
-                              onClick={() => setContactDoctorId(m.doctorId)}
-                              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-200 text-slate-500 text-xs hover:bg-slate-50 transition-colors"
-                              title="Ver contacto"
-                            >
-                              <Phone className="w-3.5 h-3.5" />
-                              Contactar
-                            </button>
-
-                            {m.status === 'scheduled' && (
-                              <>
-                                {/* Mark done */}
-                                <button
-                                  onClick={() => void handleMarkDone(m.id)}
-                                  disabled={actionBusy === m.id}
-                                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-teal-200 text-teal-700 bg-teal-50 text-xs hover:bg-teal-100 disabled:opacity-60 transition-colors"
-                                  title="Marcar como realizada"
-                                >
-                                  {actionBusy === m.id ? (
-                                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                  ) : (
-                                    <CheckCircle2 className="w-3.5 h-3.5" />
+                                }}
+                                role="button"
+                                tabIndex={0}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter' || e.key === ' ') {
+                                    setEditNotesId(m.id);
+                                    setNotesValue(m.notes ?? '');
+                                  }
+                                }}
+                                aria-label="Editar notas"
+                              >
+                                <span className="text-xs text-slate-500 line-clamp-2 flex-1">
+                                  {m.notes ?? (
+                                    <span className="text-slate-300 italic">Sin notas</span>
                                   )}
-                                  Hecha
-                                </button>
+                                </span>
+                                <Pencil className="w-3 h-3 text-slate-300 group-hover:text-slate-500 shrink-0 mt-0.5 transition-colors" />
+                              </div>
+                            )}
+                          </td>
 
-                                {/* No show */}
-                                <button
-                                  onClick={() => void handleMarkNoShow(m.id)}
-                                  disabled={actionBusy === m.id}
-                                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-amber-200 text-amber-700 bg-amber-50 text-xs hover:bg-amber-100 disabled:opacity-60 transition-colors"
-                                  title="No asistió"
-                                >
-                                  <UserX className="w-3.5 h-3.5" />
-                                  No asistió
-                                </button>
+                          {/* Actions */}
+                          <td className="px-4 py-3">
+                            <div className="flex items-center justify-end gap-1.5 flex-wrap">
+                              {/* Contactar */}
+                              <button
+                                onClick={() => setContactDoctorId(m.doctorId)}
+                                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-200 text-slate-500 text-xs hover:bg-slate-50 transition-colors"
+                                title="Ver contacto"
+                              >
+                                <Phone className="w-3.5 h-3.5" />
+                                Contactar
+                              </button>
 
-                                {/* Cancel */}
-                                {confirmCancelId === m.id ? (
-                                  <div className="flex items-center gap-1">
-                                    <span className="text-xs text-slate-600">¿Cancelar?</span>
+                              {m.status === 'scheduled' && (
+                                <>
+                                  {/* Mark done */}
+                                  <button
+                                    onClick={() => void handleMarkDone(m.id)}
+                                    disabled={actionBusy === m.id}
+                                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-teal-200 text-teal-700 bg-teal-50 text-xs hover:bg-teal-100 disabled:opacity-60 transition-colors"
+                                    title="Marcar como realizada"
+                                  >
+                                    {actionBusy === m.id ? (
+                                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                    ) : (
+                                      <CheckCircle2 className="w-3.5 h-3.5" />
+                                    )}
+                                    Hecha
+                                  </button>
+
+                                  {/* No show */}
+                                  <button
+                                    onClick={() => void handleMarkNoShow(m.id)}
+                                    disabled={actionBusy === m.id}
+                                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-amber-200 text-amber-700 bg-amber-50 text-xs hover:bg-amber-100 disabled:opacity-60 transition-colors"
+                                    title="No asistió"
+                                  >
+                                    <UserX className="w-3.5 h-3.5" />
+                                    No asistió
+                                  </button>
+
+                                  {/* Cancel */}
+                                  {confirmCancelId === m.id ? (
+                                    <div className="flex items-center gap-1">
+                                      <span className="text-xs text-slate-600">¿Cancelar?</span>
+                                      <button
+                                        onClick={() => void handleCancel(m.id)}
+                                        disabled={actionBusy === m.id}
+                                        className="px-2 py-1 rounded bg-red-500 text-white text-[11px] font-semibold hover:bg-red-600 disabled:opacity-60 transition-colors"
+                                      >
+                                        Sí
+                                      </button>
+                                      <button
+                                        onClick={() => setConfirmCancelId(null)}
+                                        className="px-2 py-1 rounded border border-slate-200 text-slate-600 text-[11px] hover:bg-slate-50 transition-colors"
+                                      >
+                                        No
+                                      </button>
+                                    </div>
+                                  ) : (
                                     <button
-                                      onClick={() => void handleCancel(m.id)}
-                                      disabled={actionBusy === m.id}
-                                      className="px-2 py-1 rounded bg-red-500 text-white text-[11px] font-semibold hover:bg-red-600 disabled:opacity-60 transition-colors"
+                                      onClick={() => setConfirmCancelId(m.id)}
+                                      className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-200 text-slate-500 text-xs hover:bg-slate-50 hover:text-red-600 hover:border-red-200 transition-colors"
+                                      title="Cancelar reunión"
                                     >
-                                      Sí
+                                      <X className="w-3.5 h-3.5" />
+                                      Cancelar
                                     </button>
-                                    <button
-                                      onClick={() => setConfirmCancelId(null)}
-                                      className="px-2 py-1 rounded border border-slate-200 text-slate-600 text-[11px] hover:bg-slate-50 transition-colors"
-                                    >
-                                      No
-                                    </button>
+                                  )}
+                                </>
+                              )}
+
+                              {/* FASE 4 — "Otorgar mes de gracia" on done meetings */}
+                              {m.status === 'done' &&
+                                (alreadyGranted ? (
+                                  <div className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-teal-50 border border-teal-200 text-teal-700 text-[11px]">
+                                    <CheckCircle2 className="w-3.5 h-3.5" />
+                                    <span>
+                                      Mes otorgado
+                                      {grantedGrace[m.id]
+                                        ? ` · vence ${formatDate(grantedGrace[m.id])}`
+                                        : ''}
+                                    </span>
+                                  </div>
+                                ) : confirmGraceId === m.id ? (
+                                  <div className="flex flex-col items-end gap-1.5">
+                                    <p className="text-[11px] text-slate-600 max-w-[220px] text-right">
+                                      Se le sumará 1 mes de prueba (o 30 días a su plan pago) a{' '}
+                                      <strong>{m.doctorName}</strong>. Solo se puede otorgar una
+                                      vez.
+                                    </p>
+                                    <div className="flex items-center gap-1">
+                                      <button
+                                        onClick={() => void handleGrantGrace(m)}
+                                        disabled={graceBusy === m.id}
+                                        className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-teal-500 text-white text-[11px] font-semibold hover:bg-teal-600 disabled:opacity-60 transition-colors"
+                                      >
+                                        {graceBusy === m.id ? (
+                                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                        ) : (
+                                          <Gift className="w-3.5 h-3.5" />
+                                        )}
+                                        Confirmar
+                                      </button>
+                                      <button
+                                        onClick={() => setConfirmGraceId(null)}
+                                        disabled={graceBusy === m.id}
+                                        className="px-2.5 py-1.5 rounded-lg border border-slate-200 text-slate-600 text-[11px] hover:bg-slate-50 disabled:opacity-60 transition-colors"
+                                      >
+                                        Cancelar
+                                      </button>
+                                    </div>
                                   </div>
                                 ) : (
                                   <button
-                                    onClick={() => setConfirmCancelId(m.id)}
-                                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-slate-200 text-slate-500 text-xs hover:bg-slate-50 hover:text-red-600 hover:border-red-200 transition-colors"
-                                    title="Cancelar reunión"
+                                    onClick={() => setConfirmGraceId(m.id)}
+                                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-teal-200 text-teal-700 bg-teal-50 text-xs hover:bg-teal-100 transition-colors"
+                                    title="Otorgar mes de gracia"
                                   >
-                                    <X className="w-3.5 h-3.5" />
-                                    Cancelar
+                                    <Gift className="w-3.5 h-3.5" />
+                                    Mes de gracia
                                   </button>
-                                )}
-                              </>
-                            )}
-
-                            {/* FASE 4 — SLOT: "Otorgar mes de gracia" button on done meetings.
-                                Do NOT implement here. Leave this placeholder for the next phase. */}
-                            {m.status === 'done' && (
-                              <span
-                                className="px-2.5 py-1.5 rounded-lg border border-dashed border-slate-200 text-[11px] text-slate-300"
-                                title="Disponible en Fase 4"
-                              >
-                                Mes de gracia (pronto)
-                              </span>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
+                                ))}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

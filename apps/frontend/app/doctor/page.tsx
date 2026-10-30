@@ -28,7 +28,7 @@ import {
   FilePlus,
 } from 'lucide-react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { StatCard, Card } from '@/components/dh';
 import NewAppointmentFlow from '@/components/appointment-flow/NewAppointmentFlow';
 import ImmediateConsultationModal from '@/components/doctor/ImmediateConsultationModal';
@@ -142,6 +142,11 @@ const ACTIVE_WINDOW_MS = 60 * 60 * 1000;
 
 export default function DoctorDashboard() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  // FASE 4 — detect meeting invite link click (?from=meeting_invite).
+  // Captured in a ref at mount so the data-loading effect doesn't need it as
+  // a dependency (the value is intentionally read only once per page visit).
+  const fromMeetingInviteRef = useRef(searchParams.get('from') === 'meeting_invite');
   const { rate: bcvRate, toBs, toBsNum, format } = useBcvRate();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [todayAppointments, setTodayAppointments] = useState<Appointment[]>([]);
@@ -319,6 +324,37 @@ export default function DoctorDashboard() {
             if (!prof.welcomeDismissedAt) {
               // Welcome tour will show — skip release notes this visit (spec B.3).
               setShowWelcome(true);
+            } else if (fromMeetingInviteRef.current) {
+              // FASE 4 — invitation email link: meeting modal gets priority over
+              // release notes for this visit only (spec F, B.3). Still never over
+              // onboarding / welcome tour.
+              // Clean the query param so a reload does not re-trigger.
+              router.replace('/doctor');
+              void fetch('/api/doctor/prompts/meeting', { cache: 'no-store' })
+                .then(async (mRes) => {
+                  if (!mRes.ok) return;
+                  const mJson = (await mRes.json()) as { data?: { show: boolean } };
+                  if (mJson.data?.show) {
+                    setShowMeetingModal(true);
+                    // Meeting modal will show — skip release notes this visit (spec B.3).
+                  } else {
+                    // Meeting not applicable: fall back to release notes check.
+                    void fetch('/api/doctor/release-notes/unseen', { cache: 'no-store' })
+                      .then(async (res) => {
+                        if (!res.ok) return;
+                        const json = (await res.json()) as { data?: unknown[] };
+                        if ((json.data ?? []).length > 0) {
+                          setShowReleaseNotes(true);
+                        }
+                      })
+                      .catch(() => {
+                        // Non-critical — skip silently.
+                      });
+                  }
+                })
+                .catch(() => {
+                  // Non-critical — skip silently.
+                });
             } else {
               // Welcome tour won't show: check for unseen release notes (spec B.3).
               // Fetch happens in the modal itself; we just need to know whether to
@@ -430,7 +466,9 @@ export default function DoctorDashboard() {
     }
 
     void fetchData();
-  }, [selectedMonth, refreshKey]);
+    // router is included in deps to satisfy exhaustive-deps; it is a stable Next.js
+    // reference (same object across renders) so adding it does not cause extra runs.
+  }, [selectedMonth, refreshKey, router]);
 
   const greeting = () => {
     const h = new Date().getHours();
