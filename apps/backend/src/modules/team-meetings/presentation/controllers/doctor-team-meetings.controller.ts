@@ -13,6 +13,8 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { AppAuthGuard } from '../../../../infrastructure/auth/app-auth.guard';
+import { RolesGuard } from '../../../../presentation/guards/roles.guard';
+import { Roles } from '../../../../presentation/decorators/roles.decorator';
 import {
   CurrentUser,
   type CurrentUserPayload,
@@ -42,7 +44,8 @@ import { GetMeetingSlotsQuerySchema, BookTeamMeetingDtoSchema } from '@delta/sha
  *   - NEVER log PII.
  */
 @Controller('doctor/team-meetings')
-@UseGuards(AppAuthGuard)
+@UseGuards(AppAuthGuard, RolesGuard)
+@Roles('doctor')
 export class DoctorTeamMeetingsController {
   constructor(
     private readonly getSlots: GetMeetingSlotsUseCase,

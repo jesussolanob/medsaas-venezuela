@@ -53,7 +53,7 @@ const SLOT_MIN_LEAD_HOURS = 2;
  *   6. Creates a new availability block.
  *   7. Patches the Google Calendar event (if present).
  *   8. Updates the meeting row.
- *   9. Sends a reschedule confirmation email.
+ *   9. Sends a reschedule confirmation email to the doctor and team.
  */
 @Injectable()
 export class RescheduleTeamMeetingUseCase {
@@ -195,10 +195,14 @@ export class RescheduleTeamMeetingUseCase {
       availabilityBlockId: newBlockId,
     });
 
-    // 9. Send reschedule email (best-effort)
-    const doctorProfile = await this.repo.getDoctorProfile(meeting.doctorId);
+    // 9. Send reschedule emails to doctor and team (best-effort)
+    const [doctorProfile, superAdmins] = await Promise.all([
+      this.repo.getDoctorProfile(meeting.doctorId),
+      this.repo.findAllSuperAdmins(),
+    ]);
+    const startsAtText = this.formatCaracasTime(newStartsAt);
+
     if (doctorProfile?.email) {
-      const startsAtText = this.formatCaracasTime(newStartsAt);
       void this.mailer
         .sendTemplate(
           'team_meeting_rescheduled',
@@ -213,7 +217,29 @@ export class RescheduleTeamMeetingUseCase {
         )
         .catch((err: unknown) => {
           this.logger.warn(
-            '[team-meetings] failed to send reschedule email: ' +
+            '[team-meetings] failed to send doctor reschedule email: ' +
+              (err instanceof Error ? err.message : String(err)),
+          );
+        });
+    }
+
+    for (const admin of superAdmins) {
+      void this.mailer
+        .sendTemplate(
+          'team_meeting_rescheduled_admin',
+          admin.email,
+          {
+            doctorName: doctorProfile?.name ?? 'Especialista',
+            doctorEmail: doctorProfile?.email ?? '',
+            startsAtText,
+            meetingUrl: updated.meetingUrl ?? 'N/D',
+            manageUrl: `${process.env['FRONTEND_URL'] ?? 'https://app.deltasalud.app'}/admin/reuniones`,
+          },
+          { type: 'admin', id: admin.email },
+        )
+        .catch((err: unknown) => {
+          this.logger.warn(
+            '[team-meetings] failed to send admin reschedule email: ' +
               (err instanceof Error ? err.message : String(err)),
           );
         });

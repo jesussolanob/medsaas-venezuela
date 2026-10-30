@@ -49,22 +49,22 @@ describe('CreateTeamMeetingUseCase', () => {
       findScheduledByDoctor: jest.fn().mockResolvedValue(null),
       getAppointmentsInRange: jest.fn().mockResolvedValue([]),
       getAvailabilityBlocksInRange: jest.fn().mockResolvedValue([]),
-      getDoctorProfile: jest
-        .fn()
-        .mockResolvedValue({
-          name: 'Dr. Test',
-          email: 'dr@test.com',
-          phone: null,
-          specialty: null,
-        }),
+      getDoctorProfile: jest.fn().mockResolvedValue({
+        name: 'Dr. Test',
+        email: 'dr@test.com',
+        phone: null,
+        specialty: null,
+      }),
       getSettings: jest
         .fn()
         .mockResolvedValue([{ key: 'team_meeting_host_profile_id', value: 'host-1' }]),
+      findAllSuperAdmins: jest
+        .fn()
+        .mockResolvedValue([{ id: 'admin-1', email: 'admin@delta.com', fullName: 'Admin Delta' }]),
       create: jest.fn(),
       findById: jest.fn(),
       update: jest.fn(),
       listWithDoctor: jest.fn(),
-      findAllSuperAdmins: jest.fn(),
       updateSetting: jest.fn(),
       getActiveOfficeSchedules: jest.fn(),
       findMeetingsNeedingReminder: jest.fn(),
@@ -226,5 +226,74 @@ describe('CreateTeamMeetingUseCase', () => {
       'meeting_modal',
       expect.any(Date),
     );
+  });
+
+  // Issue 1: super-admins are fetched and their emails passed to Google Calendar
+  it('passes admin emails as attendeeEmails to createEventWithMeet', async () => {
+    googleCalendar.isConfigured.mockReturnValue(true);
+    googleIntegrationRepo.findByDoctorId.mockResolvedValue({
+      accessToken: 'token',
+      refreshToken: 'refresh',
+      isTokenExpired: () => false,
+    } as never);
+    googleCalendar.createEventWithMeet.mockResolvedValue({
+      meetLink: 'https://meet.google.com/abc',
+      eventId: 'evt-1',
+    });
+    repo.create.mockResolvedValue(makeMeeting());
+
+    await useCase.execute({
+      doctorId: 'doctor-1',
+      date: '2026-11-10',
+      time: '10:00',
+      source: 'modal',
+    });
+
+    expect(googleCalendar.createEventWithMeet).toHaveBeenCalledWith(
+      expect.objectContaining({
+        attendeeEmails: ['admin@delta.com'],
+      }),
+    );
+  });
+
+  // Issue 5: orphan block is deleted when repo.create raises a unique-constraint error
+  it('deletes orphan block and throws TeamMeetingAlreadyScheduledError on unique-constraint race', async () => {
+    const uniqueErr = Object.assign(new Error('unique violation'), {
+      name: 'SequelizeUniqueConstraintError',
+    });
+    repo.create.mockRejectedValue(uniqueErr);
+
+    await expect(
+      useCase.execute({ doctorId: 'doctor-1', date: '2026-11-10', time: '10:00', source: 'modal' }),
+    ).rejects.toThrow(TeamMeetingAlreadyScheduledError);
+
+    expect(blockRepo.delete).toHaveBeenCalled();
+  });
+
+  // Issue 5: orphan block is deleted when repo.create fails for any other reason
+  it('deletes orphan block and rethrows on generic DB error', async () => {
+    const dbErr = new Error('DB connection lost');
+    repo.create.mockRejectedValue(dbErr);
+
+    await expect(
+      useCase.execute({ doctorId: 'doctor-1', date: '2026-11-10', time: '10:00', source: 'modal' }),
+    ).rejects.toThrow('DB connection lost');
+
+    expect(blockRepo.delete).toHaveBeenCalled();
+  });
+
+  // Issue 5: pg error code 23505 also maps to TeamMeetingAlreadyScheduledError
+  it('maps pg error code 23505 to TeamMeetingAlreadyScheduledError', async () => {
+    const pgErr = Object.assign(new Error('duplicate key'), {
+      name: 'SequelizeDatabaseError',
+      original: { code: '23505' },
+    });
+    repo.create.mockRejectedValue(pgErr);
+
+    await expect(
+      useCase.execute({ doctorId: 'doctor-1', date: '2026-11-10', time: '10:00', source: 'modal' }),
+    ).rejects.toThrow(TeamMeetingAlreadyScheduledError);
+
+    expect(blockRepo.delete).toHaveBeenCalled();
   });
 });

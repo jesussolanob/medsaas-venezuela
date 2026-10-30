@@ -47,19 +47,19 @@ describe('CancelTeamMeetingUseCase', () => {
     repo = {
       findById: jest.fn(),
       update: jest.fn().mockResolvedValue(makeMeeting({ status: 'cancelled' })),
-      getDoctorProfile: jest
-        .fn()
-        .mockResolvedValue({
-          name: 'Dr. Test',
-          email: 'dr@test.com',
-          phone: null,
-          specialty: null,
-        }),
+      getDoctorProfile: jest.fn().mockResolvedValue({
+        name: 'Dr. Test',
+        email: 'dr@test.com',
+        phone: null,
+        specialty: null,
+      }),
       getSettings: jest.fn().mockResolvedValue([]),
+      findAllSuperAdmins: jest
+        .fn()
+        .mockResolvedValue([{ id: 'admin-1', email: 'admin@delta.com', fullName: 'Admin Delta' }]),
       findScheduledByDoctor: jest.fn(),
       create: jest.fn(),
       listWithDoctor: jest.fn(),
-      findAllSuperAdmins: jest.fn(),
       updateSetting: jest.fn(),
       getActiveOfficeSchedules: jest.fn(),
       getAppointmentsInRange: jest.fn(),
@@ -175,5 +175,19 @@ describe('CancelTeamMeetingUseCase', () => {
     // Flush faked process.nextTick queue (Jest 30 fakes nextTick by default)
     jest.runAllTicks();
     expect(promptRepo.clearActed).toHaveBeenCalledWith('doctor-1', 'meeting_modal');
+  });
+
+  // Issue 1: team (super-admins) must also receive a cancellation email
+  it('sends cancellation email to all super-admins', async () => {
+    repo.findById.mockResolvedValue(makeMeeting());
+    await useCase.execute({ meetingId: 'meeting-1', actorId: 'doctor-1', isAdmin: false });
+
+    jest.runAllTicks();
+    expect(mailer.sendTemplate).toHaveBeenCalledWith(
+      'team_meeting_cancelled_admin',
+      'admin@delta.com',
+      expect.objectContaining({ doctorName: 'Dr. Test' }),
+      expect.anything(),
+    );
   });
 });

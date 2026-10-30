@@ -1,5 +1,7 @@
 import { Controller, Get, HttpCode, HttpStatus, Post, UseGuards } from '@nestjs/common';
 import { AppAuthGuard } from '../../../../infrastructure/auth/app-auth.guard';
+import { RolesGuard } from '../../../../presentation/guards/roles.guard';
+import { Roles } from '../../../../presentation/decorators/roles.decorator';
 import {
   CurrentUser,
   type CurrentUserPayload,
@@ -26,7 +28,8 @@ import { DismissPromptUseCase } from '../../application/use-cases/dismiss-prompt
  *   - The :key param is hardcoded to 'meeting_modal' for the meeting routes.
  */
 @Controller('doctor/prompts')
-@UseGuards(AppAuthGuard)
+@UseGuards(AppAuthGuard, RolesGuard)
+@Roles('doctor')
 export class DoctorPromptsController {
   constructor(
     private readonly getMeetingStatus: GetMeetingPromptStatusUseCase,

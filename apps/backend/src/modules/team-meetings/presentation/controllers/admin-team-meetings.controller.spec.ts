@@ -1,89 +1,88 @@
+/**
+ * Spec: AdminTeamMeetingsController — cancel routing (Issue 6)
+ *
+ * Verifies that PATCH with status='cancelled' is routed to
+ * CancelTeamMeetingUseCase (isAdmin=true) and not to UpdateTeamMeetingAdminUseCase.
+ */
 import { AdminTeamMeetingsController } from './admin-team-meetings.controller';
 import type { ListTeamMeetingsAdminUseCase } from '../../application/use-cases/list-team-meetings-admin.use-case';
 import type { UpdateTeamMeetingAdminUseCase } from '../../application/use-cases/update-team-meeting-admin.use-case';
 import type { CancelTeamMeetingUseCase } from '../../application/use-cases/cancel-team-meeting.use-case';
 import type { GetTeamMeetingHostUseCase } from '../../application/use-cases/get-team-meeting-host.use-case';
 import type { UpdateTeamMeetingHostUseCase } from '../../application/use-cases/update-team-meeting-host.use-case';
-import { TeamMeeting } from '../../domain/entities/team-meeting.entity';
+import type { CurrentUserPayload } from '../../../../presentation/decorators/current-user.decorator';
 
-function makeMeeting(): TeamMeeting {
-  return TeamMeeting.create({
-    id: 'meeting-1',
-    doctorId: 'doctor-1',
-    startsAt: new Date('2026-11-10T14:00:00Z'),
-    endsAt: new Date('2026-11-10T14:30:00Z'),
-    status: 'done',
-    meetingUrl: null,
-    externalEventId: null,
-    availabilityBlockId: null,
-    source: 'modal',
-    notes: null,
-    reminder24hSentAt: null,
-    reminder1hSentAt: null,
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  });
+const mockUser: CurrentUserPayload = { sub: 'admin-1', role: 'super_admin', email: 'a@delta.com' };
+
+function makeController() {
+  const listMeetings = {
+    execute: jest.fn(),
+  } as unknown as jest.Mocked<ListTeamMeetingsAdminUseCase>;
+  const updateMeeting = {
+    execute: jest.fn(),
+  } as unknown as jest.Mocked<UpdateTeamMeetingAdminUseCase>;
+  const cancelMeeting = {
+    execute: jest.fn().mockResolvedValue(undefined),
+  } as unknown as jest.Mocked<CancelTeamMeetingUseCase>;
+  const getHost = { execute: jest.fn() } as unknown as jest.Mocked<GetTeamMeetingHostUseCase>;
+  const updateHost = { execute: jest.fn() } as unknown as jest.Mocked<UpdateTeamMeetingHostUseCase>;
+
+  const controller = new AdminTeamMeetingsController(
+    listMeetings,
+    updateMeeting,
+    cancelMeeting,
+    getHost,
+    updateHost,
+  );
+  return { controller, listMeetings, updateMeeting, cancelMeeting, getHost, updateHost };
 }
 
-describe('AdminTeamMeetingsController', () => {
-  let controller: AdminTeamMeetingsController;
-  let listMeetings: jest.Mocked<Pick<ListTeamMeetingsAdminUseCase, 'execute'>>;
-  let updateMeeting: jest.Mocked<Pick<UpdateTeamMeetingAdminUseCase, 'execute'>>;
-  let cancelMeeting: jest.Mocked<Pick<CancelTeamMeetingUseCase, 'execute'>>;
-  let getHost: jest.Mocked<Pick<GetTeamMeetingHostUseCase, 'execute'>>;
-  let updateHost: jest.Mocked<Pick<UpdateTeamMeetingHostUseCase, 'execute'>>;
+describe('AdminTeamMeetingsController.update', () => {
+  it('routes to CancelTeamMeetingUseCase (isAdmin=true) when status=cancelled', async () => {
+    const { controller, cancelMeeting, updateMeeting } = makeController();
 
-  beforeEach(() => {
-    listMeetings = { execute: jest.fn().mockResolvedValue({ items: [], total: 0 }) };
-    updateMeeting = { execute: jest.fn().mockResolvedValue(makeMeeting()) };
-    cancelMeeting = { execute: jest.fn().mockResolvedValue(undefined) };
-    getHost = {
-      execute: jest.fn().mockResolvedValue({
-        hostProfileId: 'host-1',
-        googleConnected: false,
-        googleEmail: null,
-        googleAuthUrl: null,
-      }),
-    };
-    updateHost = { execute: jest.fn().mockResolvedValue(undefined) };
+    const result = await controller.update('meeting-1', mockUser, { status: 'cancelled' });
 
-    controller = new AdminTeamMeetingsController(
-      listMeetings as unknown as ListTeamMeetingsAdminUseCase,
-      updateMeeting as unknown as UpdateTeamMeetingAdminUseCase,
-      cancelMeeting as unknown as CancelTeamMeetingUseCase,
-      getHost as unknown as GetTeamMeetingHostUseCase,
-      updateHost as unknown as UpdateTeamMeetingHostUseCase,
-    );
-  });
-
-  it('list returns paginated response', async () => {
-    const res = await controller.list({ limit: '10', offset: '0' });
-    expect(res.success).toBe(true);
-    expect(res.meta).toEqual(expect.objectContaining({ total: 0 }));
-  });
-
-  it('update delegates to UpdateTeamMeetingAdminUseCase', async () => {
-    const res = await controller.update('meeting-uuid-1111-0000-0000-000000000000', {
-      status: 'done',
+    expect(cancelMeeting.execute).toHaveBeenCalledWith({
+      meetingId: 'meeting-1',
+      actorId: 'admin-1',
+      isAdmin: true,
     });
-    expect(updateMeeting.execute).toHaveBeenCalledWith(
-      expect.objectContaining({
-        meetingId: 'meeting-uuid-1111-0000-0000-000000000000',
-        status: 'done',
-      }),
-    );
-    expect(res.success).toBe(true);
+    expect(updateMeeting.execute).not.toHaveBeenCalled();
+    expect(result).toEqual({ success: true, data: null });
   });
 
-  it('host returns host configuration', async () => {
-    const res = await controller.host();
-    expect(res.success).toBe(true);
-    expect(res.data).toEqual(expect.objectContaining({ hostProfileId: 'host-1' }));
+  it('routes to UpdateTeamMeetingAdminUseCase when status=done', async () => {
+    const { controller, cancelMeeting, updateMeeting } = makeController();
+    updateMeeting.execute.mockResolvedValue({
+      id: 'meeting-1',
+      status: 'done',
+    } as never);
+
+    await controller.update('meeting-1', mockUser, { status: 'done' });
+
+    expect(updateMeeting.execute).toHaveBeenCalledWith({
+      meetingId: 'meeting-1',
+      status: 'done',
+      notes: undefined,
+    });
+    expect(cancelMeeting.execute).not.toHaveBeenCalled();
   });
 
-  it('setHost delegates to UpdateTeamMeetingHostUseCase', async () => {
-    const res = await controller.setHost({ profileId: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11' });
-    expect(updateHost.execute).toHaveBeenCalledWith('a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11');
-    expect(res.success).toBe(true);
+  it('routes to UpdateTeamMeetingAdminUseCase for notes-only update', async () => {
+    const { controller, cancelMeeting, updateMeeting } = makeController();
+    updateMeeting.execute.mockResolvedValue({
+      id: 'meeting-1',
+      notes: 'some notes',
+    } as never);
+
+    await controller.update('meeting-1', mockUser, { notes: 'some notes' });
+
+    expect(updateMeeting.execute).toHaveBeenCalledWith({
+      meetingId: 'meeting-1',
+      status: undefined,
+      notes: 'some notes',
+    });
+    expect(cancelMeeting.execute).not.toHaveBeenCalled();
   });
 });

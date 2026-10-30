@@ -134,9 +134,7 @@ export interface ITeamMeetingRepository {
   updateSetting(key: string, value: string): Promise<void>;
 
   /** Returns the doctor's profile (name, email, phone, specialty). */
-  getDoctorProfile(
-    doctorId: string,
-  ): Promise<{
+  getDoctorProfile(doctorId: string): Promise<{
     name: string | null;
     email: string;
     phone: string | null;
@@ -166,14 +164,16 @@ export interface ITeamMeetingRepository {
   findMeetingsNeedingReminder(now: Date, cap: number): Promise<MeetingReminderRow[]>;
 
   /**
-   * Marks the 24h reminder as sent for a meeting.
-   * Idempotent — safe to call even if already sent.
+   * Atomically marks the 24h reminder as sent using UPDATE … WHERE IS NULL.
+   * Returns true when THIS call claimed the row (i.e. the caller should send
+   * the email). Returns false when another concurrent caller already claimed it.
    */
-  markReminder24hSent(id: string, sentAt: Date): Promise<void>;
+  markReminder24hSent(id: string, sentAt: Date): Promise<boolean>;
 
   /**
-   * Marks the 1h reminder as sent for a meeting.
-   * Idempotent — safe to call even if already sent.
+   * Atomically marks the 1h reminder as sent using UPDATE … WHERE IS NULL.
+   * Returns true when THIS call claimed the row (i.e. the caller should send
+   * the email). Returns false when another concurrent caller already claimed it.
    */
-  markReminder1hSent(id: string, sentAt: Date): Promise<void>;
+  markReminder1hSent(id: string, sentAt: Date): Promise<boolean>;
 }

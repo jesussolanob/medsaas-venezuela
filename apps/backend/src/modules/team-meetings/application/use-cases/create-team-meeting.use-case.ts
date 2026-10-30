@@ -47,6 +47,21 @@ const MEETING_DURATION_MINUTES = 30;
 const SLOT_MIN_LEAD_HOURS = 2;
 
 /**
+ * Detects a Sequelize unique-constraint error without importing Sequelize
+ * directly (to keep the application layer free of infrastructure deps).
+ *
+ * Matches:
+ *   - Sequelize v6 SequelizeUniqueConstraintError (name check)
+ *   - Raw Postgres unique-violation code 23505 on .original or .parent
+ */
+function isUniqueConstraintError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  if (err.name === 'SequelizeUniqueConstraintError') return true;
+  const e = err as { original?: { code?: string }; parent?: { code?: string } };
+  return e.original?.code === '23505' || e.parent?.code === '23505';
+}
+
+/**
  * CreateTeamMeetingUseCase
  *
  * Books a 30-min team meeting for the doctor:
@@ -55,9 +70,14 @@ const SLOT_MIN_LEAD_HOURS = 2;
  *   3. Looks up the host super_admin's Google integration for a Meet link.
  *   4. Creates an availability block to prevent patient bookings.
  *   5. Creates the Google Calendar event (or falls back to Jitsi).
+ *      Super-admin attendees are included in the invite.
  *   6. Persists the team meeting.
+ *      If a unique-constraint race occurs, the orphan block is deleted
+ *      and TeamMeetingAlreadyScheduledError is thrown.
+ *      Any other persist failure also cleans up the block.
  *   7. Sends the doctor a confirmation email.
- *   8. Marks the modal prompt as acted (so it stops showing).
+ *   8. Sends the team (super-admins) a confirmation email.
+ *   9. Marks the modal prompt as acted (so it stops showing).
  */
 @Injectable()
 export class CreateTeamMeetingUseCase {
@@ -104,8 +124,12 @@ export class CreateTeamMeetingUseCase {
       throw new TeamMeetingSlotTakenError();
     }
 
-    // 3. Get doctor profile for email
-    const doctorProfile = await this.repo.getDoctorProfile(input.doctorId);
+    // 3. Get doctor profile + super-admins in parallel for emails and Google invite
+    const [doctorProfile, superAdmins] = await Promise.all([
+      this.repo.getDoctorProfile(input.doctorId),
+      this.repo.findAllSuperAdmins(),
+    ]);
+    const adminEmails = superAdmins.map((a) => a.email);
 
     // 4. Create availability block (prevents patient bookings during the meeting)
     const blockId = randomUUID();
@@ -121,29 +145,48 @@ export class CreateTeamMeetingUseCase {
     await this.blockRepo.create(block);
 
     // 5. Get host's Google integration (if configured)
+    // Admin emails are passed so they appear in the Google Calendar invite.
     const { meetingUrl, externalEventId } = await this.resolveGoogleMeet(
       startsAt,
       endsAt,
       doctorProfile?.email ?? null,
       doctorProfile?.name ?? null,
+      adminEmails,
     );
 
-    // 6. Persist the meeting
+    // 6. Persist the meeting — clean up orphan block on any failure
     const meetingId = randomUUID();
-    const meeting = await this.repo.create({
-      id: meetingId,
-      doctorId: input.doctorId,
-      startsAt,
-      endsAt,
-      status: 'scheduled',
-      meetingUrl,
-      externalEventId,
-      availabilityBlockId: blockId,
-      source: input.source,
-      notes: null,
-    });
+    let meeting;
+    try {
+      meeting = await this.repo.create({
+        id: meetingId,
+        doctorId: input.doctorId,
+        startsAt,
+        endsAt,
+        status: 'scheduled',
+        meetingUrl,
+        externalEventId,
+        availabilityBlockId: blockId,
+        source: input.source,
+        notes: null,
+      });
+    } catch (err: unknown) {
+      // Always clean up the orphan availability block before rethrowing.
+      await this.blockRepo.delete(blockId).catch((delErr: unknown) => {
+        this.logger.warn(
+          '[team-meetings] failed to delete orphan block after create failure: ' +
+            (delErr instanceof Error ? delErr.message : String(delErr)),
+        );
+      });
 
-    // 7. Send confirmation email (best-effort — never fail the booking)
+      // Map a race-condition unique-constraint error to the domain error.
+      if (isUniqueConstraintError(err)) {
+        throw new TeamMeetingAlreadyScheduledError();
+      }
+      throw err;
+    }
+
+    // 7. Send confirmation email to doctor (best-effort — never fail the booking)
     if (doctorProfile?.email) {
       const startsAtText = this.formatCaracasTime(startsAt);
       void this.mailer
@@ -160,13 +203,39 @@ export class CreateTeamMeetingUseCase {
         )
         .catch((err: unknown) => {
           this.logger.warn(
-            '[team-meetings] failed to send confirmation email: ' +
+            '[team-meetings] failed to send doctor confirmation email: ' +
               (err instanceof Error ? err.message : String(err)),
           );
         });
     }
 
-    // 8. Mark prompt as acted (best-effort)
+    // 8. Notify team (best-effort)
+    if (adminEmails.length > 0) {
+      const startsAtText = this.formatCaracasTime(startsAt);
+      for (const adminEmail of adminEmails) {
+        void this.mailer
+          .sendTemplate(
+            'team_meeting_confirmed_admin',
+            adminEmail,
+            {
+              doctorName: doctorProfile?.name ?? 'Especialista',
+              doctorEmail: doctorProfile?.email ?? '',
+              startsAtText,
+              meetingUrl: meetingUrl ?? 'N/D',
+              manageUrl: `${process.env['FRONTEND_URL'] ?? 'https://app.deltasalud.app'}/admin/reuniones`,
+            },
+            { type: 'admin', id: adminEmail },
+          )
+          .catch((err: unknown) => {
+            this.logger.warn(
+              '[team-meetings] failed to send admin confirmation email: ' +
+                (err instanceof Error ? err.message : String(err)),
+            );
+          });
+      }
+    }
+
+    // 9. Mark prompt as acted (best-effort)
     void this.promptRepo
       .recordActed(input.doctorId, MEETING_MODAL_KEY, now)
       .catch((err: unknown) => {
@@ -195,6 +264,7 @@ export class CreateTeamMeetingUseCase {
     endsAt: Date,
     doctorEmail: string | null,
     doctorName: string | null,
+    adminEmails: string[],
   ): Promise<{ meetingUrl: string | null; externalEventId: string | null }> {
     if (!this.googleCalendar.isConfigured()) {
       return { meetingUrl: this.jitsiUrl(), externalEventId: null };
@@ -250,6 +320,7 @@ export class CreateTeamMeetingUseCase {
         startISO: startsAt.toISOString(),
         endISO: endsAt.toISOString(),
         attendeeEmail: doctorEmail ?? undefined,
+        attendeeEmails: adminEmails,
       });
       return {
         meetingUrl: result.meetLink || this.jitsiUrl(),

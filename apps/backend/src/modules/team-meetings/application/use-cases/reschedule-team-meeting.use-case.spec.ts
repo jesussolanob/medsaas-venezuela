@@ -42,23 +42,23 @@ describe('RescheduleTeamMeetingUseCase', () => {
     repo = {
       findById: jest.fn(),
       update: jest.fn(),
-      getDoctorProfile: jest
-        .fn()
-        .mockResolvedValue({
-          name: 'Dr. Test',
-          email: 'dr@test.com',
-          phone: null,
-          specialty: null,
-        }),
+      getDoctorProfile: jest.fn().mockResolvedValue({
+        name: 'Dr. Test',
+        email: 'dr@test.com',
+        phone: null,
+        specialty: null,
+      }),
       getSettings: jest
         .fn()
         .mockResolvedValue([{ key: 'team_meeting_host_profile_id', value: '' }]),
       getAppointmentsInRange: jest.fn().mockResolvedValue([]),
       getAvailabilityBlocksInRange: jest.fn().mockResolvedValue([]),
+      findAllSuperAdmins: jest
+        .fn()
+        .mockResolvedValue([{ id: 'admin-1', email: 'admin@delta.com', fullName: 'Admin Delta' }]),
       findScheduledByDoctor: jest.fn(),
       create: jest.fn(),
       listWithDoctor: jest.fn(),
-      findAllSuperAdmins: jest.fn(),
       updateSetting: jest.fn(),
       getActiveOfficeSchedules: jest.fn(),
       findMeetingsNeedingReminder: jest.fn(),
@@ -159,6 +159,27 @@ describe('RescheduleTeamMeetingUseCase', () => {
     expect(repo.update).toHaveBeenCalledWith(
       'meeting-1',
       expect.objectContaining({ availabilityBlockId: expect.any(String) }),
+    );
+  });
+
+  // Issue 1: team must also receive a reschedule email
+  it('sends reschedule email to all super-admins', async () => {
+    repo.findById.mockResolvedValue(makeMeeting());
+    repo.update.mockResolvedValue(makeMeeting({ startsAt: new Date('2026-11-11T14:00:00Z') }));
+
+    await useCase.execute({
+      meetingId: 'meeting-1',
+      actorId: 'doctor-1',
+      date: '2026-11-11',
+      time: '10:00',
+    });
+
+    jest.runAllTicks();
+    expect(mailer.sendTemplate).toHaveBeenCalledWith(
+      'team_meeting_rescheduled_admin',
+      'admin@delta.com',
+      expect.objectContaining({ doctorName: 'Dr. Test' }),
+      expect.anything(),
     );
   });
 });
