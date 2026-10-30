@@ -28,6 +28,14 @@ correo de invitación no encontraba a nadie (fecha de fin en `subscriptions`, no
 downgrade a past_due perezoso); `/r/meeting` redirigía a `0.0.0.0:8080`; IDOR de storage con la
 imagen de novedades; secreto HMAC con fallback vacío.
 
+**QA en navegador (Playwright, 30/10) — corregido en staging:** modal de «Contáctame ya»
+cortado (barra con backdrop-blur → portal a body); 4 rutas BFF con `params` síncrono (Next 16:
+es Promise → «ID inválido» al publicar novedades/atender solicitudes); métricas sin «hoy»
+(`new Date('YYYY-MM-DD')` UTC); «++58»; doble punto en la hora; motivo del bloqueo distinto
+entre back y front (constante `TEAM_MEETING_BLOCK_REASON`); tarjeta sin recargar; correos al
+equipo sin registro (`recipient_id` uuid recibía el email). 3 novedades publicadas en staging.
+Guía de QA: `~/Downloads/guia-pruebas-retencion.txt`.
+
 **Incidente:** al validar SQL real contra staging, un `sequelize.transaction()` del código
 commiteó la transacción de prueba: quedaron en staging las estructuras de las 5 migraciones y
 datos de prueba (2 especialistas del clon con la prueba extendida hasta el 29/11, 2 filas
