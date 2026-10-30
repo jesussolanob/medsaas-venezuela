@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { PhoneCall } from 'lucide-react';
 import dynamic from 'next/dynamic';
 
@@ -47,7 +48,10 @@ export function ContactarYaButton({ className }: ContactarYaButtonProps) {
         </button>
       </span>
 
-      {open && <ContactarYaModal onClose={() => setOpen(false)} />}
+      {/* Portal to <body>: the button lives in the sticky top bar, whose
+          backdrop-blur makes it the containing block of `position: fixed`
+          children — the modal rendered there was clipped to the bar (QA, 30/10). */}
+      {open && createPortal(<ContactarYaModal onClose={() => setOpen(false)} />, document.body)}
     </>
   );
 }
