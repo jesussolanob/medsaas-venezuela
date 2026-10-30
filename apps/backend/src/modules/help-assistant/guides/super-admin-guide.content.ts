@@ -939,4 +939,57 @@ no las borra. Podes volver a habilitarlo en cualquier momento desde /admin/selle
 En /admin/promotions (no esta en el menu lateral, se accede por URL directa) o en la pestana
 Configuracion de /admin/subscriptions. Ambas permiten crear paquetes multi-mes con precio
 promocional para atraer especialistas.
+
+---
+
+## Solicitudes de contacto (Admin)
+
+**Que son las Solicitudes de contacto?**
+Cuando un especialista pulsa el boton "Contactame ya" en su panel, se genera una solicitud de contacto.
+El equipo de Delta recibe un correo inmediato y la solicitud aparece en Admin → Solicitudes de contacto
+(/admin/contact-requests). Esta seccion permite hacer seguimiento de cada solicitud hasta resolverla.
+
+**Como llego a las Solicitudes de contacto?**
+Ruta directa: /admin/contact-requests. Tambien hay un contador de solicitudes pendientes en la
+campana de notificaciones del admin (punto rojo con el numero de pendientes).
+
+**Que informacion muestra la lista de solicitudes?**
+Cada fila muestra: nombre del especialista, plan, especialidad, telefono, correo, canal preferido
+(Llamame ya / WhatsApp / Llamada / Correo), mensaje (si lo escribio), estado, y fecha de creacion.
+Se puede filtrar por estado (pendiente / contactado / resuelto) y por rango de fechas.
+
+**Cuales son los estados de una solicitud?**
+- Pendiente: el especialista envio la solicitud pero aun no lo contactaron.
+- Contactado: el equipo ya lo contacto (se registra quien lo marco y cuando).
+- Resuelto: la solicitud fue atendida y cerrada.
+
+**Como cambio el estado de una solicitud?**
+En la fila de la solicitud, usa el boton Editar o el selector de estado para cambiar de Pendiente
+a Contactado, o de Contactado a Resuelto. Solo es posible avanzar el estado, no retrocederlo.
+Al cambiar el estado se registra automaticamente quien lo hizo y la fecha/hora.
+
+**Puedo agregar notas internas a una solicitud?**
+Si. Al editar una solicitud puedes escribir notas internas visibles solo para el equipo de administracion.
+Son utiles para registrar que se hablo con el especialista o acordar un seguimiento.
+
+**Que correo recibe el equipo cuando llega una solicitud?**
+El sistema envia el correo a todos los perfiles con rol super_admin. El asunto incluye el nombre del
+especialista. Si el canal elegido fue "Llamame ya", el asunto lleva el prefijo URGENTE para distinguirlo.
+El correo incluye nombre, plan, especialidad, telefono, correo, canal preferido, mensaje y un boton
+que lleva directamente a la solicitud en el panel.
+
+**Que pasa si el especialista envia varias solicitudes seguidas?**
+El sistema permite maximo 3 notificaciones al equipo por especialista en 24 horas. Si el especialista
+ya tiene una solicitud pendiente, la nueva actualiza la existente (mismo registro, nuevo canal y mensaje);
+no se crea una solicitud duplicada. Si supera el limite de 3 notificaciones en 24 horas, recibe un
+aviso de que lo intente mas tarde.
+
+**Donde configuro el numero de soporte y el horario de atencion?**
+En Admin → Configuracion (/admin/settings), seccion "Contacto y soporte":
+- Numero de WhatsApp de soporte (solo digitos con codigo de pais; valor actual: 584221033582).
+- Horario de atencion: dias de la semana (ISO, 1=lunes ... 7=domingo), hora de inicio y hora de fin
+  en formato HH:MM, y zona horaria (America/Caracas). Este horario determina cuando aparece la opcion
+  "Llamame ya" en el panel del especialista y cuando el backend acepta ese canal.
+Cambiar estos valores afecta inmediatamente el comportamiento del modal para todos los especialistas.
+El numero correcto y unico de soporte de Delta es +58 422 103 3582 (584221033582 sin el +).
 `;

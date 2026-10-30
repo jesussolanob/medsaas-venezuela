@@ -57,6 +57,7 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
 import { InfraAuthModule } from './infrastructure/auth/infra-auth.module';
 import { ContentTemplatesModule } from './modules/content-templates/content-templates.module';
 import { StandaloneDocumentsModule } from './modules/standalone-documents/standalone-documents.module';
+import { ContactRequestsModule } from './modules/contact-requests/contact-requests.module';
 
 @Module({
   imports: [
@@ -122,6 +123,7 @@ import { StandaloneDocumentsModule } from './modules/standalone-documents/standa
     NotificationsModule,
     ContentTemplatesModule,
     StandaloneDocumentsModule,
+    ContactRequestsModule,
   ],
   controllers: [HealthController],
   providers: [

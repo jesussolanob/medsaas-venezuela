@@ -822,4 +822,45 @@ Los documentos en estado Emitido estan bloqueados para garantizar su integridad.
 
 **Que significa el codigo REC-202610-0001 en un recipe?**
 Es el codigo unico del documento: tipo (REC = recipe, PAR = paraclínicos, REP = reposo), anio y mes de emision (202610 = octubre 2026) y numero secuencial del mes (0001 = el primero de ese mes en tu cuenta). Sirve como referencia y para verificar autenticidad.
+
+---
+
+## Contáctame ya
+
+**Que es el boton Contactame ya?**
+Es un boton visible en la barra superior del panel del especialista (junto al icono de Ayuda).
+Te permite pedirle al equipo de Delta que te contacte. Esta disponible para todos los especialistas,
+sin importar el plan.
+
+**Como uso el boton Contactame ya?**
+1. Pulsa el boton "Contactame ya" en la barra superior. Se abre un modal.
+2. Elige como prefieres que te contactemos:
+   - "Llamame ya" — te llamamos en los proximos 15 minutos (disponible solo en horario de atencion).
+   - "WhatsApp" — te escribimos por WhatsApp.
+   - "Llamada" — coordinamos una llamada.
+   - "Correo electronico" — te respondemos por correo.
+3. Opcionalmente, escribe un mensaje (hasta 500 caracteres) para describir tu consulta.
+4. Pulsa Enviar. El equipo de Delta recibe una notificacion inmediata.
+
+**Cual es el compromiso de respuesta?**
+- Con "Llamame ya": te llamamos en los proximos 15 minutos.
+- Con cualquier otro canal: te contactamos en menos de 1 hora.
+- Si estan fuera del horario de atencion, el compromiso cambia a "Te contactamos al iniciar nuestro horario de atencion (lunes a sabado, 8:00 a. m.)".
+
+**En que horario esta disponible la opcion Llamame ya?**
+De lunes a sabado, de 8:00 a. m. a 6:00 p. m., hora de Caracas. Fuera de ese horario la opcion
+"Llamame ya" no aparece en el modal. El sistema evalua el horario con la hora exacta del servidor,
+no la del navegador.
+
+**Que pasa si envio una solicitud cuando ya tenia una abierta?**
+Si ya tienes una solicitud pendiente, la nueva actualiza la anterior con el canal y mensaje mas recientes.
+No se crean solicitudes duplicadas.
+
+**Puedo escribirles directamente por WhatsApp?**
+Si. En el mismo modal hay un enlace "Escribir por WhatsApp ahora" que abre una conversacion con el numero
+de soporte de Delta: +58 422 103 3582. Ese es el unico numero oficial de soporte.
+
+**Donde mas aparece el numero de soporte de Delta?**
+El numero +58 422 103 3582 es el unico numero de contacto oficial. Aparece en el modal de Contactame ya,
+en la pantalla de Ayuda (/doctor/help) y en la pantalla de Actualizacion de plan (/doctor/upgrade).
 `;
