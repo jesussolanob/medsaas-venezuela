@@ -3,6 +3,7 @@ import type {
   IReleaseNoteRepository,
   UnseenNoteItem,
 } from '../../domain/repositories/irelease-note.repository';
+import type { IStoragePort } from '../../../storage/application/ports/storage.port';
 
 const makeUnseen = (overrides: Partial<UnseenNoteItem> = {}): UnseenNoteItem => ({
   id: 'note-1',
@@ -13,9 +14,12 @@ const makeUnseen = (overrides: Partial<UnseenNoteItem> = {}): UnseenNoteItem => 
   ...overrides,
 });
 
+const SIGNED_URL = 'https://storage.googleapis.com/bucket/logo/doc-1/ts-img.jpg?X-Goog-sig=abc';
+
 describe('GetUnseenReleaseNotesUseCase', () => {
   let useCase: GetUnseenReleaseNotesUseCase;
   let mockRepo: jest.Mocked<IReleaseNoteRepository>;
+  let mockStorage: jest.Mocked<IStoragePort>;
 
   beforeEach(() => {
     mockRepo = {
@@ -32,7 +36,12 @@ describe('GetUnseenReleaseNotesUseCase', () => {
       findAllPlanKeys: jest.fn(),
     } as jest.Mocked<IReleaseNoteRepository>;
 
-    useCase = new GetUnseenReleaseNotesUseCase(mockRepo);
+    mockStorage = {
+      upload: jest.fn(),
+      getSignedUrl: jest.fn(),
+    } as jest.Mocked<IStoragePort>;
+
+    useCase = new GetUnseenReleaseNotesUseCase(mockRepo, mockStorage);
   });
 
   it('returns empty list when no unseen notes', async () => {
@@ -71,21 +80,64 @@ describe('GetUnseenReleaseNotesUseCase', () => {
     expect(result.items.length).toBe(3);
   });
 
-  it('includes imageUrl in output', async () => {
-    mockRepo.findUnseenForDoctor.mockResolvedValue([
-      makeUnseen({ imageUrl: 'https://storage.googleapis.com/bucket/notes/img.png' }),
-    ]);
+  it('re-signs stored image path via getSignedUrl', async () => {
+    const storedPath = 'logo/doctor-1/1730000000000-photo.jpg';
+    mockRepo.findUnseenForDoctor.mockResolvedValue([makeUnseen({ imageUrl: storedPath })]);
+    mockStorage.getSignedUrl.mockResolvedValue(SIGNED_URL);
 
     const result = await useCase.execute('doctor-1');
 
-    expect(result.items[0]!.imageUrl).toBe('https://storage.googleapis.com/bucket/notes/img.png');
+    expect(mockStorage.getSignedUrl).toHaveBeenCalledWith(storedPath, expect.any(Number));
+    expect(result.items[0]!.imageUrl).toBe(SIGNED_URL);
   });
 
-  it('returns null imageUrl when not set', async () => {
+  it('re-signs legacy full GCS URL by extracting its path', async () => {
+    const legacyUrl =
+      'https://storage.googleapis.com/my-bucket/logo/doc-1/photo.jpg?X-Goog-Algorithm=AWS4';
+    mockRepo.findUnseenForDoctor.mockResolvedValue([makeUnseen({ imageUrl: legacyUrl })]);
+    mockStorage.getSignedUrl.mockResolvedValue(SIGNED_URL);
+
+    const result = await useCase.execute('doctor-1');
+
+    expect(mockStorage.getSignedUrl).toHaveBeenCalledWith(
+      'logo/doc-1/photo.jpg',
+      expect.any(Number),
+    );
+    expect(result.items[0]!.imageUrl).toBe(SIGNED_URL);
+  });
+
+  it('returns null imageUrl when re-signing fails — does not throw', async () => {
+    const storedPath = 'logo/doctor-1/photo.jpg';
+    mockRepo.findUnseenForDoctor.mockResolvedValue([makeUnseen({ imageUrl: storedPath })]);
+    mockStorage.getSignedUrl.mockRejectedValue(new Error('GCS unavailable'));
+
+    const result = await useCase.execute('doctor-1');
+
+    expect(result.items[0]!.imageUrl).toBeNull();
+  });
+
+  it('returns null imageUrl when imageUrl is null in DB', async () => {
     mockRepo.findUnseenForDoctor.mockResolvedValue([makeUnseen({ imageUrl: null })]);
 
     const result = await useCase.execute('doctor-1');
 
     expect(result.items[0]!.imageUrl).toBeNull();
+    expect(mockStorage.getSignedUrl).not.toHaveBeenCalled();
+  });
+
+  it('re-signs each item independently — one failure does not break the rest', async () => {
+    const items = [
+      makeUnseen({ id: 'note-1', imageUrl: 'logo/doc-1/photo1.jpg' }),
+      makeUnseen({ id: 'note-2', imageUrl: 'logo/doc-1/photo2.jpg' }),
+    ];
+    mockRepo.findUnseenForDoctor.mockResolvedValue(items);
+    mockStorage.getSignedUrl
+      .mockRejectedValueOnce(new Error('GCS error'))
+      .mockResolvedValueOnce(SIGNED_URL);
+
+    const result = await useCase.execute('doctor-1');
+
+    expect(result.items[0]!.imageUrl).toBeNull();
+    expect(result.items[1]!.imageUrl).toBe(SIGNED_URL);
   });
 });

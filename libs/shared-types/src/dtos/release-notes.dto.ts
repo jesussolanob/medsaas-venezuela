@@ -16,7 +16,13 @@ export const CreateReleaseNoteDtoSchema = z.object({
     .string()
     .min(1, 'El cuerpo es obligatorio.')
     .max(1500, 'El cuerpo no puede superar 1500 caracteres.'),
-  imageUrl: z.string().url('La URL de la imagen no es válida.').nullable().optional(),
+  /**
+   * Object storage path returned by POST /api/admin/release-notes/image-upload.
+   * Store the `path` field from the upload response, not the signed `imageUrl`.
+   * Accepts any non-empty string so bare paths (e.g. "logo/userId/ts-file.png")
+   * and legacy full GCS URLs are both valid inputs.
+   */
+  imageUrl: z.string().min(1).nullable().optional(),
   audiencePlans: z.array(z.string().min(1)).nullable().optional(),
 });
 export type CreateReleaseNoteDto = z.infer<typeof CreateReleaseNoteDtoSchema>;
@@ -35,7 +41,8 @@ export const UpdateReleaseNoteDtoSchema = z.object({
     .min(1, 'El cuerpo es obligatorio.')
     .max(1500, 'El cuerpo no puede superar 1500 caracteres.')
     .optional(),
-  imageUrl: z.string().url('La URL de la imagen no es válida.').nullable().optional(),
+  /** See CreateReleaseNoteDto.imageUrl — same accepted values. */
+  imageUrl: z.string().min(1).nullable().optional(),
   audiencePlans: z.array(z.string().min(1)).nullable().optional(),
 });
 export type UpdateReleaseNoteDto = z.infer<typeof UpdateReleaseNoteDtoSchema>;

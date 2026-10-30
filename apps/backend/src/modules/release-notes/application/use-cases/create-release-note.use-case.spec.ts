@@ -144,4 +144,27 @@ describe('CreateReleaseNoteUseCase', () => {
       expect.objectContaining({ title: 'Título', body: 'Cuerpo' }),
     );
   });
+
+  it('stores a bare path unchanged when imageUrl is already a path', async () => {
+    mockRepo.findAllPlanKeys.mockResolvedValue([]);
+    const storedPath = 'logo/admin-1/1730000000000-photo.jpg';
+    mockRepo.create.mockResolvedValue(makeNote({ imageUrl: storedPath }));
+
+    await useCase.execute({ title: 'Título', body: 'Cuerpo', imageUrl: storedPath }, ACTOR_ID);
+
+    expect(mockRepo.create).toHaveBeenCalledWith(expect.objectContaining({ imageUrl: storedPath }));
+  });
+
+  it('normalizes a full GCS URL to its bare object path before storing', async () => {
+    mockRepo.findAllPlanKeys.mockResolvedValue([]);
+    const fullUrl =
+      'https://storage.googleapis.com/my-bucket/logo/admin-1/photo.jpg?X-Goog-Algorithm=AWS4';
+    mockRepo.create.mockResolvedValue(makeNote({ imageUrl: 'logo/admin-1/photo.jpg' }));
+
+    await useCase.execute({ title: 'Título', body: 'Cuerpo', imageUrl: fullUrl }, ACTOR_ID);
+
+    expect(mockRepo.create).toHaveBeenCalledWith(
+      expect.objectContaining({ imageUrl: 'logo/admin-1/photo.jpg' }),
+    );
+  });
 });

@@ -110,4 +110,33 @@ describe('UpdateReleaseNoteUseCase', () => {
       expect.objectContaining({ title: 'Nuevo título', body: 'Nuevo cuerpo' }),
     );
   });
+
+  it('stores a bare path unchanged when imageUrl is already a path', async () => {
+    mockRepo.findById.mockResolvedValue(makeNote());
+    mockRepo.findAllPlanKeys.mockResolvedValue([]);
+    const storedPath = 'logo/admin-1/1730000000000-photo.jpg';
+    mockRepo.update.mockResolvedValue(makeNote({ imageUrl: storedPath }));
+
+    await useCase.execute('note-uuid-1', { imageUrl: storedPath });
+
+    expect(mockRepo.update).toHaveBeenCalledWith(
+      'note-uuid-1',
+      expect.objectContaining({ imageUrl: storedPath }),
+    );
+  });
+
+  it('normalizes a full GCS URL to its bare object path before storing', async () => {
+    mockRepo.findById.mockResolvedValue(makeNote());
+    mockRepo.findAllPlanKeys.mockResolvedValue([]);
+    const fullUrl =
+      'https://storage.googleapis.com/my-bucket/logo/admin-1/photo.jpg?X-Goog-Algorithm=AWS4';
+    mockRepo.update.mockResolvedValue(makeNote({ imageUrl: 'logo/admin-1/photo.jpg' }));
+
+    await useCase.execute('note-uuid-1', { imageUrl: fullUrl });
+
+    expect(mockRepo.update).toHaveBeenCalledWith(
+      'note-uuid-1',
+      expect.objectContaining({ imageUrl: 'logo/admin-1/photo.jpg' }),
+    );
+  });
 });

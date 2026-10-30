@@ -3,6 +3,7 @@ import type {
   IReleaseNoteRepository,
   AdminListItem,
 } from '../../domain/repositories/irelease-note.repository';
+import type { IStoragePort } from '../../../storage/application/ports/storage.port';
 import { ReleaseNote } from '../../domain/entities/release-note.entity';
 
 const makeAdminItem = (
@@ -24,9 +25,12 @@ const makeAdminItem = (
   return Object.assign(note, { createdByName: 'Lucas Rivas' }) as AdminListItem;
 };
 
+const SIGNED_URL = 'https://storage.googleapis.com/bucket/logo/doc-1/ts-img.jpg?X-Goog-sig=abc';
+
 describe('ListReleaseNotesAdminUseCase', () => {
   let useCase: ListReleaseNotesAdminUseCase;
   let mockRepo: jest.Mocked<IReleaseNoteRepository>;
+  let mockStorage: jest.Mocked<IStoragePort>;
 
   beforeEach(() => {
     mockRepo = {
@@ -43,7 +47,12 @@ describe('ListReleaseNotesAdminUseCase', () => {
       findAllPlanKeys: jest.fn(),
     } as jest.Mocked<IReleaseNoteRepository>;
 
-    useCase = new ListReleaseNotesAdminUseCase(mockRepo);
+    mockStorage = {
+      upload: jest.fn(),
+      getSignedUrl: jest.fn(),
+    } as jest.Mocked<IStoragePort>;
+
+    useCase = new ListReleaseNotesAdminUseCase(mockRepo, mockStorage);
   });
 
   it('returns an empty list', async () => {
@@ -97,5 +106,58 @@ describe('ListReleaseNotesAdminUseCase', () => {
     const result = await useCase.execute({ status: 'draft', limit: 50, offset: 0 });
 
     expect(result.items[0]!.publishedAt).toBeNull();
+  });
+
+  it('re-signs stored image path via getSignedUrl', async () => {
+    const storedPath = 'logo/admin-1/1730000000000-note-img.jpg';
+    mockRepo.adminList.mockResolvedValue({
+      items: [makeAdminItem({ imageUrl: storedPath })],
+      total: 1,
+    });
+    mockStorage.getSignedUrl.mockResolvedValue(SIGNED_URL);
+
+    const result = await useCase.execute({ status: 'all', limit: 50, offset: 0 });
+
+    expect(mockStorage.getSignedUrl).toHaveBeenCalledWith(storedPath, expect.any(Number));
+    expect(result.items[0]!.imageUrl).toBe(SIGNED_URL);
+  });
+
+  it('re-signs legacy full GCS URL by extracting its path', async () => {
+    const legacyUrl =
+      'https://storage.googleapis.com/my-bucket/logo/admin-1/img.jpg?X-Goog-Algorithm=AWS4';
+    mockRepo.adminList.mockResolvedValue({
+      items: [makeAdminItem({ imageUrl: legacyUrl })],
+      total: 1,
+    });
+    mockStorage.getSignedUrl.mockResolvedValue(SIGNED_URL);
+
+    const result = await useCase.execute({ status: 'all', limit: 50, offset: 0 });
+
+    expect(mockStorage.getSignedUrl).toHaveBeenCalledWith(
+      'logo/admin-1/img.jpg',
+      expect.any(Number),
+    );
+    expect(result.items[0]!.imageUrl).toBe(SIGNED_URL);
+  });
+
+  it('returns null imageUrl when re-signing fails — does not throw', async () => {
+    mockRepo.adminList.mockResolvedValue({
+      items: [makeAdminItem({ imageUrl: 'logo/admin-1/img.jpg' })],
+      total: 1,
+    });
+    mockStorage.getSignedUrl.mockRejectedValue(new Error('GCS unavailable'));
+
+    const result = await useCase.execute({ status: 'all', limit: 50, offset: 0 });
+
+    expect(result.items[0]!.imageUrl).toBeNull();
+  });
+
+  it('returns null imageUrl when imageUrl is null in DB', async () => {
+    mockRepo.adminList.mockResolvedValue({ items: [makeAdminItem()], total: 1 });
+
+    const result = await useCase.execute({ status: 'all', limit: 50, offset: 0 });
+
+    expect(result.items[0]!.imageUrl).toBeNull();
+    expect(mockStorage.getSignedUrl).not.toHaveBeenCalled();
   });
 });

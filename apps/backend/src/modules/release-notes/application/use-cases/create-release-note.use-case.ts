@@ -8,6 +8,7 @@ import { ReleaseNote } from '../../domain/entities/release-note.entity';
 import { ReleaseNoteInvalidError } from '../../domain/errors/release-note-invalid.error';
 import { ReleaseNoteAudienceInvalidError } from '../../domain/errors/release-note-audience-invalid.error';
 import type { CreateReleaseNoteDto } from '@delta/shared-types';
+import { extractGcsPath } from '../../../storage/application/helpers/resign-gcs-image.helper';
 
 export interface CreateReleaseNoteOutput {
   id: string;
@@ -27,7 +28,11 @@ export interface CreateReleaseNoteOutput {
  * Business rules:
  *   1. title and body must pass domain invariants (length, no HTML).
  *   2. audiencePlans keys, when provided, must exist in plan_configs.
- *   3. imageUrl is stored as-is (already a GCS path/URL from the upload flow).
+ *   3. imageUrl is normalised to a bare GCS object path before persisting:
+ *      - If a full GCS URL is received (e.g. from old clients or copy-paste),
+ *        extractGcsPath strips the scheme+bucket so only the path is stored.
+ *      - If already a bare path or null, stored as-is.
+ *      This ensures re-signing at read time always works correctly.
  */
 @Injectable()
 export class CreateReleaseNoteUseCase {
@@ -56,7 +61,7 @@ export class CreateReleaseNoteUseCase {
       id: randomUUID(),
       title: dto.title.trim(),
       body: dto.body.trim(),
-      imageUrl: dto.imageUrl ?? null,
+      imageUrl: normaliseImagePath(dto.imageUrl),
       audiencePlans: dto.audiencePlans ?? null,
       publishedAt: null,
       createdBy: actorId,
@@ -64,6 +69,18 @@ export class CreateReleaseNoteUseCase {
 
     return toOutput(note);
   }
+}
+
+/**
+ * Normalises an imageUrl/imagePath value before persisting:
+ *   - Full GCS signed URL → strips scheme+bucket, returns bare object path.
+ *   - Bare path or null/undefined → returned as-is.
+ * This guarantees we always store a path, never an expiring signed URL.
+ */
+export function normaliseImagePath(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const extracted = extractGcsPath(raw);
+  return extracted ?? raw;
 }
 
 export function toOutput(note: ReleaseNote): CreateReleaseNoteOutput {

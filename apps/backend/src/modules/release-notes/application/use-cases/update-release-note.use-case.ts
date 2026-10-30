@@ -8,7 +8,11 @@ import { ReleaseNoteNotFoundError } from '../../domain/errors/release-note-not-f
 import { ReleaseNoteInvalidError } from '../../domain/errors/release-note-invalid.error';
 import { ReleaseNoteAudienceInvalidError } from '../../domain/errors/release-note-audience-invalid.error';
 import type { UpdateReleaseNoteDto } from '@delta/shared-types';
-import { type CreateReleaseNoteOutput, toOutput } from './create-release-note.use-case';
+import {
+  type CreateReleaseNoteOutput,
+  normaliseImagePath,
+  toOutput,
+} from './create-release-note.use-case';
 
 /**
  * Updates editable fields on a release note (draft or published).
@@ -45,7 +49,8 @@ export class UpdateReleaseNoteUseCase {
     const updated = await this.repo.update(id, {
       title: dto.title !== undefined ? dto.title.trim() : undefined,
       body: dto.body !== undefined ? dto.body.trim() : undefined,
-      imageUrl: dto.imageUrl,
+      // Normalise: full GCS URL → bare path; bare path → unchanged; null → null.
+      imageUrl: dto.imageUrl !== undefined ? normaliseImagePath(dto.imageUrl) : undefined,
       audiencePlans: dto.audiencePlans,
     });
 
