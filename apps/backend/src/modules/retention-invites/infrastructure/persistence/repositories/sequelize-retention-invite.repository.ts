@@ -57,6 +57,20 @@ interface SubscriptionSnapshotRow {
  *   - Never log email, full_name, phone, or any PII field in this class.
  *   - Use IN (:ids) style replacements — NEVER = ANY(:ids) (Sequelize mock limitation).
  */
+// Effective trial end. The plan lives in `profiles`, but trial rows created at
+// signup often have `profiles.subscription_expires_at` NULL while
+// `subscriptions.current_period_end` holds the real end (same COALESCE as the
+// admin repository). Latest subscription row only.
+const EFFECTIVE_EXPIRY_JOIN = `
+  LEFT JOIN LATERAL (
+    SELECT s.current_period_end
+      FROM subscriptions s
+     WHERE s.doctor_id = p.id
+     ORDER BY s.created_at DESC
+     LIMIT 1
+  ) sub ON true`;
+const EFFECTIVE_EXPIRY = 'COALESCE(p.subscription_expires_at, sub.current_period_end)';
+
 @Injectable()
 export class SequelizeRetentionInviteRepository implements IRetentionInviteRepository {
   constructor(private readonly sequelize: Sequelize) {}
@@ -69,15 +83,16 @@ export class SequelizeRetentionInviteRepository implements IRetentionInviteRepos
     const windowEnd = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
 
     const rows = await this.sequelize.query<CandidateRow>(
-      `SELECT p.id AS doctor_id, p.email, p.full_name, p.subscription_expires_at AS expires_at
+      `SELECT p.id AS doctor_id, p.email, p.full_name, ${EFFECTIVE_EXPIRY} AS expires_at
          FROM profiles p
+         ${EFFECTIVE_EXPIRY_JOIN}
         WHERE p.role = 'doctor'
           AND p.is_active = true
           AND p.plan = 'free_trial'
           AND p.subscription_status IN ('trialing', 'trial')
-          AND p.subscription_expires_at >= :now
-          AND p.subscription_expires_at <= :windowEnd
-        ORDER BY p.subscription_expires_at ASC
+          AND ${EFFECTIVE_EXPIRY} >= :now
+          AND ${EFFECTIVE_EXPIRY} <= :windowEnd
+        ORDER BY ${EFFECTIVE_EXPIRY} ASC
         LIMIT :cap`,
       {
         type: QueryTypes.SELECT,
@@ -92,15 +107,19 @@ export class SequelizeRetentionInviteRepository implements IRetentionInviteRepos
     const windowStart = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
 
     const rows = await this.sequelize.query<CandidateRow>(
-      `SELECT p.id AS doctor_id, p.email, p.full_name, p.subscription_expires_at AS expires_at
+      // The downgrade to past_due is lazy (applied at login): a doctor whose trial
+      // ended and who never came back is still 'trialing' — exactly who this email
+      // is for. Expiry decides; status only excludes paid/suspended states.
+      `SELECT p.id AS doctor_id, p.email, p.full_name, ${EFFECTIVE_EXPIRY} AS expires_at
          FROM profiles p
+         ${EFFECTIVE_EXPIRY_JOIN}
         WHERE p.role = 'doctor'
           AND p.is_active = true
           AND p.plan = 'free_trial'
-          AND p.subscription_status = 'past_due'
-          AND p.subscription_expires_at >= :windowStart
-          AND p.subscription_expires_at < :now
-        ORDER BY p.subscription_expires_at DESC
+          AND p.subscription_status IN ('trialing', 'trial', 'past_due')
+          AND ${EFFECTIVE_EXPIRY} >= :windowStart
+          AND ${EFFECTIVE_EXPIRY} < :now
+        ORDER BY ${EFFECTIVE_EXPIRY} DESC
         LIMIT :cap`,
       {
         type: QueryTypes.SELECT,
@@ -232,8 +251,10 @@ export class SequelizeRetentionInviteRepository implements IRetentionInviteRepos
 
   async getSubscriptionSnapshot(doctorId: string): Promise<GraceSubscriptionSnapshot | null> {
     const rows = await this.sequelize.query<SubscriptionSnapshotRow>(
-      `SELECT plan, subscription_status AS status, subscription_expires_at AS expires_at
-         FROM profiles WHERE id = :doctorId`,
+      `SELECT p.plan, p.subscription_status AS status, ${EFFECTIVE_EXPIRY} AS expires_at
+         FROM profiles p
+         ${EFFECTIVE_EXPIRY_JOIN}
+        WHERE p.id = :doctorId`,
       { type: QueryTypes.SELECT, replacements: { doctorId } },
     );
     const row = rows[0];

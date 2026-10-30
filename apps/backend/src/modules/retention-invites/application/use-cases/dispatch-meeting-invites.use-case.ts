@@ -115,7 +115,7 @@ export class DispatchMeetingInvitesUseCase {
       }
     }
 
-    // 2. Expired-window candidates (past_due ≤ 30 days)
+    // 2. Expired-window candidates (trial ended ≤ 30 days ago; status may still be trialing)
     const expiredCandidates = await this.repo.findExpiredWindowCandidates(DISPATCH_CAP, now);
     if (expiredCandidates.length === DISPATCH_CAP) {
       this.logger.warn(
