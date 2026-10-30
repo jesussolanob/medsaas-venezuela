@@ -11,11 +11,11 @@ import { UpdateContactRequestAdminDtoSchema } from '@delta/shared-types';
 
 export const dynamic = 'force-dynamic';
 
-export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const guard = await requireSuperAdmin();
   if (!guard.ok) return guard.response;
 
-  const { id } = params;
+  const { id } = await params; // Next 16: params is a Promise
   const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   if (!id || !UUID_RE.test(id)) {
     return NextResponse.json({ error: 'ID inválido' }, { status: 400 });
