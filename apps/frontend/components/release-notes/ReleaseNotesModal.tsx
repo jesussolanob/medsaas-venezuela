@@ -159,6 +159,18 @@ export default function ReleaseNotesModal({
     };
   }, [returnTo]);
 
+  // Move focus inside on open: the trap only wraps Tab at the first/last element,
+  // so without an initial focus the first Tab escaped the dialog (WCAG 2.1.2).
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    dialog
+      .querySelector<HTMLElement>(
+        'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      )
+      ?.focus();
+  }, []);
+
   // Focus trap + Escape to close.
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -228,7 +240,7 @@ export default function ReleaseNotesModal({
         ref={dialogRef}
         role="dialog"
         aria-modal="true"
-        aria-labelledby={titleId}
+        aria-labelledby="release-notes-modal-heading"
         className="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden"
       >
         {/* Close button */}
@@ -242,7 +254,10 @@ export default function ReleaseNotesModal({
 
         {/* Header */}
         <div className="px-6 pt-6 pb-4 border-b border-slate-100 flex-shrink-0">
-          <p className="text-xs font-semibold uppercase tracking-wider text-teal-600 mb-1">
+          <p
+            id="release-notes-modal-heading"
+            className="text-xs font-semibold uppercase tracking-wider text-teal-600 mb-1"
+          >
             Novedades de Delta Salud
           </p>
         </div>

@@ -138,6 +138,16 @@ function NoteFormModal({ editing, onClose, onSaved }: NoteFormModalProps) {
     };
   }, [returnTo]);
 
+  // Move focus to the first field on open (the trap does not do it).
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    const target =
+      dialog.querySelector<HTMLElement>('input:not([disabled]), textarea:not([disabled])') ??
+      dialog.querySelector<HTMLElement>('button:not([disabled])');
+    target?.focus();
+  }, []);
+
   // Focus trap + Escape.
   useEffect(() => {
     const dialog = dialogRef.current;
