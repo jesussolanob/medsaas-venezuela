@@ -942,4 +942,15 @@ Si. El sistema envia dos recordatorios automaticos por correo: uno 24 horas ante
 **Que pasa si ya tuve una reunion con el equipo?**
 El modal no vuelve a aparecer una vez que agendas o ya realizaste una reunion. Si el equipo quiere
 coordinar otra, te contactaran directamente.
+
+**Recibi un correo de invitacion a la reunion. Que hago?**
+Si estas en el periodo de prueba o tu prueba vencio recientemente, puedes recibir un correo con
+asunto "Queremos conocerte" invitandote a programar una reunion con el equipo. Ese correo incluye
+un boton "Iniciar sesion en Delta" que te lleva directamente a tu panel. Una vez dentro, el modal
+"Queremos conocerte" estara disponible para que agendes tu cita.
+
+**Me ofrecieron un mes de gracia. Que significa?**
+Despues de tu reunion con el equipo Delta, el equipo puede otorgarte un mes adicional de acceso
+sin costo. Si te lo otorgaron, tu suscripcion se extendera automaticamente y recibiras un correo
+de confirmacion. No necesitas hacer nada: el cambio se aplica de inmediato.
 `;

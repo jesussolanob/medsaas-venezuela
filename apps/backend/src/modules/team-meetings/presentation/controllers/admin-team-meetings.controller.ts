@@ -4,9 +4,12 @@ import {
   Get,
   HttpCode,
   HttpStatus,
+  Inject,
+  Optional,
   Param,
   ParseUUIDPipe,
   Patch,
+  Post,
   Put,
   Query,
   UseGuards,
@@ -23,6 +26,7 @@ import { UpdateTeamMeetingAdminUseCase } from '../../application/use-cases/updat
 import { CancelTeamMeetingUseCase } from '../../application/use-cases/cancel-team-meeting.use-case';
 import { GetTeamMeetingHostUseCase } from '../../application/use-cases/get-team-meeting-host.use-case';
 import { UpdateTeamMeetingHostUseCase } from '../../application/use-cases/update-team-meeting-host.use-case';
+import { GrantGraceMonthUseCase } from '../../../retention-invites/application/use-cases/grant-grace-month.use-case';
 import {
   AdminListTeamMeetingsQuerySchema,
   AdminUpdateTeamMeetingDtoSchema,
@@ -38,6 +42,7 @@ import {
  * ROUTES:
  *   GET  /api/admin/team-meetings                — list all meetings
  *   PATCH /api/admin/team-meetings/:id           — update status/notes
+ *   POST /api/admin/team-meetings/:id/grant-grace — grant grace month after meeting done
  *   GET  /api/admin/team-meetings/host           — get host configuration
  *   PUT  /api/admin/team-meetings/host           — update host configuration
  */
@@ -51,6 +56,13 @@ export class AdminTeamMeetingsController {
     private readonly cancelMeeting: CancelTeamMeetingUseCase,
     private readonly getHost: GetTeamMeetingHostUseCase,
     private readonly updateHost: UpdateTeamMeetingHostUseCase,
+    /**
+     * Injected @Optional so TeamMeetingsModule stays backward-compatible when
+     * RetentionInvitesModule is not imported (e.g. isolated unit tests).
+     */
+    @Optional()
+    @Inject(GrantGraceMonthUseCase)
+    private readonly grantGraceMonth: GrantGraceMonthUseCase | null = null,
   ) {}
 
   /**
@@ -99,6 +111,29 @@ export class AdminTeamMeetingsController {
       status: dto.status,
       notes: dto.notes,
     });
+    return { success: true, data };
+  }
+
+  /**
+   * POST /api/admin/team-meetings/:id/grant-grace
+   *
+   * Grants one grace month to the doctor associated with the given team meeting.
+   * Only callable when the meeting status is 'done'. Idempotent-safe: returns
+   * 409 if a grace month was already granted for this doctor.
+   */
+  @Post(':id/grant-grace')
+  @HttpCode(HttpStatus.OK)
+  async grantGrace(
+    @Param('id', ParseUUIDPipe) meetingId: string,
+    @CurrentUser() user: CurrentUserPayload,
+  ) {
+    if (!this.grantGraceMonth) {
+      return {
+        success: false,
+        error: { code: 'NOT_AVAILABLE', message: 'Grace month feature not available' },
+      };
+    }
+    const data = await this.grantGraceMonth.execute({ meetingId, actorId: user.sub });
     return { success: true, data };
   }
 

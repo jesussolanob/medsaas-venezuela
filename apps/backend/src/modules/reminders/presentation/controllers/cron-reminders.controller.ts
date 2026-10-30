@@ -41,6 +41,9 @@ interface CronRunResult extends DispatchDueRemindersResult {
   meetingReminders24hSent: number;
   meetingReminders1hSent: number;
   meetingRemindersFailed: number;
+  /** Meeting invite emails sent in this run (doctor-inactivity cron). */
+  meetingInvitePre: number;
+  meetingInviteExpired: number;
 }
 
 interface SuccessResponse<T> {
@@ -196,6 +199,10 @@ export class CronRemindersController {
         meetingReminders24hSent,
         meetingReminders1hSent,
         meetingRemindersFailed,
+        // Meeting invite dispatch runs in the doctor-inactivity cron (once/day),
+        // not in the appointment-reminders cron (every 15 min). Always 0 here.
+        meetingInvitePre: 0,
+        meetingInviteExpired: 0,
       },
     };
   }
@@ -209,8 +216,22 @@ export class CronRemindersController {
   @Post('doctor-inactivity')
   @UseGuards(CronSecretGuard)
   @HttpCode(HttpStatus.OK)
-  async runDoctorInactivity(): Promise<SuccessResponse<DispatchDoctorInactivityNoticesResult>> {
-    const data = await this.dispatchDoctorInactivityNotices.execute();
-    return { success: true, data };
+  async runDoctorInactivity(): Promise<
+    SuccessResponse<
+      DispatchDoctorInactivityNoticesResult & {
+        meetingInvitePre: number;
+        meetingInviteExpired: number;
+      }
+    >
+  > {
+    const result = await this.dispatchDoctorInactivityNotices.execute();
+    return {
+      success: true,
+      data: {
+        ...result,
+        meetingInvitePre: result.invitePre,
+        meetingInviteExpired: result.inviteExpired,
+      },
+    };
   }
 }

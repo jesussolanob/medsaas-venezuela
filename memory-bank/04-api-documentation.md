@@ -1448,3 +1448,27 @@ Se saltea con aviso y la aceptación funciona igual.
 Enviar un presupuesto cuya `valid_until` ya pasó devuelve `QuoteValidUntilExpiredError` en español.
 Antes se enviaba y el share link nacía **ya vencido**: el paciente recibía un enlace muerto al
 instante. Un `expired` ahora se puede editar y reenviar (deja de ser un callejón sin salida).
+
+### Retención de especialistas — Fase 4 (2026-10-30)
+
+Módulo `retention-invites`. Envelope `{success,data}`. Todos los endpoint admin requieren `super_admin`.
+
+| Endpoint                                   | Método | Auth        | Descripción                                                                                              |
+| ------------------------------------------ | ------ | ----------- | -------------------------------------------------------------------------------------------------------- |
+| `/api/public/retention/click`              | POST   | Pública     | Registra click en enlace de invitación. Body: `{t: string}`. Siempre 204.                                |
+| `/api/admin/retention/metrics`             | GET    | super_admin | Métricas de retención. Query: `from=YYYY-MM-DD&to=YYYY-MM-DD`.                                           |
+| `/api/admin/team-meetings/:id/grant-grace` | POST   | super_admin | Otorga mes de gracia al doctor de la reunión. Sólo si status=done y no tiene ya uno. 409 si ya otorgado. |
+
+#### Cron integrado: `POST /api/cron/doctor-inactivity`
+
+Phase 4 extendió el cron existente. Ahora ejecuta invitaciones PRIMERO:
+
+- Invitación pre-vencimiento (`email:meeting_invite_pre`): free_trial, vence ≤7 días
+- Invitación post-vencimiento (`email:meeting_invite_expired`): past_due, venció ≤30 días
+  Respuesta ahora incluye `meetingInvitePre` y `meetingInviteExpired`.
+
+#### HMAC token (click-tracking)
+
+- Derivado de `AUTH_RESOLVE_SECRET` (ya en prod, sin nuevo env var)
+- TTL: 45 días. URL: `${APP_BASE_URL}/r/meeting?t=<token>`
+- 204 para tokens inválidos/expirados (sin oracle). Primer click sólo.

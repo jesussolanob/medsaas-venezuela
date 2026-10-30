@@ -5600,3 +5600,37 @@ Más el cobro que salía sin nombre de paciente (ADR-095), mismo patrón que el 
   producto sin tomar.
 - 🟡 `appointment_code` y el evento de Google Calendar siguen sin generarse en el camino de
   preconsultas (ver ADR-089).
+
+---
+
+## 2026-10-30 — Retención especialistas Fase 4 backend (branch `feature/retencion-fase4-be`)
+
+### Qué se implementó
+
+Módulo `retention-invites` completo (DDD 4 capas):
+
+1. **Invitaciones email automáticas** — cron diario despacha dos tipos de invitación a
+   free_trial doctors (pre-vencimiento ≤7d y post-vencimiento ≤30d). Integrado en
+   `DispatchDoctorInactivityNoticesUseCase` (invitaciones corren primero, one-per-day).
+2. **Click-tracking HMAC** — `POST /api/public/retention/click`, token derivado de
+   `AUTH_RESOLVE_SECRET` (sin env var nuevo). TTL 45 días. 204 siempre.
+3. **Mes de gracia** — `POST /api/admin/team-meetings/:id/grant-grace` (super_admin).
+   Sólo después de status=done, una vez por doctor (409 si ya tiene). Date math en UTC.
+4. **Métricas retención** — `GET /api/admin/retention/metrics?from=&to=` (super_admin).
+5. **Migración** `20261030000004-retention-invite-and-grace.cjs` — template email +
+   índices en `email_send_log` y `doctor_prompts`.
+6. **Guías de ayuda** — `specialist-guide.content.ts` + `super-admin-guide.content.ts`
+   actualizadas con invitaciones y mes de gracia.
+
+### Fixes técnicos relevantes
+
+- `addMonthsClamped` usa métodos UTC (`getUTCDate`, `setUTCDate`, etc.) para evitar
+  desfases en timezones UTC-X (América/Caracas = UTC-4).
+- `verifyToken` usa `parts[0] as string` / `parts[1] as string` tras el guard de longitud
+  para satisfacer `strict` TypeScript (array spread no narrowea).
+- `CronRunResult` en `cron-reminders.controller.ts` ahora exige `meetingInvitePre` y
+  `meetingInviteExpired` en ambos endpoints (appointment-reminders los fija en 0).
+
+### Verificación final
+
+5029 tests / 0 fallos. Build webpack OK. ESLint 0 warnings en archivos nuevos/tocados.

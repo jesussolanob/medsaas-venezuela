@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
   DOCTOR_INACTIVITY_REPOSITORY,
@@ -6,6 +6,7 @@ import {
   type InactiveDoctorCandidate,
 } from '../../../domain/repositories/doctor-inactivity.repository';
 import { MailerService } from '../../../../email/application/services/mailer.service';
+import { DispatchMeetingInvitesUseCase } from '../../../../retention-invites/application/use-cases/dispatch-meeting-invites.use-case';
 
 /** Max doctors processed per cron invocation. */
 const DISPATCH_CAP = 200;
@@ -31,6 +32,10 @@ export interface DispatchDoctorInactivityNoticesResult {
   sent15: number;
   skipped: number;
   failed: number;
+  /** Pre-window meeting invite emails sent this run. */
+  invitePre: number;
+  /** Expired-window meeting invite emails sent this run. */
+  inviteExpired: number;
 }
 
 type Outcome = 'sent10' | 'sent15' | 'skipped' | 'failed';
@@ -73,10 +78,53 @@ export class DispatchDoctorInactivityNoticesUseCase {
     private readonly inactivityRepo: IDoctorInactivityRepository,
     private readonly mailer: MailerService,
     private readonly config: ConfigService,
+    /**
+     * Injected @Optional to keep RemindersModule backwards-compatible when
+     * RetentionInvitesModule is not imported (e.g. in isolated unit tests).
+     * When present, invite dispatch runs FIRST in the daily cron run, and
+     * doctors who received an invite today are excluded from inactivity notices
+     * to honour the one-lifecycle-email-per-doctor-per-day rule.
+     */
+    @Optional()
+    @Inject(DispatchMeetingInvitesUseCase)
+    private readonly dispatchMeetingInvites: DispatchMeetingInvitesUseCase | null = null,
   ) {}
 
   async execute(nowOverride?: Date): Promise<DispatchDoctorInactivityNoticesResult> {
     const now = nowOverride ?? new Date();
+
+    // ------------------------------------------------------------------
+    // Step 1 — Meeting invite dispatch (runs FIRST per spec decision A.8).
+    // Collects the set of doctorIds that received an invite this run so the
+    // inactivity step can honour the one-lifecycle-email-per-day rule.
+    // ------------------------------------------------------------------
+    let invitePre = 0;
+    let inviteExpired = 0;
+    const invitedDoctorIds = new Set<string>();
+
+    if (this.dispatchMeetingInvites) {
+      try {
+        const inviteResult = await this.dispatchMeetingInvites.execute(now);
+        invitePre = inviteResult.invitePre;
+        inviteExpired = inviteResult.inviteExpired;
+        for (const id of inviteResult.invitedDoctorIds) {
+          invitedDoctorIds.add(id);
+        }
+        this.logger.log(
+          `[doctor-inactivity] invite step: pre=${invitePre} expired=${inviteExpired} ` +
+            `invited=${invitedDoctorIds.size}`,
+        );
+      } catch (err: unknown) {
+        this.logger.warn(
+          '[doctor-inactivity] invite dispatch step failed — inactivity notices unaffected: ' +
+            (err instanceof Error ? err.message : String(err)),
+        );
+      }
+    }
+
+    // ------------------------------------------------------------------
+    // Step 2 — Inactivity notices (skip doctors already invited today).
+    // ------------------------------------------------------------------
     const candidates = await this.inactivityRepo.findCandidates(DISPATCH_CAP);
 
     if (candidates.length === DISPATCH_CAP) {
@@ -91,6 +139,12 @@ export class DispatchDoctorInactivityNoticesUseCase {
     let failed = 0;
 
     for (const candidate of candidates) {
+      // One-lifecycle-email-per-day: skip if an invite went out this run
+      if (invitedDoctorIds.has(candidate.doctorId)) {
+        skipped++;
+        continue;
+      }
+
       try {
         const outcome = await this.processOne(candidate, now);
         if (outcome === 'sent10') sent10++;
@@ -109,7 +163,7 @@ export class DispatchDoctorInactivityNoticesUseCase {
     this.logger.log(
       `[doctor-inactivity] sent10=${sent10} sent15=${sent15} skipped=${skipped} failed=${failed}`,
     );
-    return { sent10, sent15, skipped, failed };
+    return { sent10, sent15, skipped, failed, invitePre, inviteExpired };
   }
 
   // ---------------------------------------------------------------------------

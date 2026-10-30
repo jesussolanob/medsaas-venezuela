@@ -1097,4 +1097,27 @@ de 2 horas que aplica a los especialistas.
 **Que significa el estado "No se presento"?**
 Indica que el especialista tenia la reunion agendada pero no se conecto. Solo un admin puede
 marcar este estado; el sistema no lo asigna automaticamente.
+
+**Como otorgo un mes de gracia a un especialista despues de la reunion?**
+En Admin → Reuniones de equipo, abre la reunion cuyo estado es "Realizada" (done). Pulsa el
+boton "Otorgar mes de gracia". El sistema extiende la suscripcion del especialista en 1 mes
+(para cuentas en prueba) o 30 dias (para cuentas de pago). Solo se puede otorgar una vez por
+especialista; si ya tiene uno asignado, el boton muestra un error. Solo super_admin puede
+hacer esta accion.
+
+**Que correos de invitacion se envian automaticamente a los especialistas?**
+El cron diario (POST /api/cron/doctor-inactivity) envia dos tipos de invitacion a la reunion:
+- **Invitacion pre-vencimiento**: al especialista cuyo plan free_trial vence en 7 dias o menos
+  y aun no ha recibido esta invitacion.
+- **Invitacion post-vencimiento**: al especialista cuyo plan vencio hace 30 dias o menos, esta
+  en estado past_due, y aun no ha recibido esta invitacion.
+El correo incluye el asunto "Queremos conocerte" y un boton "Iniciar sesion en Delta". Se
+respeta la regla de un solo email de ciclo de vida por dia por especialista (junto con los
+avisos de inactividad).
+
+**Donde veo metricas de retencion?**
+Endpoint GET /api/admin/retention/metrics?from=YYYY-MM-DD&to=YYYY-MM-DD (solo super_admin).
+Devuelve conteos de: especialistas en ventana pre-vencimiento, ventana post-vencimiento, con
+reunion agendada, con reunion realizada, con mes de gracia otorgado, clicks en el enlace de
+invitacion, y conversiones (paso de prueba a plan de pago dentro del periodo).
 `;

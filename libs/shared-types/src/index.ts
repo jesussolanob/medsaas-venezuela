@@ -69,3 +69,4 @@ export * from './dtos/contact-requests.dto';
 export * from './dtos/release-notes.dto';
 export * from './dtos/doctor-prompts.dto';
 export * from './dtos/team-meetings.dto';
+export * from './dtos/retention-invites.dto';
