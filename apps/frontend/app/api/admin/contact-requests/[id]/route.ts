@@ -16,8 +16,9 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   if (!guard.ok) return guard.response;
 
   const { id } = params;
-  if (!id) {
-    return NextResponse.json({ error: 'ID requerido' }, { status: 400 });
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!id || !UUID_RE.test(id)) {
+    return NextResponse.json({ error: 'ID inválido' }, { status: 400 });
   }
 
   let body: unknown;
