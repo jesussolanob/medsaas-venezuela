@@ -23,6 +23,7 @@ import { TeamMeetingSlotTakenError } from '../../domain/errors/team-meeting-slot
 import { AvailabilityBlock } from '../../../availability-blocks/domain/entities/availability-block.entity';
 import { MEETING_MODAL_KEY } from '@delta/shared-types';
 import { CARACAS_OFFSET } from '../../../../domain/caracas-time';
+import { adminMeetingsUrl, doctorMeetingUrl } from '../utils/app-links';
 
 export interface CreateTeamMeetingInput {
   doctorId: string;
@@ -172,12 +173,14 @@ export class CreateTeamMeetingUseCase {
       });
     } catch (err: unknown) {
       // Always clean up the orphan availability block before rethrowing.
-      await this.blockRepo.delete(blockId).catch((delErr: unknown) => {
+      try {
+        await this.blockRepo.delete(blockId);
+      } catch (delErr: unknown) {
         this.logger.warn(
           '[team-meetings] failed to delete orphan block after create failure: ' +
             (delErr instanceof Error ? delErr.message : String(delErr)),
         );
-      });
+      }
 
       // Map a race-condition unique-constraint error to the domain error.
       if (isUniqueConstraintError(err)) {
@@ -197,7 +200,7 @@ export class CreateTeamMeetingUseCase {
             doctorName: doctorProfile.name ?? 'Especialista',
             startsAtText,
             meetingUrl: meetingUrl ?? 'N/D',
-            manageUrl: `${process.env['FRONTEND_URL'] ?? 'https://app.deltasalud.app'}/doctor/perfil`,
+            manageUrl: doctorMeetingUrl(),
           },
           { type: 'doctor', id: input.doctorId },
         )
@@ -222,7 +225,7 @@ export class CreateTeamMeetingUseCase {
               doctorEmail: doctorProfile?.email ?? '',
               startsAtText,
               meetingUrl: meetingUrl ?? 'N/D',
-              manageUrl: `${process.env['FRONTEND_URL'] ?? 'https://app.deltasalud.app'}/admin/reuniones`,
+              manageUrl: adminMeetingsUrl(),
             },
             { type: 'admin', id: adminEmail },
           )

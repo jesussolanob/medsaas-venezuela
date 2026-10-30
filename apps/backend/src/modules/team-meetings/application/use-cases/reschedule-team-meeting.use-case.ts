@@ -20,6 +20,7 @@ import { TeamMeetingTooLateError } from '../../domain/errors/team-meeting-too-la
 import { TeamMeetingSlotTakenError } from '../../domain/errors/team-meeting-slot-taken.error';
 import { randomUUID } from 'crypto';
 import { CARACAS_OFFSET } from '../../../../domain/caracas-time';
+import { adminMeetingsUrl, doctorMeetingUrl } from '../utils/app-links';
 
 export interface RescheduleTeamMeetingInput {
   meetingId: string;
@@ -211,7 +212,7 @@ export class RescheduleTeamMeetingUseCase {
             doctorName: doctorProfile.name ?? 'Especialista',
             startsAtText,
             meetingUrl: updated.meetingUrl ?? 'N/D',
-            manageUrl: `${process.env['FRONTEND_URL'] ?? 'https://app.deltasalud.app'}/doctor/perfil`,
+            manageUrl: doctorMeetingUrl(),
           },
           { type: 'doctor', id: meeting.doctorId },
         )
@@ -233,7 +234,7 @@ export class RescheduleTeamMeetingUseCase {
             doctorEmail: doctorProfile?.email ?? '',
             startsAtText,
             meetingUrl: updated.meetingUrl ?? 'N/D',
-            manageUrl: `${process.env['FRONTEND_URL'] ?? 'https://app.deltasalud.app'}/admin/reuniones`,
+            manageUrl: adminMeetingsUrl(),
           },
           { type: 'admin', id: admin.email },
         )

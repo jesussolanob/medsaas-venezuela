@@ -21,6 +21,7 @@ import { TeamMeetingNotFoundError } from '../../domain/errors/team-meeting-not-f
 import { TeamMeetingAccessDeniedError } from '../../domain/errors/team-meeting-access-denied.error';
 import { TeamMeetingTooLateError } from '../../domain/errors/team-meeting-too-late.error';
 import { MEETING_MODAL_KEY } from '@delta/shared-types';
+import { adminMeetingsUrl, doctorMeetingUrl } from '../utils/app-links';
 
 export interface CancelTeamMeetingInput {
   meetingId: string;
@@ -151,7 +152,7 @@ export class CancelTeamMeetingUseCase {
             doctorName: doctorProfile.name ?? 'Especialista',
             startsAtText,
             meetingUrl: meeting.meetingUrl ?? 'N/D',
-            manageUrl: `${process.env['FRONTEND_URL'] ?? 'https://app.deltasalud.app'}/doctor/perfil`,
+            manageUrl: doctorMeetingUrl(),
           },
           { type: 'doctor', id: meeting.doctorId },
         )
@@ -173,7 +174,7 @@ export class CancelTeamMeetingUseCase {
             doctorEmail: doctorProfile?.email ?? '',
             startsAtText,
             meetingUrl: meeting.meetingUrl ?? 'N/D',
-            manageUrl: `${process.env['FRONTEND_URL'] ?? 'https://app.deltasalud.app'}/admin/reuniones`,
+            manageUrl: adminMeetingsUrl(),
           },
           { type: 'admin', id: admin.email },
         )

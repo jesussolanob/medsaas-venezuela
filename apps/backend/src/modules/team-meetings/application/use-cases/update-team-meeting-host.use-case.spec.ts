@@ -2,9 +2,9 @@ import { UpdateTeamMeetingHostUseCase } from './update-team-meeting-host.use-cas
 import type { ITeamMeetingRepository } from '../../domain/repositories/iteam-meeting.repository';
 import { TeamMeetingInvalidHostError } from '../../domain/errors/team-meeting-invalid-host.error';
 
-function makeRepo(
-  overrides: Partial<Pick<ITeamMeetingRepository, 'findAllSuperAdmins' | 'updateSetting'>> = {},
-): jest.Mocked<Pick<ITeamMeetingRepository, 'findAllSuperAdmins' | 'updateSetting'>> {
+type HostRepo = Pick<ITeamMeetingRepository, 'findAllSuperAdmins' | 'updateSetting'>;
+
+function makeRepo(overrides: Partial<jest.Mocked<HostRepo>> = {}): jest.Mocked<HostRepo> {
   return {
     findAllSuperAdmins: jest.fn().mockResolvedValue([
       { id: 'admin-1', email: 'admin1@delta.com', fullName: 'Admin One' },

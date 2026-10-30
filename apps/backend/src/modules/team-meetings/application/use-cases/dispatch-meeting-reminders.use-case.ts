@@ -4,6 +4,7 @@ import {
   type ITeamMeetingRepository,
 } from '../../domain/repositories/iteam-meeting.repository';
 import { MailerService } from '../../../email/application/services/mailer.service';
+import { adminMeetingsUrl, doctorMeetingUrl } from '../utils/app-links';
 
 export interface DispatchMeetingRemindersResult {
   reminders24hSent: number;
@@ -73,7 +74,7 @@ export class DispatchMeetingRemindersUseCase {
                 doctorName: row.doctorName ?? 'Especialista',
                 startsAtText,
                 meetingUrl: row.meetingUrl ?? 'N/D',
-                manageUrl: `${process.env['FRONTEND_URL'] ?? 'https://app.deltasalud.app'}/doctor/perfil`,
+                manageUrl: doctorMeetingUrl(),
               },
               { type: 'doctor', id: row.doctorId },
             );
@@ -86,7 +87,7 @@ export class DispatchMeetingRemindersUseCase {
                   doctorEmail: row.doctorEmail,
                   startsAtText,
                   meetingUrl: row.meetingUrl ?? 'N/D',
-                  manageUrl: `${process.env['FRONTEND_URL'] ?? 'https://app.deltasalud.app'}/admin/reuniones`,
+                  manageUrl: adminMeetingsUrl(),
                 },
                 { type: 'admin', id: admin.email },
               );
@@ -113,7 +114,7 @@ export class DispatchMeetingRemindersUseCase {
                 doctorName: row.doctorName ?? 'Especialista',
                 startsAtText,
                 meetingUrl: row.meetingUrl ?? 'N/D',
-                manageUrl: `${process.env['FRONTEND_URL'] ?? 'https://app.deltasalud.app'}/doctor/perfil`,
+                manageUrl: doctorMeetingUrl(),
               },
               { type: 'doctor', id: row.doctorId },
             );
@@ -126,7 +127,7 @@ export class DispatchMeetingRemindersUseCase {
                   doctorEmail: row.doctorEmail,
                   startsAtText,
                   meetingUrl: row.meetingUrl ?? 'N/D',
-                  manageUrl: `${process.env['FRONTEND_URL'] ?? 'https://app.deltasalud.app'}/admin/reuniones`,
+                  manageUrl: adminMeetingsUrl(),
                 },
                 { type: 'admin', id: admin.email },
               );
