@@ -215,11 +215,11 @@ export class CreateTeamMeetingUseCase {
     // 8. Notify team (best-effort)
     if (adminEmails.length > 0) {
       const startsAtText = this.formatCaracasTime(startsAt);
-      for (const adminEmail of adminEmails) {
+      for (const admin of superAdmins) {
         void this.mailer
           .sendTemplate(
             'team_meeting_confirmed_admin',
-            adminEmail,
+            admin.email,
             {
               doctorName: doctorProfile?.name ?? 'Especialista',
               doctorEmail: doctorProfile?.email ?? '',
@@ -227,7 +227,9 @@ export class CreateTeamMeetingUseCase {
               meetingUrl: meetingUrl ?? 'N/D',
               manageUrl: adminMeetingsUrl(),
             },
-            { type: 'admin', id: adminEmail },
+            // recipient_id is a UUID column: the profile id, never the email
+            // (logging failed with 'invalid input syntax for type uuid', QA 30/10).
+            { type: 'admin', id: admin.id },
           )
           .catch((err: unknown) => {
             this.logger.warn(

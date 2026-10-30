@@ -83,7 +83,7 @@ describe('DispatchMeetingRemindersUseCase', () => {
       'team_meeting_reminder_admin',
       'admin@delta.com',
       expect.objectContaining({ doctorEmail: 'dr@test.com' }),
-      { type: 'admin', id: 'admin@delta.com' },
+      { type: 'admin', id: 'admin-1' },
     );
     expect(repo.markReminder24hSent).toHaveBeenCalledWith('meeting-1', now);
 

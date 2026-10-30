@@ -176,7 +176,7 @@ export class CancelTeamMeetingUseCase {
             meetingUrl: meeting.meetingUrl ?? 'N/D',
             manageUrl: adminMeetingsUrl(),
           },
-          { type: 'admin', id: admin.email },
+          { type: 'admin', id: admin.id },
         )
         .catch((err: unknown) => {
           this.logger.warn(

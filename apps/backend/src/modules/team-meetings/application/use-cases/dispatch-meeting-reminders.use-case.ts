@@ -89,7 +89,7 @@ export class DispatchMeetingRemindersUseCase {
                   meetingUrl: row.meetingUrl ?? 'N/D',
                   manageUrl: adminMeetingsUrl(),
                 },
-                { type: 'admin', id: admin.email },
+                { type: 'admin', id: admin.id },
               );
             }
             reminders24hSent++;
@@ -129,7 +129,7 @@ export class DispatchMeetingRemindersUseCase {
                   meetingUrl: row.meetingUrl ?? 'N/D',
                   manageUrl: adminMeetingsUrl(),
                 },
-                { type: 'admin', id: admin.email },
+                { type: 'admin', id: admin.id },
               );
             }
             reminders1hSent++;

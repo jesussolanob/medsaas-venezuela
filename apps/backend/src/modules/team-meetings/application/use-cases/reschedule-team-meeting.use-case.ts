@@ -237,7 +237,7 @@ export class RescheduleTeamMeetingUseCase {
             meetingUrl: updated.meetingUrl ?? 'N/D',
             manageUrl: adminMeetingsUrl(),
           },
-          { type: 'admin', id: admin.email },
+          { type: 'admin', id: admin.id },
         )
         .catch((err: unknown) => {
           this.logger.warn(
