@@ -36,6 +36,15 @@ entre back y front (constante `TEAM_MEETING_BLOCK_REASON`); tarjeta sin recargar
 equipo sin registro (`recipient_id` uuid recibía el email). 3 novedades publicadas en staging.
 Guía de QA: `~/Downloads/guia-pruebas-retencion.txt`.
 
+**También en este lote (fallaban en producción):** "Ingresos (mes)" del panel admin de
+Especialistas ahora usa el MISMO cálculo que la Finanzas del especialista
+(`GetFinancialSummaryUseCase`: consultas aprobadas + pagos sin consulta —paquetes y
+presupuestos— + ingresos manuales); antes solo sumaba consultas aprobadas (caso Dra. Ana: 22
+citas, 135 USD). Rama `hotfix/ingresos-admin-mes` integrada. Y "marcar notificación como
+leída" (`app/api/doctor/notifications/[id]/read`) respondía "ID inválido" (params de Next 16).
+Estado al cierre: `develop` = `staging` = `364a73ba`; `main` sin tocar (`1d682771`). Falta el
+QA del equipo y promover.
+
 **Incidente:** al validar SQL real contra staging, un `sequelize.transaction()` del código
 commiteó la transacción de prueba: quedaron en staging las estructuras de las 5 migraciones y
 datos de prueba (2 especialistas del clon con la prueba extendida hasta el 29/11, 2 filas

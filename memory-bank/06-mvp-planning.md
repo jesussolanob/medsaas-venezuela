@@ -16,7 +16,8 @@ Estado: Fase 0 ✅ · Fase 1 en-progreso.
 ## Retención de especialistas (pedido del dueño, planificado 2026-10-30)
 
 > Plan completo y vinculante: `docs/plan-retencion.md` (rama `feature/retencion`). Estado:
-> **planificado, sin implementar**.
+> **implementado y en staging (2026-10-30), QA en navegador hecho; falta QA del equipo y
+> promover a `main`**. Guía de QA: `~/Downloads/guia-pruebas-retencion.txt`.
 
 Cuatro piezas, en este orden de fases: (1) base común + botón **"Contáctame ya"** (solicitud +
 correo a todos los super_admin, promesa 1 h / "Llámame ya" 15 min en horario lun–sáb 8–18;
