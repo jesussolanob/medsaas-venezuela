@@ -1,3 +1,4 @@
+import { BadRequestException } from '@nestjs/common';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { AdminReleaseNotesController } from './admin-release-notes.controller';
 import { CreateReleaseNoteUseCase } from '../../application/use-cases/create-release-note.use-case';
@@ -169,6 +170,37 @@ describe('AdminReleaseNotesController', () => {
       const result = await controller.unpublish('note-uuid-1');
 
       expect(result.success).toBe(true);
+    });
+  });
+
+  describe('POST /api/admin/release-notes/image-upload', () => {
+    it('throws BadRequestException when file is missing (undefined)', async () => {
+      await expect(controller.imageUpload(undefined, ADMIN_USER)).rejects.toThrow(
+        BadRequestException,
+      );
+    });
+
+    it('throws BadRequestException message is in Spanish', async () => {
+      await expect(controller.imageUpload(undefined, ADMIN_USER)).rejects.toThrow(
+        'Se requiere un archivo de imagen',
+      );
+    });
+
+    it('calls use case when file is present', async () => {
+      const mockFile = {
+        originalname: 'photo.jpg',
+        mimetype: 'image/jpeg',
+        size: 1024,
+        buffer: Buffer.from('fake'),
+      } as Express.Multer.File;
+      imageUploadUseCase.execute.mockResolvedValue({ imageUrl: 'https://signed', path: 'logo/x' });
+
+      const result = await controller.imageUpload(mockFile, ADMIN_USER);
+
+      expect(result.success).toBe(true);
+      expect(imageUploadUseCase.execute).toHaveBeenCalledWith(
+        expect.objectContaining({ actorId: ADMIN_USER.sub, originalname: 'photo.jpg' }),
+      );
     });
   });
 });

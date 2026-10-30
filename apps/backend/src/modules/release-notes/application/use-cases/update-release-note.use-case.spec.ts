@@ -5,6 +5,9 @@ import { ReleaseNoteInvalidError } from '../../domain/errors/release-note-invali
 import { ReleaseNoteAudienceInvalidError } from '../../domain/errors/release-note-audience-invalid.error';
 import { ReleaseNote } from '../../domain/entities/release-note.entity';
 
+// UUID that matches the isValidNoteImagePath regex: logo/<uuid>/<file>
+const VALID_UUID = '12345678-1234-1234-1234-123456789012';
+
 const makeNote = (overrides: Partial<Parameters<typeof ReleaseNote.create>[0]> = {}): ReleaseNote =>
   ReleaseNote.create({
     id: 'note-uuid-1',
@@ -114,7 +117,7 @@ describe('UpdateReleaseNoteUseCase', () => {
   it('stores a bare path unchanged when imageUrl is already a path', async () => {
     mockRepo.findById.mockResolvedValue(makeNote());
     mockRepo.findAllPlanKeys.mockResolvedValue([]);
-    const storedPath = 'logo/admin-1/1730000000000-photo.jpg';
+    const storedPath = `logo/${VALID_UUID}/1730000000000-photo.jpg`;
     mockRepo.update.mockResolvedValue(makeNote({ imageUrl: storedPath }));
 
     await useCase.execute('note-uuid-1', { imageUrl: storedPath });
@@ -128,15 +131,39 @@ describe('UpdateReleaseNoteUseCase', () => {
   it('normalizes a full GCS URL to its bare object path before storing', async () => {
     mockRepo.findById.mockResolvedValue(makeNote());
     mockRepo.findAllPlanKeys.mockResolvedValue([]);
-    const fullUrl =
-      'https://storage.googleapis.com/my-bucket/logo/admin-1/photo.jpg?X-Goog-Algorithm=AWS4';
-    mockRepo.update.mockResolvedValue(makeNote({ imageUrl: 'logo/admin-1/photo.jpg' }));
+    const fullUrl = `https://storage.googleapis.com/my-bucket/logo/${VALID_UUID}/photo.jpg?X-Goog-Algorithm=AWS4`;
+    mockRepo.update.mockResolvedValue(makeNote({ imageUrl: `logo/${VALID_UUID}/photo.jpg` }));
 
     await useCase.execute('note-uuid-1', { imageUrl: fullUrl });
 
     expect(mockRepo.update).toHaveBeenCalledWith(
       'note-uuid-1',
-      expect.objectContaining({ imageUrl: 'logo/admin-1/photo.jpg' }),
+      expect.objectContaining({ imageUrl: `logo/${VALID_UUID}/photo.jpg` }),
     );
+  });
+
+  // IDOR path-guard regression tests (security fix 2026-10-30)
+  it('throws ReleaseNoteInvalidError when imageUrl has a receipt prefix (IDOR guard)', async () => {
+    mockRepo.findById.mockResolvedValue(makeNote());
+
+    await expect(
+      useCase.execute('note-uuid-1', { imageUrl: `receipt/${VALID_UUID}/receipt.pdf` }),
+    ).rejects.toThrow(ReleaseNoteInvalidError);
+  });
+
+  it('throws ReleaseNoteInvalidError when imageUrl contains a path traversal segment', async () => {
+    mockRepo.findById.mockResolvedValue(makeNote());
+
+    await expect(
+      useCase.execute('note-uuid-1', { imageUrl: `logo/${VALID_UUID}/../secret.jpg` }),
+    ).rejects.toThrow(ReleaseNoteInvalidError);
+  });
+
+  it('throws ReleaseNoteInvalidError when imageUrl is an external URL', async () => {
+    mockRepo.findById.mockResolvedValue(makeNote());
+
+    await expect(
+      useCase.execute('note-uuid-1', { imageUrl: 'https://evil.example.com/tracker.png' }),
+    ).rejects.toThrow(ReleaseNoteInvalidError);
   });
 });

@@ -6,6 +6,7 @@ import {
 } from '../../domain/repositories/irelease-note.repository';
 import { STORAGE_PORT, type IStoragePort } from '../../../storage/application/ports/storage.port';
 import { signStoredImagePath } from '../../../storage/application/helpers/resign-gcs-image.helper';
+import { isValidNoteImagePath } from './create-release-note.use-case';
 
 export interface UnseenNoteOutput {
   id: string;
@@ -48,11 +49,16 @@ export class GetUnseenReleaseNotesUseCase {
     const items = await this.repo.findUnseenForDoctor(doctorId);
 
     const signedUrls = await Promise.all(
-      items.map((item) =>
-        signStoredImagePath(item.imageUrl, this.storagePort, () => {
+      items.map((item) => {
+        // Guard: only sign paths produced by this module's own upload (logo/<uuid>/<file>).
+        // Rows written before the fix or with invalid paths return null — no IDOR possible.
+        if (item.imageUrl !== null && !isValidNoteImagePath(item.imageUrl)) {
+          return Promise.resolve(null);
+        }
+        return signStoredImagePath(item.imageUrl, this.storagePort, () => {
           this.logger.warn('[release-notes] unseen — image re-sign failed');
-        }),
-      ),
+        });
+      }),
     );
 
     return {

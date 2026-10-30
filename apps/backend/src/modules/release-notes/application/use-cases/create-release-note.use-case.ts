@@ -72,15 +72,43 @@ export class CreateReleaseNoteUseCase {
 }
 
 /**
+ * Validates that a normalised path was produced by this module's own upload.
+ *
+ * Accepted shape: `logo/<uuid>/<filename>`
+ *   - `logo/` prefix   — enforced by UploadFileUseCase with kind='logo'
+ *   - UUID segment     — 36 hex+dash chars (the actorId / user.sub)
+ *   - filename segment — only chars produced by sanitizeFilename: [A-Za-z0-9._-]
+ *   - no `..`          — explicit path-traversal guard
+ *
+ * Any other value (e.g. receipt/…, ../…, external URL) must be rejected.
+ * This prevents IDOR: an admin cannot manufacture a path into another
+ * doctor's private receipt/document bucket.
+ */
+const VALID_NOTE_IMAGE_PATH_RE = /^logo\/[0-9a-f-]{36}\/[A-Za-z0-9._-]+$/;
+
+export function isValidNoteImagePath(path: string): boolean {
+  if (path.includes('..')) return false;
+  return VALID_NOTE_IMAGE_PATH_RE.test(path);
+}
+
+/**
  * Normalises an imageUrl/imagePath value before persisting:
  *   - Full GCS signed URL → strips scheme+bucket, returns bare object path.
- *   - Bare path or null/undefined → returned as-is.
- * This guarantees we always store a path, never an expiring signed URL.
+ *   - Bare path → used as-is.
+ *   - Null/undefined → null (no image).
+ *
+ * After normalisation the path MUST match the `logo/<uuid>/<file>` pattern.
+ * Anything else (wrong prefix, external URL, traversal) throws
+ * ReleaseNoteInvalidError 422 to prevent IDOR via crafted paths.
  */
 export function normaliseImagePath(raw: string | null | undefined): string | null {
   if (!raw) return null;
   const extracted = extractGcsPath(raw);
-  return extracted ?? raw;
+  const path = extracted ?? raw;
+  if (!isValidNoteImagePath(path)) {
+    throw new ReleaseNoteInvalidError('La imagen debe subirse desde el formulario de Novedades.');
+  }
+  return path;
 }
 
 export function toOutput(note: ReleaseNote): CreateReleaseNoteOutput {
