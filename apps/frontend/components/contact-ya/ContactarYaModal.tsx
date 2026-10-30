@@ -79,6 +79,8 @@ function formatCaracasDate(iso: string): string {
       month: 'long',
       hour: '2-digit',
       minute: '2-digit',
+      // 24 h: "p. m." followed by the sentence's period printed "p. m.." (QA, 30/10).
+      hourCycle: 'h23',
       timeZone: 'America/Caracas',
     }).format(new Date(iso));
   } catch {
