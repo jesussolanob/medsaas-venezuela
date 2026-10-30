@@ -300,7 +300,11 @@ export interface DoctorDetail {
   patientCount: number;
   /** Consultations created in the current calendar month. */
   consultationCount: number;
-  /** Sum of approved consultation amounts in the current calendar month (0 if none). */
+  /**
+   * Total income for the doctor in the current calendar month.
+   * Computed by GetFinancialSummaryUseCase (same logic as the doctor's Finanzas screen):
+   *   approved consultation amounts + manual income + orphan payments (package sales, quotes).
+   */
   monthlyRevenue: number;
   /**
    * Seller attribution fields — used by the admin assign-seller flow to show
