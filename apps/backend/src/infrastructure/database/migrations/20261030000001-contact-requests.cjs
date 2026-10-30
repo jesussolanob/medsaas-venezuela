@@ -181,7 +181,7 @@ module.exports = {
 
   async down(queryInterface) {
     await queryInterface.sequelize.transaction(async (transaction) => {
-      const q = (sql) => queryInterface.sequelize.query(sql, { transaction });
+      const q = (sql, opts = {}) => queryInterface.sequelize.query(sql, { transaction, ...opts });
 
       // Remove email template
       await q(`DELETE FROM email_templates WHERE name = 'support_contact_request'`);
