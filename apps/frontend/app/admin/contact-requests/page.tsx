@@ -428,7 +428,7 @@ export default function ContactRequestsPage() {
           {/* Refresh */}
           <button
             type="button"
-            onClick={() => void load()}
+            onClick={() => setLoadTrigger((n) => n + 1)}
             className="ml-auto flex items-center gap-1.5 px-3 py-1.5 text-xs border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-50 transition-colors"
           >
             <Loader2 className={['w-3.5 h-3.5', loading ? 'animate-spin' : ''].join(' ')} />

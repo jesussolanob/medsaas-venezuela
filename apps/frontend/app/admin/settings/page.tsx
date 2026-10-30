@@ -1154,7 +1154,7 @@ function SupportContactSection() {
               Horario de atención
             </label>
             <p className="text-xs text-slate-400 mt-0.5 mb-3">
-              Define cuándo el equipo puede hacer llamadas inmediatas ("Llámame ya"). Fuera de este
+              Define cuándo el equipo puede hacer llamadas inmediatas («Llámame ya»). Fuera de este
               horario se oculta esa opción y el compromiso cambia.
             </p>
 
