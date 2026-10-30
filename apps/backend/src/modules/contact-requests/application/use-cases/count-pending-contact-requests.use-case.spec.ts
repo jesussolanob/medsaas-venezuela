@@ -14,6 +14,7 @@ describe('CountPendingContactRequestsUseCase', () => {
       update: jest.fn(),
       getNotificationCountSince: jest.fn(),
       incrementNotificationCount: jest.fn(),
+      reserveNotificationSlot: jest.fn(),
       listWithDoctor: jest.fn(),
       findByIdWithDoctor: jest.fn(),
       countPending: jest.fn(),

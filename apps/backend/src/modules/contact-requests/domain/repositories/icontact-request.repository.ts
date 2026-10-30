@@ -90,16 +90,33 @@ export interface IContactRequestRepository {
 
   /**
    * Returns the number of notification sends for a doctor in the last 24 hours.
-   * Reads from notification_count / last_notified_at on the pending request,
-   * or counts from scratch if needed. Keeps it simple.
+   * Reads from notification_count / last_notified_at on the pending request.
+   * @deprecated Use reserveNotificationSlot for atomic check+increment.
    */
   getNotificationCountSince(doctorId: string, since: Date): Promise<number>;
 
   /**
    * Increments notification_count and sets last_notified_at on the pending request.
-   * Called after a notification is sent successfully.
+   * @deprecated Use reserveNotificationSlot for atomic check+increment.
    */
   incrementNotificationCount(doctorId: string, at: Date): Promise<void>;
+
+  /**
+   * Atomically reserves a notification slot for a doctor.
+   *
+   * Counts ALL notifications sent to this doctor in the 24-hour window
+   * (across all their requests, not just the current pending row), so
+   * resolving a request does not reset the daily limit.
+   *
+   * If the count is below `max`, increments `notification_count` and sets
+   * `last_notified_at = now` on the pending row, then returns true.
+   * If the count is already at `max` (or no pending row exists), returns false.
+   *
+   * This single UPDATE replaces the separate getNotificationCountSince +
+   * incrementNotificationCount pair, eliminating the TOCTOU race where N
+   * concurrent POSTs all pass the read check before any write lands.
+   */
+  reserveNotificationSlot(doctorId: string, since: Date, now: Date, max: number): Promise<boolean>;
 
   /** Returns a paginated list of contact requests with doctor profile data. */
   listWithDoctor(filter: ListContactRequestsFilter): Promise<ListContactRequestsResult>;

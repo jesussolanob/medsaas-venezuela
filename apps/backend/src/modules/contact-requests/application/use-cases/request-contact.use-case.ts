@@ -8,6 +8,7 @@ import {
 import type { ContactRequest, ContactChannel } from '../../domain/entities/contact-request.entity';
 import {
   isWithinSupportHours,
+  parseSupportHoursConfig,
   type SupportHoursConfig,
   DEFAULT_SUPPORT_HOURS,
 } from '../../domain/value-objects/support-hours.vo';
@@ -55,6 +56,8 @@ const CONTACT_PROMISE: Record<ContactChannel, string> = {
  *   1. call_now is rejected outside support hours (server-side, Caracas time).
  *   2. If the doctor already has a pending request, UPDATE it (no duplicate).
  *   3. Rate limit: at most 3 team notifications per doctor in the last 24 h.
+ *      The slot is reserved atomically BEFORE dispatching the email to prevent
+ *      the TOCTOU race where N concurrent POSTs all pass the check first.
  *   4. Notify ALL super_admin profiles by email (fire-and-forget; never blocks).
  *   5. Email failure must NOT fail the request (logged as warning, not thrown).
  *   6. NEVER log PII.
@@ -71,91 +74,28 @@ export class RequestContactUseCase {
   ) {}
 
   async execute(input: RequestContactInput): Promise<ContactRequestOutput> {
-    // 1. Load support hours to validate call_now channel
-    const settings = await this.repo.getSettings(['support_hours']);
-    const settingsMap = new Map(settings.map((s) => [s.key, s.value]));
-
-    let supportHours: SupportHoursConfig = DEFAULT_SUPPORT_HOURS;
-    const hoursRaw = settingsMap.get('support_hours');
-    if (hoursRaw) {
-      try {
-        const parsed = JSON.parse(hoursRaw) as unknown;
-        if (
-          typeof parsed === 'object' &&
-          parsed !== null &&
-          'days' in parsed &&
-          'start' in parsed &&
-          'end' in parsed &&
-          'timezone' in parsed
-        ) {
-          supportHours = parsed as SupportHoursConfig;
-        }
-      } catch {
-        // Fall through to defaults
-      }
-    }
-
+    // 1. Validate call_now channel against support hours
+    const supportHours = await this.loadSupportHours();
     if (input.channel === 'call_now' && !isWithinSupportHours(new Date(), supportHours)) {
       throw new CallNowOutsideSupportHoursError();
     }
 
-    // 2. Check rate limit: at most 3 notifications sent in the last 24 h
+    // 2. Upsert: create or update the pending row (must exist before rate-limit step)
+    const saved = await this.upsertPending(input);
+
+    // 3. Atomically reserve the notification slot.
+    //    Counts ALL notifications for this doctor in the last 24 h (across every
+    //    request row), then increments only if still below max.
+    //    This eliminates the TOCTOU gap of the separate check+increment pattern.
     const since = new Date(Date.now() - RATE_LIMIT_WINDOW_MS);
-    const notifCount = await this.repo.getNotificationCountSince(input.doctorId, since);
-    if (notifCount >= RATE_LIMIT_MAX) {
+    const slotReserved = await this.repo.reserveNotificationSlot(
+      input.doctorId,
+      since,
+      new Date(),
+      RATE_LIMIT_MAX,
+    );
+    if (!slotReserved) {
       throw new ContactRequestRateLimitedError();
-    }
-
-    // 3. Upsert: update existing pending request, or create a new one.
-    //    A unique partial index on (doctor_id) WHERE status='pending' protects
-    //    against duplicates, but two concurrent POSTs can both see no pending
-    //    row and then race to insert. When that happens, the second insert hits
-    //    a UniqueConstraintError (pg 23505). We catch it here and fall back to
-    //    an update so neither request gets a 500.
-    let saved: ContactRequest;
-    const existing = await this.repo.findPendingByDoctorId(input.doctorId);
-
-    if (existing) {
-      const updated = await this.repo.updatePendingForDoctor(input.doctorId, {
-        channel: input.channel,
-        message: input.message ?? null,
-      });
-      saved = updated ?? existing;
-    } else {
-      try {
-        saved = await this.repo.save({
-          id: randomUUID(),
-          doctorId: input.doctorId,
-          channel: input.channel,
-          message: input.message ?? null,
-          status: 'pending',
-          handledBy: null,
-          handledAt: null,
-          notes: null,
-          notificationCount: 0,
-          lastNotifiedAt: null,
-        });
-      } catch (err: unknown) {
-        // Race condition: another concurrent request already inserted the row
-        const isUniqueViolation =
-          err instanceof Error &&
-          (err.name === 'SequelizeUniqueConstraintError' ||
-            (err as { original?: { code?: string } }).original?.code === '23505');
-        if (!isUniqueViolation) throw err;
-
-        this.logger.warn(
-          '[contact-requests] unique constraint race on insert — falling back to update',
-        );
-        const updated = await this.repo.updatePendingForDoctor(input.doctorId, {
-          channel: input.channel,
-          message: input.message ?? null,
-        });
-        if (!updated) {
-          // Should not happen: the conflicting row must still be pending
-          throw err;
-        }
-        saved = updated;
-      }
     }
 
     // 4. Notify super_admins — fire-and-forget (never blocks the response)
@@ -174,6 +114,69 @@ export class RequestContactUseCase {
     };
   }
 
+  // ---------------------------------------------------------------------------
+  // Private helpers
+  // ---------------------------------------------------------------------------
+
+  private async loadSupportHours(): Promise<SupportHoursConfig> {
+    const settings = await this.repo.getSettings(['support_hours']);
+    const raw = new Map(settings.map((s) => [s.key, s.value])).get('support_hours');
+    if (!raw) return DEFAULT_SUPPORT_HOURS;
+
+    const parsed = parseSupportHoursConfig(raw);
+    if (!parsed) {
+      this.logger.warn(
+        '[contact-requests] invalid support_hours config in settings — using defaults',
+      );
+      return DEFAULT_SUPPORT_HOURS;
+    }
+    return parsed;
+  }
+
+  private async upsertPending(input: RequestContactInput): Promise<ContactRequest> {
+    const existing = await this.repo.findPendingByDoctorId(input.doctorId);
+
+    if (existing) {
+      const updated = await this.repo.updatePendingForDoctor(input.doctorId, {
+        channel: input.channel,
+        message: input.message ?? null,
+      });
+      return updated ?? existing;
+    }
+
+    try {
+      return await this.repo.save({
+        id: randomUUID(),
+        doctorId: input.doctorId,
+        channel: input.channel,
+        message: input.message ?? null,
+        status: 'pending',
+        handledBy: null,
+        handledAt: null,
+        notes: null,
+        notificationCount: 0,
+        lastNotifiedAt: null,
+      });
+    } catch (err: unknown) {
+      // Race condition: another concurrent request already inserted the row
+      const isUniqueViolation =
+        err instanceof Error &&
+        (err.name === 'SequelizeUniqueConstraintError' ||
+          (err as { original?: { code?: string } }).original?.code === '23505');
+      if (!isUniqueViolation) throw err;
+
+      this.logger.warn(
+        '[contact-requests] unique constraint race on insert — falling back to update',
+      );
+      const updated = await this.repo.updatePendingForDoctor(input.doctorId, {
+        channel: input.channel,
+        message: input.message ?? null,
+      });
+      if (!updated) throw err;
+      return updated;
+    }
+  }
+
   private async sendAdminNotification(
     request: ContactRequest,
     channel: ContactChannel,
@@ -184,10 +187,22 @@ export class RequestContactUseCase {
       return;
     }
 
-    // Fetch doctor profile info for template variables (re-using settings lookup)
+    const vars = await this.buildTemplateVars(request, channel);
+    const emails = admins.map((a) => a.email);
+
+    await this.mailer.sendTemplate(TEMPLATE_NAME, emails, vars, { type: 'admin', id: null });
+
+    this.logger.log(`[contact-requests] notification dispatched to ${admins.length} admin(s)`);
+  }
+
+  private async buildTemplateVars(
+    request: ContactRequest,
+    channel: ContactChannel,
+  ): Promise<Record<string, string>> {
     const settingsData = await this.repo.getSettings(['support_whatsapp_number']);
-    const settingsMap = new Map(settingsData.map((s) => [s.key, s.value]));
-    const whatsapp = settingsMap.get('support_whatsapp_number') ?? DEFAULT_WHATSAPP;
+    const whatsapp =
+      new Map(settingsData.map((s) => [s.key, s.value])).get('support_whatsapp_number') ??
+      DEFAULT_WHATSAPP;
 
     const appBaseUrl = (
       this.config.get<string>('APP_BASE_URL') ??
@@ -195,57 +210,23 @@ export class RequestContactUseCase {
       'https://deltasalud.app'
     ).replace(/\/+$/, '');
 
-    const adminUrl = `${appBaseUrl}/admin/contact-requests`;
-    const isUrgent = channel === 'call_now';
-
-    const emails = admins.map((a) => a.email);
-
-    // Fetch the specific request with doctor profile data joined.
-    // Using findByIdWithDoctor (not listWithDoctor) to guarantee we get
-    // the data for THIS request regardless of newer requests from other
-    // doctors that would appear first in a DESC sort.
     const reqWithDoctor = await this.repo.findByIdWithDoctor(request.id);
     if (!reqWithDoctor) {
       this.logger.warn(`[contact-requests] findByIdWithDoctor returned null for id=REDACTED`);
     }
 
-    const doctorName = reqWithDoctor?.doctorName ?? 'Especialista';
-    const doctorPlan = reqWithDoctor?.doctorPlan ?? 'N/A';
-    const doctorSpecialty = reqWithDoctor?.doctorSpecialty ?? 'N/A';
-    const doctorPhone = reqWithDoctor?.doctorPhone ?? 'No registrado';
-    const doctorEmail = reqWithDoctor?.doctorEmail ?? 'No registrado';
-    const channelLabel = CHANNEL_LABELS[channel];
-    const promise = CONTACT_PROMISE[channel];
-    const messageText = request.message ?? 'Sin mensaje';
-
-    await this.mailer.sendTemplate(
-      TEMPLATE_NAME,
-      emails,
-      {
-        urgentPrefix: isUrgent ? 'URGENTE — ' : '',
-        doctorName,
-        doctorPlan,
-        doctorSpecialty,
-        doctorPhone,
-        doctorEmail: doctorEmail,
-        channelLabel,
-        messageText,
-        promise,
-        adminUrl,
-        whatsapp,
-      },
-      { type: 'admin', id: null },
-    );
-
-    // 5. Increment notification count (best-effort — never block on failure)
-    await this.repo
-      .incrementNotificationCount(request.doctorId, new Date())
-      .catch((err: unknown) => {
-        this.logger.warn(
-          `[contact-requests] failed to increment notification count: ${err instanceof Error ? err.message : String(err)}`,
-        );
-      });
-
-    this.logger.log(`[contact-requests] notification dispatched to ${admins.length} admin(s)`);
+    return {
+      urgentPrefix: channel === 'call_now' ? 'URGENTE — ' : '',
+      doctorName: reqWithDoctor?.doctorName ?? 'Especialista',
+      doctorPlan: reqWithDoctor?.doctorPlan ?? 'N/A',
+      doctorSpecialty: reqWithDoctor?.doctorSpecialty ?? 'N/A',
+      doctorPhone: reqWithDoctor?.doctorPhone ?? 'No registrado',
+      doctorEmail: reqWithDoctor?.doctorEmail ?? 'No registrado',
+      channelLabel: CHANNEL_LABELS[channel],
+      messageText: request.message ?? 'Sin mensaje',
+      promise: CONTACT_PROMISE[channel],
+      adminUrl: `${appBaseUrl}/admin/contact-requests`,
+      whatsapp,
+    };
   }
 }
