@@ -33,6 +33,9 @@ import { DoctorPromptsModule } from '../doctor-prompts/doctor-prompts.module';
 import { IntegrationsModule } from '../integrations/integrations.module';
 // EmailModule exports MailerService
 import { EmailModule } from '../email/email.module';
+// RetentionInvitesModule exports GrantGraceMonthUseCase (used by AdminTeamMeetingsController)
+// No cycle: RetentionInvitesModule only imports EmailModule.
+import { RetentionInvitesModule } from '../retention-invites/retention-invites.module';
 
 /**
  * TeamMeetingsModule — Phase 3 specialist retention: "Queremos conocerte" meetings.
@@ -44,6 +47,7 @@ import { EmailModule } from '../email/email.module';
  *   - DoctorPromptsModule: DOCTOR_PROMPT_REPOSITORY (acts/clears acted_at)
  *   - IntegrationsModule: GoogleCalendarService + GOOGLE_INTEGRATION_REPOSITORY (Meet links)
  *   - EmailModule: MailerService (confirmation/reminder emails)
+ *   - RetentionInvitesModule: GrantGraceMonthUseCase (post-meeting grace month endpoint)
  *
  * Exports:
  *   - DispatchMeetingRemindersUseCase — injected @Optional by RemindersModule cron
@@ -58,6 +62,7 @@ import { EmailModule } from '../email/email.module';
     DoctorPromptsModule,
     IntegrationsModule,
     EmailModule,
+    RetentionInvitesModule,
   ],
   controllers: [DoctorTeamMeetingsController, AdminTeamMeetingsController],
   providers: [

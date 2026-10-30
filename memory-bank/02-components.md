@@ -1135,3 +1135,24 @@ texto gris encima), y como nace deshabilitado, era lo primero que se veía.
 ⚠️ **Los modales de captura no cierran por clic en el fondo** (regla del ADR-021). Se aplicó a
 alta y envío de presupuesto, y alta/edición y carga masiva de producto. El visor de movimientos
 de inventario SÍ cierra: es de solo lectura.
+
+## Módulo RetentionInvites (2026-10-30 — Fase 4 retención especialistas)
+
+`apps/backend/src/modules/retention-invites/`
+
+| Capa          | Componente                                                                                                           | Descripción                                                                   |
+| ------------- | -------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| Domain        | `IRetentionInviteRepository`                                                                                         | Puerto con 14 métodos: candidatos, prompts, métricas, grace                   |
+| Domain errors | `GraceMonthAlreadyGrantedError` (409), `GraceMonthMeetingNotDoneError` (422), `GraceMonthMeetingNotFoundError` (404) | Errores tipados DDD                                                           |
+| Use cases     | `DispatchMeetingInvitesUseCase`                                                                                      | Envía invitaciones email pre/post vencimiento. Exporta `verifyToken` estático |
+| Use cases     | `GrantGraceMonthUseCase`                                                                                             | Otorga mes de gracia post-reunión. Exporta `addMonthsClamped`                 |
+| Use cases     | `RecordInviteClickUseCase`                                                                                           | Registra primer click en link de invitación (HMAC token)                      |
+| Use cases     | `GetRetentionMetricsUseCase`                                                                                         | Métricas agregadas de retención                                               |
+| Infra         | `SequelizeRetentionInviteRepository`                                                                                 | Raw SQL, sin registrar modelos Sequelize                                      |
+| Infra         | `20261030000004-retention-invite-and-grace.cjs`                                                                      | Siembra template email, crea índices                                          |
+| Controllers   | `PublicRetentionController`                                                                                          | `POST /api/public/retention/click` sin auth                                   |
+| Controllers   | `AdminRetentionController`                                                                                           | `GET /api/admin/retention/metrics` super_admin                                |
+
+**Integración con TeamMeetingsModule**: `AdminTeamMeetingsController` inyecta `@Optional() GrantGraceMonthUseCase` para `POST /api/admin/team-meetings/:id/grant-grace`.
+
+**Integración con RemindersModule**: `DispatchDoctorInactivityNoticesUseCase` inyecta `@Optional() DispatchMeetingInvitesUseCase`. Las invitaciones corren PRIMERO en el cron diario; los doctores invitados quedan excluidos del aviso de inactividad (regla one-lifecycle-email-per-day).

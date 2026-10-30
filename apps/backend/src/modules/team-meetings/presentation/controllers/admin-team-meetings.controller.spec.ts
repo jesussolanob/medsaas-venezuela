@@ -4,7 +4,9 @@ import type { UpdateTeamMeetingAdminUseCase } from '../../application/use-cases/
 import type { CancelTeamMeetingUseCase } from '../../application/use-cases/cancel-team-meeting.use-case';
 import type { GetTeamMeetingHostUseCase } from '../../application/use-cases/get-team-meeting-host.use-case';
 import type { UpdateTeamMeetingHostUseCase } from '../../application/use-cases/update-team-meeting-host.use-case';
+import type { GrantGraceMonthUseCase } from '../../../retention-invites/application/use-cases/grant-grace-month.use-case';
 import { TeamMeeting } from '../../domain/entities/team-meeting.entity';
+import type { CurrentUserPayload } from '../../../../presentation/decorators/current-user.decorator';
 
 function makeMeeting(): TeamMeeting {
   return TeamMeeting.create({
@@ -25,6 +27,14 @@ function makeMeeting(): TeamMeeting {
   });
 }
 
+const ADMIN_USER: CurrentUserPayload = {
+  sub: 'admin-uuid-0000-0000-0000-000000000001',
+  role: 'super_admin',
+  email: 'admin@test.com',
+};
+
+const MEETING_ID = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11';
+
 describe('AdminTeamMeetingsController', () => {
   let controller: AdminTeamMeetingsController;
   let listMeetings: jest.Mocked<Pick<ListTeamMeetingsAdminUseCase, 'execute'>>;
@@ -32,6 +42,7 @@ describe('AdminTeamMeetingsController', () => {
   let cancelMeeting: jest.Mocked<Pick<CancelTeamMeetingUseCase, 'execute'>>;
   let getHost: jest.Mocked<Pick<GetTeamMeetingHostUseCase, 'execute'>>;
   let updateHost: jest.Mocked<Pick<UpdateTeamMeetingHostUseCase, 'execute'>>;
+  let grantGraceMonth: jest.Mocked<Pick<GrantGraceMonthUseCase, 'execute'>>;
 
   beforeEach(() => {
     listMeetings = { execute: jest.fn().mockResolvedValue({ items: [], total: 0 }) };
@@ -46,6 +57,11 @@ describe('AdminTeamMeetingsController', () => {
       }),
     };
     updateHost = { execute: jest.fn().mockResolvedValue(undefined) };
+    grantGraceMonth = {
+      execute: jest
+        .fn()
+        .mockResolvedValue({ doctorId: 'doctor-1', newExpiresAt: new Date('2026-12-10') }),
+    };
 
     controller = new AdminTeamMeetingsController(
       listMeetings as unknown as ListTeamMeetingsAdminUseCase,
@@ -53,6 +69,7 @@ describe('AdminTeamMeetingsController', () => {
       cancelMeeting as unknown as CancelTeamMeetingUseCase,
       getHost as unknown as GetTeamMeetingHostUseCase,
       updateHost as unknown as UpdateTeamMeetingHostUseCase,
+      grantGraceMonth as unknown as GrantGraceMonthUseCase,
     );
   });
 
@@ -85,5 +102,41 @@ describe('AdminTeamMeetingsController', () => {
     const res = await controller.setHost({ profileId: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11' });
     expect(updateHost.execute).toHaveBeenCalledWith('a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11');
     expect(res.success).toBe(true);
+  });
+
+  describe('grantGrace', () => {
+    it('delegates to GrantGraceMonthUseCase with meetingId and actorId', async () => {
+      const res = await controller.grantGrace(MEETING_ID, ADMIN_USER);
+      expect(grantGraceMonth.execute).toHaveBeenCalledWith({
+        meetingId: MEETING_ID,
+        actorId: ADMIN_USER.sub,
+      });
+      expect(res.success).toBe(true);
+    });
+
+    it('returns data from use case', async () => {
+      const newExpiry = new Date('2026-12-10');
+      grantGraceMonth.execute.mockResolvedValueOnce({
+        doctorId: 'doctor-1',
+        newExpiresAt: newExpiry,
+      });
+      const res = await controller.grantGrace(MEETING_ID, ADMIN_USER);
+      expect(res.success).toBe(true);
+      expect(res.data).toEqual(expect.objectContaining({ newExpiresAt: newExpiry }));
+    });
+
+    it('returns NOT_AVAILABLE when use case is not injected', async () => {
+      const controllerWithoutGrace = new AdminTeamMeetingsController(
+        listMeetings as unknown as ListTeamMeetingsAdminUseCase,
+        updateMeeting as unknown as UpdateTeamMeetingAdminUseCase,
+        cancelMeeting as unknown as CancelTeamMeetingUseCase,
+        getHost as unknown as GetTeamMeetingHostUseCase,
+        updateHost as unknown as UpdateTeamMeetingHostUseCase,
+        null,
+      );
+      const res = await controllerWithoutGrace.grantGrace(MEETING_ID, ADMIN_USER);
+      expect(res.success).toBe(false);
+      expect((res as { success: false; error: { code: string } }).error.code).toBe('NOT_AVAILABLE');
+    });
   });
 });

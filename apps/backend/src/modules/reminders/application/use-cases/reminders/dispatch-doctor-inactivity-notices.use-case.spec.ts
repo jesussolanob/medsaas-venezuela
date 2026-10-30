@@ -4,6 +4,7 @@ import { DispatchDoctorInactivityNoticesUseCase } from './dispatch-doctor-inacti
 import { DOCTOR_INACTIVITY_REPOSITORY } from '../../../domain/repositories/doctor-inactivity.repository';
 import type { InactiveDoctorCandidate } from '../../../domain/repositories/doctor-inactivity.repository';
 import { MailerService } from '../../../../email/application/services/mailer.service';
+import { DispatchMeetingInvitesUseCase } from '../../../../retention-invites/application/use-cases/dispatch-meeting-invites.use-case';
 
 const NOW = new Date('2026-08-05T12:00:00.000Z');
 
@@ -55,7 +56,14 @@ describe('DispatchDoctorInactivityNoticesUseCase', () => {
 
   it('returns zeroed counts when there are no candidates', async () => {
     const result = await useCase.execute(NOW);
-    expect(result).toEqual({ sent10: 0, sent15: 0, skipped: 0, failed: 0 });
+    expect(result).toEqual({
+      sent10: 0,
+      sent15: 0,
+      skipped: 0,
+      failed: 0,
+      invitePre: 0,
+      inviteExpired: 0,
+    });
     expect(mockMailer.sendTemplate).not.toHaveBeenCalled();
   });
 
@@ -67,7 +75,14 @@ describe('DispatchDoctorInactivityNoticesUseCase', () => {
 
     expect(mockMailer.sendTemplate).not.toHaveBeenCalled();
     expect(mockInactivityRepo.markNoticeSent).not.toHaveBeenCalled();
-    expect(result).toEqual({ sent10: 0, sent15: 0, skipped: 1, failed: 0 });
+    expect(result).toEqual({
+      sent10: 0,
+      sent15: 0,
+      skipped: 1,
+      failed: 0,
+      invitePre: 0,
+      inviteExpired: 0,
+    });
   });
 
   it('sends the 10-day notice and advances stage to 1 for a doctor at 10 days, stage 0', async () => {
@@ -90,7 +105,14 @@ describe('DispatchDoctorInactivityNoticesUseCase', () => {
       { type: 'doctor', id: 'doctor-10d' },
     );
     expect(mockInactivityRepo.markNoticeSent).toHaveBeenCalledWith('doctor-10d', 1, NOW);
-    expect(result).toEqual({ sent10: 1, sent15: 0, skipped: 0, failed: 0 });
+    expect(result).toEqual({
+      sent10: 1,
+      sent15: 0,
+      skipped: 0,
+      failed: 0,
+      invitePre: 0,
+      inviteExpired: 0,
+    });
   });
 
   it('does not resend anything for a doctor at 12 days already at stage 1', async () => {
@@ -101,7 +123,14 @@ describe('DispatchDoctorInactivityNoticesUseCase', () => {
 
     expect(mockMailer.sendTemplate).not.toHaveBeenCalled();
     expect(mockInactivityRepo.markNoticeSent).not.toHaveBeenCalled();
-    expect(result).toEqual({ sent10: 0, sent15: 0, skipped: 1, failed: 0 });
+    expect(result).toEqual({
+      sent10: 0,
+      sent15: 0,
+      skipped: 1,
+      failed: 0,
+      invitePre: 0,
+      inviteExpired: 0,
+    });
   });
 
   it('sends the 15-day notice and advances stage to 2 for a doctor at 15 days, stage 1', async () => {
@@ -121,7 +150,14 @@ describe('DispatchDoctorInactivityNoticesUseCase', () => {
       { type: 'doctor', id: 'doctor-15d' },
     );
     expect(mockInactivityRepo.markNoticeSent).toHaveBeenCalledWith('doctor-15d', 2, NOW);
-    expect(result).toEqual({ sent10: 0, sent15: 1, skipped: 0, failed: 0 });
+    expect(result).toEqual({
+      sent10: 0,
+      sent15: 1,
+      skipped: 0,
+      failed: 0,
+      invitePre: 0,
+      inviteExpired: 0,
+    });
   });
 
   it('sends nothing for a doctor at 20 days already at stage 2', async () => {
@@ -131,7 +167,14 @@ describe('DispatchDoctorInactivityNoticesUseCase', () => {
     const result = await useCase.execute(NOW);
 
     expect(mockMailer.sendTemplate).not.toHaveBeenCalled();
-    expect(result).toEqual({ sent10: 0, sent15: 0, skipped: 1, failed: 0 });
+    expect(result).toEqual({
+      sent10: 0,
+      sent15: 0,
+      skipped: 1,
+      failed: 0,
+      invitePre: 0,
+      inviteExpired: 0,
+    });
   });
 
   it('sends ONLY the 15-day notice for a doctor at 16 days still at stage 0 (skips 10d)', async () => {
@@ -153,7 +196,14 @@ describe('DispatchDoctorInactivityNoticesUseCase', () => {
     );
     expect(mockInactivityRepo.markNoticeSent).toHaveBeenCalledTimes(1);
     expect(mockInactivityRepo.markNoticeSent).toHaveBeenCalledWith('doctor-16d', 2, NOW);
-    expect(result).toEqual({ sent10: 0, sent15: 1, skipped: 0, failed: 0 });
+    expect(result).toEqual({
+      sent10: 0,
+      sent15: 1,
+      skipped: 0,
+      failed: 0,
+      invitePre: 0,
+      inviteExpired: 0,
+    });
   });
 
   it('does not abort the batch when one mailer call fails — counts it as failed', async () => {
@@ -182,7 +232,14 @@ describe('DispatchDoctorInactivityNoticesUseCase', () => {
 
     expect(mockInactivityRepo.markNoticeSent).toHaveBeenCalledTimes(1);
     expect(mockInactivityRepo.markNoticeSent).toHaveBeenCalledWith('doctor-ok', 1, NOW);
-    expect(result).toEqual({ sent10: 1, sent15: 0, skipped: 0, failed: 1 });
+    expect(result).toEqual({
+      sent10: 1,
+      sent15: 0,
+      skipped: 0,
+      failed: 1,
+      invitePre: 0,
+      inviteExpired: 0,
+    });
   });
 
   it('never sends anything when last_sign_in_at candidates list is empty (null sign-in filtered upstream)', async () => {
@@ -193,7 +250,14 @@ describe('DispatchDoctorInactivityNoticesUseCase', () => {
     const result = await useCase.execute(NOW);
 
     expect(mockMailer.sendTemplate).not.toHaveBeenCalled();
-    expect(result).toEqual({ sent10: 0, sent15: 0, skipped: 0, failed: 0 });
+    expect(result).toEqual({
+      sent10: 0,
+      sent15: 0,
+      skipped: 0,
+      failed: 0,
+      invitePre: 0,
+      inviteExpired: 0,
+    });
   });
 
   it('falls back to "Especialista" when fullName is null', async () => {
@@ -219,5 +283,133 @@ describe('DispatchDoctorInactivityNoticesUseCase', () => {
     const result = await useCase.execute(NOW);
 
     expect(result.sent10).toBe(200);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// One-per-day enforcement: invite-first integration
+// ---------------------------------------------------------------------------
+
+describe('DispatchDoctorInactivityNoticesUseCase — invite-first integration', () => {
+  let useCase: DispatchDoctorInactivityNoticesUseCase;
+  let mockInactivityRepo: { findCandidates: jest.Mock; markNoticeSent: jest.Mock };
+  let mockMailer: { sendTemplate: jest.Mock };
+  let mockConfig: { get: jest.Mock };
+  let mockDispatchInvites: { execute: jest.Mock };
+
+  const DOCTOR_ID = 'invited-doctor-001';
+
+  beforeEach(async () => {
+    mockInactivityRepo = {
+      findCandidates: jest.fn().mockResolvedValue([]),
+      markNoticeSent: jest.fn().mockResolvedValue(undefined),
+    };
+    mockMailer = { sendTemplate: jest.fn().mockResolvedValue({ id: 'msg-001' }) };
+    mockConfig = { get: jest.fn().mockReturnValue('https://app.deltasalud.app') };
+    mockDispatchInvites = {
+      execute: jest.fn().mockResolvedValue({
+        invitePre: 1,
+        inviteExpired: 0,
+        skipped: 0,
+        failed: 0,
+        invitedDoctorIds: [DOCTOR_ID],
+      }),
+    };
+
+    const module = await Test.createTestingModule({
+      providers: [
+        DispatchDoctorInactivityNoticesUseCase,
+        { provide: DOCTOR_INACTIVITY_REPOSITORY, useValue: mockInactivityRepo },
+        { provide: MailerService, useValue: mockMailer },
+        { provide: ConfigService, useValue: mockConfig },
+        { provide: DispatchMeetingInvitesUseCase, useValue: mockDispatchInvites },
+      ],
+    }).compile();
+
+    useCase = module.get(DispatchDoctorInactivityNoticesUseCase);
+  });
+
+  it('runs invite dispatch first before checking inactivity candidates', async () => {
+    const callOrder: string[] = [];
+    mockDispatchInvites.execute.mockImplementation(async () => {
+      callOrder.push('invite');
+      return { invitePre: 0, inviteExpired: 0, skipped: 0, failed: 0, invitedDoctorIds: [] };
+    });
+    mockInactivityRepo.findCandidates.mockImplementation(async () => {
+      callOrder.push('inactivity');
+      return [];
+    });
+
+    await useCase.execute(NOW);
+
+    expect(callOrder[0]).toBe('invite');
+    expect(callOrder[1]).toBe('inactivity');
+  });
+
+  it('skips inactivity notice for a doctor who received an invite this run', async () => {
+    const candidate = {
+      doctorId: DOCTOR_ID,
+      email: 'invited@test.com',
+      fullName: 'Dr. Invited',
+      lastSignInAt: new Date(NOW.getTime() - 10 * 24 * 60 * 60 * 1000),
+      inactivityNoticeStage: 0,
+    };
+    mockInactivityRepo.findCandidates.mockResolvedValue([candidate]);
+
+    const result = await useCase.execute(NOW);
+
+    // Inactivity notice must NOT be sent
+    expect(mockMailer.sendTemplate).not.toHaveBeenCalled();
+    expect(result.skipped).toBe(1);
+    expect(result.invitePre).toBe(1);
+  });
+
+  it('still sends inactivity notice for a doctor NOT in the invited set', async () => {
+    const otherDoctor = {
+      doctorId: 'other-doctor-999',
+      email: 'other@test.com',
+      fullName: 'Dr. Other',
+      lastSignInAt: new Date(NOW.getTime() - 10 * 24 * 60 * 60 * 1000),
+      inactivityNoticeStage: 0,
+    };
+    mockInactivityRepo.findCandidates.mockResolvedValue([otherDoctor]);
+
+    const result = await useCase.execute(NOW);
+
+    expect(mockMailer.sendTemplate).toHaveBeenCalledTimes(1);
+    expect(result.sent10).toBe(1);
+  });
+
+  it('carries invitePre + inviteExpired counts in the final result', async () => {
+    mockDispatchInvites.execute.mockResolvedValue({
+      invitePre: 3,
+      inviteExpired: 2,
+      skipped: 1,
+      failed: 0,
+      invitedDoctorIds: [],
+    });
+
+    const result = await useCase.execute(NOW);
+
+    expect(result.invitePre).toBe(3);
+    expect(result.inviteExpired).toBe(2);
+  });
+
+  it('continues inactivity step even when invite dispatch throws', async () => {
+    mockDispatchInvites.execute.mockRejectedValue(new Error('Invite service down'));
+    const candidate = {
+      doctorId: 'some-doctor',
+      email: 'some@test.com',
+      fullName: 'Dr. Some',
+      lastSignInAt: new Date(NOW.getTime() - 10 * 24 * 60 * 60 * 1000),
+      inactivityNoticeStage: 0,
+    };
+    mockInactivityRepo.findCandidates.mockResolvedValue([candidate]);
+
+    const result = await useCase.execute(NOW);
+
+    // Inactivity still works despite invite failure
+    expect(result.sent10).toBe(1);
+    expect(result.invitePre).toBe(0);
   });
 });

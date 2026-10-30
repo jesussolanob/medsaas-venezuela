@@ -61,6 +61,7 @@ import { ContactRequestsModule } from './modules/contact-requests/contact-reques
 import { ReleaseNotesModule } from './modules/release-notes/release-notes.module';
 import { DoctorPromptsModule } from './modules/doctor-prompts/doctor-prompts.module';
 import { TeamMeetingsModule } from './modules/team-meetings/team-meetings.module';
+import { RetentionInvitesModule } from './modules/retention-invites/retention-invites.module';
 
 @Module({
   imports: [
@@ -130,6 +131,7 @@ import { TeamMeetingsModule } from './modules/team-meetings/team-meetings.module
     ReleaseNotesModule,
     DoctorPromptsModule,
     TeamMeetingsModule,
+    RetentionInvitesModule,
   ],
   controllers: [HealthController],
   providers: [

@@ -31,7 +31,11 @@ describe('CronRemindersController', () => {
     mockDispatchQuoteExpiryNotices = {
       execute: jest
         .fn()
-        .mockResolvedValue({ quotesExpired: 0, quoteExpiryRemindersSent: 0, quoteExpiryRemindersFailed: 0 }),
+        .mockResolvedValue({
+          quotesExpired: 0,
+          quoteExpiryRemindersSent: 0,
+          quoteExpiryRemindersFailed: 0,
+        }),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -129,11 +133,23 @@ describe('CronRemindersController', () => {
         sent15: 0,
         skipped: 0,
         failed: 0,
+        invitePre: 0,
+        inviteExpired: 0,
       });
 
       const result = await controller.runDoctorInactivity();
 
-      expect(Object.keys(result.data)).toEqual(['sent10', 'sent15', 'skipped', 'failed']);
+      // Phase 4 added meetingInvitePre / meetingInviteExpired to the response.
+      expect(Object.keys(result.data)).toEqual([
+        'sent10',
+        'sent15',
+        'skipped',
+        'failed',
+        'invitePre',
+        'inviteExpired',
+        'meetingInvitePre',
+        'meetingInviteExpired',
+      ]);
     });
 
     it('is protected by CronSecretGuard', () => {
