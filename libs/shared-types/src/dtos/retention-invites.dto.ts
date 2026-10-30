@@ -26,11 +26,11 @@ export type RecordInviteClickDto = z.infer<typeof RecordInviteClickDtoSchema>;
 export const RetentionMetricsQuerySchema = z.object({
   from: z
     .string()
-    .regex(/^\d{4}-\d{2}-\d{2}/, 'from debe ser una fecha YYYY-MM-DD')
+    .regex(/^\d{4}-\d{2}-\d{2}$/, 'from debe ser una fecha YYYY-MM-DD')
     .transform((v) => v),
   to: z
     .string()
-    .regex(/^\d{4}-\d{2}-\d{2}/, 'to debe ser una fecha YYYY-MM-DD')
+    .regex(/^\d{4}-\d{2}-\d{2}$/, 'to debe ser una fecha YYYY-MM-DD')
     .transform((v) => v),
 });
 export type RetentionMetricsQuery = z.infer<typeof RetentionMetricsQuerySchema>;

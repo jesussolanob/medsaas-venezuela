@@ -195,6 +195,28 @@ describe('GrantGraceMonthUseCase', () => {
     expect(result.newExpiresAt.getTime()).toBe(expected.getTime());
   });
 
+  it('throws GraceMonthAlreadyGrantedError when concurrent request wins the DB lock', async () => {
+    // Simulates the race: hasGraceMonth() returns false (both requests pass the
+    // fast-path check), but the second INSERT into subscription_changes_log
+    // hits the partial unique index and the repo maps 23505 → GraceMonthAlreadyGrantedError.
+    const repo = makeRepo({
+      getTeamMeeting: jest
+        .fn()
+        .mockResolvedValue({ id: MEETING_ID, doctorId: DOCTOR_ID, status: 'done' }),
+      getSubscriptionSnapshot: jest.fn().mockResolvedValue({
+        doctorId: DOCTOR_ID,
+        plan: 'free_trial',
+        status: 'trialing',
+        expiresAt: new Date(NOW.getTime() + 7 * 24 * 60 * 60 * 1000),
+      }),
+      applyGraceMonth: jest.fn().mockRejectedValue(new GraceMonthAlreadyGrantedError()),
+    });
+    const uc = new GrantGraceMonthUseCase(repo);
+    await expect(uc.execute({ meetingId: MEETING_ID, actorId: ACTOR_ID }, NOW)).rejects.toThrow(
+      GraceMonthAlreadyGrantedError,
+    );
+  });
+
   it('updates both profiles and subscriptions (applyGraceMonth called once)', async () => {
     const repo = makeRepo({
       getTeamMeeting: jest

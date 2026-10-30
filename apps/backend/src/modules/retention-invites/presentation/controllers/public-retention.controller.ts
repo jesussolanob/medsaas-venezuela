@@ -13,7 +13,9 @@ import { RecordInviteClickDtoSchema } from '@delta/shared-types';
  *   - No auth guard — intentionally public.
  *   - The HMAC token is verified inside the use case (timing-safe).
  *   - Always returns 204 — even for invalid tokens (no oracle).
- *   - Rate-limiting: the existing global rate limiter (if configured) applies.
+ *   - Rate-limiting: deliberately omitted in this phase — no ThrottlerModule
+ *     exists in the project; the endpoint cannot modify data; Cloudflare fronts
+ *     all requests and provides edge-level protection.
  *
  * ROUTES:
  *   POST /api/public/retention/click

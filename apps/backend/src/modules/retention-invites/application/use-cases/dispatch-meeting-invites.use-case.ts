@@ -74,6 +74,16 @@ export class DispatchMeetingInvitesUseCase {
   ) {}
 
   async execute(nowOverride?: Date): Promise<DispatchMeetingInvitesResult> {
+    // Fail-closed: a missing secret would make every HMAC token forgeable.
+    // Throw early so the inactivity step's try/catch can log and continue.
+    const secretCheck = this.config.get<string>('AUTH_RESOLVE_SECRET');
+    if (!secretCheck) {
+      this.logger.warn(
+        '[invite-dispatch] AUTH_RESOLVE_SECRET not configured — invite dispatch aborted',
+      );
+      throw new Error('AUTH_RESOLVE_SECRET not configured');
+    }
+
     const now = nowOverride ?? new Date();
     const caracasDateStr = this.toCaracasDateStr(now);
 
@@ -233,7 +243,10 @@ export class DispatchMeetingInvitesUseCase {
    * Token = `<base64url(payload_json)>.<base64url(hmac_hex)>`.
    */
   buildToken(doctorId: string, promptKey: string, now: Date): string {
-    const secret = this.config.get<string>('AUTH_RESOLVE_SECRET') ?? '';
+    const secret = this.config.get<string>('AUTH_RESOLVE_SECRET');
+    if (!secret) {
+      throw new Error('AUTH_RESOLVE_SECRET not configured');
+    }
     const derivedKey = createHmac('sha256', secret).update('retention-link-v1').digest();
     const payload = {
       d: doctorId,

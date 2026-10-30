@@ -96,4 +96,17 @@ describe('RecordInviteClickUseCase', () => {
     const uc = new RecordInviteClickUseCase(repo, makeConfig());
     await expect(uc.execute({ token }, NOW)).resolves.toBeUndefined();
   });
+
+  it('returns silently without recording when AUTH_RESOLVE_SECRET is not configured', async () => {
+    // Fail-closed: a missing secret means we cannot verify the HMAC.
+    // Return silently (still 204) — never record, never reveal an oracle.
+    const token = buildToken(DOCTOR_ID, PROMPT_KEY_PRE, NOW, SECRET);
+    const repo = makeRepo();
+    const configNoSecret = {
+      get: jest.fn().mockReturnValue(undefined),
+    } as unknown as jest.Mocked<ConfigService>;
+    const uc = new RecordInviteClickUseCase(repo, configNoSecret);
+    await expect(uc.execute({ token }, NOW)).resolves.toBeUndefined();
+    expect(repo.mergePromptMetadata).not.toHaveBeenCalled();
+  });
 });
