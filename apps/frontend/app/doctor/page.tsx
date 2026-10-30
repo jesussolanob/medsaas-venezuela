@@ -64,6 +64,7 @@ import { getDoctorId } from '@/app/doctor/actions';
 import { showToast } from '@/components/ui/Toaster';
 import { SetupStepper } from '@/components/doctor/SetupStepper';
 import { WelcomeModal } from '@/components/doctor/WelcomeModal';
+import ReleaseNotesModal from '@/components/release-notes/ReleaseNotesModal';
 import { getDoctorPlanFeatures } from '@/app/doctor/plan-features-actions';
 import {
   planUnlocks,
@@ -163,6 +164,12 @@ export default function DoctorDashboard() {
   // Se evalua UNA sola vez por sesion de pagina: el efecto tambien corre al cambiar
   // de mes y tras cada mutacion, y el modal no debe reaparecer en esos casos.
   const welcomeCheckedRef = useRef(false);
+  // Modal de novedades (fase 2 retencion): se abre SOLO si el tour de bienvenida
+  // no va a mostrarse esta visita (ver B.3 del plan de retencion).
+  // false = aun no evaluado o evaluado y sin novedades.
+  const [showReleaseNotes, setShowReleaseNotes] = useState(false);
+  // FASE 3 — SLOT: meeting modal state goes here (showMeetingModal, setShowMeetingModal).
+  // It only opens if neither welcome tour nor release notes show in this visit.
   const [planFeatures, setPlanFeatures] = useState<PlanFeatures>(EMPTY_PLAN_FEATURES);
   // null = desconocido (cargando o fetch falló), true = tiene consultorios, false = sin consultorios
   const [hasOffices, setHasOffices] = useState<boolean | null>(null);
@@ -307,7 +314,28 @@ export default function DoctorDashboard() {
           // carga inicial: un refetch tras una mutacion no debe reabrirlo.
           if (!welcomeCheckedRef.current) {
             welcomeCheckedRef.current = true;
-            if (!prof.welcomeDismissedAt) setShowWelcome(true);
+            if (!prof.welcomeDismissedAt) {
+              // Welcome tour will show — skip release notes this visit (spec B.3).
+              setShowWelcome(true);
+            } else {
+              // Welcome tour won't show: check for unseen release notes (spec B.3).
+              // Fetch happens in the modal itself; we just need to know whether to
+              // open it.  We open it optimistically and let it close itself when
+              // the backend returns 0 notes.
+              void fetch('/api/doctor/release-notes/unseen', { cache: 'no-store' })
+                .then(async (res) => {
+                  if (!res.ok) return;
+                  const json = (await res.json()) as { data?: unknown[] };
+                  if ((json.data ?? []).length > 0) {
+                    setShowReleaseNotes(true);
+                    // FASE 3 — SLOT: if release notes show, skip meeting modal this visit.
+                  }
+                  // FASE 3 — SLOT: else { check meeting modal conditions here }
+                })
+                .catch(() => {
+                  // Network error — silently skip; modal is non-critical.
+                });
+            }
           }
         }
 
@@ -1911,6 +1939,15 @@ export default function DoctorDashboard() {
           onDismissForever={dismissWelcomeForever}
         />
       )}
+
+      {/* Novedades de version (fase 2 retencion): carousel de hasta 5 novedades no vistas.
+          Solo se abre cuando el tour de bienvenida NO va a mostrarse esta visita (spec B.3).
+          "Entendido" marca como vistas; X/Escape cierra sin marcar. */}
+      {showReleaseNotes && !showWelcome && (
+        <ReleaseNotesModal onClose={() => setShowReleaseNotes(false)} />
+      )}
+
+      {/* FASE 3 — SLOT: meeting modal renders here (showMeetingModal && !showWelcome && !showReleaseNotes). */}
     </>
   );
 }
