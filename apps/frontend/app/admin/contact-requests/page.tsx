@@ -240,7 +240,7 @@ function NotesEditor({
       <div className="flex items-center gap-1.5">
         <button
           type="button"
-          onClick={handleSave}
+          onClick={() => void handleSave()}
           disabled={saving}
           className="flex items-center gap-1 px-2 py-1 text-xs bg-teal-500 text-white rounded-md hover:bg-teal-600 disabled:opacity-60 transition-colors"
         >

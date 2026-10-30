@@ -93,6 +93,7 @@ function formatCaracasDate(iso: string): string {
 export default function ContactarYaModal({ onClose }: ContactarYaModalProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
 
+  const [dataLoading, setDataLoading] = useState(true);
   const [supportInfo, setSupportInfo] = useState<SupportInfo | null>(null);
   const [currentRequest, setCurrentRequest] = useState<CurrentRequest | null | undefined>(
     undefined,
@@ -137,6 +138,8 @@ export default function ContactarYaModal({ onClose }: ContactarYaModalProps) {
         }
       } catch {
         if (!cancelled) setLoadError('Error de red al cargar los datos.');
+      } finally {
+        if (!cancelled) setDataLoading(false);
       }
     }
     void load();
@@ -222,7 +225,7 @@ export default function ContactarYaModal({ onClose }: ContactarYaModalProps) {
 
   const waNumber = supportInfo?.whatsapp?.replace(/\D/g, '') || SUPPORT_WHATSAPP_NUMBER;
 
-  const isLoading = supportInfo === null && currentRequest === undefined && !loadError;
+  const isLoading = dataLoading;
   const hasPending =
     currentRequest !== undefined && currentRequest !== null && currentRequest.status === 'pending';
 

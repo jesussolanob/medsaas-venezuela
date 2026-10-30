@@ -24,7 +24,7 @@ interface ContactRequestResponse {
 }
 
 export async function POST(req: NextRequest) {
-  const guard = await requireRole(['doctor', 'assistant']);
+  const guard = await requireRole(['doctor']);
   if (!guard.ok) return guard.response;
 
   let body: unknown;

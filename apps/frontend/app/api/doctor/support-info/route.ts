@@ -24,7 +24,7 @@ interface SupportInfoResponse {
 }
 
 export async function GET() {
-  const guard = await requireRole(['doctor', 'assistant', 'super_admin']);
+  const guard = await requireRole(['doctor']);
   if (!guard.ok) return guard.response;
 
   const result = await backendGet<SupportInfoResponse>('/api/doctor/support-info');

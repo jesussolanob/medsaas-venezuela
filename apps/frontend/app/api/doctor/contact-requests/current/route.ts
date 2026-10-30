@@ -20,7 +20,7 @@ interface ContactRequestCurrent {
 }
 
 export async function GET() {
-  const guard = await requireRole(['doctor', 'assistant']);
+  const guard = await requireRole(['doctor']);
   if (!guard.ok) return guard.response;
 
   const result = await backendGet<ContactRequestCurrent | null>(
