@@ -4,6 +4,68 @@
 > ⚠️ Orden: **la entrada más nueva va ARRIBA**. La del 2026-08-11 quedó al final
 > del archivo por error; no se movió para no ensuciar el diff.
 
+## 2026-10-30 — Plan de retención de especialistas: 4 fases en `feature/retencion`
+
+> Plan vinculante: `docs/plan-retencion.md`. Rama `feature/retencion` → `develop` → `staging`
+> (NO en `main`). 5 migraciones `20261030000001..05`. 528 suites / 5058 tests.
+
+1. **"Contáctame ya"** (`contact-requests`): botón para todo especialista, "Llámame ya" (15 min)
+   solo lun–sáb 8–18 Caracas, promesa 1 h; correo URGENTE a todos los super_admin; Admin →
+   Solicitudes de contacto; número único de soporte +58 422 103 3582 en toda la app y la landing.
+2. **Novedades** (`release-notes`): admin/super_admin publican; modal carrusel solo para
+   especialistas; imágenes solo de la propia carga (`logo/<uuid>/…`, re-firmadas al leer).
+3. **"Queremos conocerte"** (`doctor-prompts` + `team-meetings`): modal + agendamiento en la
+   agenda del propio especialista (o lun–sáb 8–18), bloqueo en su agenda, Google Meet con
+   anfitrión Jesús (o Jitsi), reprogramar/cancelar hasta 2 h antes, recordatorios 24 h / 1 h.
+4. **Correo de invitación + mes de gracia** (`retention-invites`): 7 días antes y al vencer;
+   máximo un correo de ciclo de vida por día; mes de gracia tras la reunión (una vez).
+
+**Lo que la suite verde no veía y se corrigió al verificar:** el down de la migración 1 tiraba
+los parámetros; el equipo nunca habría recibido correos de reuniones (faltaban las 4
+plantillas `*_admin`) y las del doctor le hablaban al equipo; enlaces a `app.deltasalud.app` y
+rutas inexistentes; las entradas del menú admin quedaban ocultas (sin `role_capabilities`); el
+correo de invitación no encontraba a nadie (fecha de fin en `subscriptions`, no en `profiles`, y
+downgrade a past_due perezoso); `/r/meeting` redirigía a `0.0.0.0:8080`; IDOR de storage con la
+imagen de novedades; secreto HMAC con fallback vacío.
+
+**Incidente:** al validar SQL real contra staging, un `sequelize.transaction()` del código
+commiteó la transacción de prueba: quedaron en staging las estructuras de las 5 migraciones y
+datos de prueba (2 especialistas del clon con la prueba extendida hasta el 29/11, 2 filas
+`grace_month`, 1 aviso, 1 reunión "done"). El dueño decidió no revertir; se borró solo el
+duplicado de `grace_month` que habría bloqueado el índice único de la migración 4.
+
+## 2026-10-30 — Retención especialistas Fase 4 backend (branch `feature/retencion-fase4-be`)
+
+### Qué se implementó
+
+Módulo `retention-invites` completo (DDD 4 capas):
+
+1. **Invitaciones email automáticas** — cron diario despacha dos tipos de invitación a
+   free_trial doctors (pre-vencimiento ≤7d y post-vencimiento ≤30d). Integrado en
+   `DispatchDoctorInactivityNoticesUseCase` (invitaciones corren primero, one-per-day).
+2. **Click-tracking HMAC** — `POST /api/public/retention/click`, token derivado de
+   `AUTH_RESOLVE_SECRET` (sin env var nuevo). TTL 45 días. 204 siempre.
+3. **Mes de gracia** — `POST /api/admin/team-meetings/:id/grant-grace` (super_admin).
+   Sólo después de status=done, una vez por doctor (409 si ya tiene). Date math en UTC.
+4. **Métricas retención** — `GET /api/admin/retention/metrics?from=&to=` (super_admin).
+5. **Migración** `20261030000004-retention-invite-and-grace.cjs` — template email +
+   índices en `email_send_log` y `doctor_prompts`.
+6. **Guías de ayuda** — `specialist-guide.content.ts` + `super-admin-guide.content.ts`
+   actualizadas con invitaciones y mes de gracia.
+
+### Fixes técnicos relevantes
+
+- `addMonthsClamped` usa métodos UTC (`getUTCDate`, `setUTCDate`, etc.) para evitar
+  desfases en timezones UTC-X (América/Caracas = UTC-4).
+- `verifyToken` usa `parts[0] as string` / `parts[1] as string` tras el guard de longitud
+  para satisfacer `strict` TypeScript (array spread no narrowea).
+- `CronRunResult` en `cron-reminders.controller.ts` ahora exige `meetingInvitePre` y
+  `meetingInviteExpired` en ambos endpoints (appointment-reminders los fija en 0).
+
+### Verificación final
+
+5029 tests / 0 fallos. Build webpack OK. ESLint 0 warnings en archivos nuevos/tocados.
+
 ## 2026-10-29 — Promoción a producción: lote admin + "Cambios 12-10" completo
 
 > `main` `aee24229` → `1d682771` (fast-forward desde `staging`, aprobado por el QA). 39 commits,
@@ -5602,35 +5664,3 @@ Más el cobro que salía sin nombre de paciente (ADR-095), mismo patrón que el 
   preconsultas (ver ADR-089).
 
 ---
-
-## 2026-10-30 — Retención especialistas Fase 4 backend (branch `feature/retencion-fase4-be`)
-
-### Qué se implementó
-
-Módulo `retention-invites` completo (DDD 4 capas):
-
-1. **Invitaciones email automáticas** — cron diario despacha dos tipos de invitación a
-   free_trial doctors (pre-vencimiento ≤7d y post-vencimiento ≤30d). Integrado en
-   `DispatchDoctorInactivityNoticesUseCase` (invitaciones corren primero, one-per-day).
-2. **Click-tracking HMAC** — `POST /api/public/retention/click`, token derivado de
-   `AUTH_RESOLVE_SECRET` (sin env var nuevo). TTL 45 días. 204 siempre.
-3. **Mes de gracia** — `POST /api/admin/team-meetings/:id/grant-grace` (super_admin).
-   Sólo después de status=done, una vez por doctor (409 si ya tiene). Date math en UTC.
-4. **Métricas retención** — `GET /api/admin/retention/metrics?from=&to=` (super_admin).
-5. **Migración** `20261030000004-retention-invite-and-grace.cjs` — template email +
-   índices en `email_send_log` y `doctor_prompts`.
-6. **Guías de ayuda** — `specialist-guide.content.ts` + `super-admin-guide.content.ts`
-   actualizadas con invitaciones y mes de gracia.
-
-### Fixes técnicos relevantes
-
-- `addMonthsClamped` usa métodos UTC (`getUTCDate`, `setUTCDate`, etc.) para evitar
-  desfases en timezones UTC-X (América/Caracas = UTC-4).
-- `verifyToken` usa `parts[0] as string` / `parts[1] as string` tras el guard de longitud
-  para satisfacer `strict` TypeScript (array spread no narrowea).
-- `CronRunResult` en `cron-reminders.controller.ts` ahora exige `meetingInvitePre` y
-  `meetingInviteExpired` en ambos endpoints (appointment-reminders los fija en 0).
-
-### Verificación final
-
-5029 tests / 0 fallos. Build webpack OK. ESLint 0 warnings en archivos nuevos/tocados.
