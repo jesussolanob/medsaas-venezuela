@@ -899,4 +899,47 @@ Las novedades sin restriccion de plan llegan a todos los especialistas.
 El modal no aparece si no hay novedades nuevas para tu plan desde la ultima vez que pulsaste
 "Entendido". Si el equipo publica una novedad nueva, el modal vuelve a aparecer la proxima vez
 que entres a Inicio.
+
+---
+
+## Reunion de equipo Delta (Queremos conocerte)
+
+**Que es la reunion de equipo Delta?**
+Es una videollamada de 30 minutos entre tu y el equipo de Delta. Es gratis, voluntaria, y sirve
+para que el equipo te conozca mejor y entienda como puede ayudarte a crecer en la plataforma.
+La reunion se programa directamente desde tu panel, sin necesidad de salir de Delta.
+
+**Como agendo una reunion de equipo Delta?**
+Si eres elegible, un modal llamado "Queremos conocerte" aparece automaticamente en tu pantalla
+de Inicio. Puedes:
+1. Pulsar "Agendar reunion" — se abre un selector de fechas y horas.
+2. Elegir el dia y la hora que te convenga (de lunes a sabado, dentro de tu horario disponible).
+3. Confirmar. Recibiras un correo con el enlace de la videollamada.
+
+**Donde veo y gestiono mi reunion ya agendada?**
+En Inicio (/doctor), si tienes una reunion agendada, aparece un bloque mostrando la fecha, hora
+y el enlace de acceso. Desde ese mismo lugar puedes reagendarla o cancelarla.
+
+**Puedo reagendar la reunion?**
+Si, siempre que falten mas de 2 horas para el inicio. Pulsa "Reagendar" en el bloque de la reunion,
+elige el nuevo horario y confirma. Recibiras un correo con la nueva hora.
+
+**Puedo cancelar la reunion?**
+Si, siempre que falten mas de 2 horas para el inicio. Pulsa "Cancelar" en el bloque de la reunion
+y confirma. Recibiras un correo de confirmacion de la cancelacion.
+
+**Por que no puedo reagendar ni cancelar?**
+Si faltan menos de 2 horas para el inicio ya no se puede modificar. Contacta al equipo de Delta
+usando el boton "Contactame ya" si necesitas un cambio urgente.
+
+**A traves de que plataforma es la videollamada?**
+La videollamada se realiza por Google Meet o por Jitsi, segun la configuracion del equipo de Delta.
+El enlace de acceso llega en el correo de confirmacion y tambien esta visible en tu panel.
+
+**Recibo algun recordatorio de la reunion?**
+Si. El sistema envia dos recordatorios automaticos por correo: uno 24 horas antes y otro 1 hora antes.
+
+**Que pasa si ya tuve una reunion con el equipo?**
+El modal no vuelve a aparecer una vez que agendas o ya realizaste una reunion. Si el equipo quiere
+coordinar otra, te contactaran directamente.
 `;
