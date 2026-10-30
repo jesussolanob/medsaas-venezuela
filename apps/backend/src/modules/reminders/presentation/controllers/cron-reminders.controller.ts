@@ -19,7 +19,6 @@ import { ApplyScheduledDeactivationsUseCase } from '../../../doctor-settings/app
 import { ExpireDuePendingConsultationsUseCase } from '../../../pending-consultations/application/use-cases/expire-due-pending-consultations.use-case';
 import { DispatchQuoteExpiryNoticesUseCase } from '../../../quotes/application/use-cases/dispatch-quote-expiry-notices.use-case';
 import { DispatchMeetingRemindersUseCase } from '../../../team-meetings/application/use-cases/dispatch-meeting-reminders.use-case';
-import type { DispatchMeetingRemindersResult } from '../../../team-meetings/application/use-cases/dispatch-meeting-reminders.use-case';
 
 interface CronRunResult extends DispatchDueRemindersResult {
   /** Pending consultation reminder emails sent in this run. */
