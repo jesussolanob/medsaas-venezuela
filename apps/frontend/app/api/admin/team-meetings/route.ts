@@ -17,6 +17,7 @@ export interface AdminTeamMeeting {
   doctorName: string;
   doctorPlan: string;
   doctorSpecialty: string | null;
+  graceGrantedAt: string | null;
   startsAt: string;
   endsAt: string;
   status: string;

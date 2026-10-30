@@ -47,6 +47,8 @@ export interface TeamMeetingWithDoctor {
   reminder1hSentAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
+  /** When the doctor got his (one) grace month, from subscription_changes_log; null if never. */
+  graceGrantedAt: Date | null;
 }
 
 export interface ListTeamMeetingsFilter {

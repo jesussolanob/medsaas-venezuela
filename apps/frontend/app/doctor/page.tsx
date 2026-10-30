@@ -330,30 +330,37 @@ export default function DoctorDashboard() {
               // onboarding / welcome tour.
               // Clean the query param so a reload does not re-trigger.
               router.replace('/doctor');
+              // Release notes are the fallback whenever the meeting modal does not
+              // open — not applicable, a non-OK answer or a network error alike.
+              const fallbackToReleaseNotes = () => {
+                void fetch('/api/doctor/release-notes/unseen', { cache: 'no-store' })
+                  .then(async (res) => {
+                    if (!res.ok) return;
+                    const json = (await res.json()) as { data?: unknown[] };
+                    if ((json.data ?? []).length > 0) {
+                      setShowReleaseNotes(true);
+                    }
+                  })
+                  .catch(() => {
+                    // Non-critical — skip silently.
+                  });
+              };
               void fetch('/api/doctor/prompts/meeting', { cache: 'no-store' })
                 .then(async (mRes) => {
-                  if (!mRes.ok) return;
+                  if (!mRes.ok) {
+                    fallbackToReleaseNotes();
+                    return;
+                  }
                   const mJson = (await mRes.json()) as { data?: { show: boolean } };
                   if (mJson.data?.show) {
-                    setShowMeetingModal(true);
                     // Meeting modal will show — skip release notes this visit (spec B.3).
+                    setShowMeetingModal(true);
                   } else {
-                    // Meeting not applicable: fall back to release notes check.
-                    void fetch('/api/doctor/release-notes/unseen', { cache: 'no-store' })
-                      .then(async (res) => {
-                        if (!res.ok) return;
-                        const json = (await res.json()) as { data?: unknown[] };
-                        if ((json.data ?? []).length > 0) {
-                          setShowReleaseNotes(true);
-                        }
-                      })
-                      .catch(() => {
-                        // Non-critical — skip silently.
-                      });
+                    fallbackToReleaseNotes();
                   }
                 })
                 .catch(() => {
-                  // Non-critical — skip silently.
+                  fallbackToReleaseNotes();
                 });
             } else {
               // Welcome tour won't show: check for unseen release notes (spec B.3).

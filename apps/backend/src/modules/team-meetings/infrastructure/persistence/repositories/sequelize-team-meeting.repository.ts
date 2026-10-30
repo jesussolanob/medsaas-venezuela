@@ -133,6 +133,7 @@ export class SequelizeTeamMeetingRepository implements ITeamMeetingRepository {
       reminder_1h_sent_at: Date | null;
       created_at: Date;
       updated_at: Date;
+      grace_granted_at: Date | null;
     }>(
       `SELECT
          tm.id,
@@ -153,7 +154,11 @@ export class SequelizeTeamMeetingRepository implements ITeamMeetingRepository {
          tm.reminder_24h_sent_at,
          tm.reminder_1h_sent_at,
          tm.created_at,
-         tm.updated_at
+         tm.updated_at,
+         (SELECT MIN(l.created_at)
+            FROM subscription_changes_log l
+           WHERE l.doctor_id = tm.doctor_id
+             AND l.action = 'grace_month') AS grace_granted_at
        FROM team_meetings tm
        LEFT JOIN profiles p ON p.id = tm.doctor_id
        ${where}
@@ -185,6 +190,7 @@ export class SequelizeTeamMeetingRepository implements ITeamMeetingRepository {
       reminder1hSentAt: r.reminder_1h_sent_at,
       createdAt: r.created_at,
       updatedAt: r.updated_at,
+      graceGrantedAt: r.grace_granted_at,
     }));
 
     return { items, total };
