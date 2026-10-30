@@ -1052,4 +1052,49 @@ que no ha visto (fecha de publicacion posterior a su ultima marca de "visto"). S
 modal se abre automaticamente mostrando hasta 5 novedades a la vez. El especialista pulsa
 "Entendido" para marcarlas como vistas; si cierra el modal de otra forma, vuelven a aparecer
 la proxima visita.
+
+---
+
+## Reuniones de equipo Delta (Admin)
+
+**Que son las Reuniones de equipo Delta?**
+Son videollamadas de 30 minutos que los especialistas pueden agendar con el equipo de Delta.
+El panel admin permite ver todas las reuniones programadas, marcarlas como realizadas,
+cancelarlas, y configurar quien del equipo actua como anfitrion (host) en Google Calendar.
+
+**Donde gestiono las reuniones de equipo?**
+En Admin → Reuniones de equipo (/admin/team-meetings). Ahi puedes:
+- Ver la lista completa de reuniones con filtros por estado, fecha de inicio y fin.
+- Cambiar el estado de una reunion a "Realizada" (done), "No se presento" (no_show) o "Cancelada".
+- Agregar notas internas sobre la reunion.
+
+**Quien actua como anfitrion de las videollamadas?**
+Un super_admin cuya cuenta de Google Calendar esta conectada a Delta. El sistema usa las
+credenciales de ese anfitrion para crear los eventos en Google Meet y agregar al especialista
+como participante.
+
+**Como configuro el anfitrion?**
+En Admin → Reuniones de equipo → pestana "Configuracion del anfitrion":
+1. Ingresa el ID de perfil del super_admin que sera el anfitrion.
+2. Pulsa "Guardar". Desde ese momento todas las reuniones nuevas usaran ese perfil.
+Para que funcione Google Meet, el anfitrion debe tener su Google Calendar conectado
+(ver la guia de Integraciones → Google Calendar en el panel admin).
+
+**Si el anfitrion no tiene Google conectado, que pasa?**
+El sistema crea la reunion igualmente, pero usa Jitsi como plataforma de videollamada
+(enlace del tipo meet.jit.si/delta-...). El especialista recibe ese enlace por correo.
+
+**Que emails reciben los especialistas?**
+- Al agendar: correo de confirmacion con el enlace y la hora.
+- Al reagendar: correo con la nueva hora y enlace.
+- Al cancelar: correo de notificacion de cancelacion.
+- 24 horas antes y 1 hora antes del inicio: recordatorios automaticos por correo.
+
+**Puedo cancelar una reunion sin importar el horario?**
+Si. Como admin puedes cancelar cualquier reunion agendada en cualquier momento, sin el limite
+de 2 horas que aplica a los especialistas.
+
+**Que significa el estado "No se presento"?**
+Indica que el especialista tenia la reunion agendada pero no se conecto. Solo un admin puede
+marcar este estado; el sistema no lo asigna automaticamente.
 `;

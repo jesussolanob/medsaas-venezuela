@@ -59,6 +59,8 @@ import { ContentTemplatesModule } from './modules/content-templates/content-temp
 import { StandaloneDocumentsModule } from './modules/standalone-documents/standalone-documents.module';
 import { ContactRequestsModule } from './modules/contact-requests/contact-requests.module';
 import { ReleaseNotesModule } from './modules/release-notes/release-notes.module';
+import { DoctorPromptsModule } from './modules/doctor-prompts/doctor-prompts.module';
+import { TeamMeetingsModule } from './modules/team-meetings/team-meetings.module';
 
 @Module({
   imports: [
@@ -126,6 +128,8 @@ import { ReleaseNotesModule } from './modules/release-notes/release-notes.module
     StandaloneDocumentsModule,
     ContactRequestsModule,
     ReleaseNotesModule,
+    DoctorPromptsModule,
+    TeamMeetingsModule,
   ],
   controllers: [HealthController],
   providers: [
