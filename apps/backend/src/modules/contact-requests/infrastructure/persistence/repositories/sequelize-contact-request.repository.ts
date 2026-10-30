@@ -140,6 +140,39 @@ export class SequelizeContactRequestRepository implements IContactRequestReposit
     );
   }
 
+  async reserveNotificationSlot(
+    doctorId: string,
+    since: Date,
+    now: Date,
+    max: number,
+  ): Promise<boolean> {
+    // Count ALL notifications for this doctor in the window (across every request
+    // row, not just the current pending one) so resolving a request does not
+    // reset the daily limit.  The UPDATE atomically increments only if the
+    // window count is still below max, eliminating the TOCTOU race.
+    const rows = await this.sequelize.query<{ id: string }>(
+      `WITH window_count AS (
+         SELECT COALESCE(SUM(notification_count), 0) AS total
+           FROM contact_requests
+          WHERE doctor_id = :doctorId
+            AND last_notified_at >= :since
+       )
+       UPDATE contact_requests
+          SET notification_count = notification_count + 1,
+              last_notified_at   = :now,
+              updated_at         = :now
+        WHERE doctor_id = :doctorId
+          AND status    = 'pending'
+          AND (SELECT total FROM window_count) < :max
+       RETURNING id`,
+      {
+        type: QueryTypes.SELECT,
+        replacements: { doctorId, since, now, max },
+      },
+    );
+    return rows.length > 0;
+  }
+
   async listWithDoctor(filter: ListContactRequestsFilter): Promise<ListContactRequestsResult> {
     const conditions: string[] = [];
     const replacements: Record<string, unknown> = {

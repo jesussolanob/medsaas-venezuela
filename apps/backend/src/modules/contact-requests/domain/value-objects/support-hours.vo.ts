@@ -77,6 +77,75 @@ function getHourMinuteInTz(utcDate: Date, timezone: string): { hour: number; min
   return { hour, minute };
 }
 
+const HH_MM_RE = /^\d{2}:\d{2}$/;
+
+function toMinutes(hhmm: string): number {
+  const { hour, minute } = parseHHMM(hhmm);
+  return hour * 60 + minute;
+}
+
+/**
+ * Parses and validates an admin-supplied support hours JSON string.
+ *
+ * Validates:
+ *   - Valid JSON object with `days`, `start`, `end`, `timezone` fields.
+ *   - `days`: array of integers, each in [1..7].
+ *   - `start` / `end`: "HH:MM" format, start < end.
+ *   - `timezone`: valid IANA zone (verified via Intl.DateTimeFormat).
+ *
+ * Returns the parsed config on success, or null on any validation failure.
+ * The caller is responsible for falling back to defaults and logging.
+ *
+ * NOTE: The Intl.DateTimeFormat constructor call is intentionally inside
+ * the try/catch so that an invalid timezone RangeError is caught here
+ * rather than propagating to the caller.
+ */
+export function parseSupportHoursConfig(raw: string): SupportHoursConfig | null {
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+
+    if (
+      typeof parsed !== 'object' ||
+      parsed === null ||
+      !Array.isArray((parsed as { days?: unknown }).days) ||
+      typeof (parsed as { start?: unknown }).start !== 'string' ||
+      typeof (parsed as { end?: unknown }).end !== 'string' ||
+      typeof (parsed as { timezone?: unknown }).timezone !== 'string'
+    ) {
+      return null;
+    }
+
+    const { days, start, end, timezone } = parsed as {
+      days: unknown[];
+      start: string;
+      end: string;
+      timezone: string;
+    };
+
+    // Validate days: array of integers in [1..7]
+    if (!days.every((d) => typeof d === 'number' && Number.isInteger(d) && d >= 1 && d <= 7)) {
+      return null;
+    }
+
+    // Validate HH:MM format
+    if (!HH_MM_RE.test(start) || !HH_MM_RE.test(end)) {
+      return null;
+    }
+
+    // Validate start < end
+    if (toMinutes(start) >= toMinutes(end)) {
+      return null;
+    }
+
+    // Validate timezone — RangeError for invalid zone is caught below
+    new Intl.DateTimeFormat('en-US', { timeZone: timezone });
+
+    return { days: days as number[], start, end, timezone };
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Returns true when the given UTC instant falls within the support hours.
  */

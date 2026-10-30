@@ -1,4 +1,8 @@
-import { isWithinSupportHours, DEFAULT_SUPPORT_HOURS } from './support-hours.vo';
+import {
+  isWithinSupportHours,
+  parseSupportHoursConfig,
+  DEFAULT_SUPPORT_HOURS,
+} from './support-hours.vo';
 
 /**
  * America/Caracas is UTC-4, no DST.
@@ -124,5 +128,105 @@ describe('isWithinSupportHours', () => {
       const d = utcForCaracas(2026, 11, 6, 17, 30);
       expect(isWithinSupportHours(d, config)).toBe(true);
     });
+  });
+});
+
+describe('parseSupportHoursConfig', () => {
+  const validRaw = JSON.stringify({
+    days: [1, 2, 3, 4, 5, 6],
+    start: '08:00',
+    end: '18:00',
+    timezone: 'America/Caracas',
+  });
+
+  it('returns parsed config for valid input', () => {
+    const result = parseSupportHoursConfig(validRaw);
+    expect(result).not.toBeNull();
+    expect(result!.days).toEqual([1, 2, 3, 4, 5, 6]);
+    expect(result!.start).toBe('08:00');
+    expect(result!.end).toBe('18:00');
+    expect(result!.timezone).toBe('America/Caracas');
+  });
+
+  it('accepts empty days array (all times outside)', () => {
+    const raw = JSON.stringify({
+      days: [],
+      start: '08:00',
+      end: '18:00',
+      timezone: 'America/Caracas',
+    });
+    expect(parseSupportHoursConfig(raw)).not.toBeNull();
+  });
+
+  it('returns null for invalid JSON', () => {
+    expect(parseSupportHoursConfig('not-json')).toBeNull();
+  });
+
+  it('returns null when fields are missing', () => {
+    expect(
+      parseSupportHoursConfig(JSON.stringify({ days: [1], start: '08:00', end: '18:00' })),
+    ).toBeNull();
+  });
+
+  it('returns null when days contains a value outside 1..7', () => {
+    const raw = JSON.stringify({
+      days: [0, 1, 2],
+      start: '08:00',
+      end: '18:00',
+      timezone: 'America/Caracas',
+    });
+    expect(parseSupportHoursConfig(raw)).toBeNull();
+  });
+
+  it('returns null when days contains 8', () => {
+    const raw = JSON.stringify({
+      days: [1, 8],
+      start: '08:00',
+      end: '18:00',
+      timezone: 'America/Caracas',
+    });
+    expect(parseSupportHoursConfig(raw)).toBeNull();
+  });
+
+  it('returns null when start has invalid HH:MM format', () => {
+    const raw = JSON.stringify({
+      days: [1],
+      start: '8:00',
+      end: '18:00',
+      timezone: 'America/Caracas',
+    });
+    expect(parseSupportHoursConfig(raw)).toBeNull();
+  });
+
+  it('returns null when start >= end', () => {
+    const raw = JSON.stringify({
+      days: [1],
+      start: '18:00',
+      end: '08:00',
+      timezone: 'America/Caracas',
+    });
+    expect(parseSupportHoursConfig(raw)).toBeNull();
+  });
+
+  it('returns null when start equals end', () => {
+    const raw = JSON.stringify({
+      days: [1],
+      start: '08:00',
+      end: '08:00',
+      timezone: 'America/Caracas',
+    });
+    expect(parseSupportHoursConfig(raw)).toBeNull();
+  });
+
+  it('returns null for an invalid IANA timezone (does not throw)', () => {
+    const raw = JSON.stringify({
+      days: [1],
+      start: '08:00',
+      end: '18:00',
+      timezone: 'Invalid/Zone',
+    });
+    // Must not throw RangeError — returns null instead
+    expect(() => parseSupportHoursConfig(raw)).not.toThrow();
+    expect(parseSupportHoursConfig(raw)).toBeNull();
   });
 });

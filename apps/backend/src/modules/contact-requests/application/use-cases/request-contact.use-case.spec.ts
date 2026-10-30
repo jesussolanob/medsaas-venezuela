@@ -41,6 +41,7 @@ describe('RequestContactUseCase', () => {
       update: jest.fn(),
       getNotificationCountSince: jest.fn(),
       incrementNotificationCount: jest.fn(),
+      reserveNotificationSlot: jest.fn(),
       listWithDoctor: jest.fn(),
       findByIdWithDoctor: jest.fn(),
       countPending: jest.fn(),
@@ -60,6 +61,7 @@ describe('RequestContactUseCase', () => {
     // The hours key is NOT set, so defaults are used (Mon-Sat 08:00-18:00)
     mockRepo.getSettings.mockResolvedValue([]);
     mockRepo.getNotificationCountSince.mockResolvedValue(0);
+    mockRepo.reserveNotificationSlot.mockResolvedValue(true); // slot available by default
     mockRepo.findPendingByDoctorId.mockResolvedValue(null);
     mockRepo.findAllSuperAdmins.mockResolvedValue([
       { id: 'admin-1', email: 'admin@test.com', fullName: 'Admin' },
@@ -115,21 +117,50 @@ describe('RequestContactUseCase', () => {
   });
 
   describe('rate limiting', () => {
-    it('throws ContactRequestRateLimitedError when notification count >= 3', async () => {
-      mockRepo.getNotificationCountSince.mockResolvedValue(3);
+    it('throws ContactRequestRateLimitedError when reserveNotificationSlot returns false', async () => {
+      // Arrange: slot already exhausted (3 notifications sent in the last 24h)
+      mockRepo.save.mockResolvedValue(makeRequest());
+      mockRepo.reserveNotificationSlot.mockResolvedValue(false);
 
       await expect(useCase.execute({ doctorId: 'doctor-1', channel: 'whatsapp' })).rejects.toThrow(
         ContactRequestRateLimitedError,
       );
     });
 
-    it('does not throw when count is 2', async () => {
-      mockRepo.getNotificationCountSince.mockResolvedValue(2);
+    it('upsert happens BEFORE the rate-limit check (TOCTOU fix)', async () => {
+      // Arrange: rate-limited
+      mockRepo.save.mockResolvedValue(makeRequest());
+      mockRepo.reserveNotificationSlot.mockResolvedValue(false);
+
+      // Act: should throw 429
+      await expect(useCase.execute({ doctorId: 'doctor-1', channel: 'whatsapp' })).rejects.toThrow(
+        ContactRequestRateLimitedError,
+      );
+
+      // Assert: save was called BEFORE the 429, proving the request row is persisted
+      expect(mockRepo.save).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not throw when slot is available', async () => {
+      mockRepo.reserveNotificationSlot.mockResolvedValue(true);
       mockRepo.save.mockResolvedValue(makeRequest());
 
       await expect(
         useCase.execute({ doctorId: 'doctor-1', channel: 'whatsapp' }),
       ).resolves.toBeDefined();
+    });
+
+    it('calls reserveNotificationSlot with doctorId and RATE_LIMIT_MAX=3', async () => {
+      mockRepo.save.mockResolvedValue(makeRequest());
+
+      await useCase.execute({ doctorId: 'doctor-abc', channel: 'whatsapp' });
+
+      expect(mockRepo.reserveNotificationSlot).toHaveBeenCalledWith(
+        'doctor-abc',
+        expect.any(Date),
+        expect.any(Date),
+        3, // RATE_LIMIT_MAX — counts across ALL requests in the window
+      );
     });
   });
 

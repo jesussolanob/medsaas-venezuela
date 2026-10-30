@@ -14,6 +14,7 @@ describe('GetSupportInfoUseCase', () => {
       update: jest.fn(),
       getNotificationCountSince: jest.fn(),
       incrementNotificationCount: jest.fn(),
+      reserveNotificationSlot: jest.fn(),
       listWithDoctor: jest.fn(),
       findByIdWithDoctor: jest.fn(),
       countPending: jest.fn(),
@@ -77,5 +78,28 @@ describe('GetSupportInfoUseCase', () => {
     const result = await useCase.execute();
 
     expect(typeof result.callNowAvailable).toBe('boolean');
+  });
+
+  it('falls back to defaults for invalid timezone without throwing', async () => {
+    // An invalid IANA timezone would cause Intl.DateTimeFormat to throw a
+    // RangeError if not caught inside the parser.
+    mockRepo.getSettings.mockResolvedValue([
+      {
+        key: 'support_hours',
+        value: JSON.stringify({
+          days: [1, 2, 3, 4, 5, 6],
+          start: '08:00',
+          end: '18:00',
+          timezone: 'Invalid/Zone',
+        }),
+      },
+    ]);
+
+    // Must not throw
+    const result = await useCase.execute();
+
+    // Falls back to defaults
+    expect(result.supportHours.days).toEqual([1, 2, 3, 4, 5, 6]);
+    expect(result.supportHours.timezone).toBe('America/Caracas');
   });
 });

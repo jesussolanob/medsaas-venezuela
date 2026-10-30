@@ -193,10 +193,21 @@ module.exports = {
          WHERE key = 'support_whatsapp_number'
            AND value = '584221033582'
       `);
-      await q(`
-        DELETE FROM app_settings
-         WHERE key = 'support_hours'
-      `);
+      await q(
+        `DELETE FROM app_settings
+          WHERE key = 'support_hours'
+            AND value = :seeded`,
+        {
+          replacements: {
+            seeded: JSON.stringify({
+              days: [1, 2, 3, 4, 5, 6],
+              start: '08:00',
+              end: '18:00',
+              timezone: 'America/Caracas',
+            }),
+          },
+        },
+      );
 
       // Drop indexes then table
       await q(`DROP INDEX IF EXISTS contact_requests_status_created_idx`);
