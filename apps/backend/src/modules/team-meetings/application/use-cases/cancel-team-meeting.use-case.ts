@@ -38,8 +38,9 @@ export interface CancelTeamMeetingInput {
  *   1. Deletes the availability block.
  *   2. Cancels the Google Calendar event (if present).
  *   3. Sets status='cancelled'.
- *   4. Sends cancellation email.
- *   5. Clears acted_at on the meeting modal prompt (so the modal can reappear).
+ *   4. Sends cancellation email to the doctor.
+ *   5. Sends cancellation email to the team (super-admins).
+ *   6. Clears acted_at on the meeting modal prompt (so the modal can reappear).
  */
 @Injectable()
 export class CancelTeamMeetingUseCase {
@@ -134,10 +135,14 @@ export class CancelTeamMeetingUseCase {
     // 3. Update meeting status
     await this.repo.update(meeting.id, { status: 'cancelled' });
 
-    // 4. Send cancellation email (best-effort)
-    const doctorProfile = await this.repo.getDoctorProfile(meeting.doctorId);
+    // 4 & 5. Send cancellation emails to doctor and team (best-effort)
+    const [doctorProfile, superAdmins] = await Promise.all([
+      this.repo.getDoctorProfile(meeting.doctorId),
+      this.repo.findAllSuperAdmins(),
+    ]);
+    const startsAtText = this.formatCaracasTime(meeting.startsAt);
+
     if (doctorProfile?.email) {
-      const startsAtText = this.formatCaracasTime(meeting.startsAt);
       void this.mailer
         .sendTemplate(
           'team_meeting_cancelled',
@@ -152,13 +157,35 @@ export class CancelTeamMeetingUseCase {
         )
         .catch((err: unknown) => {
           this.logger.warn(
-            '[team-meetings] failed to send cancellation email: ' +
+            '[team-meetings] failed to send doctor cancellation email: ' +
               (err instanceof Error ? err.message : String(err)),
           );
         });
     }
 
-    // 5. Clear acted_at so the modal can re-appear
+    for (const admin of superAdmins) {
+      void this.mailer
+        .sendTemplate(
+          'team_meeting_cancelled_admin',
+          admin.email,
+          {
+            doctorName: doctorProfile?.name ?? 'Especialista',
+            doctorEmail: doctorProfile?.email ?? '',
+            startsAtText,
+            meetingUrl: meeting.meetingUrl ?? 'N/D',
+            manageUrl: `${process.env['FRONTEND_URL'] ?? 'https://app.deltasalud.app'}/admin/reuniones`,
+          },
+          { type: 'admin', id: admin.email },
+        )
+        .catch((err: unknown) => {
+          this.logger.warn(
+            '[team-meetings] failed to send admin cancellation email: ' +
+              (err instanceof Error ? err.message : String(err)),
+          );
+        });
+    }
+
+    // 6. Clear acted_at so the modal can re-appear
     void this.promptRepo.clearActed(meeting.doctorId, MEETING_MODAL_KEY).catch((err: unknown) => {
       this.logger.warn(
         '[team-meetings] failed to clear acted_at: ' +

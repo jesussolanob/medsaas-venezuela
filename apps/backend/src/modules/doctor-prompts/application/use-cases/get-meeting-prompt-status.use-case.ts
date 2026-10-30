@@ -4,12 +4,11 @@ import {
   type IDoctorPromptRepository,
 } from '../../domain/repositories/idoctor-prompt.repository';
 import type { MeetingPromptStatusOutput } from '@delta/shared-types';
+import { parseMeetingPromptSettings } from '../utils/meeting-prompt-settings';
 
 const MEETING_MODAL_KEY = 'meeting_modal';
 const EMAIL_INVITE_KEYS = ['email:meeting_invite_pre', 'email:meeting_invite_expired'];
 
-const DEFAULT_MIN_DAYS = 3;
-const DEFAULT_MAX_SHOWS = 3;
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 /**
@@ -53,10 +52,10 @@ export class GetMeetingPromptStatusUseCase {
       ]);
 
     const settingsMap = new Map(settings.map((s) => [s.key, s.value]));
+    const parsed = parseMeetingPromptSettings(settingsMap);
 
     // Rule 1: kill-switch
-    const enabled = settingsMap.get('meeting_prompt_enabled') !== 'false';
-    if (!enabled) return { show: false, source: null };
+    if (!parsed.enabled) return { show: false, source: null };
 
     // Rule 2: doctor already has a meeting (scheduled or done)
     if (hasScheduledMeeting) return { show: false, source: null };
@@ -68,13 +67,9 @@ export class GetMeetingPromptStatusUseCase {
     if (hasPendingContact) return { show: false, source: null };
 
     // Rule 5: account too young
-    const minDays = parseInt(
-      settingsMap.get('meeting_prompt_min_days') ?? String(DEFAULT_MIN_DAYS),
-      10,
-    );
     if (createdAt !== null) {
       const daysSinceCreation = (now.getTime() - createdAt.getTime()) / MS_PER_DAY;
-      if (daysSinceCreation < minDays) return { show: false, source: null };
+      if (daysSinceCreation < parsed.minDays) return { show: false, source: null };
     }
 
     // Rule 6: snoozed
@@ -82,11 +77,7 @@ export class GetMeetingPromptStatusUseCase {
 
     // Rule 7: max shows (bypassed when phase-4 email rows exist)
     if (!hasEmailPrompt) {
-      const maxShows = parseInt(
-        settingsMap.get('meeting_prompt_max_shows') ?? String(DEFAULT_MAX_SHOWS),
-        10,
-      );
-      if (prompt?.hasExceededMaxShows(maxShows)) return { show: false, source: null };
+      if (prompt?.hasExceededMaxShows(parsed.maxShows)) return { show: false, source: null };
     }
 
     // Determine source

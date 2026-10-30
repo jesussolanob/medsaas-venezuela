@@ -217,9 +217,7 @@ export class SequelizeTeamMeetingRepository implements ITeamMeetingRepository {
     );
   }
 
-  async getDoctorProfile(
-    doctorId: string,
-  ): Promise<{
+  async getDoctorProfile(doctorId: string): Promise<{
     name: string | null;
     email: string;
     phone: string | null;
@@ -370,18 +368,31 @@ export class SequelizeTeamMeetingRepository implements ITeamMeetingRepository {
     }));
   }
 
-  async markReminder24hSent(id: string, sentAt: Date): Promise<void> {
-    await this.sequelize.query(
-      `UPDATE team_meetings SET reminder_24h_sent_at = :sentAt WHERE id = :id AND reminder_24h_sent_at IS NULL`,
-      { type: QueryTypes.UPDATE, replacements: { id, sentAt } },
+  async markReminder24hSent(id: string, sentAt: Date): Promise<boolean> {
+    // RETURNING id lets us detect whether this call actually claimed the row.
+    // A concurrent cron run that gets here after us will find the column already
+    // set (IS NULL fails) and get an empty result → returns false → skips send.
+    const rows = await this.sequelize.query<{ id: string }>(
+      `UPDATE team_meetings
+          SET reminder_24h_sent_at = :sentAt
+        WHERE id = :id
+          AND reminder_24h_sent_at IS NULL
+        RETURNING id`,
+      { type: QueryTypes.SELECT, replacements: { id, sentAt } },
     );
+    return rows.length > 0;
   }
 
-  async markReminder1hSent(id: string, sentAt: Date): Promise<void> {
-    await this.sequelize.query(
-      `UPDATE team_meetings SET reminder_1h_sent_at = :sentAt WHERE id = :id AND reminder_1h_sent_at IS NULL`,
-      { type: QueryTypes.UPDATE, replacements: { id, sentAt } },
+  async markReminder1hSent(id: string, sentAt: Date): Promise<boolean> {
+    const rows = await this.sequelize.query<{ id: string }>(
+      `UPDATE team_meetings
+          SET reminder_1h_sent_at = :sentAt
+        WHERE id = :id
+          AND reminder_1h_sent_at IS NULL
+        RETURNING id`,
+      { type: QueryTypes.SELECT, replacements: { id, sentAt } },
     );
+    return rows.length > 0;
   }
 
   // ---------------------------------------------------------------------------

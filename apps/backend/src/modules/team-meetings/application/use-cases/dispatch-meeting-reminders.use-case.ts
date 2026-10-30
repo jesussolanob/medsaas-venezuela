@@ -18,8 +18,13 @@ export interface DispatchMeetingRemindersResult {
  *   - 24h reminder: meeting starts in [22h, 26h] from now
  *   - 1h  reminder: meeting starts in [45min, 75min] from now
  *
- * Idempotency is enforced by reminder_24h_sent_at / reminder_1h_sent_at columns.
- * A row is only eligible once per window (null = not yet sent).
+ * Idempotency (mark-then-send pattern):
+ *   The row is claimed first via UPDATE … WHERE IS NULL RETURNING id.
+ *   The email is only sent when THIS call claims the row.
+ *   A concurrent cron run that finds the column already set returns false
+ *   and skips the send entirely — no duplicate emails.
+ *
+ * Team notifications: super-admins receive the same reminder emails.
  *
  * Cap: max 50 meetings per run to stay within the 15-min window.
  */
@@ -39,7 +44,11 @@ export class DispatchMeetingRemindersUseCase {
     let reminders1hSent = 0;
     let remindersFailed = 0;
 
-    const rows = await this.repo.findMeetingsNeedingReminder(now, 50);
+    // Fetch meetings and super-admins in parallel.
+    const [rows, superAdmins] = await Promise.all([
+      this.repo.findMeetingsNeedingReminder(now, 50),
+      this.repo.findAllSuperAdmins(),
+    ]);
 
     for (const row of rows) {
       const hoursUntil = (row.startsAt.getTime() - now.getTime()) / (1000 * 60 * 60);
@@ -52,50 +61,84 @@ export class DispatchMeetingRemindersUseCase {
       const startsAtText = this.formatCaracasTime(row.startsAt);
 
       if (needs24h) {
-        try {
-          await this.mailer.sendTemplate(
-            'team_meeting_reminder',
-            row.doctorEmail,
-            {
-              doctorName: row.doctorName ?? 'Especialista',
-              startsAtText,
-              meetingUrl: row.meetingUrl ?? 'N/D',
-              manageUrl: `${process.env['FRONTEND_URL'] ?? 'https://app.deltasalud.app'}/doctor/perfil`,
-            },
-            { type: 'doctor', id: row.doctorId },
-          );
-          await this.repo.markReminder24hSent(row.id, now);
-          reminders24hSent++;
-        } catch (err: unknown) {
-          remindersFailed++;
-          this.logger.warn(
-            `[team-meetings] 24h reminder failed for meeting ${row.id}: ` +
-              (err instanceof Error ? err.message : String(err)),
-          );
+        // Mark-then-send: claim the row before sending to prevent duplicate
+        // emails from concurrent cron runs.
+        const claimed = await this.repo.markReminder24hSent(row.id, now);
+        if (claimed) {
+          try {
+            await this.mailer.sendTemplate(
+              'team_meeting_reminder',
+              row.doctorEmail,
+              {
+                doctorName: row.doctorName ?? 'Especialista',
+                startsAtText,
+                meetingUrl: row.meetingUrl ?? 'N/D',
+                manageUrl: `${process.env['FRONTEND_URL'] ?? 'https://app.deltasalud.app'}/doctor/perfil`,
+              },
+              { type: 'doctor', id: row.doctorId },
+            );
+            for (const admin of superAdmins) {
+              await this.mailer.sendTemplate(
+                'team_meeting_reminder_admin',
+                admin.email,
+                {
+                  doctorName: row.doctorName ?? 'Especialista',
+                  doctorEmail: row.doctorEmail,
+                  startsAtText,
+                  meetingUrl: row.meetingUrl ?? 'N/D',
+                  manageUrl: `${process.env['FRONTEND_URL'] ?? 'https://app.deltasalud.app'}/admin/reuniones`,
+                },
+                { type: 'admin', id: admin.email },
+              );
+            }
+            reminders24hSent++;
+          } catch (err: unknown) {
+            remindersFailed++;
+            this.logger.warn(
+              `[team-meetings] 24h reminder failed for meeting ${row.id}: ` +
+                (err instanceof Error ? err.message : String(err)),
+            );
+          }
         }
       }
 
       if (needs1h) {
-        try {
-          await this.mailer.sendTemplate(
-            'team_meeting_reminder',
-            row.doctorEmail,
-            {
-              doctorName: row.doctorName ?? 'Especialista',
-              startsAtText,
-              meetingUrl: row.meetingUrl ?? 'N/D',
-              manageUrl: `${process.env['FRONTEND_URL'] ?? 'https://app.deltasalud.app'}/doctor/perfil`,
-            },
-            { type: 'doctor', id: row.doctorId },
-          );
-          await this.repo.markReminder1hSent(row.id, now);
-          reminders1hSent++;
-        } catch (err: unknown) {
-          remindersFailed++;
-          this.logger.warn(
-            `[team-meetings] 1h reminder failed for meeting ${row.id}: ` +
-              (err instanceof Error ? err.message : String(err)),
-          );
+        const claimed = await this.repo.markReminder1hSent(row.id, now);
+        if (claimed) {
+          try {
+            await this.mailer.sendTemplate(
+              'team_meeting_reminder',
+              row.doctorEmail,
+              {
+                doctorName: row.doctorName ?? 'Especialista',
+                startsAtText,
+                meetingUrl: row.meetingUrl ?? 'N/D',
+                manageUrl: `${process.env['FRONTEND_URL'] ?? 'https://app.deltasalud.app'}/doctor/perfil`,
+              },
+              { type: 'doctor', id: row.doctorId },
+            );
+            for (const admin of superAdmins) {
+              await this.mailer.sendTemplate(
+                'team_meeting_reminder_admin',
+                admin.email,
+                {
+                  doctorName: row.doctorName ?? 'Especialista',
+                  doctorEmail: row.doctorEmail,
+                  startsAtText,
+                  meetingUrl: row.meetingUrl ?? 'N/D',
+                  manageUrl: `${process.env['FRONTEND_URL'] ?? 'https://app.deltasalud.app'}/admin/reuniones`,
+                },
+                { type: 'admin', id: admin.email },
+              );
+            }
+            reminders1hSent++;
+          } catch (err: unknown) {
+            remindersFailed++;
+            this.logger.warn(
+              `[team-meetings] 1h reminder failed for meeting ${row.id}: ` +
+                (err instanceof Error ? err.message : String(err)),
+            );
+          }
         }
       }
     }

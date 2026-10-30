@@ -14,6 +14,10 @@ import {
 import { AppAuthGuard } from '../../../../infrastructure/auth/app-auth.guard';
 import { RolesGuard } from '../../../../presentation/guards/roles.guard';
 import { Roles } from '../../../../presentation/decorators/roles.decorator';
+import {
+  CurrentUser,
+  type CurrentUserPayload,
+} from '../../../../presentation/decorators/current-user.decorator';
 import { ListTeamMeetingsAdminUseCase } from '../../application/use-cases/list-team-meetings-admin.use-case';
 import { UpdateTeamMeetingAdminUseCase } from '../../application/use-cases/update-team-meeting-admin.use-case';
 import { CancelTeamMeetingUseCase } from '../../application/use-cases/cancel-team-meeting.use-case';
@@ -71,11 +75,25 @@ export class AdminTeamMeetingsController {
 
   /**
    * PATCH /api/admin/team-meetings/:id
+   *
+   * When status='cancelled', routes to CancelTeamMeetingUseCase (isAdmin=true)
+   * so the availability block and Google event are cleaned up and all parties
+   * are notified. Any other status/notes update uses UpdateTeamMeetingAdminUseCase.
    */
   @Patch(':id')
   @HttpCode(HttpStatus.OK)
-  async update(@Param('id', ParseUUIDPipe) meetingId: string, @Body() body: unknown) {
+  async update(
+    @Param('id', ParseUUIDPipe) meetingId: string,
+    @CurrentUser() user: CurrentUserPayload,
+    @Body() body: unknown,
+  ) {
     const dto = AdminUpdateTeamMeetingDtoSchema.parse(body);
+
+    if (dto.status === 'cancelled') {
+      await this.cancelMeeting.execute({ meetingId, actorId: user.sub, isAdmin: true });
+      return { success: true, data: null };
+    }
+
     const data = await this.updateMeeting.execute({
       meetingId,
       status: dto.status,

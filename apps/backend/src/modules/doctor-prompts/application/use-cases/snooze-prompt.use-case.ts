@@ -4,8 +4,8 @@ import {
   type IDoctorPromptRepository,
 } from '../../domain/repositories/idoctor-prompt.repository';
 import type { DoctorPrompt } from '../../domain/entities/doctor-prompt.entity';
+import { parseMeetingPromptSettings } from '../utils/meeting-prompt-settings';
 
-const DEFAULT_SNOOZE_DAYS = 1;
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 /**
@@ -26,11 +26,7 @@ export class SnoozePromptUseCase {
     const settings = await this.repo.getSettings(['meeting_prompt_snooze_days']);
     const settingsMap = new Map(settings.map((s) => [s.key, s.value]));
 
-    const snoozeDays = parseInt(
-      settingsMap.get('meeting_prompt_snooze_days') ?? String(DEFAULT_SNOOZE_DAYS),
-      10,
-    );
-
+    const { snoozeDays } = parseMeetingPromptSettings(settingsMap);
     const snoozedUntil = new Date(now.getTime() + snoozeDays * MS_PER_DAY);
 
     return this.repo.recordSnooze(doctorId, promptKey, snoozedUntil, now);
