@@ -187,7 +187,7 @@ export default function SellerLayout({ children }: { children: React.ReactNode }
         />
 
         {/* Main */}
-        <div className="flex-1 flex flex-col min-h-screen w-full lg:ml-[260px]">
+        <div className="flex-1 flex flex-col min-h-screen w-full min-w-0 lg:ml-[260px]">
           <header
             className="sticky top-0 z-30 flex items-center gap-3 px-4 sm:px-6 lg:px-10 py-3.5 bg-white/85 backdrop-blur"
             style={{ borderBottom: '1px solid var(--dh-gray-100)' }}
@@ -212,7 +212,7 @@ export default function SellerLayout({ children }: { children: React.ReactNode }
             </h1>
           </header>
 
-          <main className="flex-1 px-4 sm:px-6 lg:px-10 py-6 lg:py-8 max-w-[1440px] w-full mx-auto">
+          <main className="flex-1 min-w-0 px-4 sm:px-6 lg:px-10 py-6 lg:py-8 max-w-[1440px] w-full mx-auto">
             {children}
           </main>
         </div>

@@ -425,7 +425,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         {/* Main */}
         <div
           className={clsx(
-            'flex-1 flex flex-col min-h-screen w-full transition-[margin] duration-200',
+            // min-w-0: a flex child defaults to min-width:auto and grows to its widest
+            // content, so a wide table pushed the whole page sideways instead of
+            // scrolling inside its own overflow-x-auto box.
+            'flex-1 flex flex-col min-h-screen w-full min-w-0 transition-[margin] duration-200',
             pinned ? 'lg:ml-[260px]' : 'lg:ml-0',
           )}
         >
@@ -463,7 +466,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           </header>
 
           {/* Page content */}
-          <main className="flex-1 px-4 sm:px-6 lg:px-10 py-6 lg:py-8 max-w-[1440px] w-full mx-auto">
+          <main className="flex-1 min-w-0 px-4 sm:px-6 lg:px-10 py-6 lg:py-8 max-w-[1440px] w-full mx-auto">
             {children}
           </main>
         </div>

@@ -793,7 +793,7 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
         {/* Main content */}
         <div
           className={clsx(
-            'flex-1 flex flex-col min-h-screen w-full transition-[margin] duration-200',
+            'flex-1 flex flex-col min-h-screen w-full min-w-0 transition-[margin] duration-200',
             pinned ? 'lg:ml-[260px]' : 'lg:ml-0',
           )}
         >
@@ -844,7 +844,7 @@ export default function DoctorLayout({ children }: { children: React.ReactNode }
           {/* Trial expiry warning — only renders when is_in_trial && days_remaining ≤ 5 */}
           <TrialExpiryBanner />
 
-          <main className="flex-1 px-4 sm:px-6 lg:px-10 py-6 lg:py-8 w-full">
+          <main className="flex-1 min-w-0 px-4 sm:px-6 lg:px-10 py-6 lg:py-8 w-full">
             <div className="max-w-6xl xl:max-w-7xl mx-auto w-full">
               {moduleLockedByPlan ? (
                 <PlanLockedNotice onUpgrade={() => router.push('/doctor/upgrade')} />
