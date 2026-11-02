@@ -2,6 +2,8 @@ import {
   Body,
   Controller,
   Get,
+  HttpCode,
+  HttpStatus,
   Param,
   ParseUUIDPipe,
   Patch,
@@ -31,6 +33,7 @@ import { UpdateSellerPaymentDetailsUseCase } from '../../application/use-cases/u
 import { GetAdminSellerPaymentDetailsUseCase } from '../../application/use-cases/get-admin-seller-payment-details.use-case';
 import { GetSpecialistSellerAssignmentUseCase } from '../../application/use-cases/get-specialist-seller-assignment.use-case';
 import { DeactivateSellerAccountUseCase } from '../../application/use-cases/deactivate-seller-account.use-case';
+import { ResendSellerWelcomeEmailUseCase } from '../../application/use-cases/resend-seller-welcome-email.use-case';
 import type {
   SellerProfile,
   SellerAdminRow,
@@ -142,11 +145,12 @@ function ok<T>(data: T): SuccessResponse<T> {
   return { success: true, data };
 }
 
-function toSellerDto(seller: SellerProfile) {
+function toSellerDto(seller: SellerProfile, welcomeEmailSent?: boolean) {
   return {
     id: seller.id,
     sellerCode: seller.sellerCode,
     createdAt: seller.createdAt,
+    ...(welcomeEmailSent !== undefined ? { welcomeEmailSent } : {}),
   };
 }
 
@@ -208,7 +212,8 @@ function toSpecialistDto(row: SellerSpecialistRow) {
  *
  *   Admin (super_admin only):
  *     GET  /api/admin/sellers                             — list sellers + specialist counts
- *     POST /api/admin/sellers                             — create a seller account
+ *     POST /api/admin/sellers                             — create a seller account (sends welcome email)
+ *     POST /api/admin/sellers/:id/welcome-email           — resend the welcome email for an existing seller
  *     GET  /api/admin/sellers/:id/payment-details         — view a seller's payment config
  *     GET  /api/admin/specialist-assignment/:specialistId — current seller for a specialist
  *
@@ -248,6 +253,7 @@ export class SellersController {
     private readonly getAdminPaymentDetails: GetAdminSellerPaymentDetailsUseCase,
     private readonly getSellerAssignment: GetSpecialistSellerAssignmentUseCase,
     private readonly deactivateAccount: DeactivateSellerAccountUseCase,
+    private readonly resendWelcomeEmail: ResendSellerWelcomeEmailUseCase,
   ) {}
 
   // ---------------------------------------------------------------------------
@@ -337,12 +343,41 @@ export class SellersController {
   async createSellerEndpoint(
     @Body(new ZodValidationPipe(CreateSellerBodySchema)) body: CreateSellerBody,
   ): Promise<SuccessResponse<ReturnType<typeof toSellerDto>>> {
-    const seller = await this.createSeller.execute({
+    const { seller, welcomeEmailSent } = await this.createSeller.execute({
       fullName: body.full_name,
       email: body.email,
     });
 
-    return ok(toSellerDto(seller));
+    return ok(toSellerDto(seller, welcomeEmailSent));
+  }
+
+  // ---------------------------------------------------------------------------
+  // POST /api/admin/sellers/:id/welcome-email
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Re-sends the seller_welcome email for an existing seller.
+   *
+   * Used when:
+   *   - The initial send failed at creation time.
+   *   - The seller deleted the email and needs it again.
+   *   - The seller was created before this feature was deployed.
+   *
+   * Returns { sent: boolean } — false means the mailer failed (non-fatal;
+   * the seller profile was NOT modified).
+   *
+   * 404 when sellerId does not match an existing seller profile.
+   * SECURITY: @Roles('super_admin'). Never logs email or fullName.
+   */
+  @Post('admin/sellers/:id/welcome-email')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(RolesGuard)
+  @Roles('super_admin')
+  async resendSellerWelcomeEmail(
+    @Param('id', ParseUUIDPipe) sellerId: string,
+  ): Promise<SuccessResponse<{ sent: boolean }>> {
+    const result = await this.resendWelcomeEmail.execute(sellerId);
+    return ok(result);
   }
 
   // ---------------------------------------------------------------------------

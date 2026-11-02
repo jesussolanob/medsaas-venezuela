@@ -73,6 +73,8 @@ const TEMPLATE_LABELS: Record<string, string> = {
   reminder_24h: 'Recordatorio 24h',
   reminder_3h: 'Recordatorio 3h',
   reminder_7d: 'Recordatorio 7 días',
+  retention_meeting_invite: 'Invitación a reunión de retención',
+  seller_welcome: 'Bienvenida a vendedor',
   shared_documents_code: 'Código para compartir documentos',
   welcome: 'Bienvenida',
 };

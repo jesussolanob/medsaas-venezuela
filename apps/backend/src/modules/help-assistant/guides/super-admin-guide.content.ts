@@ -654,6 +654,13 @@ propio. Boton **Nuevo vendedor** — despliega el formulario de alta en la misma
 - **Correo** (obligatorio, email valido).
 - El codigo lo genera el sistema al crear al vendedor; aparece en el mensaje de exito del toast.
 - Botones **Cancelar** y **Crear vendedor**.
+- Al crear el vendedor, el sistema envia automaticamente un **correo de bienvenida** al email
+  registrado con: instrucciones paso a paso para iniciar sesion (URL + correo exacto a usar +
+  advertencia de no usar otro correo), su codigo de referido y enlace personalizado
+  (/r/CODIGO), descripcion de las secciones del portal (Inicio, Especialistas, Comisiones,
+  Datos de cobro) y un boton "Entrar a mi portal". El aviso confirma "Vendedor creado y correo
+  de bienvenida enviado"; si el correo no salio, el aviso lo dice y se puede reenviar desde la
+  fila del vendedor (columna **Bienvenida**).
 
 **Tabla de vendedores (columnas):**
 - **Vendedor:** nombre en negrita y, debajo, el email con icono de sobre.
@@ -671,6 +678,10 @@ propio. Boton **Nuevo vendedor** — despliega el formulario de alta en la misma
   portal.
 - **Acceso:** boton **Deshabilitar** (rojo) si esta habilitado, o **Habilitar** (verde) si
   esta deshabilitado.
+- **Bienvenida:** boton **Reenviar** (al pasar el cursor dice "Reenviar correo de
+  bienvenida"), disponible siempre en cada fila. Vuelve a mandar el correo de bienvenida al
+  email del vendedor. Sirve si el envio inicial fallo, si el vendedor lo borro o si fue creado
+  antes de que existiera este correo. El aviso confirma si salio o si fallo.
 
 **Deshabilitar un vendedor (pide confirmacion):**
 - Consecuencias que muestra el dialogo: su enlace de referido deja de atribuir especialistas

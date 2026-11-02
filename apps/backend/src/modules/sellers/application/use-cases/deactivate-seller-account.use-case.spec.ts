@@ -10,6 +10,7 @@ function makeSeller(overrides: Partial<SellerProfile> = {}): SellerProfile {
   return {
     id: SELLER_ID,
     fullName: 'María González',
+    email: 'maria@delta.app',
     sellerCode: 'ABCDEF',
     createdAt: new Date('2026-08-16T10:00:00Z'),
     ...overrides,

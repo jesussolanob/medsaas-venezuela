@@ -1,10 +1,11 @@
 /**
  * EmailRecipientRef — identifies who the email was sent to WITHOUT storing PII.
  *
- * - type: 'patient' | 'doctor' | 'admin' | 'system' | 'lead'
+ * - type: 'patient' | 'doctor' | 'admin' | 'system' | 'lead' | 'seller'
  * - id:   UUID of the entity in its own table (nullable when unknown or N/A)
  *
  * 'lead' is used when the email targets a prospective patient (leads table).
+ * 'seller' is used for seller-welcome and any other emails targeting seller profiles.
  * The recipient_type column in email_send_log is a STRING without a CHECK
  * constraint, so extending this union does not require a migration.
  *
@@ -12,13 +13,13 @@
  * The actual recipient address is passed to the email port but never persisted.
  */
 export interface EmailRecipientRef {
-  type: 'patient' | 'doctor' | 'admin' | 'system' | 'lead';
+  type: 'patient' | 'doctor' | 'admin' | 'system' | 'lead' | 'seller';
   id?: string | null;
 }
 
 export interface EmailSendLogProps {
   readonly id: string;
-  readonly recipientType: 'patient' | 'doctor' | 'admin' | 'system' | 'lead';
+  readonly recipientType: 'patient' | 'doctor' | 'admin' | 'system' | 'lead' | 'seller';
   readonly recipientId: string | null;
   readonly templateName: string;
   readonly status: 'sent' | 'failed';
@@ -71,7 +72,7 @@ export class EmailSendLog {
     return this.props.id;
   }
 
-  get recipientType(): 'patient' | 'doctor' | 'admin' | 'system' | 'lead' {
+  get recipientType(): 'patient' | 'doctor' | 'admin' | 'system' | 'lead' | 'seller' {
     return this.props.recipientType;
   }
 
@@ -109,7 +110,7 @@ export class EmailSendLog {
 
   static sent(params: {
     id: string;
-    recipientType: 'patient' | 'doctor' | 'admin' | 'system' | 'lead';
+    recipientType: 'patient' | 'doctor' | 'admin' | 'system' | 'lead' | 'seller';
     recipientId: string | null;
     templateName: string;
     provider: string;
@@ -125,7 +126,7 @@ export class EmailSendLog {
 
   static failed(params: {
     id: string;
-    recipientType: 'patient' | 'doctor' | 'admin' | 'system' | 'lead';
+    recipientType: 'patient' | 'doctor' | 'admin' | 'system' | 'lead' | 'seller';
     recipientId: string | null;
     templateName: string;
     provider: string;
