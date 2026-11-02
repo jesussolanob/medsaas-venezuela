@@ -235,6 +235,7 @@ function SettingsPageInner() {
 
   // Used by the ?focus=phone effect to run the scroll+focus only once.
   const focusPhoneRanRef = useRef(false);
+  const tabsBarRef = useRef<HTMLDivElement>(null);
 
   // Logo upload
   const [uploadingLogo, setUploadingLogo] = useState(false);
@@ -702,6 +703,20 @@ function SettingsPageInner() {
     setTimeout(() => setSaved(false), 2500);
   }
 
+  // On a phone the tab bar overflows sideways: the last tabs (e.g. Novedades,
+  // reached from the home card) would start off-screen. Scroll the bar — not the
+  // page — so the active tab is always visible.
+  useEffect(() => {
+    const bar = tabsBarRef.current;
+    const active = bar?.querySelector<HTMLElement>(`[data-tab="${tab}"]`);
+    if (!bar || !active) return;
+    const overflowRight =
+      active.offsetLeft + active.offsetWidth - (bar.scrollLeft + bar.clientWidth);
+    const overflowLeft = bar.scrollLeft - active.offsetLeft;
+    if (overflowRight > 0) bar.scrollLeft += overflowRight + 4;
+    else if (overflowLeft > 0) bar.scrollLeft -= overflowLeft + 4;
+  }, [tab, bookingEnabled]);
+
   const tabs: { id: TabId; label: string; icon: any }[] = [
     { id: 'profile', label: 'Mi perfil', icon: User },
     { id: 'subscription', label: 'Suscripción', icon: CreditCard },
@@ -736,10 +751,14 @@ function SettingsPageInner() {
         </div>
 
         {/* Tabs */}
-        <div className="flex gap-1 bg-slate-100 rounded-xl p-1 overflow-x-auto no-scrollbar">
+        <div
+          ref={tabsBarRef}
+          className="flex gap-1 bg-slate-100 rounded-xl p-1 overflow-x-auto no-scrollbar"
+        >
           {tabs.map((t) => (
             <button
               key={t.id}
+              data-tab={t.id}
               onClick={() => setTab(t.id)}
               className={`shrink-0 flex items-center gap-1.5 px-3 sm:px-4 py-2 rounded-lg text-sm font-semibold transition-all ${tab === t.id ? 'bg-white text-teal-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
             >

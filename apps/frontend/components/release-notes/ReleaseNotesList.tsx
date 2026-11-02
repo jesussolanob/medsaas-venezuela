@@ -6,7 +6,7 @@
  */
 
 import { useEffect, useState } from 'react';
-import { Loader2, Megaphone, ImageOff } from 'lucide-react';
+import { Loader2, Megaphone } from 'lucide-react';
 import Image from 'next/image';
 import type { ReleaseNoteItem } from '@delta/shared-types';
 
@@ -159,13 +159,6 @@ export default function ReleaseNotesList() {
             </article>
           ))}
         </div>
-      )}
-
-      {/* Show empty image icon for notes without images */}
-      {!loading && !loadError && notes.length > 0 && notes.every((n) => !n.imageUrl) && (
-        <p className="text-center text-xs text-slate-400 mt-8 flex items-center justify-center gap-1">
-          <ImageOff className="w-3.5 h-3.5" /> Las novedades no incluyen imágenes aún.
-        </p>
       )}
     </div>
   );

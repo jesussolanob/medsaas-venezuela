@@ -26,13 +26,12 @@ export function ContactarYaButton({ className }: ContactarYaButtonProps) {
     <>
       {/* Pulse wrapper — disabled when user prefers reduced motion via media query */}
       <span className="relative inline-flex">
-        {/* Animated pulse ring. `animate-ping` scales it to 2x, so it spills over
-            the help icon next to it; being positioned, it paints above that icon
-            and swallowed its clicks. pointer-events-none keeps it purely visual. */}
+        {/* Animated pulse ring. Tailwind's animate-ping scales to 2x and spilled over
+            the help icon next to it, so it uses its own gentler keyframes (barely
+            wider, a bit taller). pointer-events-none keeps it purely visual. */}
         <span
-          className="pointer-events-none absolute inset-0 rounded-lg g-bg opacity-40 motion-safe:animate-ping"
+          className="contact-ya-pulse pointer-events-none absolute inset-0 rounded-lg g-bg"
           aria-hidden="true"
-          style={{ animationDuration: '2s' }}
         />
         <button
           type="button"
