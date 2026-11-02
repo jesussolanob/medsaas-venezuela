@@ -142,7 +142,7 @@ export default function HelpPage() {
                 para tu plan.
               </p>
               <Link
-                href="/doctor/release-notes"
+                href="/doctor/settings?tab=novedades"
                 className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium bg-teal-500 text-white rounded-lg hover:bg-teal-600 transition-colors"
               >
                 Ver novedades

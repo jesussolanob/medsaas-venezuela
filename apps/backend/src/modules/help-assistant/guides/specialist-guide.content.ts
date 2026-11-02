@@ -876,7 +876,9 @@ Cada novedad tiene fecha, titulo y una descripcion en texto plano. Pueden inclui
 Al entrar a Inicio (/doctor), si hay novedades que no has visto aparece automaticamente un modal
 llamado "Novedades". Solo aparece una vez por visita (si lo cierras sin pulsar "Entendido",
 vuelve a aparecer la proxima vez que entres).
-Tambien puedes ver el historial completo en Ayuda → Novedades.
+Tambien puedes ver el historial completo en cualquier momento desde:
+- **Configuracion → pestana Novedades** (/doctor/settings?tab=novedades).
+- La tarjeta **Actualizate con las novedades de la plataforma** en Inicio, que te lleva directo a esa pestana.
 
 **Como funciona el modal de Novedades?**
 El modal muestra las novedades mas recientes que aun no has visto (maximo 5 a la vez), de la mas
@@ -886,7 +888,7 @@ El boton "Entendido" cierra el modal y marca todas esas novedades como vistas. S
 modal de otra forma (sin pulsar "Entendido"), las novedades vuelven a aparecer la proxima visita.
 
 **Que es el historial de Novedades?**
-En la pantalla de Ayuda hay una seccion "Novedades" donde puedes ver todas las novedades publicadas
+En Configuracion, la pestana "Novedades" muestra todas las novedades publicadas
 para tu plan, ordenadas de la mas reciente a la mas antigua (limite: 50). Ahi puedes revisar
 cualquier novedad aunque ya la hayas marcado como vista.
 

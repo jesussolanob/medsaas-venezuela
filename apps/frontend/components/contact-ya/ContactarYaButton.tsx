@@ -26,9 +26,11 @@ export function ContactarYaButton({ className }: ContactarYaButtonProps) {
     <>
       {/* Pulse wrapper — disabled when user prefers reduced motion via media query */}
       <span className="relative inline-flex">
-        {/* Animated pulse ring */}
+        {/* Animated pulse ring. `animate-ping` scales it to 2x, so it spills over
+            the help icon next to it; being positioned, it paints above that icon
+            and swallowed its clicks. pointer-events-none keeps it purely visual. */}
         <span
-          className="absolute inset-0 rounded-lg g-bg opacity-40 motion-safe:animate-ping"
+          className="pointer-events-none absolute inset-0 rounded-lg g-bg opacity-40 motion-safe:animate-ping"
           aria-hidden="true"
           style={{ animationDuration: '2s' }}
         />

@@ -65,6 +65,7 @@ import { showToast } from '@/components/ui/Toaster';
 import { SetupStepper } from '@/components/doctor/SetupStepper';
 import { WelcomeModal } from '@/components/doctor/WelcomeModal';
 import ReleaseNotesModal from '@/components/release-notes/ReleaseNotesModal';
+import ReleaseNotesHomeLink from '@/components/release-notes/ReleaseNotesHomeLink';
 import MeetingInviteModal from '@/components/team-meetings/MeetingInviteModal';
 import UpcomingMeetingCard from '@/components/team-meetings/UpcomingMeetingCard';
 import { getDoctorPlanFeatures } from '@/app/doctor/plan-features-actions';
@@ -932,6 +933,8 @@ export default function DoctorDashboard() {
         {/* key: remounts (reloads) the card after the meeting modal closes, so a
             meeting booked there shows up without a page reload (QA, 30/10). */}
         <UpcomingMeetingCard key={meetingCardKey} />
+
+        <ReleaseNotesHomeLink />
 
         {/* Hero welcome card */}
         <div

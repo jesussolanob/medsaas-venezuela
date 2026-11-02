@@ -33,6 +33,7 @@ import {
   Smartphone,
   CreditCard,
   Lock,
+  Megaphone,
 } from 'lucide-react';
 import {
   loadSettingsProfile,
@@ -53,6 +54,7 @@ import AvatarUploader from './avatar-uploader';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import SubscriptionPanel from '@/components/doctor/SubscriptionPanel';
 import BookingQrCode from '@/components/doctor/BookingQrCode';
+import ReleaseNotesList from '@/components/release-notes/ReleaseNotesList';
 import { reportError } from '@/lib/report-error';
 import { validateBirthDate, maxBirthDateForMinAge } from '@/lib/date-validation';
 import { showToast } from '@/components/ui/Toaster';
@@ -178,7 +180,8 @@ type TabId =
   | 'subscription'
   | 'notifications'
   | 'integrations'
-  | 'assistants';
+  | 'assistants'
+  | 'novedades';
 
 function SettingsPageInner() {
   const searchParams = useSearchParams();
@@ -192,6 +195,7 @@ function SettingsPageInner() {
     'notifications',
     'integrations',
     'assistants',
+    'novedades',
   ];
   const rawTab = searchParams.get('tab') as TabId | null;
   const initialTab: TabId =
@@ -708,6 +712,7 @@ function SettingsPageInner() {
     // Descomentar cuando se implemente el módulo de notificaciones push/email.
     // { id: 'notifications', label: 'Notificaciones', icon: Bell },
     { id: 'integrations', label: 'Integraciones', icon: ExternalLink },
+    { id: 'novedades', label: 'Novedades', icon: Megaphone },
   ];
 
   return (
@@ -1881,6 +1886,9 @@ function SettingsPageInner() {
             )}
           </div>
         )}
+
+        {/* ---------------- NOVEDADES ---------------- */}
+        {tab === 'novedades' && <ReleaseNotesList />}
 
         {/* ---------------- INTEGRATIONS ---------------- */}
         {tab === 'integrations' && (
