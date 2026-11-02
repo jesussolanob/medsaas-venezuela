@@ -500,9 +500,9 @@ Permite pedirle al paciente que suba documentos (examenes, resultados, comproban
 
 ---
 
-### 6.19 Plantillas de contenido — /doctor/content-templates
+### 6.19 Plantillas de contenido — Plantillas → pestana Mis plantillas (/doctor/templates)
 
-Disponible en planes **Delta Base y Delta Plus** (y durante el periodo de prueba). Aparece en el menu como **Plantillas de contenido** (dentro de Consultorio o en la seccion de herramientas clinicas).
+Disponible en planes **Delta Base y Delta Plus** (y durante el periodo de prueba). Se entra por el menu **Plantillas** (/doctor/templates) y luego la pestana **Mis plantillas**. No tiene una pantalla propia en el menu.
 
 Permite guardar estructuras reutilizables para cuatro tipos de documento: **Recipe medico** (receta), **Paraclínicos** (examenes solicitados), **Reposo medico** y **Presupuesto**. Son privadas: solo las ve el especialista que las creo.
 
@@ -513,7 +513,7 @@ Permite guardar estructuras reutilizables para cuatro tipos de documento: **Reci
 - **Presupuesto:** lista de items con descripcion, cantidad y precio unitario (en USD). Cuando usas una plantilla de presupuesto para crear un presupuesto, los precios que se copian son los de la plantilla en ese momento — no se actualizan solos si cambias la plantilla despues.
 
 **Crear una plantilla:**
-1. En /doctor/content-templates pulsa **Nueva plantilla**.
+1. En Plantillas → pestana **Mis plantillas**, pulsa **Nueva plantilla**.
 2. Elige el tipo, escribe el nombre y completa los campos del contenido.
 3. Guarda. La plantilla queda disponible para usar en cualquier documento del mismo tipo.
 
@@ -809,7 +809,7 @@ Son las sesiones 2..N de un paquete de varias sesiones que el paciente ya compro
 Si. Desde **Solicitudes** (/doctor/patient-requests) crea una solicitud: el paciente recibe un correo con un enlace y un codigo de 6 digitos. Con eso abre la pagina, sube los archivos y escribe su respuesta, sin necesidad de registrarse en la plataforma.
 
 **Para que sirven las plantillas de contenido?**
-Las plantillas de contenido (/doctor/content-templates) guardan estructuras reutilizables para recipes, ordenes de paraclínicos, reposos y presupuestos. Cuando creas uno de esos documentos, puedes cargar una plantilla para no volver a escribir siempre los mismos medicamentos, examenes o items. Son privadas (solo las ves tu) y requieren plan Delta Base o Delta Plus.
+Las plantillas de contenido (menu Plantillas → pestana Mis plantillas) guardan estructuras reutilizables para recipes, ordenes de paraclínicos, reposos y presupuestos. Cuando creas uno de esos documentos, puedes cargar una plantilla para no volver a escribir siempre los mismos medicamentos, examenes o items. Son privadas (solo las ves tu) y requieren plan Delta Base o Delta Plus.
 
 **Puedo editar una plantilla de presupuesto y que se actualicen los presupuestos que ya use con ella?**
 No. Los presupuestos existentes conservan los precios que tenian cuando se creo el presupuesto. Cambiar la plantilla solo afecta los nuevos presupuestos que la usen a partir de ese momento.
