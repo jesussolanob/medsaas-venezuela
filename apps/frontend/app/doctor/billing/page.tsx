@@ -296,8 +296,6 @@ export default function BillingPage() {
     return (
       <>
         <style>{`
-          @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
-          * { font-family: 'Inter', sans-serif; }
           .g-bg{background:linear-gradient(135deg,#00C4CC 0%,#0891b2 100%)}
           .cta-btn { background: linear-gradient(135deg,#00C4CC 0%,#0891b2 100%); color: white; font-weight: 700; box-shadow: 0 4px 12px rgba(0, 196, 204, 0.3); }
           .cta-btn:hover { opacity: 0.95; box-shadow: 0 6px 16px rgba(0, 196, 204, 0.4); }
@@ -964,8 +962,6 @@ export default function BillingPage() {
   return (
     <>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
-        * { font-family: 'Inter', sans-serif; }
         .g-bg{background:linear-gradient(135deg,#00C4CC 0%,#0891b2 100%)}
         .cta-btn { background: linear-gradient(135deg,#00C4CC 0%,#0891b2 100%); color: white; font-weight: 700; box-shadow: 0 4px 12px rgba(0, 196, 204, 0.3); }
         .cta-btn:hover { opacity: 0.95; box-shadow: 0 6px 16px rgba(0, 196, 204, 0.4); }

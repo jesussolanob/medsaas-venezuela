@@ -349,11 +349,8 @@ export default function OnboardingPage() {
     'w-full px-3.5 py-2.5 rounded-xl border-2 border-slate-200 text-sm font-medium outline-none transition-all focus:border-cyan-400 bg-white';
 
   return (
-    <div
-      className="min-h-screen bg-slate-50 flex flex-col items-center justify-center px-6 py-12"
-      style={{ fontFamily: "'Inter', system-ui, sans-serif" }}
-    >
-      <style>{`@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');.g-bg{background:linear-gradient(135deg,#00C4CC 0%,#0891b2 100%)}.g-text{background:linear-gradient(135deg,#00C4CC 0%,#0891b2 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}`}</style>
+    <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center px-6 py-12">
+      <style>{`.g-bg{background:linear-gradient(135deg,#00C4CC 0%,#0891b2 100%)}.g-text{background:linear-gradient(135deg,#00C4CC 0%,#0891b2 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}`}</style>
 
       <div className="w-full max-w-md space-y-6">
         {/* Header */}

@@ -141,10 +141,7 @@ function DeferredSessionsModal({
 
   return (
     <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4">
-      <div
-        className="bg-white rounded-2xl w-full max-w-md shadow-2xl"
-        style={{ fontFamily: "'Inter', sans-serif" }}
-      >
+      <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl">
         {/* Header */}
         <div
           className="px-5 py-4 text-white rounded-t-2xl"
@@ -318,7 +315,6 @@ export default function NewAppointmentFlow({ open, onClose, onSuccess, initialCo
       <div
         className="bg-slate-50 rounded-2xl w-full max-w-2xl shadow-2xl max-h-[92vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
-        style={{ fontFamily: "'Inter', sans-serif" }}
       >
         {/* Header */}
         <div

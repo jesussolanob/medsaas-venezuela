@@ -717,7 +717,7 @@ function SettingsPageInner() {
 
   return (
     <>
-      <style>{`* { font-family: 'Inter', sans-serif; } .g-bg{background:linear-gradient(135deg,#00C4CC 0%,#0891b2 100%)}`}</style>
+      <style>{`.g-bg{background:linear-gradient(135deg,#00C4CC 0%,#0891b2 100%)}`}</style>
 
       <ConfirmDialog
         open={confirmRemoveSignature}
