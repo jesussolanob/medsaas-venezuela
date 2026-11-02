@@ -93,6 +93,7 @@ function buildUseCase({
 } = {}) {
   const profileRepo: jest.Mocked<IDoctorProfileForVerificationRepository> = {
     findById: jest.fn().mockResolvedValue(profile),
+    promoteToVerified: jest.fn().mockResolvedValue(undefined),
   };
 
   const verifierRepo: jest.Mocked<ICredentialVerifierRepository> = {
@@ -338,6 +339,121 @@ describe('VerifyMppsUseCase', () => {
       expect(verificationRepo.upsert).toHaveBeenCalledWith(
         expect.objectContaining({ status: 'pending', lastError: 'cedula not provided' }),
       );
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Profile promotion tests
+  // ---------------------------------------------------------------------------
+
+  describe('profile promotion — fresh verified', () => {
+    it('calls promoteToVerified after a fresh verified result', async () => {
+      const verifiedRecord = makeVerification('verified');
+      const { useCase, profileRepo } = buildUseCase({ upsertResult: verifiedRecord });
+
+      const result = await useCase.execute(DOCTOR_ID);
+
+      expect(result.status).toBe('verified');
+      expect(profileRepo.promoteToVerified).toHaveBeenCalledWith(DOCTOR_ID);
+    });
+
+    it('does not call promoteToVerified after a mismatch result', async () => {
+      const mismatchRecord = makeVerification('mismatch');
+      const { useCase, profileRepo } = buildUseCase({
+        portalResult: {
+          found: true,
+          name: 'OTRO NOMBRE',
+          professions: [],
+        },
+        upsertResult: mismatchRecord,
+      });
+
+      await useCase.execute(DOCTOR_ID);
+
+      expect(profileRepo.promoteToVerified).not.toHaveBeenCalled();
+    });
+
+    it('does not call promoteToVerified after a not_found result', async () => {
+      const notFoundRecord = makeVerification('not_found');
+      const { useCase, profileRepo } = buildUseCase({
+        portalResult: { found: false },
+        upsertResult: notFoundRecord,
+      });
+
+      await useCase.execute(DOCTOR_ID);
+
+      expect(profileRepo.promoteToVerified).not.toHaveBeenCalled();
+    });
+
+    it('still returns verified when promoteToVerified throws', async () => {
+      const verifiedRecord = makeVerification('verified');
+      const { useCase, profileRepo } = buildUseCase({ upsertResult: verifiedRecord });
+      profileRepo.promoteToVerified.mockRejectedValueOnce(new Error('DB error'));
+
+      const result = await useCase.execute(DOCTOR_ID);
+
+      expect(result.status).toBe('verified');
+    });
+  });
+
+  describe('profile promotion — cached path', () => {
+    it('promotes profile and skips SACS when cached MPPS matches current MPPS', async () => {
+      const verifiedRecord = makeVerification('verified');
+      const { useCase, mppsPort, profileRepo } = buildUseCase({
+        existingVerification: verifiedRecord,
+        upsertResult: verifiedRecord,
+        // profile.mppsNumber = 'MPPS-12345', verifiedRecord.declaredValue = 'MPPS-12345'
+      });
+
+      const result = await useCase.execute(DOCTOR_ID);
+
+      expect(result.status).toBe('verified');
+      expect(mppsPort.queryByCedula).not.toHaveBeenCalled();
+      expect(profileRepo.promoteToVerified).toHaveBeenCalledWith(DOCTOR_ID);
+    });
+
+    it('re-queries SACS when cached MPPS differs from current profile MPPS', async () => {
+      // Cached verification was for 'MPPS-12345' but doctor now declares 'MPPS-99999'
+      const verifiedRecord = makeVerification('verified');
+      // makeVerification sets declaredValue = 'MPPS-12345'
+      const { useCase, mppsPort } = buildUseCase({
+        existingVerification: verifiedRecord,
+        profile: {
+          id: DOCTOR_ID,
+          cedula: '12345678',
+          mppsNumber: 'MPPS-99999', // different from cached 'MPPS-12345'
+          fullName: 'JOSE GARCIA',
+        },
+        // portal returns not-found for the changed number
+        portalResult: { found: false },
+        upsertResult: makeVerification('not_found'),
+      });
+
+      const result = await useCase.execute(DOCTOR_ID);
+
+      expect(mppsPort.queryByCedula).toHaveBeenCalledTimes(1);
+      expect(result.status).toBe('not_found');
+    });
+
+    it('re-queries SACS when cached declaredValue has no numeric content', async () => {
+      // Edge: declaredValue is empty/null in the cached row
+      const verifiedRecordNoMpps = makeVerification('verified');
+      // Override declaredValue to empty by creating a custom record
+      const emptyDeclaredRecord = {
+        ...verifiedRecordNoMpps,
+        declaredValue: null,
+        isVerified: () => true,
+      };
+
+      const { useCase, mppsPort } = buildUseCase({
+        existingVerification: emptyDeclaredRecord as ReturnType<typeof makeVerification>,
+        upsertResult: makeVerification('verified'),
+      });
+
+      await useCase.execute(DOCTOR_ID);
+
+      // cachedMpps.length === 0 → falls through to SACS
+      expect(mppsPort.queryByCedula).toHaveBeenCalledTimes(1);
     });
   });
 });

@@ -386,9 +386,17 @@ pendientes, se muestra un aviso con la cantidad.
 (Pendiente, Verificado, Rechazado), email, cédula, MPPS, colegiado.
 
 **Verificación automática de MPPS (contra SACS):**
-- Junto al número MPPS hay un botón **Verificar MPPS** (o **Re-verificar MPPS** si ya se intentó).
-- Al pulsarlo, el sistema consulta el portal SACS por la cédula del especialista y devuelve un resultado
-  visible como insignia:
+- Cuando un especialista completa su registro, el sistema consulta automáticamente el portal SACS
+  con su cédula. Si el número MPPS declarado coincide (nombre + MPPS + profesión médica), el
+  especialista pasa directamente a **Verificado** sin que ningún admin intervenga. En su tarjeta
+  aparece la insignia **"Auto · MPPS"** junto al estado, para indicar que fue verificado de forma
+  automática y no manualmente.
+- Los especialistas cuyo MPPS **no coincide** o **no se encuentra** en SACS quedan en
+  **Pendiente** para que el admin los revise manualmente.
+- Un especialista **Rechazado** por un admin nunca es promovido automáticamente por SACS,
+  incluso si luego el portal lo confirma: la decisión del admin prevalece.
+- Junto al número MPPS hay un botón **Verificar MPPS** (o **Re-verificar MPPS** si ya se intentó)
+  para lanzar la consulta manualmente o forzar una nueva verificación:
   - **MPPS verificado** (verde): el número coincide en SACS.
   - **MPPS no coincide** (ámbar): el número declarado no coincide con SACS; muestra detalle.
   - **No encontrado en SACS** (gris): no se halló el registro.
@@ -412,9 +420,10 @@ un control de acceso de cuenta independiente de la verificación:
 
 1. Entra a **Verificaciones** (/admin/verifications) y quédate en **Pendientes**.
 2. Ubica la tarjeta del especialista.
-3. Para el **MPPS (automático):** pulsa **Verificar MPPS**. Espera el resultado (insignia). Si dice
-   "MPPS verificado", su número es legítimo según SACS. Si dice "no coincide" o "no encontrado",
-   revisa el dato manualmente.
+3. Para el **MPPS (automático):** el sistema ya pudo haberlo verificado al registrarse. Si la
+   insignia dice "MPPS verificado" y ves "Auto · MPPS" en el estado, el proceso fue automático.
+   Si no, pulsa **Verificar MPPS** manualmente. Si dice "no coincide" o "no encontrado", revisa
+   el dato con el especialista antes de aprobarlo.
 4. Para el **colegiado (manual):** no hay verificador automático. Confirma el número con la fuente
    correspondiente por tu cuenta.
 5. Cuando estés conforme, pulsa **Verificar** para aprobar al especialista, o **Rechazar** si las
@@ -866,7 +875,9 @@ No. Rechazar la verificación es una marca sobre sus credenciales y en Etapa 1 N
 acceso. Bloquear acceso sí le impide entrar.
 
 **¿Cómo verifico el MPPS de un especialista?**
-En /admin/verifications, en la tarjeta del especialista pulsa Verificar MPPS. El sistema consulta el
+Si el especialista ya registró su cédula y MPPS, es posible que el sistema lo haya verificado
+automáticamente al registrarse (verás "Auto · MPPS" en su estado). Si aún aparece Pendiente,
+en /admin/verifications, en la tarjeta del especialista pulsa Verificar MPPS. El sistema consulta el
 portal SACS por su cédula y muestra el resultado. El colegiado se verifica de forma manual.
 
 **¿Dónde cambio el precio de un plan?**

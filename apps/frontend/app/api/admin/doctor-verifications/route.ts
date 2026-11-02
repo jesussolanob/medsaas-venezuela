@@ -32,6 +32,12 @@ export interface VerificationItem {
   isActive: boolean;
   /** Quién la apagó: 'self' (se dio de baja) | 'admin' (bloqueo) | null. */
   deactivatedBy: string | null;
+  /**
+   * UUID del admin que verificó manualmente, o null si fue verificado de forma
+   * automática por el cotejo SACS/MPPS. Solo significativo cuando
+   * verificationStatus === 'verified'.
+   */
+  verifiedBy: string | null;
   createdAt: string;
 }
 

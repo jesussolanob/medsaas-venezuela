@@ -56,6 +56,12 @@ export interface VerificationListItemDto {
   /** Whether the account is active. false means the account is hard-banned by super_admin. */
   isActive: boolean;
   deactivatedBy: string | null;
+  /**
+   * UUID of the admin who verified this doctor, or null when verified
+   * automatically by the SACS MPPS check (system-automated verification).
+   * Only meaningful when verificationStatus === 'verified'.
+   */
+  verifiedBy: string | null;
   createdAt: Date;
 }
 
@@ -70,6 +76,7 @@ function toVerificationListItem(entity: DoctorRegistration): VerificationListIte
     verificationStatus: entity.verificationStatus,
     isActive: entity.isActive,
     deactivatedBy: entity.deactivatedBy,
+    verifiedBy: entity.verifiedBy,
     createdAt: entity.createdAt,
   };
 }

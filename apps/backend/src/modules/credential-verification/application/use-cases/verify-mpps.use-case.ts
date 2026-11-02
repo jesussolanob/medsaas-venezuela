@@ -107,8 +107,33 @@ export class VerifyMppsUseCase {
     if (!force) {
       const existing = await this.verificationRepo.findByDoctorAndType(doctorId, CREDENTIAL_TYPE);
       if (existing?.isVerified()) {
-        this.logger.log(`[verify-mpps] doctorId=${doctorId} already verified — returning cached`);
-        return this.toOutput(doctorId, existing.status, existing.attempts, existing.checkedAt);
+        // Validate the cache is still current: compare the normalized MPPS that was
+        // verified against the doctor's current declared MPPS.  If the doctor updated
+        // their MPPS number since the last check, the cache is stale — fall through to
+        // re-query SACS so the new number is verified against the portal.
+        //
+        // NOTE: cédula changes cannot be detected from the cache alone because
+        // credential_verifications does not store the cédula used at verification time.
+        // A cédula change is uncommon; if it happens the admin can force a re-check.
+        const cachedMpps = normalizeMpps(existing.declaredValue ?? '');
+        const currentMpps = normalizeMpps(profile.mppsNumber ?? '');
+        if (cachedMpps.length > 0 && cachedMpps === currentMpps) {
+          this.logger.log(`[verify-mpps] doctorId=${doctorId} already verified — returning cached`);
+          // Promote the profile if it is still pending (e.g. the system restarted
+          // before promotion completed, or this is the backfill path).
+          try {
+            await this.profileRepo.promoteToVerified(doctorId);
+          } catch {
+            this.logger.error(
+              `[verify-mpps] doctorId=${doctorId} cached-path profile promotion failed`,
+            );
+          }
+          return this.toOutput(doctorId, existing.status, existing.attempts, existing.checkedAt);
+        }
+        // MPPS changed or cache has no numeric content — fall through to re-query SACS.
+        this.logger.log(
+          `[verify-mpps] doctorId=${doctorId} cached verified but MPPS changed — re-querying SACS`,
+        );
       }
     }
 
@@ -220,6 +245,19 @@ export class VerifyMppsUseCase {
     this.logger.log(
       `[verify-mpps] doctorId=${doctorId} status=verified attempts=${saved.attempts}`,
     );
+
+    // Promote the profile's verification_status to 'verified'.
+    // Only takes effect when the profile is currently 'pending' — 'rejected'
+    // (admin decision) is never overridden.  A failure here must not convert a
+    // successful SACS verification into an error; catch and log only.
+    try {
+      await this.profileRepo.promoteToVerified(doctorId);
+    } catch {
+      this.logger.error(
+        `[verify-mpps] doctorId=${doctorId} profile promotion failed — credential verified but profile status unchanged`,
+      );
+    }
+
     return this.toOutput(doctorId, saved.status, saved.attempts, saved.checkedAt);
   }
 

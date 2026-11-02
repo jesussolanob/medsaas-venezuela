@@ -79,11 +79,13 @@ Despues de activar tu cuenta, el equipo de Delta verifica tus credenciales profe
 
 **Estados de verificacion que puede tener tu cuenta:**
 
-- **Pendiente:** tu registro fue recibido y aun no se ha verificado. Es el estado inicial tras el onboarding.
-- **Verificado / valido:** tus credenciales fueron confirmadas correctamente.
-- **No verificado / invalido:** no se logro confirmar tus credenciales. En ese caso, el equipo Delta se comunica contigo por tu correo.
+- **Pendiente:** tu registro fue recibido y aun no se ha verificado. Es el estado inicial tras el onboarding. Si cargaste cedula y MPPS correctamente, el sistema intenta verificarte automaticamente contra el portal SACS al registrarte; si coinciden, pasas a Verificado sin esperar al admin.
+- **Verificado / valido:** tus credenciales fueron confirmadas. Puede haber ocurrido de dos formas: automaticamente por el sistema (cuando el MPPS coincidio en SACS) o manualmente por el equipo administrador de Delta.
+- **No verificado / invalido (Rechazado):** no se logro confirmar tus credenciales. En ese caso, el equipo Delta se comunica contigo por tu correo para indicarte los pasos a seguir. Esta marca no bloquea tu acceso en la etapa actual.
 
 La cedula es obligatoria precisamente porque se usa para esta verificacion y, ademas, para compartir documentos con pacientes de forma segura.
+
+**Importante:** si actualizas tu numero MPPS despues del registro, el sistema volvera a verificarlo contra SACS con el nuevo valor.
 
 **Bloqueo de cuenta (distinto de la verificacion):** un administrador puede bloquear tu cuenta por separado. Si tu cuenta esta bloqueada, al usar cualquier funcion veras una pantalla completa **Cuenta bloqueada** con el mensaje: 'Tu cuenta ha sido bloqueada por el administrador. Para restablecer el acceso, comunicate con el soporte de Delta Salud.' y un boton **Cerrar sesion**. Esto es independiente de tu plan y de la verificacion.
 
