@@ -35,6 +35,7 @@ import { resolveIdentity } from '@/lib/identity.server';
 import { log } from '@/lib/logger';
 import { toLocalYMD, caracasToISO } from '@/lib/timezone';
 import { getDoctorProfile } from '@/app/doctor/actions';
+import { getDoctorPlanFeatures } from '@/app/doctor/plan-features-actions';
 
 // ---------------------------------------------------------------------------
 // Re-export profile (already migrated in shared actions.ts)
@@ -352,4 +353,58 @@ export async function getPastUnconfirmedAppointments(): Promise<PastUnconfirmedR
     );
 
   return { items, total: page.total };
+}
+
+// ---------------------------------------------------------------------------
+// Whole dashboard in one round-trip
+// ---------------------------------------------------------------------------
+
+/** Everything the doctor home needs, fetched together. */
+export type DashboardData = {
+  profile: Awaited<ReturnType<typeof getDoctorProfile>>;
+  todayAppointments: DashboardAppointment[];
+  financeSummary: DashboardFinanceSummary | null;
+  allTimeStats: DashboardAllTimeStats;
+  scheduledAppointments: ScheduledAppointment[];
+  pastUnconfirmed: PastUnconfirmedResult;
+  planFeatures: Awaited<ReturnType<typeof getDoctorPlanFeatures>>;
+};
+
+/**
+ * Loads the whole doctor home in a SINGLE server action.
+ *
+ * Next.js runs client-invoked server actions one at a time, so calling the seven
+ * loaders separately from the page took ~7 sequential round-trips (~4-5 s on
+ * Cloud Run): after confirming or creating an appointment, "Citas del Día" looked
+ * stale long enough for doctors to reload the page. Here they run in parallel on
+ * the server and the client waits for one round-trip.
+ */
+export async function getDashboardData(month: string): Promise<DashboardData> {
+  const [
+    profile,
+    todayAppointments,
+    financeSummary,
+    allTimeStats,
+    scheduledAppointments,
+    pastUnconfirmed,
+    planFeatures,
+  ] = await Promise.all([
+    getDoctorProfile(),
+    getTodayAppointments(),
+    getDashboardFinanceSummary(month),
+    getDashboardAllTimeStats(),
+    getScheduledAppointments(),
+    getPastUnconfirmedAppointments(),
+    getDoctorPlanFeatures(),
+  ]);
+
+  return {
+    profile,
+    todayAppointments,
+    financeSummary,
+    allTimeStats,
+    scheduledAppointments,
+    pastUnconfirmed,
+    planFeatures,
+  };
 }
