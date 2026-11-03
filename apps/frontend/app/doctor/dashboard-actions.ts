@@ -30,7 +30,7 @@
 
 import 'server-only';
 
-import { backendGet } from '@/lib/api-client.server';
+import { backendGet, backendGetPaged } from '@/lib/api-client.server';
 import { resolveIdentity } from '@/lib/identity.server';
 import { log } from '@/lib/logger';
 import { toLocalYMD, caracasToISO } from '@/lib/timezone';
@@ -49,6 +49,8 @@ export { getDoctorProfile };
 /** Appointment shape returned by the backend list endpoint. */
 export interface DashboardAppointment {
   id: string;
+  /** UUID of the registered patient — null for anonymous bookings. Never masked. */
+  patientId: string | null;
   /** PII-masked patient name e.g. "Juan R." */
   patientName: string | null;
   scheduledAt: string;
@@ -130,6 +132,8 @@ async function countFromEndpoint(path: string): Promise<number> {
 /** Raw appointment item shape from the backend list response (camelCase from entity). */
 interface BackendAppointmentItem {
   id: string;
+  /** UUID of the registered patient record — null for anonymous bookings. */
+  patientId: string | null;
   patientName: string | null;
   scheduledAt: string;
   status: string;
@@ -166,6 +170,7 @@ export async function getTodayAppointments(): Promise<DashboardAppointment[]> {
     .filter((a) => VISIBLE_STATUSES.has(a.status))
     .map((a) => ({
       id: a.id,
+      patientId: a.patientId ?? null,
       patientName: a.patientName ?? null,
       scheduledAt: a.scheduledAt,
       status: a.status,
@@ -229,18 +234,24 @@ export async function getDashboardAllTimeStats(): Promise<DashboardAllTimeStats>
  */
 export type ScheduledAppointment = {
   id: string;
+  /** UUID of the registered patient — used to detect duplicate bookings. */
+  patientId: string | null;
   patientName: string | null;
   scheduledAt: string;
 };
 
 /**
- * Fetch appointments with status=scheduled (pending doctor confirmation).
- * Returns up to 5, ordered ascending by scheduledAt.
+ * Fetch appointments with status=scheduled (pending doctor confirmation),
+ * scoped to TODAY onwards (America/Caracas).
+ * Returns up to 20, ordered ascending by scheduledAt.
  * Used by the "Por confirmar" widget on the dashboard.
  */
 export async function getScheduledAppointments(): Promise<ScheduledAppointment[]> {
+  const todayYmd = toLocalYMD(new Date());
+  const dateFrom = caracasToISO(todayYmd, '00:00'); // appointments from today's start
+
   const result = await backendGet<BackendAppointmentItem[]>(
-    '/api/appointments?status=scheduled&page=1&limit=5',
+    `/api/appointments?status=scheduled&date_from=${encodeURIComponent(dateFrom)}&page=1&limit=20`,
   );
 
   if (!result.ok) {
@@ -258,8 +269,87 @@ export async function getScheduledAppointments(): Promise<ScheduledAppointment[]
     .map(
       (a): ScheduledAppointment => ({
         id: a.id,
+        patientId: a.patientId ?? null,
         patientName: a.patientName ?? null,
         scheduledAt: a.scheduledAt,
       }),
     );
+}
+
+// ---------------------------------------------------------------------------
+// Past unconfirmed appointments (widget "¿La atendiste?")
+// ---------------------------------------------------------------------------
+
+/**
+ * Minimal shape for the "¿La atendiste?" dashboard widget.
+ * Appointments that were scheduled before today and never confirmed/completed.
+ */
+export type PastUnconfirmedAppointment = {
+  id: string;
+  patientId: string | null;
+  patientName: string | null;
+  scheduledAt: string;
+};
+
+/** Result of the "¿La atendiste?" query: the most recent rows plus the real total. */
+export type PastUnconfirmedResult = {
+  items: PastUnconfirmedAppointment[];
+  total: number;
+};
+
+const PAST_UNCONFIRMED_PAGE_SIZE = 100; // backend caps `limit` at 100
+
+/**
+ * Fetch appointments with status=scheduled whose scheduledAt is BEFORE today
+ * (America/Caracas), most recent first, plus the total count.
+ *
+ * The backend only sorts ascending, so page 1 holds the OLDEST rows. When there
+ * are more rows than one page, the last page is requested instead so the widget
+ * always shows the most recent ones.
+ */
+export async function getPastUnconfirmedAppointments(): Promise<PastUnconfirmedResult> {
+  // Today's start in Caracas; the backend's date_to is inclusive, so subtract 1 ms.
+  const todayStart = caracasToISO(toLocalYMD(new Date()), '00:00');
+  const dateTo = new Date(new Date(todayStart).getTime() - 1).toISOString();
+  const basePath = `/api/appointments?status=scheduled&date_to=${encodeURIComponent(dateTo)}&limit=${PAST_UNCONFIRMED_PAGE_SIZE}`;
+
+  const firstPage = await backendGetPaged<BackendAppointmentItem>(`${basePath}&page=1`);
+  if (!firstPage.ok) {
+    log.error('[getPastUnconfirmedAppointments] backend error', {
+      code: firstPage.error.code,
+      status: firstPage.error.status,
+    });
+    return { items: [], total: 0 };
+  }
+
+  let page = firstPage.value;
+  if (page.total > PAST_UNCONFIRMED_PAGE_SIZE) {
+    const lastPage = Math.ceil(page.total / PAST_UNCONFIRMED_PAGE_SIZE);
+    const lastResult = await backendGetPaged<BackendAppointmentItem>(
+      `${basePath}&page=${lastPage}`,
+    );
+    // Fall back to page 1 (older rows, still actionable) if the last page fails or
+    // came back empty because rows were resolved between the two requests.
+    if (lastResult.ok && lastResult.value.items.length > 0) {
+      page = lastResult.value;
+    } else if (!lastResult.ok) {
+      log.error('[getPastUnconfirmedAppointments] last page error', {
+        code: lastResult.error.code,
+        status: lastResult.error.status,
+      });
+    }
+  }
+
+  const items = [...page.items]
+    .sort((a, b) => new Date(b.scheduledAt).getTime() - new Date(a.scheduledAt).getTime())
+    .map(
+      (a): PastUnconfirmedAppointment => ({
+        id: a.id,
+        patientId: a.patientId ?? null,
+        patientName: a.patientName ?? null,
+        scheduledAt: a.scheduledAt,
+      }),
+    );
+
+  return { items, total: page.total };
 }

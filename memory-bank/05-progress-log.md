@@ -4,6 +4,35 @@
 > ⚠️ Orden: **la entrada más nueva va ARRIBA**. La del 2026-08-11 quedó al final
 > del archivo por error; no se movió para no ensuciar el diff.
 
+## 2026-11-03 — Inicio: citas pasadas, Atendida/No asistió y refresco (`feature/inicio-citas`)
+
+> Sale de la reunión "Check In - Delta Salud" del 02/11 (notas de Gemini). Solo lo que quedó
+> decidido; el código único, los motivos de consulta configurables, el perfil de clínica y los
+> recordatorios por WhatsApp (van con Chatwoot) quedan fuera a propósito.
+
+1. **"Por confirmar" mostraba las 5 citas MÁS VIEJAS**: pedía `status=scheduled` sin fecha y el
+   backend ordena ASC. Ahora `date_from` = hoy 00:00 Caracas.
+2. **Sección nueva "¿La atendiste?"** (`components/doctor/PastUnconfirmedWidget.tsx`): citas
+   `scheduled` de días pasados, más recientes primero, con total real (`backendGetPaged`; si hay
+   más de 100 pide la última página y cae a la primera si falla). Atendida / No asistió / Cancelar.
+   No se borra nada y no hay proceso automático: marcar "No asistió" solo una consulta atendida y
+   no cobrada haría perder el ingreso sin que nadie lo vea.
+3. **AppointmentDetailModal**: Atendida y No asistió cuando la hora ya llegó (scheduled|confirmed);
+   "Confirmar" se oculta para citas pasadas.
+4. **"Atendida" sin cita vinculada no se guardaba y no avisaba** (`updateConsultaStatus`): ahora
+   avisa y no cambia la pantalla; revierte si falla el PUT.
+5. **Consulta inmediata duplicaba la cita**: si el paciente ya tenía cita hoy se creaba otra y la
+   original quedaba eterna en "Por confirmar" (causa más probable del reporte de Paola). Ahora avisa
+   y ofrece abrir esa cita.
+6. **Citas del Día** sube debajo de la cita en curso; Finanzas a ancho completo.
+7. **Refresco del Inicio**: guarda contra respuestas viejas en el `useEffect` (`isStale`) y
+   `router.refresh()` antes de navegar a la consulta. ⚠️ La causa del "no aparece hasta recargar"
+   **no se confirmó leyendo código** (confirmar ya refrescaba): pendiente reproducir en staging.
+
+Verificado: tsc 0, build frontend 0, lint sin errores nuevos (los de `page.tsx` y
+`ConsultationsClient.tsx` son preexistentes), tests de help-assistant 77/77. Guía del especialista
+actualizada (Inicio, detalle de cita, Consulta Inmediata).
+
 ## 2026-11-02/03 — Lote en staging: novedades, una sola fuente, vendedores, MPPS y sesión de 5 días
 
 > Todo en `feature/retencion` → `develop` → `staging`. **Nada de esto está en `main`.** Al
