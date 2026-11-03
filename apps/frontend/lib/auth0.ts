@@ -38,8 +38,15 @@ const secret = requireEnv('AUTH0_SECRET');
 const appBaseUrl =
   process.env.AUTH0_BASE_URL ?? process.env.APP_BASE_URL ?? 'http://localhost:3000';
 
-/** Session lifetime: 8 hours absolute, after which the user must log in again. */
-const SESSION_MAX_AGE_SECONDS = 60 * 60 * 8;
+/**
+ * Session lifetime: 5 days absolute, after which the user must log in again.
+ *
+ * ⚠️ The backend validates the Auth0 ID TOKEN (exp included) on every request and
+ * there is no refresh token. The Auth0 application's "ID Token Expiration" must be
+ * ≥ this value (432000 s), or the cookie outlives the token and every backend call
+ * returns 401 while the user still looks logged in. Keep proxy.ts in sync.
+ */
+export const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 5;
 
 export const auth0 = new Auth0Client({
   domain,
@@ -55,7 +62,7 @@ export const auth0 = new Auth0Client({
     // sin pedir credenciales. Requisito: si se cerró la sesión, se ingresa todo de nuevo.
     prompt: 'login',
   },
-  // Cap the session at 8h (absolute). rolling=false → it does not extend on activity.
+  // Cap the session at 5 days (absolute). rolling=false → it does not extend on activity.
   session: {
     rolling: false,
     absoluteDuration: SESSION_MAX_AGE_SECONDS,
