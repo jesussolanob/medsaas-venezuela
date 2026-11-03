@@ -1174,3 +1174,12 @@ de inventario SÍ cierra: es de solo lectura.
 **Convenciones nuevas:** ninguna página puede fijar `font-family` global ni importar Google Fonts
 (la app usa solo Plus Jakarta Sans vía `next/font`, tokens `--dh-font-*`); la columna `flex-1` de
 los layouts lleva `min-w-0` para que las tablas anchas no desborden la página.
+
+## Lote Inicio-citas (2026-11-03)
+
+| Archivo                                                                | Qué hace                                                                                                    |
+| ---------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `components/doctor/PastUnconfirmedWidget.tsx`                          | Sección "¿La atendiste?" del Inicio: citas `scheduled` de días pasados con Atendida / No asistió / Cancelar |
+| `app/doctor/dashboard-actions.ts` → `getPastUnconfirmedAppointments()` | Citas pasadas sin confirmar, más recientes primero + total real (`backendGetPaged`)                         |
+| `components/doctor/AppointmentDetailModal.tsx`                         | Atendida / No asistió cuando la cita ya llegó                                                               |
+| `components/doctor/ImmediateConsultationModal.tsx`                     | Aviso si el paciente ya tiene cita hoy; `onOpenExistingAppointment` abre su detalle                         |

@@ -183,9 +183,14 @@ Es tu panel de control. Contiene:
 - **Tarjeta guia para configurar plantillas:** si aun no subiste tu **logo** o tu **firma**, aparece en el inicio una tarjeta que te invita a configurar tus plantillas (logo, firma, sello). Desaparece cuando ya subiste tu logo y firma.
 - **Cita actual o proxima** destacada, con el paciente y la hora. Al pulsarla te lleva a **Abrir consulta** (si ya existe la consulta) o a **Ver agenda**.
 - **Acciones rapidas** (botones en el encabezado de bienvenida): **Ver Pacientes**, **Ver Agenda**, **Crear Consulta** (abre el flujo de nueva consulta, un modal tipo acordeon con varios pasos que tambien agenda la cita) y **Crear Paciente** (abre el formulario de paciente en un modal).
+- **Consulta Inmediata** (boton en el encabezado de bienvenida): para el paciente que llega **sin cita**; registra la consulta con la hora actual. Si el paciente que eliges **ya tiene una cita hoy** (Agendada o Confirmada), aparece un aviso '<nombre> ya tiene una cita hoy a las HH:MM' con el boton **Ir a esa cita**, que abre el detalle de esa cita (desde ahi: Ir a consulta, Atendida, etc.): usalo para atender esa cita en vez de crear otra (si creas una nueva, la cita original queda pendiente). Puedes seguir y crear una nueva igual.
 - **Acciones rapidas de finanzas** (en la tarjeta de resumen financiero): **Registrar pago** (abre un modal con los cobros pendientes para aprobarlos) y **Registrar gasto** (abre un modal para anotar un gasto: categoria, monto, moneda, nota).
 - **Resumen financiero del mes:** Ingresos, Gastos y Neto (puede ser negativo), en USD y su equivalente en bolivares.
-- **Citas del Día:** lista con la hora, el paciente y el estado de cada cita de hoy (si no hay, 'No hay citas programadas para hoy').
+- **Citas del Día:** justo debajo de la cita actual o proxima. Lista con la hora, el paciente y el estado de cada cita de hoy (si no hay, 'No hay citas programadas para hoy'). Se actualiza sola cuando confirmas, creas o cambias algo desde los modales del Inicio.
+- **Por confirmar:** citas **Agendadas** de hoy en adelante que todavia no confirmaste, con el boton **Confirmar**. Las citas de dias pasados ya no aparecen aqui.
+- **¿La atendiste?:** citas de **dias pasados** que quedaron **Agendadas** sin confirmar. Cada una tiene **Atendida**, **No asistio** y **Cancelar** para indicar que paso (no se borra nada; cancelar no es posible si el pago ya esta aprobado). Al pulsar la cita se abre su detalle. Si no hay ninguna, la seccion no aparece.
+
+Orden del Inicio: saludo y acciones rapidas → cita actual o proxima → Citas del Día → Por confirmar → ¿La atendiste? → indicadores (KPIs) → resumen financiero del mes.
 
 Si tu plan no incluye finanzas, esa seccion no se muestra. Los KPIs se calculan en tiempo real cada vez que abres el dashboard.
 
@@ -201,7 +206,8 @@ Calendario visual de tus citas. (Requiere plan Base o Plus.)
 - **Detalles de cita** (al pulsar una cita): muestra paciente, hora, modalidad, plan, motivo y estado. Botones disponibles:
   - **Confirmar cita** (cuando esta Agendada): pasa la cita a Confirmada.
   - **Cancelar cita** (cuando esta Agendada o Confirmada): pide una razon opcional; si la cita usaba un paquete prepagado, la sesion se restituye.
-  - **Ir a consulta**: abre la consulta de esa cita. El estado de la consulta (atendida / no asistio) y el pago se gestionan DENTRO de la consulta, no desde la agenda.
+  - **Atendida** y **No asistio** (solo cuando la hora de la cita ya llego o paso, y la cita esta Agendada o Confirmada): cierran la cita directamente, sin entrar a la consulta. Para una cita que ya paso no se ofrece **Confirmar cita**: se marca Atendida o No asistio.
+  - **Ir a consulta**: abre la consulta de esa cita. El pago se gestiona DENTRO de la consulta. Desde la consulta tambien puedes marcar **Atendida** o **No asistio**.
   - Para citas online con Google Meet: boton **Abrir Meet**.
 
 Estados de una cita: Agendada (recien creada), Confirmada (la confirmaste), Atendida/completada (el paciente asistio), No asistio, Cancelada/rechazada. Todo cambio de estado queda auditado automaticamente.
@@ -575,7 +581,7 @@ En Delta no existe un boton 'Crear Cita' aparte: la cita se agenda como parte de
 4. Selecciona el **consultorio y la modalidad** (presencial u online).
 5. Indica el **motivo** y el **plan de consulta** (tarifa) y, si aplica, el metodo de pago.
 6. Pulsa **Crear consulta**. La cita queda en estado **Agendada**.
-7. Despues, desde Agenda, abre la cita y pulsa **Confirmar cita**. Para marcarla **Atendida** o **No asistio**, entra a la consulta con **Ir a consulta** (esos estados se gestionan dentro de la consulta, no en la agenda).
+7. Despues, desde Agenda o Inicio, abre la cita y pulsa **Confirmar cita**. Cuando llega la hora, puedes marcarla **Atendida** o **No asistio** desde el mismo detalle de la cita o desde la consulta (**Ir a consulta**).
 
 Si conectaste Google Calendar y la cita es online, se crea automaticamente el evento con link de Google Meet.
 

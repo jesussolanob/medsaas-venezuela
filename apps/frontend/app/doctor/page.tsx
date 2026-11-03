@@ -83,8 +83,11 @@ import {
   getDashboardFinanceSummary,
   getDashboardAllTimeStats,
   getScheduledAppointments,
+  getPastUnconfirmedAppointments,
   type ScheduledAppointment,
+  type PastUnconfirmedResult,
 } from '@/app/doctor/dashboard-actions';
+import PastUnconfirmedWidget from '@/components/doctor/PastUnconfirmedWidget';
 
 type Profile = {
   full_name: string;
@@ -106,6 +109,8 @@ type Profile = {
 
 type Appointment = {
   id: string;
+  /** UUID of the registered patient — null for anonymous bookings. Never masked. */
+  patientId: string | null;
   patient_name: string;
   scheduled_at: string;
   status: string;
@@ -222,6 +227,11 @@ export default function DoctorDashboard() {
   // "Por confirmar" widget — citas con status=scheduled pendientes de confirmación.
   const [scheduledAppointments, setScheduledAppointments] = useState<ScheduledAppointment[]>([]);
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
+  // "¿La atendiste?" widget — citas con status=scheduled cuya fecha ya pasó.
+  const [pastUnconfirmed, setPastUnconfirmed] = useState<PastUnconfirmedResult>({
+    items: [],
+    total: 0,
+  });
   // Cita seleccionada para ver detalle en AppointmentDetailModal.
   const [detailApptId, setDetailApptId] = useState<string | null>(null);
   // Target for RescheduleModal (emitted by AppointmentDetailModal.onReschedule).
@@ -288,20 +298,27 @@ export default function DoctorDashboard() {
   // vuelva a pedir los datos y las tarjetas no queden viejas. Mismo patron que
   // /doctor/finances. `loading` solo pasa a false, asi que refrescar no parpadea.
   useEffect(() => {
+    // A newer refresh (refreshKey bump) supersedes this one: its responses must not
+    // overwrite the fresher data when they arrive late.
+    let isStale = false;
+
     async function fetchData() {
       try {
         // Build 'YYYY-MM' string for the selected month.
         const monthStr = `${selectedMonth.year}-${String(selectedMonth.month + 1).padStart(2, '0')}`;
 
         // Fetch all independent data in parallel for performance.
-        const [prof, appts, financeSummary, allTimeData, scheduled, planFeat] = await Promise.all([
-          getDoctorProfile(),
-          getTodayAppointments(),
-          getDashboardFinanceSummary(monthStr),
-          getDashboardAllTimeStats(),
-          getScheduledAppointments(),
-          getDoctorPlanFeatures(),
-        ]);
+        const [prof, appts, financeSummary, allTimeData, scheduled, pastUnconfirmed, planFeat] =
+          await Promise.all([
+            getDoctorProfile(),
+            getTodayAppointments(),
+            getDashboardFinanceSummary(monthStr),
+            getDashboardAllTimeStats(),
+            getScheduledAppointments(),
+            getPastUnconfirmedAppointments(),
+            getDoctorPlanFeatures(),
+          ]);
+        if (isStale) return;
 
         setPlanFeatures(planFeat);
 
@@ -403,6 +420,7 @@ export default function DoctorDashboard() {
         setTodayAppointments(
           appts.map((a) => ({
             id: a.id,
+            patientId: a.patientId ?? null,
             patient_name: a.patientName ?? '',
             scheduled_at: a.scheduledAt,
             status: a.status,
@@ -432,6 +450,8 @@ export default function DoctorDashboard() {
 
         // Citas pendientes de confirmación para el widget "Por confirmar".
         setScheduledAppointments(scheduled);
+        // Citas de días pasados que quedaron en status=scheduled para el widget "¿La atendiste?".
+        setPastUnconfirmed(pastUnconfirmed);
 
         // Verificar si el médico tiene consultorios configurados para mostrar alerta de onboarding.
         // No crítico: si el fetch falla, no se muestra la alerta (degradar silenciosamente).
@@ -475,6 +495,9 @@ export default function DoctorDashboard() {
     }
 
     void fetchData();
+    return () => {
+      isStale = true;
+    };
     // router is included in deps to satisfy exhaustive-deps; it is a stable Next.js
     // reference (same object across renders) so adding it does not cause extra runs.
   }, [selectedMonth, refreshKey, router]);
@@ -1087,6 +1110,61 @@ export default function DoctorDashboard() {
           </button>
         )}
 
+        {/* ── Citas del Día ── */}
+        <Card padding={24}>
+          <div className="flex items-center gap-2 mb-4">
+            <Calendar className="w-5 h-5" style={{ color: 'var(--dh-turquoise)' }} />
+            <h2 className="text-sm font-bold" style={{ color: 'var(--dh-ink)' }}>
+              Citas del Día
+            </h2>
+            <span
+              className="ml-auto text-xs font-semibold px-2.5 py-1 rounded-full"
+              style={{
+                background: 'var(--dh-gray-50)',
+                color: 'var(--dh-gray-600)',
+                fontFamily: 'var(--dh-font-mono)',
+              }}
+            >
+              {todayAppointments.length}
+            </span>
+          </div>
+
+          {todayAppointments.length === 0 ? (
+            <p className="text-sm text-slate-400 py-8 text-center">
+              No hay citas programadas para hoy
+            </p>
+          ) : (
+            <div className="space-y-2 overflow-y-auto pr-0.5" style={{ maxHeight: '320px' }}>
+              {todayAppointments.map((apt) => {
+                const appointmentTime = new Date(apt.scheduled_at);
+                const now = new Date();
+                const isPast = appointmentTime < now;
+                return (
+                  <button
+                    key={apt.id}
+                    onClick={() => handleAppointmentClick(apt)}
+                    className="w-full flex items-center justify-between p-3 bg-slate-50 rounded-lg border border-slate-100 hover:border-teal-200 hover:bg-teal-50/30 transition-colors text-left"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-slate-900">
+                        {apt.patient_name || 'Paciente sin nombre'}
+                      </p>
+                      <p className="text-xs text-slate-400 mt-0.5">
+                        {formatTime(apt.scheduled_at)}
+                      </p>
+                    </div>
+                    <span
+                      className={`text-xs font-medium px-2.5 py-1 rounded-full shrink-0 ml-2 ${getStatusBadgeColor(apt.status, isPast)}`}
+                    >
+                      {getStatusBadgeText(apt, isPast)}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </Card>
+
         {/* ── Por confirmar: citas con status=scheduled pendientes de acción ── */}
         {scheduledAppointments.length > 0 && (
           <div
@@ -1185,6 +1263,14 @@ export default function DoctorDashboard() {
           </div>
         )}
 
+        {/* ── ¿La atendiste? — citas pasadas sin confirmar ── */}
+        <PastUnconfirmedWidget
+          appointments={pastUnconfirmed.items}
+          total={pastUnconfirmed.total}
+          onActionDone={() => setRefreshKey((k) => k + 1)}
+          onOpenDetail={(id) => setDetailApptId(id)}
+        />
+
         {/* ── 3 KPI Cards: ingresos, pacientes, atendidos ── */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
           <StatCard
@@ -1209,318 +1295,257 @@ export default function DoctorDashboard() {
           />
         </div>
 
-        {/* Widgets Grid - Bento style */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-5">
-          {/* Citas del Día Widget */}
-          <Card padding={24}>
-            <div className="flex items-center gap-2 mb-4">
-              <Calendar className="w-5 h-5" style={{ color: 'var(--dh-turquoise)' }} />
-              <h2 className="text-sm font-bold" style={{ color: 'var(--dh-ink)' }}>
-                Citas del Día
-              </h2>
-              <span
-                className="ml-auto text-xs font-semibold px-2.5 py-1 rounded-full"
-                style={{
-                  background: 'var(--dh-gray-50)',
-                  color: 'var(--dh-gray-600)',
-                  fontFamily: 'var(--dh-font-mono)',
+        {/* ── Finanzas del Mes — tarjeta independiente (full-width) ── */}
+        <Card padding={24}>
+          <div className="flex items-center gap-2 mb-4">
+            <DollarSign className="w-5 h-5" style={{ color: 'var(--dh-turquoise)' }} />
+            <h2 className="text-sm font-bold" style={{ color: 'var(--dh-ink)' }}>
+              Finanzas
+            </h2>
+            <div className="ml-auto flex items-center gap-1">
+              <button
+                onClick={goToPrevMonth}
+                className="p-1 rounded-lg transition-colors"
+                style={{ color: 'var(--dh-gray-400)' }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = 'var(--dh-gray-50)';
+                  e.currentTarget.style.color = 'var(--dh-gray-600)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'transparent';
+                  e.currentTarget.style.color = 'var(--dh-gray-400)';
                 }}
               >
-                {todayAppointments.length}
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <span
+                className="text-xs font-semibold min-w-[110px] text-center capitalize"
+                style={{ color: 'var(--dh-gray-600)', fontFamily: 'var(--dh-font-mono)' }}
+              >
+                {monthLabel}
               </span>
-            </div>
-
-            {todayAppointments.length === 0 ? (
-              <p className="text-sm text-slate-400 py-8 text-center">
-                No hay citas programadas para hoy
-              </p>
-            ) : (
-              <div className="space-y-2 overflow-y-auto pr-0.5" style={{ maxHeight: '320px' }}>
-                {todayAppointments.map((apt) => {
-                  const appointmentTime = new Date(apt.scheduled_at);
-                  const now = new Date();
-                  const isPast = appointmentTime < now;
-                  return (
-                    <button
-                      key={apt.id}
-                      onClick={() => handleAppointmentClick(apt)}
-                      className="w-full flex items-center justify-between p-3 bg-slate-50 rounded-lg border border-slate-100 hover:border-teal-200 hover:bg-teal-50/30 transition-colors text-left"
-                    >
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-slate-900">
-                          {apt.patient_name || 'Paciente sin nombre'}
-                        </p>
-                        <p className="text-xs text-slate-400 mt-0.5">
-                          {formatTime(apt.scheduled_at)}
-                        </p>
-                      </div>
-                      <span
-                        className={`text-xs font-medium px-2.5 py-1 rounded-full shrink-0 ml-2 ${getStatusBadgeColor(apt.status, isPast)}`}
-                      >
-                        {getStatusBadgeText(apt, isPast)}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </Card>
-
-          {/* Finanzas del Mes Widget */}
-          <Card padding={24}>
-            <div className="flex items-center gap-2 mb-4">
-              <DollarSign className="w-5 h-5" style={{ color: 'var(--dh-turquoise)' }} />
-              <h2 className="text-sm font-bold" style={{ color: 'var(--dh-ink)' }}>
-                Finanzas
-              </h2>
-              <div className="ml-auto flex items-center gap-1">
-                <button
-                  onClick={goToPrevMonth}
-                  className="p-1 rounded-lg transition-colors"
-                  style={{ color: 'var(--dh-gray-400)' }}
-                  onMouseEnter={(e) => {
+              <button
+                onClick={goToNextMonth}
+                disabled={isCurrentMonth}
+                className="p-1 rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                style={{ color: 'var(--dh-gray-400)' }}
+                onMouseEnter={(e) => {
+                  if (!isCurrentMonth) {
                     e.currentTarget.style.background = 'var(--dh-gray-50)';
                     e.currentTarget.style.color = 'var(--dh-gray-600)';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = 'transparent';
-                    e.currentTarget.style.color = 'var(--dh-gray-400)';
-                  }}
-                >
-                  <ChevronLeft className="w-4 h-4" />
-                </button>
-                <span
-                  className="text-xs font-semibold min-w-[110px] text-center capitalize"
-                  style={{ color: 'var(--dh-gray-600)', fontFamily: 'var(--dh-font-mono)' }}
-                >
-                  {monthLabel}
-                </span>
-                <button
-                  onClick={goToNextMonth}
-                  disabled={isCurrentMonth}
-                  className="p-1 rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-                  style={{ color: 'var(--dh-gray-400)' }}
-                  onMouseEnter={(e) => {
-                    if (!isCurrentMonth) {
-                      e.currentTarget.style.background = 'var(--dh-gray-50)';
-                      e.currentTarget.style.color = 'var(--dh-gray-600)';
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = 'transparent';
-                    e.currentTarget.style.color = 'var(--dh-gray-400)';
-                  }}
-                >
-                  <ChevronRightIcon className="w-4 h-4" />
-                </button>
-              </div>
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'transparent';
+                  e.currentTarget.style.color = 'var(--dh-gray-400)';
+                }}
+              >
+                <ChevronRightIcon className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <div
+              className="p-4"
+              style={{
+                background:
+                  'linear-gradient(135deg, var(--dh-turquoise-50) 0%, var(--dh-turquoise-100) 100%)',
+                border: '1px solid var(--dh-turquoise-100)',
+                borderRadius: 'var(--dh-r-md)',
+              }}
+            >
+              <p className="text-xs font-semibold mb-1" style={{ color: 'var(--dh-gray-600)' }}>
+                Ingresos Totales
+              </p>
+              <p
+                className="font-semibold"
+                style={{
+                  color: 'var(--dh-turquoise-700)',
+                  fontFamily: 'var(--dh-font-display)',
+                  fontSize: 28,
+                  letterSpacing: '-0.02em',
+                }}
+              >
+                {format(financialData.total_revenue)}
+              </p>
+              {bcvRate && (
+                <p className="text-sm font-semibold" style={{ color: 'var(--dh-turquoise)' }}>
+                  {toBs(financialData.total_revenue)}
+                </p>
+              )}
+              <p className="text-xs mt-1" style={{ color: 'var(--dh-gray-400)' }}>
+                USD
+              </p>
             </div>
 
-            <div className="space-y-4">
-              <div
-                className="p-4"
-                style={{
-                  background:
-                    'linear-gradient(135deg, var(--dh-turquoise-50) 0%, var(--dh-turquoise-100) 100%)',
-                  border: '1px solid var(--dh-turquoise-100)',
-                  borderRadius: 'var(--dh-r-md)',
-                }}
-              >
-                <p className="text-xs font-semibold mb-1" style={{ color: 'var(--dh-gray-600)' }}>
-                  Ingresos Totales
-                </p>
-                <p
-                  className="font-semibold"
-                  style={{
-                    color: 'var(--dh-turquoise-700)',
-                    fontFamily: 'var(--dh-font-display)',
-                    fontSize: 28,
-                    letterSpacing: '-0.02em',
-                  }}
-                >
-                  {format(financialData.total_revenue)}
-                </p>
-                {bcvRate && (
-                  <p className="text-sm font-semibold" style={{ color: 'var(--dh-turquoise)' }}>
-                    {toBs(financialData.total_revenue)}
-                  </p>
-                )}
-                <p className="text-xs mt-1" style={{ color: 'var(--dh-gray-400)' }}>
-                  USD
-                </p>
-              </div>
-
-              {/* Por ingresar = cuentas por cobrar (consultas con pago pendiente). */}
-              <div
-                className="p-3"
-                style={{
-                  background: 'var(--dh-amber-50, #fffbeb)',
-                  border: '1px solid var(--dh-amber-100, #fde68a)',
-                  borderRadius: 'var(--dh-r-md)',
-                }}
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Clock className="w-4 h-4" style={{ color: '#b45309' }} />
-                    <p className="text-xs font-semibold" style={{ color: '#92400e' }}>
-                      Por ingresar
-                    </p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-sm font-bold" style={{ color: '#92400e' }}>
-                      {format(financialData.pending_amount)}
-                    </p>
-                    {bcvRate && financialData.pending_amount > 0 && (
-                      <p className="text-[11px]" style={{ color: '#b45309' }}>
-                        {toBs(financialData.pending_amount)}
-                      </p>
-                    )}
-                  </div>
-                </div>
-                {financialData.pending_amount > 0 && (
-                  <Link
-                    href="/doctor/cobros"
-                    className="mt-2 flex items-center gap-1 text-[11px] font-semibold"
-                    style={{ color: '#b45309' }}
-                  >
-                    Ver consultas pendientes de cobro
-                    <ArrowRight className="w-3 h-3" />
-                  </Link>
-                )}
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div
-                  className="p-3"
-                  style={{
-                    background: 'var(--dh-gray-50)',
-                    border: '1px solid var(--dh-gray-100)',
-                    borderRadius: 'var(--dh-r-md)',
-                  }}
-                >
-                  <p className="text-xs font-semibold" style={{ color: 'var(--dh-gray-600)' }}>
-                    Citas Completadas
-                  </p>
-                  <p
-                    className="font-bold mt-1"
-                    style={{
-                      color: 'var(--dh-ink)',
-                      fontFamily: 'var(--dh-font-display)',
-                      fontSize: 22,
-                    }}
-                  >
-                    {financialData.appointment_count}
+            {/* Por ingresar = cuentas por cobrar (consultas con pago pendiente). */}
+            <div
+              className="p-3"
+              style={{
+                background: 'var(--dh-amber-50, #fffbeb)',
+                border: '1px solid var(--dh-amber-100, #fde68a)',
+                borderRadius: 'var(--dh-r-md)',
+              }}
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Clock className="w-4 h-4" style={{ color: '#b45309' }} />
+                  <p className="text-xs font-semibold" style={{ color: '#92400e' }}>
+                    Por ingresar
                   </p>
                 </div>
-                <div
-                  className="p-3"
-                  style={{
-                    background: 'var(--dh-gray-50)',
-                    border: '1px solid var(--dh-gray-100)',
-                    borderRadius: 'var(--dh-r-md)',
-                  }}
-                >
-                  <p className="text-xs font-semibold" style={{ color: 'var(--dh-gray-600)' }}>
-                    Promedio por Cita
+                <div className="text-right">
+                  <p className="text-sm font-bold" style={{ color: '#92400e' }}>
+                    {format(financialData.pending_amount)}
                   </p>
-                  <p
-                    className="font-bold mt-1"
-                    style={{
-                      color: 'var(--dh-ink)',
-                      fontFamily: 'var(--dh-font-display)',
-                      fontSize: 22,
-                    }}
-                  >
-                    {format(
-                      financialData.appointment_count > 0
-                        ? financialData.total_revenue / financialData.appointment_count
-                        : 0,
-                    )}
-                  </p>
-                  {bcvRate && financialData.appointment_count > 0 && (
-                    <p className="text-xs" style={{ color: 'var(--dh-gray-400)' }}>
-                      {toBs(financialData.total_revenue / financialData.appointment_count)}
+                  {bcvRate && financialData.pending_amount > 0 && (
+                    <p className="text-[11px]" style={{ color: '#b45309' }}>
+                      {toBs(financialData.pending_amount)}
                     </p>
                   )}
                 </div>
               </div>
-
-              {/* Acciones rápidas de finanzas */}
-              {planUnlocks(planFeatures, 'finances') ? (
-                <>
-                  <div className="grid grid-cols-3 gap-2 pt-1">
-                    <button
-                      onClick={() => void handleOpenIncomeModal()}
-                      className="flex flex-col items-center gap-1 py-2 px-2 rounded-lg text-[11px] font-semibold text-white transition-opacity hover:opacity-90"
-                      style={{ background: 'var(--dh-turquoise)' }}
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                      Ingreso
-                    </button>
-                    <button
-                      onClick={handleOpenPaymentModal}
-                      className="flex flex-col items-center gap-1 py-2 px-2 rounded-lg text-[11px] font-semibold transition-colors"
-                      style={{
-                        background: 'var(--dh-turquoise-50)',
-                        border: '1px solid var(--dh-turquoise-100)',
-                        color: 'var(--dh-turquoise-700)',
-                      }}
-                    >
-                      <Wallet className="w-3.5 h-3.5" />
-                      Cobros
-                    </button>
-                    <button
-                      onClick={() => setShowExpenseModal(true)}
-                      className="flex flex-col items-center gap-1 py-2 px-2 rounded-lg text-[11px] font-semibold transition-colors"
-                      style={{
-                        background: 'var(--dh-gray-50)',
-                        border: '1px solid var(--dh-gray-200)',
-                        color: 'var(--dh-gray-800)',
-                      }}
-                    >
-                      <Receipt className="w-3.5 h-3.5" />
-                      Gasto
-                    </button>
-                  </div>
-
-                  <Link
-                    href="/doctor/finances"
-                    className="text-xs font-semibold flex items-center gap-1 pt-2"
-                    style={{ color: 'var(--dh-turquoise-700)' }}
-                  >
-                    Ver más detalles
-                    <ArrowRight className="w-3 h-3" />
-                  </Link>
-                </>
-              ) : (
-                <div
-                  className="mt-2 px-4 py-3 rounded-lg flex items-center justify-between gap-3"
-                  style={{
-                    background: 'var(--dh-gray-50)',
-                    border: '1px solid var(--dh-gray-100)',
-                  }}
+              {financialData.pending_amount > 0 && (
+                <Link
+                  href="/doctor/cobros"
+                  className="mt-2 flex items-center gap-1 text-[11px] font-semibold"
+                  style={{ color: '#b45309' }}
                 >
-                  <div className="flex items-center gap-2 min-w-0">
-                    <Lock
-                      className="w-3.5 h-3.5 shrink-0"
-                      style={{ color: 'var(--dh-gray-400)' }}
-                    />
-                    <p className="text-xs text-slate-500">
-                      Finanzas disponible en Delta Base o superior
-                    </p>
-                  </div>
-                  <Link
-                    href="/doctor/upgrade"
-                    className="shrink-0 text-[11px] font-bold text-white px-3 py-1.5 rounded-lg transition-colors"
-                    style={{ background: 'var(--dh-turquoise)' }}
-                  >
-                    Mejorar plan
-                  </Link>
-                </div>
+                  Ver consultas pendientes de cobro
+                  <ArrowRight className="w-3 h-3" />
+                </Link>
               )}
             </div>
-          </Card>
-        </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div
+                className="p-3"
+                style={{
+                  background: 'var(--dh-gray-50)',
+                  border: '1px solid var(--dh-gray-100)',
+                  borderRadius: 'var(--dh-r-md)',
+                }}
+              >
+                <p className="text-xs font-semibold" style={{ color: 'var(--dh-gray-600)' }}>
+                  Citas Completadas
+                </p>
+                <p
+                  className="font-bold mt-1"
+                  style={{
+                    color: 'var(--dh-ink)',
+                    fontFamily: 'var(--dh-font-display)',
+                    fontSize: 22,
+                  }}
+                >
+                  {financialData.appointment_count}
+                </p>
+              </div>
+              <div
+                className="p-3"
+                style={{
+                  background: 'var(--dh-gray-50)',
+                  border: '1px solid var(--dh-gray-100)',
+                  borderRadius: 'var(--dh-r-md)',
+                }}
+              >
+                <p className="text-xs font-semibold" style={{ color: 'var(--dh-gray-600)' }}>
+                  Promedio por Cita
+                </p>
+                <p
+                  className="font-bold mt-1"
+                  style={{
+                    color: 'var(--dh-ink)',
+                    fontFamily: 'var(--dh-font-display)',
+                    fontSize: 22,
+                  }}
+                >
+                  {format(
+                    financialData.appointment_count > 0
+                      ? financialData.total_revenue / financialData.appointment_count
+                      : 0,
+                  )}
+                </p>
+                {bcvRate && financialData.appointment_count > 0 && (
+                  <p className="text-xs" style={{ color: 'var(--dh-gray-400)' }}>
+                    {toBs(financialData.total_revenue / financialData.appointment_count)}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {/* Acciones rápidas de finanzas */}
+            {planUnlocks(planFeatures, 'finances') ? (
+              <>
+                <div className="grid grid-cols-3 gap-2 pt-1">
+                  <button
+                    onClick={() => void handleOpenIncomeModal()}
+                    className="flex flex-col items-center gap-1 py-2 px-2 rounded-lg text-[11px] font-semibold text-white transition-opacity hover:opacity-90"
+                    style={{ background: 'var(--dh-turquoise)' }}
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    Ingreso
+                  </button>
+                  <button
+                    onClick={handleOpenPaymentModal}
+                    className="flex flex-col items-center gap-1 py-2 px-2 rounded-lg text-[11px] font-semibold transition-colors"
+                    style={{
+                      background: 'var(--dh-turquoise-50)',
+                      border: '1px solid var(--dh-turquoise-100)',
+                      color: 'var(--dh-turquoise-700)',
+                    }}
+                  >
+                    <Wallet className="w-3.5 h-3.5" />
+                    Cobros
+                  </button>
+                  <button
+                    onClick={() => setShowExpenseModal(true)}
+                    className="flex flex-col items-center gap-1 py-2 px-2 rounded-lg text-[11px] font-semibold transition-colors"
+                    style={{
+                      background: 'var(--dh-gray-50)',
+                      border: '1px solid var(--dh-gray-200)',
+                      color: 'var(--dh-gray-800)',
+                    }}
+                  >
+                    <Receipt className="w-3.5 h-3.5" />
+                    Gasto
+                  </button>
+                </div>
+
+                <Link
+                  href="/doctor/finances"
+                  className="text-xs font-semibold flex items-center gap-1 pt-2"
+                  style={{ color: 'var(--dh-turquoise-700)' }}
+                >
+                  Ver más detalles
+                  <ArrowRight className="w-3 h-3" />
+                </Link>
+              </>
+            ) : (
+              <div
+                className="mt-2 px-4 py-3 rounded-lg flex items-center justify-between gap-3"
+                style={{
+                  background: 'var(--dh-gray-50)',
+                  border: '1px solid var(--dh-gray-100)',
+                }}
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  <Lock className="w-3.5 h-3.5 shrink-0" style={{ color: 'var(--dh-gray-400)' }} />
+                  <p className="text-xs text-slate-500">
+                    Finanzas disponible en Delta Base o superior
+                  </p>
+                </div>
+                <Link
+                  href="/doctor/upgrade"
+                  className="shrink-0 text-[11px] font-bold text-white px-3 py-1.5 rounded-lg transition-colors"
+                  style={{ background: 'var(--dh-turquoise)' }}
+                >
+                  Mejorar plan
+                </Link>
+              </div>
+            )}
+          </div>
+        </Card>
       </div>
 
       {/* AppointmentDetailModal — se abre al hacer click en una cita "Por confirmar" */}
@@ -1559,6 +1584,11 @@ export default function DoctorDashboard() {
             // sistema estaba trabajando. El modal se queda mostrando "Abriendo la
             // consulta…" y se va solo cuando esta página se desmonta al navegar.
             if (consultationId) {
+              // router.refresh() invalida el router cache de /doctor ANTES de navegar
+              // hacia /consultations. Sin esto, al volver con el botón atrás el navegador
+              // sirve la versión cacheada pre-creación y las "Citas del Día" no se
+              // actualizan hasta que el usuario fuerza un F5.
+              router.refresh();
               router.push(`/doctor/consultations?open=${consultationId}`);
               return;
             }
@@ -1566,6 +1596,20 @@ export default function DoctorDashboard() {
             setShowImmediate(false);
             setRefreshKey((k) => k + 1);
           }}
+          onOpenExistingAppointment={(appointmentId) => {
+            setShowImmediate(false);
+            setDetailApptId(appointmentId);
+          }}
+          // Pass today's scheduled/confirmed appointments so the modal can warn
+          // when the selected patient already has a booking today.
+          todayScheduledAppointments={todayAppointments
+            .filter((a) => a.status === 'scheduled' || a.status === 'confirmed')
+            .map((a) => ({
+              patientId: a.patientId,
+              scheduledAt: a.scheduled_at,
+              appointmentId: a.id,
+              consultationId: a.consultation_id ?? null,
+            }))}
         />
       )}
 
