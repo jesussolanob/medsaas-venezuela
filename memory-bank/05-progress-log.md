@@ -4,6 +4,64 @@
 > ⚠️ Orden: **la entrada más nueva va ARRIBA**. La del 2026-08-11 quedó al final
 > del archivo por error; no se movió para no ensuciar el diff.
 
+## 2026-11-02/03 — Lote en staging: novedades, una sola fuente, vendedores, MPPS y sesión de 5 días
+
+> Todo en `feature/retencion` → `develop` → `staging`. **Nada de esto está en `main`.** Al
+> promover se aplican 2 migraciones nuevas: `20261030000006` (plantilla `seller_welcome`) y
+> `20261030000007` (backfill de verificación MPPS). 529 suites / 5075 tests en verde.
+
+1. **Novedades accesibles** (`b36c8240`, `ef5e50c6`): pestaña **Configuración → Novedades**
+   (`/doctor/settings?tab=novedades`, lista extraída a `components/release-notes/ReleaseNotesList`)
+   y tarjeta en Inicio "Actualízate con las novedades de la plataforma". En teléfono la barra de
+   pestañas se desplaza sola hasta la activa. Se quitó "Las novedades no incluyen imágenes aún".
+2. **"Contáctame ya" tapaba el icono de ayuda**: su `animate-ping` (2x) se dibujaba encima y se
+   comía los clics. Ahora usa keyframes propios `contact-ya-pulse` (scale 1.06x1.35) en
+   `globals.css` + `pointer-events-none`.
+3. **Una sola fuente** (`824548d5`): 11 pantallas inyectaban `* { font-family: 'Inter' }` y
+   cambiaban la letra de TODA la ventana (menú, barra) al navegar. Quitadas junto con sus
+   `@import` de Google Fonts; los buscadores pedían 'Plus Jakarta Sans' por nombre (no existe con
+   next/font) → `var(--dh-font-body)`. Impresos/PDF conservan su fuente. Verificado midiendo
+   `getComputedStyle` en 24 pantallas navegando con `window.next.router.push`.
+4. **Tablas anchas desbordaban la página** (`a2d0e798`): la columna `flex-1` de los layouts
+   (admin, doctor, seller, patient) no tenía `min-w-0`. Ahora la tabla se desplaza en su caja.
+5. **Correo de bienvenida a vendedores** (`37de77aa`): al crear un vendedor se envía
+   `seller_welcome` (cómo entrar con el correo exacto, aviso de no usar otro correo, código,
+   enlace `/r/CODIGO`, secciones del portal, cargar datos de cobro). Si falla, el vendedor igual se
+   crea (`welcomeEmailSent`). `POST /api/admin/sellers/:id/welcome-email` + botón **Reenviar** en
+   la columna "Bienvenida" de `/admin/sellers`. Probado en staging con `lucas.a.rivas.d@gmail.com`.
+   **Pendiente en prod:** pulsar Reenviar para Ana Solano (`anasolano2303@gmail.com`, vendedora,
+   creada el 02/11 antes de esto, nunca entró).
+6. **Verificación automática por MPPS** (`e670626f`, ADR-096): el scraper SACS guardaba
+   'verified' en `credential_verifications` pero nunca promovía `profiles.verification_status`.
+   Ahora promueve pending→verified (`verified_by` NULL = sistema; nunca pisa 'rejected'); el
+   caché solo vale si el MPPS declarado no cambió. La migración 7 corrige a **exactamente 5
+   especialistas de prod** (comprobado en solo lectura). Insignia "Auto · MPPS" solo con
+   `verified_by` NULL **y** coincidencia SACS (las aprobaciones manuales viejas también tienen NULL).
+7. **Sesión de 5 días** (`7946c593`): `lib/auth0.ts` y `proxy.ts` en 5 días. El backend valida el
+   **ID token** (exp) y no hay refresh token: en Auth0 se subió "Maximum ID Token Lifetime" de
+   28800 a **432000** ANTES del deploy. Riesgo aceptado por el dueño.
+8. **Error "Oops, something went wrong" de Auth0 al volver atrás en el selector de cuentas**: el
+   "Tenant Login URI" estaba vacío. Ahora tenant y aplicación apuntan a
+   `https://deltasalud.app/login` (la app apuntaba al viejo `delta-frontend-…run.app`). Prod y
+   staging comparten la MISMA aplicación Auth0 (client `ktiIpuO9…`): en esos casos raros staging cae
+   al login de prod. Opción pendiente: aplicación Auth0 propia para staging.
+9. **Guía del asistente**: las plantillas de contenido viven en Plantillas → "Mis plantillas" (la
+   guía mandaba a `/doctor/content-templates`, 404).
+
+**Hallazgos sin resolver (decisiones del dueño):**
+
+- **Reuniones con Jitsi:** `team_meeting_host_profile_id` está vacío en staging → sin anfitrión
+  con Google conectado, `create-team-meeting` cae a `meet.jit.si`. El dueño quiere SOLO Meet:
+  configurar anfitrión en Admin → Reuniones ("Conectar Google") en staging y en prod al promover;
+  luego quitar el respaldo de Jitsi (opción recomendada: agendar sin enlace + avisar al equipo).
+- **Staging envía correo REAL** (`EMAIL_DRIVER=resend` en `delta-backend-staging`); el CLAUDE.md
+  dice `noop` y está desactualizado. Probar solo con correos propios.
+- **Costos a 100 especialistas** (ritmo de la Dra. Ana Solano Bracamonte y Paola Linares):
+  ~US$100/mes como está hoy (Resend Pro obligatorio por el tope de 100 correos/día); ~US$210–245
+  recomendado (Cloud SQL dedicada con HA + min-instances). Las 2 BD son el 85% de la factura actual.
+- Prod y staging comparten bucket GCS; Artifact Registry 39 GB sin limpieza; `tsc` estricto del
+  backend marca 20 errores preexistentes (release-notes, standalone-documents).
+
 ## 2026-10-30 — Plan de retención de especialistas: 4 fases en `feature/retencion`
 
 > Plan vinculante: `docs/plan-retencion.md`. Rama `feature/retencion` → `develop` → `staging`

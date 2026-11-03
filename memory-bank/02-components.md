@@ -1156,3 +1156,21 @@ de inventario SÍ cierra: es de solo lectura.
 **Integración con TeamMeetingsModule**: `AdminTeamMeetingsController` inyecta `@Optional() GrantGraceMonthUseCase` para `POST /api/admin/team-meetings/:id/grant-grace`.
 
 **Integración con RemindersModule**: `DispatchDoctorInactivityNoticesUseCase` inyecta `@Optional() DispatchMeetingInvitesUseCase`. Las invitaciones corren PRIMERO en el cron diario; los doctores invitados quedan excluidos del aviso de inactividad (regla one-lifecycle-email-per-day).
+
+## Lote 2026-11-02/03 (en staging)
+
+| Archivo                                             | Qué hace                                                                                                                   |
+| --------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `components/release-notes/ReleaseNotesList.tsx`     | Lista de novedades del plan (la usan `/doctor/release-notes` y la pestaña **Configuración → Novedades**, `?tab=novedades`) |
+| `components/release-notes/ReleaseNotesHomeLink.tsx` | Tarjeta en Inicio "Actualízate con las novedades de la plataforma" → `/doctor/settings?tab=novedades`                      |
+| `app/api/admin/sellers/[id]/welcome-email/route.ts` | Thin-proxy del reenvío del correo de bienvenida al vendedor (super_admin)                                                  |
+| `app/admin/sellers/page.tsx`                        | Columna nueva **Bienvenida** con botón "Reenviar"; el aviso al crear dice si el correo salió (`welcomeEmailSent`)          |
+
+**Backend:** `sellers` → `ResendSellerWelcomeEmailUseCase` + `CreateSellerUseCase` envía la plantilla
+`seller_welcome` (variables `sellerName`, `sellerEmail`, `sellerCode`, `referralUrl`, `loginUrl`);
+`email_send_log.recipient_type` acepta `'seller'` (columna TEXT). `credential-verification` →
+`VerifyMppsUseCase` promueve el perfil a verificado con `promoteToVerified` (ADR-096).
+
+**Convenciones nuevas:** ninguna página puede fijar `font-family` global ni importar Google Fonts
+(la app usa solo Plus Jakarta Sans vía `next/font`, tokens `--dh-font-*`); la columna `flex-1` de
+los layouts lleva `min-w-0` para que las tablas anchas no desborden la página.
