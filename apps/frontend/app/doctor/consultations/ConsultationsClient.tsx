@@ -1462,6 +1462,23 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
     newStatus: Consultation['status'],
     appointmentId: string | null,
   ) {
+    // Guard: completed/no_show require a linked appointment to persist the change.
+    // Without appointment_id the update would only be visual — never saved.
+    // Alcanzable cuando la consulta se creó sin cita previa (flujo legado).
+    if (!appointmentId && (newStatus === 'completed' || newStatus === 'no_show')) {
+      showToast({
+        type: 'error',
+        message:
+          'Esta consulta no tiene una cita vinculada. Para registrar la atención ' +
+          've a la cita desde la agenda y márca el resultado ahí.',
+      });
+      return;
+    }
+
+    // Snapshot current state for rollback on failure.
+    const prevSelected = selected;
+    const prevConsultations = consultations;
+
     // Optimistic local update — apply immediately so the UI responds without waiting.
     setSelected((prev) => (prev ? { ...prev, status: newStatus } : prev));
     setConsultations((prev) =>
@@ -1473,17 +1490,17 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
     if (appointmentId && (newStatus === 'completed' || newStatus === 'no_show')) {
       const result = await updateAppointmentStatus(appointmentId, newStatus);
       if (!result.success) {
-        // Non-fatal: optimistic update stays, show a non-blocking warning.
-        console.warn('[updateConsultaStatus] appointment sync failed:', result.error);
+        // Revert optimistic update: the backend rejected the transition.
+        setSelected(prevSelected);
+        setConsultations(prevConsultations);
         showToast({
           type: 'error',
-          message: 'El estado se actualizó localmente pero falló la sincronización con la cita',
+          message: result.error ?? 'No se pudo actualizar el estado de la cita',
         });
         return;
       }
     }
 
-    // Bug 7: feedback visual al doctor después de cambiar el estado de la consulta.
     const labels: Partial<Record<Consultation['status'], string>> = {
       completed: 'Consulta marcada como atendida',
       no_show: 'Paciente marcado como no asistió',
