@@ -435,7 +435,10 @@ export default function AppointmentDetailModal({
     ? (STATUS_BADGE[appt.status] ?? 'bg-slate-100 text-slate-700 border border-slate-200')
     : '';
   const statusLabel = appt ? (STATUS_LABELS[appt.status] ?? appt.status) : '';
-  const isActive = appt && appt.status !== 'completed' && appt.status !== 'cancelled';
+  // completed / cancelled / no_show are final states (shared-types transitions):
+  // the backend rejects any change, so no action button may offer one.
+  const isActive =
+    appt && appt.status !== 'completed' && appt.status !== 'cancelled' && appt.status !== 'no_show';
   const endTime = appt ? fmtEndTime(appt.scheduledAt, appt.durationMinutes) : null;
   // Whether the appointment slot has already started — "Atendida"/"No asistió" only
   // make sense after the appointment time (not for future appointments).
