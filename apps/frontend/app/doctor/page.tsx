@@ -68,7 +68,6 @@ import ReleaseNotesModal from '@/components/release-notes/ReleaseNotesModal';
 import ReleaseNotesHomeLink from '@/components/release-notes/ReleaseNotesHomeLink';
 import MeetingInviteModal from '@/components/team-meetings/MeetingInviteModal';
 import UpcomingMeetingCard from '@/components/team-meetings/UpcomingMeetingCard';
-import { getDoctorPlanFeatures } from '@/app/doctor/plan-features-actions';
 import {
   planUnlocks,
   planAccessSummary,
@@ -78,16 +77,12 @@ import {
 } from '@/lib/plan-features';
 // MIGRATED (Etapa 1): data fetching now goes through NestJS backend actions.
 import {
-  getDoctorProfile,
-  getTodayAppointments,
-  getDashboardFinanceSummary,
-  getDashboardAllTimeStats,
-  getScheduledAppointments,
-  getPastUnconfirmedAppointments,
+  getDashboardData,
   type ScheduledAppointment,
   type PastUnconfirmedResult,
 } from '@/app/doctor/dashboard-actions';
 import PastUnconfirmedWidget from '@/components/doctor/PastUnconfirmedWidget';
+import { VE_TIMEZONE } from '@/lib/timezone';
 
 type Profile = {
   full_name: string;
@@ -307,17 +302,17 @@ export default function DoctorDashboard() {
         // Build 'YYYY-MM' string for the selected month.
         const monthStr = `${selectedMonth.year}-${String(selectedMonth.month + 1).padStart(2, '0')}`;
 
-        // Fetch all independent data in parallel for performance.
-        const [prof, appts, financeSummary, allTimeData, scheduled, pastUnconfirmed, planFeat] =
-          await Promise.all([
-            getDoctorProfile(),
-            getTodayAppointments(),
-            getDashboardFinanceSummary(monthStr),
-            getDashboardAllTimeStats(),
-            getScheduledAppointments(),
-            getPastUnconfirmedAppointments(),
-            getDoctorPlanFeatures(),
-          ]);
+        // One server action for the whole home: Next.js serializes client-invoked
+        // server actions, so seven separate calls meant ~seven sequential round-trips.
+        const {
+          profile: prof,
+          todayAppointments: appts,
+          financeSummary,
+          allTimeStats: allTimeData,
+          scheduledAppointments: scheduled,
+          pastUnconfirmed,
+          planFeatures: planFeat,
+        } = await getDashboardData(monthStr);
         if (isStale) return;
 
         setPlanFeatures(planFeat);
@@ -511,7 +506,12 @@ export default function DoctorDashboard() {
 
   const formatTime = (dateString: string) => {
     const date = new Date(dateString);
-    return date.toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit', hour12: true });
+    return date.toLocaleTimeString('es-VE', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true,
+      timeZone: VE_TIMEZONE,
+    });
   };
 
   const getStatusBadgeColor = (status: string, isPast: boolean = false) => {
@@ -1207,11 +1207,13 @@ export default function DoctorDashboard() {
                   weekday: 'short',
                   day: 'numeric',
                   month: 'short',
+                  timeZone: VE_TIMEZONE,
                 }).format(new Date(apt.scheduledAt));
                 const timeStr = new Intl.DateTimeFormat('es-VE', {
                   hour: '2-digit',
                   minute: '2-digit',
                   hour12: true,
+                  timeZone: VE_TIMEZONE,
                 }).format(new Date(apt.scheduledAt));
 
                 return (
@@ -1789,6 +1791,7 @@ export default function DoctorDashboard() {
                               day: '2-digit',
                               month: 'short',
                               year: 'numeric',
+                              timeZone: VE_TIMEZONE,
                             }).format(new Date(dateStr))}
                           </p>
                         </div>

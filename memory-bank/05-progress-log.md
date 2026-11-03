@@ -25,9 +25,15 @@
    original quedaba eterna en "Por confirmar" (causa más probable del reporte de Paola). Ahora avisa
    y ofrece abrir esa cita.
 6. **Citas del Día** sube debajo de la cita en curso; Finanzas a ancho completo.
-7. **Refresco del Inicio**: guarda contra respuestas viejas en el `useEffect` (`isStale`) y
-   `router.refresh()` antes de navegar a la consulta. ⚠️ La causa del "no aparece hasta recargar"
-   **no se confirmó leyendo código** (confirmar ya refrescaba): pendiente reproducir en staging.
+7. **Refresco del Inicio — causa real (medida en staging):** el Inicio pedía sus datos con 7
+   server actions y **Next.js ejecuta las server actions del cliente de a una**: ~7 viajes en
+   fila (~0,5 s c/u). Tras confirmar, "Citas del Día" tardaba **5 s** en cambiar y la gente
+   recargaba. Ahora `getDashboardData()` (una sola server action) los hace en paralelo en el
+   servidor. Además, guarda `isStale` contra respuestas viejas en el `useEffect`.
+   Regla: **nunca varias server actions en `Promise.all` desde el cliente** — no corren en paralelo.
+8. **Horas del Inicio en la zona del navegador**: un especialista fuera de Venezuela (o el QA desde
+   Chile) veía la cita de las 4:00 p. m. a las 5:00 p. m. Ahora todo el Inicio formatea en
+   `America/Caracas` (`VE_TIMEZONE`), igual que el detalle de la cita.
 
 Verificado: tsc 0, build frontend 0, lint sin errores nuevos (los de `page.tsx` y
 `ConsultationsClient.tsx` son preexistentes), tests de help-assistant 77/77. Guía del especialista
