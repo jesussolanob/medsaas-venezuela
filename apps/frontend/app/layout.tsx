@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from 'next';
-import { Plus_Jakarta_Sans, JetBrains_Mono } from 'next/font/google';
+import localFont from 'next/font/local';
 import './globals.css';
 import { HelpWidget } from '@/components/help/HelpWidget';
 import { MetaPixelPageViews } from '@/components/analytics/MetaPixel';
@@ -8,16 +8,22 @@ import { MetaPixelPageViews } from '@/components/analytics/MetaPixel';
 // según el design system "Delta Health Tech" (handoff bundle).
 // Plus Jakarta Sans para UI y display; JetBrains Mono solo para metadata
 // (cédulas, IDs, fechas tabulares, números monoespaciados).
-const jakarta = Plus_Jakarta_Sans({
+// 2026-11-13: los archivos viven en el repo (app/fonts). next/font/google los
+// descargaba en cada build y Cloud Build fallaba cuando no llegaba a Google Fonts,
+// lo que bloqueaba TODOS los despliegues. Son las fuentes variables (subset latin)
+// de Google Fonts: mismas fuentes, mismas variables CSS.
+const jakarta = localFont({
+  src: './fonts/PlusJakartaSans-latin.woff2',
   variable: '--font-sans',
-  subsets: ['latin'],
-  weight: ['300', '400', '500', '600', '700', '800'],
+  weight: '200 800',
+  display: 'swap',
 });
 
-const jetbrains = JetBrains_Mono({
+const jetbrains = localFont({
+  src: './fonts/JetBrainsMono-latin.woff2',
   variable: '--font-mono',
-  subsets: ['latin'],
-  weight: ['400', '500', '600', '700'],
+  weight: '100 800',
+  display: 'swap',
 });
 
 export const metadata: Metadata = {
