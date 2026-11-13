@@ -5808,3 +5808,19 @@ especialista ya le puedan agendar.
     `gh run watch` no lo hizo evidente: se reprobó contra código viejo. Mirar SIEMPRE `gh run view --json
 conclusion`. Además `nx build backend` no valida tipos (fork-ts-checker da OOM): un error TS solo lo vio jest.
   - Fuera del lote: `/admin/verifications` tira el error de hidratación React #418 (no se tocó en este lote).
+
+## 2026-11-13 — Píxel de Meta (en producción)
+
+Pedido de Jesús: medir el embudo de la campaña (visita → clic en registrarse → registro).
+
+- `lib/meta-pixel.ts` + `components/analytics/MetaPixel.tsx` + bloque en `public/landing.html` (la página principal
+  es un HTML estático dentro de un iframe; las dos copias deben mantenerse sincronizadas).
+- Eventos: PageView solo en páginas públicas (landing, /login, /register, /terms, /privacy, /r/\*), Lead al hacer
+  clic en cualquier CTA de `/register`, Contact en los botones de WhatsApp, CompleteRegistration al terminar el
+  onboarding. Sin eventos automáticos (`autoConfig` off) ni seguimiento de cambios de ruta (`disablePushState`):
+  `/doctor`, `/admin`, reservas, documentos y presupuestos nunca llegan a Meta (datos de salud).
+- Solo envía desde `deltasalud.app`; en staging se activa con `?meta_pixel=1`.
+- En Meta (cuenta `lucas@deltasalud.app`, portafolio Delta Salud) ya estaban desactivadas la coincidencia avanzada
+  automática, los eventos automáticos y el seguimiento sin código.
+- Verificado: staging PageView → Lead → PageView /login (200); producción PageView (200). CompleteRegistration sin
+  probar en navegador (requiere un registro nuevo).

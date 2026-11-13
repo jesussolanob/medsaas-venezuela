@@ -28,4 +28,7 @@ export interface IIdentityRepository {
    * No-op if auth0Sub is null.
    */
   updateAuth0Sub(id: string, auth0Sub: string): Promise<void>;
+
+  /** Replace a placeholder full_name (empty or an email) with the real one. */
+  updateFullName(id: string, fullName: string): Promise<void>;
 }
