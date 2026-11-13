@@ -22,8 +22,13 @@ export class UpdateDoctorProfileUseCase {
      * mppsNumber. Fire-and-forget — a failure here never blocks the profile update.
      * Uses @Optional so the use case stays constructable in test contexts where
      * CredentialVerificationModule is not imported.
+     *
+     * @Inject is mandatory: TypeScript emits `Object` for union types with null,
+     * so without the explicit token Nest injected null silently (@Optional) and
+     * the re-verification never ran in staging while every test stayed green.
      */
     @Optional()
+    @Inject(VerifyMppsUseCase)
     private readonly verifyMpps: VerifyMppsUseCase | null = null,
   ) {}
 
@@ -41,10 +46,12 @@ export class UpdateDoctorProfileUseCase {
     const updated = await this.profileRepo.update(doctorId, params);
 
     // Fire-and-forget MPPS verification when the doctor's mppsNumber changes.
+    // Not forced on purpose: the use case applies the 15-minute cooldown, so
+    // repeated edits can't hammer the SACS portal.
     // A failure must never surface as an error on the profile update endpoint.
     // We never log the actual mppsNumber value (PII-adjacent).
     if (mppsChanged && this.verifyMpps) {
-      this.verifyMpps.execute(doctorId, { force: true }).catch(() => {
+      this.verifyMpps.execute(doctorId).catch(() => {
         this.logger.error(
           `[update-profile] mpps re-verification fire-and-forget failed for doctorId=${doctorId}`,
         );
