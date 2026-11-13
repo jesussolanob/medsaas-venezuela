@@ -96,6 +96,7 @@ export default function ServicesPage() {
   // Form state
   const [name, setName] = useState('');
   const [priceUsd, setPriceUsd] = useState('');
+  const [priceOnRequest, setPriceOnRequest] = useState(false);
   const [durationMinutes, setDurationMinutes] = useState('30');
   const [sessionsCount, setSessionsCount] = useState('1');
   const [validityDays, setValidityDays] = useState('');
@@ -120,6 +121,7 @@ export default function ServicesPage() {
     setEditing(null);
     setName('');
     setPriceUsd('');
+    setPriceOnRequest(false);
     setDurationMinutes('30');
     setSessionsCount('1');
     setValidityDays('');
@@ -133,7 +135,8 @@ export default function ServicesPage() {
   function openEdit(item: DoctorService) {
     setEditing(item);
     setName(item.name);
-    setPriceUsd(item.price_usd.toString());
+    setPriceUsd(item.price_on_request ? '' : item.price_usd.toString());
+    setPriceOnRequest(item.price_on_request);
     setDurationMinutes(item.duration_minutes.toString());
     setSessionsCount(item.sessions_count.toString());
     setValidityDays(item.validity_days != null ? item.validity_days.toString() : '');
@@ -199,7 +202,11 @@ export default function ServicesPage() {
   const selectedOfficeFits = selectedOffice ? officeFits(selectedOffice) : generalIsValid;
 
   async function handleSave() {
-    if (!name.trim() || !priceUsd) {
+    if (!name.trim()) {
+      showToast({ type: 'error', message: 'El nombre es obligatorio' });
+      return;
+    }
+    if (!priceOnRequest && !priceUsd) {
       showToast({ type: 'error', message: 'Nombre y precio son obligatorios' });
       return;
     }
@@ -221,7 +228,8 @@ export default function ServicesPage() {
     const parsedValidity = validityDays.trim() !== '' ? parseInt(validityDays) : null;
     const payload = {
       name: name.trim(),
-      price_usd: parseFloat(priceUsd) || 0,
+      price_usd: priceOnRequest ? 0 : parseFloat(priceUsd) || 0,
+      price_on_request: priceOnRequest,
       duration_minutes: parseInt(durationMinutes) || 30,
       sessions_count: parsedSessions,
       // validity_days only applies to multi-session plans; clear if sessions == 1
@@ -524,19 +532,27 @@ export default function ServicesPage() {
                     se multiplica ni se muestra el "× N =": lo que el especialista
                     escribió es lo que se cobra. */}
                 <div className="mb-3">
-                  <div className="flex items-baseline gap-1">
-                    <span className="text-xl font-bold text-teal-600">
-                      {format(item.price_usd)}
-                    </span>
-                    <span className="text-xs text-slate-400">{currencyCode}</span>
-                    {item.sessions_count > 1 && (
-                      <span className="text-xs text-slate-500 ml-1">
-                        por el paquete de {item.sessions_count}
-                      </span>
-                    )}
-                  </div>
-                  {bcvRate && (
-                    <p className="text-xs text-slate-400 mt-0.5">{toBs(item.price_usd)}</p>
+                  {item.price_on_request ? (
+                    <p className="text-sm font-semibold text-slate-500 italic">
+                      A consultar con el especialista
+                    </p>
+                  ) : (
+                    <>
+                      <div className="flex items-baseline gap-1">
+                        <span className="text-xl font-bold text-teal-600">
+                          {format(item.price_usd)}
+                        </span>
+                        <span className="text-xs text-slate-400">{currencyCode}</span>
+                        {item.sessions_count > 1 && (
+                          <span className="text-xs text-slate-500 ml-1">
+                            por el paquete de {item.sessions_count}
+                          </span>
+                        )}
+                      </div>
+                      {bcvRate && (
+                        <p className="text-xs text-slate-400 mt-0.5">{toBs(item.price_usd)}</p>
+                      )}
+                    </>
                   )}
                 </div>
 
@@ -760,27 +776,52 @@ export default function ServicesPage() {
                 </p>
               </div>
 
-              <div>
-                {/* ADR-025 rev.2: se carga el precio de TODO el paquete. La etiqueta
-                    decía "unitario" y era la fuente de la confusión. */}
-                <label className="block text-xs font-medium text-slate-600 mb-1.5">
-                  {(parseInt(sessionsCount) || 1) > 1
-                    ? `Precio ${currencyCode} del paquete completo`
-                    : `Precio ${currencyCode}`}{' '}
-                  <span className="text-red-400">*</span>
-                </label>
-                <div className="relative">
-                  <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={priceUsd}
-                    onChange={(e) => setPriceUsd(e.target.value)}
-                    placeholder="30.00"
-                    className={inp + ' pl-9'}
-                  />
+              {/* Precio a consultar toggle */}
+              <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-100">
+                <div>
+                  <p className="text-xs font-semibold text-slate-700">
+                    Precio a consultar con el especialista
+                  </p>
+                  <p className="text-[10px] text-slate-400 mt-0.5">
+                    Se muestra como «A consultar» en el booking; el precio se acuerda directamente
+                  </p>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => setPriceOnRequest((v) => !v)}
+                  aria-label="Alternar precio a consultar"
+                >
+                  {priceOnRequest ? (
+                    <ToggleRight className="w-6 h-6 text-teal-500" />
+                  ) : (
+                    <ToggleLeft className="w-6 h-6 text-slate-300" />
+                  )}
+                </button>
               </div>
+
+              {!priceOnRequest && (
+                <div>
+                  {/* ADR-025 rev.2: se carga el precio de TODO el paquete. La etiqueta
+                      decía "unitario" y era la fuente de la confusión. */}
+                  <label className="block text-xs font-medium text-slate-600 mb-1.5">
+                    {(parseInt(sessionsCount) || 1) > 1
+                      ? `Precio ${currencyCode} del paquete completo`
+                      : `Precio ${currencyCode}`}{' '}
+                    <span className="text-red-400">*</span>
+                  </label>
+                  <div className="relative">
+                    <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={priceUsd}
+                      onChange={(e) => setPriceUsd(e.target.value)}
+                      placeholder="30.00"
+                      className={inp + ' pl-9'}
+                    />
+                  </div>
+                </div>
+              )}
 
               {type === 'plan' && (
                 <div>

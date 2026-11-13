@@ -40,7 +40,11 @@ import {
   type DaySchedule,
   type OverlapError,
 } from '@/lib/schedule-utils';
-import { createOfficeForOnboarding } from './actions';
+import {
+  createOfficeForOnboarding,
+  skipOnboardingOffice,
+  reportOnboardingProgress,
+} from './actions';
 import { updateOffice } from '@/app/doctor/offices/actions';
 
 // ---------------------------------------------------------------------------
@@ -99,6 +103,7 @@ export default function OnboardingStepOffice({ onBack, onSuccess, existingOffice
 
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [serverError, setServerError] = useState<string | null>(null);
+  const [isSkipping, setIsSkipping] = useState(false);
 
   const overlaps = useMemo<OverlapError[]>(() => findOverlaps(schedule), [schedule]);
   const overlappingIndexes = useMemo(
@@ -195,6 +200,8 @@ export default function OnboardingStepOffice({ onBack, onSuccess, existingOffice
           setServerError(result.error ?? 'Error al actualizar el consultorio. Intenta nuevamente.');
           return;
         }
+        // Fire-and-forget progress tracking — never block the user on failure.
+        reportOnboardingProgress('office').catch(() => {});
         onSuccess(existingOfficeId, slotDuration);
       } else {
         // First attempt — create a new office.
@@ -203,9 +210,27 @@ export default function OnboardingStepOffice({ onBack, onSuccess, existingOffice
           setServerError(result.error ?? 'Error al crear el consultorio. Intenta nuevamente.');
           return;
         }
+        // Fire-and-forget progress tracking — never block the user on failure.
+        reportOnboardingProgress('office').catch(() => {});
         onSuccess(result.id, slotDuration);
       }
     });
+  }
+
+  async function handleSkip() {
+    setIsSkipping(true);
+    setServerError(null);
+    try {
+      const result = await skipOnboardingOffice();
+      if (!result.ok) {
+        setServerError(result.error ?? 'Error al omitir el consultorio. Intenta nuevamente.');
+        return;
+      }
+      // A default 50-min office is created; use 50 as the slot duration for the service step.
+      onSuccess(result.officeId ?? '', 50);
+    } finally {
+      setIsSkipping(false);
+    }
   }
 
   return (
@@ -665,20 +690,43 @@ export default function OnboardingStepOffice({ onBack, onSuccess, existingOffice
           </div>
         </div>
 
+        {/* Aviso de omitir */}
+        <p className="text-xs" style={{ color: 'var(--dh-gray-400)' }}>
+          Si omites este paso, crearemos un consultorio online de lunes a viernes de 8:00 a 17:00,
+          con consultas de 50 minutos. Puedes cambiarlo después en Consultorios.
+        </p>
+
         {/* Acciones */}
         <div className="flex gap-3 pt-2">
           <button
             type="button"
             onClick={onBack}
-            className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-semibold border border-slate-200 hover:bg-slate-50 transition-colors"
+            disabled={isPending || isSkipping}
+            className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-semibold border border-slate-200 hover:bg-slate-50 transition-colors disabled:opacity-40"
             style={{ color: 'var(--dh-gray-700)' }}
           >
             <ArrowLeft className="w-4 h-4" />
             Atrás
           </button>
           <button
+            type="button"
+            onClick={handleSkip}
+            disabled={isPending || isSkipping}
+            className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-semibold border border-slate-200 hover:bg-slate-50 transition-colors disabled:opacity-40"
+            style={{ color: 'var(--dh-gray-600)' }}
+          >
+            {isSkipping ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Omitiendo...
+              </>
+            ) : (
+              'Omitir'
+            )}
+          </button>
+          <button
             type="submit"
-            disabled={isPending}
+            disabled={isPending || isSkipping}
             className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-white font-bold text-sm transition-all hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"
             style={{ background: 'var(--dh-turquoise)' }}
           >

@@ -54,6 +54,7 @@ export async function getDoctorServices(): Promise<DoctorService[]> {
 export async function createDoctorService(input: {
   name: string;
   price_usd: number;
+  price_on_request?: boolean;
   duration_minutes: number;
   sessions_count: number;
   validity_days?: number | null;
@@ -78,6 +79,7 @@ export async function updateDoctorService(
   fields: Partial<{
     name: string;
     price_usd: number;
+    price_on_request: boolean;
     duration_minutes: number;
     sessions_count: number;
     validity_days: number | null;
