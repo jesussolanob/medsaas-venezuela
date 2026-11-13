@@ -457,7 +457,9 @@ export default function OnboardingForm({
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
 
-  const [fullName, setFullName] = useState(initialFullName);
+  // An email sign-up arrives with the email as "name": never pre-fill that, or the
+  // specialist keeps it and the email ends up as their name everywhere.
+  const [fullName, setFullName] = useState(initialFullName.includes('@') ? '' : initialFullName);
   // Teléfono: obligatorio y primero — es el punto de contacto de Delta con el
   // especialista (decisión del dueño, 2026-08-17). PhoneInput emite el canónico
   // 'código de país + número', solo dígitos, y '' cuando está incompleto.
@@ -592,6 +594,8 @@ export default function OnboardingForm({
 
     if (!fullName.trim()) {
       errors.full_name = 'El nombre completo es obligatorio';
+    } else if (fullName.includes('@')) {
+      errors.full_name = 'Escribe tu nombre y apellido, no tu correo';
     }
 
     if (!cedulaNumber.trim()) {
@@ -731,7 +735,12 @@ export default function OnboardingForm({
 
   // Lámina de bienvenida — antes de cualquier formulario.
   if (showWelcome) {
-    return <OnboardingWelcome fullName={initialFullName} onStart={() => setShowWelcome(false)} />;
+    return (
+      <OnboardingWelcome
+        fullName={initialFullName.includes('@') ? '' : initialFullName}
+        onStart={() => setShowWelcome(false)}
+      />
+    );
   }
 
   // Step 2 — create first office

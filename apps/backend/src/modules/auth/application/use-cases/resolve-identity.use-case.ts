@@ -11,6 +11,7 @@ import {
   ResolveSecretNotConfiguredError,
   ResolveSecretInvalidError,
 } from '../../domain/errors/identity-resolve.error';
+import { isPlaceholderName, profileNameOrEmpty } from '../../domain/profile-name';
 
 /**
  * Roles that must NEVER be assigned via self-service identity resolution.
@@ -87,6 +88,19 @@ export class ResolveIdentityUseCase {
       if (dto.sub && !existing.auth0Sub) {
         await this.identityRepo.updateAuth0Sub(existing.id, dto.sub);
       }
+      // A profile created from an email sign-up has no real name; when the same
+      // person later signs in with Google, take the name from that account.
+      if (isPlaceholderName(existing.fullName) && !isPlaceholderName(dto.fullName)) {
+        const realName = profileNameOrEmpty(dto.fullName);
+        await this.identityRepo.updateFullName(existing.id, realName);
+        return {
+          id: existing.id,
+          email: existing.email,
+          fullName: realName,
+          role: existing.role,
+          created: false,
+        };
+      }
       return {
         id: existing.id,
         email: existing.email,
@@ -117,7 +131,7 @@ export class ResolveIdentityUseCase {
       created = await this.identityRepo.create({
         id: profileId,
         email: normalizedEmail,
-        fullName: dto.fullName ?? normalizedEmail,
+        fullName: profileNameOrEmpty(dto.fullName),
         role: safeRole,
         auth0Sub: dto.sub ?? null,
       });

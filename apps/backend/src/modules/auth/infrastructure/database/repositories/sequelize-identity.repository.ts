@@ -97,6 +97,10 @@ export class SequelizeIdentityRepository implements IIdentityRepository {
     await this.model.update({ auth0Sub }, { where: { id } });
   }
 
+  async updateFullName(id: string, fullName: string): Promise<void> {
+    await this.model.update({ fullName }, { where: { id } });
+  }
+
   // ---------------------------------------------------------------------------
   // Private helpers
   // ---------------------------------------------------------------------------

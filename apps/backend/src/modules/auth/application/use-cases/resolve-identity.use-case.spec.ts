@@ -53,6 +53,7 @@ describe('ResolveIdentityUseCase', () => {
       findByEmail: jest.fn(),
       create: jest.fn(),
       updateAuth0Sub: jest.fn(),
+      updateFullName: jest.fn(),
     } as jest.Mocked<IIdentityRepository>;
 
     config = makeConfigService(VALID_SECRET);
@@ -210,18 +211,48 @@ describe('ResolveIdentityUseCase', () => {
     expect(repo.create).toHaveBeenCalledWith(expect.objectContaining({ role: 'doctor' }));
   });
 
-  it('uses email as fullName fallback when fullName is not provided', async () => {
+  it('stores an empty name (never the email) when fullName is not provided', async () => {
     repo.findByEmail.mockResolvedValue(null);
-    repo.create.mockResolvedValue(
-      makeIdentity({ email: 'nofull@example.com', fullName: 'nofull@example.com' }),
-    );
+    repo.create.mockResolvedValue(makeIdentity({ email: 'nofull@example.com', fullName: '' }));
 
     const dto: ResolveIdentityDto = { email: 'nofull@example.com' };
     await useCase.execute(dto, VALID_SECRET);
 
-    expect(repo.create).toHaveBeenCalledWith(
-      expect.objectContaining({ fullName: 'nofull@example.com' }),
+    expect(repo.create).toHaveBeenCalledWith(expect.objectContaining({ fullName: '' }));
+  });
+
+  it('stores an empty name when Auth0 sends the email as the name (email sign-up)', async () => {
+    repo.findByEmail.mockResolvedValue(null);
+    repo.create.mockResolvedValue(makeIdentity({ email: 'mail@example.com', fullName: '' }));
+
+    await useCase.execute(
+      { email: 'mail@example.com', fullName: 'mail@example.com' },
+      VALID_SECRET,
     );
+
+    expect(repo.create).toHaveBeenCalledWith(expect.objectContaining({ fullName: '' }));
+  });
+
+  it('replaces an email-like stored name with the real Google name on a later login', async () => {
+    repo.findByEmail.mockResolvedValue(
+      makeIdentity({ email: 'mail@example.com', fullName: 'mail@example.com' }),
+    );
+
+    const result = await useCase.execute(
+      { email: 'mail@example.com', fullName: 'Ana Pérez' },
+      VALID_SECRET,
+    );
+
+    expect(repo.updateFullName).toHaveBeenCalledWith(PROFILE_ID, 'Ana Pérez');
+    expect(result.fullName).toBe('Ana Pérez');
+  });
+
+  it('never overwrites a real stored name', async () => {
+    repo.findByEmail.mockResolvedValue(makeIdentity({ fullName: 'Dr. Existing' }));
+
+    await useCase.execute({ email: 'existing@example.com', fullName: 'Otro Nombre' }, VALID_SECRET);
+
+    expect(repo.updateFullName).not.toHaveBeenCalled();
   });
 
   it('stores auth0Sub when creating new profile with sub present', async () => {

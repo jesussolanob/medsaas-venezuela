@@ -40,6 +40,7 @@ describe('IdentityResolverService', () => {
       findByEmail: jest.fn(),
       create: jest.fn(),
       updateAuth0Sub: jest.fn(),
+      updateFullName: jest.fn(),
     } as jest.Mocked<IIdentityRepository>;
 
     service = new IdentityResolverService(repo as never);
@@ -144,13 +145,13 @@ describe('IdentityResolverService', () => {
       expect(repo.create).toHaveBeenCalledWith(expect.objectContaining({ fullName: 'Dr. House' }));
     });
 
-    it('falls back to "Pendiente" as fullName when name is absent (FIX 4 — no email in fullName)', async () => {
+    it('stores an empty fullName when name is absent (FIX 4 — no email in fullName)', async () => {
       const created = makeIdentity({ fullName: 'Pendiente' });
       repo.create.mockResolvedValue(created);
 
       await service.resolve({ email: 'no-name@example.com' });
 
-      expect(repo.create).toHaveBeenCalledWith(expect.objectContaining({ fullName: 'Pendiente' }));
+      expect(repo.create).toHaveBeenCalledWith(expect.objectContaining({ fullName: '' }));
       // Must NOT store the email as fullName
       const callArg = (repo.create.mock.calls[0] as [{ fullName: string }])[0];
       expect(callArg.fullName).not.toBe('no-name@example.com');
