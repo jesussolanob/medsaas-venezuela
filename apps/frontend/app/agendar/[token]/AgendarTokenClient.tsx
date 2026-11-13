@@ -310,7 +310,7 @@ export default function AgendarTokenClient({ token }: { token: string }) {
     }
   };
 
-  // La fuente Plus Jakarta Sans la inyecta el layout raíz (next/font/google → --font-sans).
+  // La fuente Plus Jakarta Sans la inyecta el layout raíz (next/font/local → --font-sans).
   // No se necesita @import inline — heredamos la variable del <html> parent.
 
   const wrapper = (children: React.ReactNode) => (
