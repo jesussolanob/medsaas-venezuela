@@ -197,6 +197,15 @@ export default function OnboardingStepService({
               Define el servicio que ofrecerás — luego podrás agregar más desde Servicios
             </p>
           </div>
+          <button
+            type="button"
+            onClick={handleSkip}
+            disabled={isPending || isSkipping}
+            className="ml-auto shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold border border-slate-200 hover:bg-slate-50 transition-colors disabled:opacity-40"
+            style={{ color: 'var(--dh-gray-600)' }}
+          >
+            {isSkipping ? 'Omitiendo...' : 'Omitir'}
+          </button>
         </div>
       </div>
 

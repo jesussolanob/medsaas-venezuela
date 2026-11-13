@@ -261,6 +261,15 @@ export default function OnboardingStepOffice({ onBack, onSuccess, existingOffice
               Los pacientes verán esta información al agendar una cita
             </p>
           </div>
+          <button
+            type="button"
+            onClick={handleSkip}
+            disabled={isPending || isSkipping}
+            className="ml-auto shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold border border-slate-200 hover:bg-slate-50 transition-colors disabled:opacity-40"
+            style={{ color: 'var(--dh-gray-600)' }}
+          >
+            {isSkipping ? 'Omitiendo...' : 'Omitir'}
+          </button>
         </div>
       </div>
 
