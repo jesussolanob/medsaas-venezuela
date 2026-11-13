@@ -36,6 +36,7 @@ import OnboardingStepService from './OnboardingStepService';
 import OnboardingWelcome from './OnboardingWelcome';
 import PhoneInput from '@/components/shared/PhoneInput';
 import { leerReferido, limpiarReferido, esCodigoValido } from '@/lib/seller-referral';
+import { MetaPixelEvent } from '@/components/analytics/MetaPixel';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -691,6 +692,7 @@ export default function OnboardingForm({
           >
             ¡Ya puedes atender pacientes!
           </h2>
+          <MetaPixelEvent event="CompleteRegistration" />
           <p className="text-sm leading-relaxed" style={{ color: 'var(--dh-gray-600)' }}>
             Tu cuenta está configurada. Tienes un consultorio y un servicio listos — puedes crear tu
             primera consulta desde el portal.
