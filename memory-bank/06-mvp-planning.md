@@ -13,7 +13,7 @@
 Fases 0-3 (NX + shared-types + backend NestJS) son base de todo lo de abajo.
 Estado: Fase 0 ✅ · Fase 1 en-progreso.
 
-## Onboarding mínimo + CSV de especialistas (pedido del dueño, 2026-11-12) — en-progreso
+## Onboarding mínimo + CSV de especialistas (pedido del dueño, 2026-11-12) — completado (en staging 2026-11-13, sin promover)
 
 > Rama `feature/onboarding-minimo`. Objetivo de negocio: que con lo mínimo al especialista ya le puedan
 > agendar, y que el admin tenga una base de contacto útil para seguimiento comercial.

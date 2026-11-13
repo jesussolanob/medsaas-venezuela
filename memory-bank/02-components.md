@@ -1183,3 +1183,14 @@ los layouts lleva `min-w-0` para que las tablas anchas no desborden la página.
 | `app/doctor/dashboard-actions.ts` → `getPastUnconfirmedAppointments()` | Citas pasadas sin confirmar, más recientes primero + total real (`backendGetPaged`)                         |
 | `components/doctor/AppointmentDetailModal.tsx`                         | Atendida / No asistió cuando la cita ya llegó                                                               |
 | `components/doctor/ImmediateConsultationModal.tsx`                     | Aviso si el paciente ya tiene cita hoy; `onOpenExistingAppointment` abre su detalle                         |
+
+### Onboarding mínimo (2026-11-12)
+
+| Pieza                                                                                                        | Qué hace                                                                                                                 |
+| ------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------ |
+| `doctor-settings/.../skip-office.use-case.ts`, `skip-service.use-case.ts`, `onboarding-progress.use-case.ts` | "Omitir" con valores por defecto y seguimiento del paso                                                                  |
+| Migración `20261112000001-onboarding-skip-and-price-on-request.cjs`                                          | `pricing_plans.price_on_request`, `profiles.onboarding_last_step/_office_skipped/_service_skipped`                       |
+| `app/doctor/onboarding/OnboardingStep{Office,Service}.tsx`                                                   | Botón "Omitir" arriba y abajo; sin campo MPPS en el paso 1                                                               |
+| `app/doctor/settings/page.tsx`                                                                               | Campo "N.º MPPS" (distinto de Matrícula / Licencia)                                                                      |
+| `app/doctor/consultations/ApprovePaymentModal.tsx`                                                           | Pide "Monto de la consulta" si el servicio es a consultar (`requiresBaseAmount`)                                         |
+| `app/book/[doctorId]/BookingClient.tsx`                                                                      | "A consultar con el especialista"; sin paso de pago si el plan es a consultar o el especialista no tiene cuentas de pago |
