@@ -118,7 +118,8 @@ export default function OnboardingStepService({
         description: description.trim() || null,
         type: 'plan',
         show_in_booking: true,
-        office_id: officeId ?? null,
+        // An empty id would fail the UUID check: null means 'all offices'.
+        office_id: officeId || null,
       });
 
       if (!serviceResult.success) {

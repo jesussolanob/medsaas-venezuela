@@ -211,7 +211,8 @@ export interface SkipOfficeResult {
 }
 
 interface BackendSkipOffice {
-  id: string;
+  /** Backend returns SkipOfficeOutput: { officeSkipped, lastStep, officeId }. */
+  officeId: string | null;
 }
 
 /**
@@ -228,7 +229,7 @@ export async function skipOnboardingOffice(): Promise<SkipOfficeResult> {
     });
     return { ok: false, error: result.error.message };
   }
-  return { ok: true, officeId: result.value.id };
+  return { ok: true, officeId: result.value.officeId ?? undefined };
 }
 
 // ---------------------------------------------------------------------------
@@ -242,7 +243,8 @@ export interface SkipServiceResult {
 }
 
 interface BackendSkipService {
-  id: string;
+  /** Backend returns SkipServiceOutput: { serviceSkipped, lastStep, serviceId }. */
+  serviceId: string | null;
 }
 
 /**
@@ -259,5 +261,5 @@ export async function skipOnboardingService(): Promise<SkipServiceResult> {
     });
     return { ok: false, error: result.error.message };
   }
-  return { ok: true, serviceId: result.value.id };
+  return { ok: true, serviceId: result.value.serviceId ?? undefined };
 }
