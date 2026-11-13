@@ -153,16 +153,25 @@ const ONBOARDING_STEP_LABEL: Record<string, string> = {
  *   "service", false, true  → "Servicio (omitido)"
  *   "completed", false, false → "Completado"
  */
-function formatOnboardingStep(
-  lastStep: string | null,
-  officeSkipped: boolean,
-  serviceSkipped: boolean,
-): string {
-  if (!lastStep) return '';
-  const label = ONBOARDING_STEP_LABEL[lastStep] ?? lastStep;
-  const skipped =
-    (lastStep === 'office' && officeSkipped) || (lastStep === 'service' && serviceSkipped);
-  return skipped ? `${label} (omitido)` : label;
+/**
+ * Last onboarding step for the CSV. Accounts created before the step was tracked
+ * (onboarding_last_step NULL) get it derived from what they actually configured,
+ * so the column is useful for every specialist, not only the new ones.
+ */
+function formatOnboardingStep(row: DoctorExportRow): string {
+  const lastStep = row.onboardingLastStep;
+  if (lastStep) {
+    const label = ONBOARDING_STEP_LABEL[lastStep] ?? lastStep;
+    const skipped =
+      (lastStep === 'office' && row.onboardingOfficeSkipped) ||
+      (lastStep === 'service' && row.onboardingServiceSkipped);
+    return skipped ? `${label} (omitido)` : label;
+  }
+  if (row.onboardingCompleted) return 'Completado';
+  if (row.serviceCount > 0) return 'Servicio';
+  if (row.officeCount > 0) return 'Consultorio';
+  if (row.cedula && row.specialty) return 'Perfil';
+  return row.lastSignInAt ? 'Sin completar datos' : 'Nunca ingresó';
 }
 
 function buildCsvRow(row: DoctorExportRow): string {
@@ -184,11 +193,7 @@ function buildCsvRow(row: DoctorExportRow): string {
     String(row.officeCount),
     String(row.serviceCount),
     String(row.consultationCount),
-    formatOnboardingStep(
-      row.onboardingLastStep,
-      row.onboardingOfficeSkipped,
-      row.onboardingServiceSkipped,
-    ),
+    formatOnboardingStep(row),
   ];
   return fields.map(csvEscape).join(',');
 }

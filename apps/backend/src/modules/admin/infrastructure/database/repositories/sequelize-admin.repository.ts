@@ -1299,6 +1299,7 @@ export class SequelizeAdminRepository implements IAdminRepository {
       onboarding_last_step: string | null;
       onboarding_office_skipped: boolean;
       onboarding_service_skipped: boolean;
+      onboarding_completed: boolean | null;
     }
 
     // Uses correlated subqueries for subscription fields to avoid row multiplication
@@ -1315,6 +1316,7 @@ export class SequelizeAdminRepository implements IAdminRepository {
          p.onboarding_last_step,
          COALESCE(p.onboarding_office_skipped, false)            AS onboarding_office_skipped,
          COALESCE(p.onboarding_service_skipped, false)           AS onboarding_service_skipped,
+         COALESCE(p.onboarding_completed, false)                 AS onboarding_completed,
          -- ADR-042: profiles is the source of truth. Correlated subquery (not JOIN) to avoid
          -- row duplication when a doctor has multiple subscription rows.
          COALESCE(
@@ -1375,6 +1377,7 @@ export class SequelizeAdminRepository implements IAdminRepository {
         onboardingLastStep: r.onboarding_last_step ?? null,
         onboardingOfficeSkipped: r.onboarding_office_skipped ?? false,
         onboardingServiceSkipped: r.onboarding_service_skipped ?? false,
+        onboardingCompleted: r.onboarding_completed ?? false,
       };
     });
   }
