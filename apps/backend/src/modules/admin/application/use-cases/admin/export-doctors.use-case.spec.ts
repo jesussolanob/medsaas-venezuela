@@ -23,6 +23,7 @@ const makeRow = (overrides: Partial<DoctorExportRow> = {}): DoctorExportRow => (
   onboardingLastStep: 'completed',
   onboardingOfficeSkipped: false,
   onboardingServiceSkipped: false,
+  onboardingCompleted: true,
   ...overrides,
 });
 
@@ -239,12 +240,58 @@ describe('ExportDoctorsUseCase', () => {
   // Onboarding step labelling
   // ---------------------------------------------------------------------------
 
-  it('labels onboardingLastStep=null as empty string', async () => {
-    const useCase = new ExportDoctorsUseCase(makeRepo([makeRow({ onboardingLastStep: null })]));
-    const csv = await useCase.execute();
-    const line = csv.slice(1).split('\r\n')[1] ?? '';
-    const fields = line.split(',');
-    expect(fields[16]).toBe(''); // Último paso del onboarding
+  describe('legacy rows (onboardingLastStep=null) derive the step from their data', () => {
+    const lastField = async (overrides: Partial<DoctorExportRow>): Promise<string> => {
+      const useCase = new ExportDoctorsUseCase(
+        makeRepo([makeRow({ onboardingLastStep: null, ...overrides })]),
+      );
+      const csv = await useCase.execute();
+      const line = csv.slice(1).split('\r\n')[1] ?? '';
+      return line.split(',').at(-1) ?? '';
+    };
+
+    it('completed onboarding → "Completado"', async () => {
+      expect(await lastField({ onboardingCompleted: true })).toBe('Completado');
+    });
+
+    it('has a service but not completed → "Servicio"', async () => {
+      expect(await lastField({ onboardingCompleted: false, serviceCount: 1 })).toBe('Servicio');
+    });
+
+    it('has only an office → "Consultorio"', async () => {
+      expect(await lastField({ onboardingCompleted: false, serviceCount: 0, officeCount: 1 })).toBe(
+        'Consultorio',
+      );
+    });
+
+    it('only personal data → "Perfil"', async () => {
+      expect(await lastField({ onboardingCompleted: false, serviceCount: 0, officeCount: 0 })).toBe(
+        'Perfil',
+      );
+    });
+
+    it('signed in without data → "Sin completar datos"', async () => {
+      expect(
+        await lastField({
+          onboardingCompleted: false,
+          serviceCount: 0,
+          officeCount: 0,
+          cedula: null,
+        }),
+      ).toBe('Sin completar datos');
+    });
+
+    it('never signed in → "Nunca ingresó"', async () => {
+      expect(
+        await lastField({
+          onboardingCompleted: false,
+          serviceCount: 0,
+          officeCount: 0,
+          cedula: null,
+          lastSignInAt: null,
+        }),
+      ).toBe('Nunca ingresó');
+    });
   });
 
   it('labels onboardingLastStep=completed as "Completado"', async () => {
