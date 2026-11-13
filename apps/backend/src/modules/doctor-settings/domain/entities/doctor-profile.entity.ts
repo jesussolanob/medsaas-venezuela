@@ -30,6 +30,12 @@ export interface DoctorProfileCreateParams {
   customRateLabel: string | null;
   /** National ID (cedula). Read-only after onboarding — never updated via profile PUT. */
   cedula: string | null;
+  /**
+   * Doctor's MPPS license number (optional). Editable after onboarding.
+   * When changed, a new MPPS verification is triggered fire-and-forget.
+   * Never logged (PII-adjacent).
+   */
+  mppsNumber?: string | null;
   /** Doctor's date of birth in ISO format (YYYY-MM-DD). Editable by the doctor. */
   birthDate: string | null;
   /** F | M | O | N (prefers not to say). Statistical use only — never gates access.
@@ -51,6 +57,16 @@ export interface DoctorProfileCreateParams {
   hasActiveOffice?: boolean;
   /** Whether the doctor has at least one active service / pricing plan (enrichment). */
   hasActiveService?: boolean;
+  /**
+   * Last onboarding step the doctor reached.
+   * Monotonic: null < 'profile' < 'office' < 'service' < 'completed'.
+   * null = onboarding not started (pre-migration doctors).
+   */
+  onboardingLastStep?: string | null;
+  /** True when the office setup step was explicitly skipped (Omitir button). */
+  onboardingOfficeSkipped?: boolean;
+  /** True when the service setup step was explicitly skipped (Omitir button). */
+  onboardingServiceSkipped?: boolean;
 }
 
 export interface DoctorProfileUpdateParams {
@@ -74,6 +90,12 @@ export interface DoctorProfileUpdateParams {
   gender?: string | null;
   /** Set server-side when the doctor dismisses the welcome tour. */
   welcomeDismissedAt?: string | null;
+  /**
+   * MPPS license number. Editable by the doctor.
+   * When changed, a new MPPS verification is triggered fire-and-forget.
+   * Pass null to clear the value. Absent = do not update.
+   */
+  mppsNumber?: string | null;
 }
 
 export class DoctorProfile {
@@ -162,7 +184,20 @@ export class DoctorProfile {
     this.onboardingCompletedAt = params.onboardingCompletedAt ?? null;
     this.hasActiveOffice = params.hasActiveOffice ?? false;
     this.hasActiveService = params.hasActiveService ?? false;
+    this.mppsNumber = params.mppsNumber ?? null;
+    this.onboardingLastStep = params.onboardingLastStep ?? null;
+    this.onboardingOfficeSkipped = params.onboardingOfficeSkipped ?? false;
+    this.onboardingServiceSkipped = params.onboardingServiceSkipped ?? false;
   }
+
+  /** MPPS license number (optional, editable, nullable). */
+  readonly mppsNumber: string | null;
+  /** Last onboarding step the doctor reached (monotonic). */
+  readonly onboardingLastStep: string | null;
+  /** True when office step was explicitly skipped. */
+  readonly onboardingOfficeSkipped: boolean;
+  /** True when service step was explicitly skipped. */
+  readonly onboardingServiceSkipped: boolean;
 
   /** Public booking link for sharing with patients. */
   get bookingLink(): string {
@@ -223,6 +258,10 @@ export class DoctorProfile {
       onboardingCompletedAt: this.onboardingCompletedAt,
       hasActiveOffice,
       hasActiveService,
+      mppsNumber: this.mppsNumber,
+      onboardingLastStep: this.onboardingLastStep,
+      onboardingOfficeSkipped: this.onboardingOfficeSkipped,
+      onboardingServiceSkipped: this.onboardingServiceSkipped,
     });
   }
 }

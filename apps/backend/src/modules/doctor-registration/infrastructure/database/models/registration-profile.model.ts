@@ -113,6 +113,14 @@ export class RegistrationProfileModel extends Model {
   @Column({ type: DataType.TEXT, allowNull: true, field: 'terms_accepted_version' })
   declare termsAcceptedVersion: string | null;
 
+  /**
+   * Last onboarding step the doctor reached (monotonic advancement).
+   * Values: null | 'profile' | 'office' | 'service' | 'completed'.
+   * Added by migration 20261112000001.
+   */
+  @Column({ type: DataType.TEXT, allowNull: true, field: 'onboarding_last_step' })
+  declare onboardingLastStep: string | null;
+
   @CreatedAt
   @Column({ field: 'created_at' })
   declare createdAt: Date;

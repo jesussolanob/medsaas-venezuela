@@ -119,6 +119,9 @@ export class CompleteRegistrationUseCase {
       specialty: input.specialty ?? null,
       gender: input.gender ?? null,
       resetVerification: identityChanged,
+      // Advance onboarding step to 'profile' on first (or any) registration submit.
+      // This is the starting point for the step tracker introduced in onboarding-minimo.
+      onboardingLastStep: 'profile',
     });
 
     if (!updated) {

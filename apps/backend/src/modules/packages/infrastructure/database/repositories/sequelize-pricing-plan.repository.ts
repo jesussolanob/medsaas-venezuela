@@ -62,6 +62,7 @@ export class SequelizePricingPlanRepository implements IPricingPlanRepository {
       officeId: plan.officeId ?? null,
       name: plan.name,
       priceUsd: plan.priceUsd,
+      priceOnRequest: plan.priceOnRequest,
       durationMinutes: plan.durationMinutes,
       sessionsCount: plan.sessionsCount,
       validityDays: plan.validityDays ?? null,
@@ -80,6 +81,7 @@ export class SequelizePricingPlanRepository implements IPricingPlanRepository {
     await row.update({
       ...(params.name !== undefined && { name: params.name }),
       ...(params.priceUsd !== undefined && { priceUsd: params.priceUsd }),
+      ...(params.priceOnRequest !== undefined && { priceOnRequest: params.priceOnRequest }),
       ...(params.durationMinutes !== undefined && { durationMinutes: params.durationMinutes }),
       ...(params.sessionsCount !== undefined && { sessionsCount: params.sessionsCount }),
       // validityDays explicitly included (supports setting to null to remove expiry)
@@ -106,6 +108,7 @@ export class SequelizePricingPlanRepository implements IPricingPlanRepository {
       officeId: row.officeId ?? null,
       name: row.name,
       priceUsd: Number(row.priceUsd),
+      priceOnRequest: row.priceOnRequest ?? false,
       durationMinutes: row.durationMinutes,
       sessionsCount: row.sessionsCount,
       validityDays: row.validityDays ?? null,

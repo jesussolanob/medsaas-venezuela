@@ -54,6 +54,13 @@ export const UpdateDoctorProfileDtoSchema = z
      * El servidor sella la fecha; el cliente no envía timestamps.
      */
     welcome_dismissed: z.boolean().optional(),
+    /**
+     * MPPS license number. Optional — editable after onboarding.
+     * Pass null to clear the value. Pass a string to set/update it.
+     * When changed, a new MPPS verification is triggered fire-and-forget.
+     * Max 20 chars (e.g. "MPPS-65583" = 10 chars).
+     */
+    mpps_number: z.string().max(20).nullable().optional(),
   })
   .strict();
 

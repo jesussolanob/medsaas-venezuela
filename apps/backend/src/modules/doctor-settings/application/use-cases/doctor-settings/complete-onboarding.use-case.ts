@@ -94,8 +94,11 @@ export class CompleteOnboardingUseCase {
       throw new OnboardingRequirementsNotMetError();
     }
 
-    // 3. Mark onboarding as complete (idempotent).
-    await this.profileRepo.markOnboardingCompleted(doctorId);
+    // 3. Mark onboarding as complete (idempotent) and advance step tracker.
+    await Promise.all([
+      this.profileRepo.markOnboardingCompleted(doctorId),
+      this.profileRepo.updateOnboardingState(doctorId, { lastStep: 'completed' }),
+    ]);
 
     // 4. Best-effort: accrue signup commission (does not affect the response on failure).
     if (this.accrueSignupCommission) {

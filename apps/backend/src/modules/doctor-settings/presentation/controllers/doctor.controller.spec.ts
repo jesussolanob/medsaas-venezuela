@@ -16,6 +16,9 @@ import { GetDoctorExchangeRateUseCase } from '../../application/use-cases/doctor
 import { SetDoctorExchangeRateUseCase } from '../../application/use-cases/doctor-settings/set-doctor-exchange-rate.use-case';
 import { CompleteOnboardingUseCase } from '../../application/use-cases/doctor-settings/complete-onboarding.use-case';
 import { DeactivateOwnAccountUseCase } from '../../application/use-cases/doctor-settings/deactivate-own-account.use-case';
+import { OnboardingProgressUseCase } from '../../application/use-cases/doctor-settings/onboarding-progress.use-case';
+import { SkipOfficeUseCase } from '../../application/use-cases/doctor-settings/skip-office.use-case';
+import { SkipServiceUseCase } from '../../application/use-cases/doctor-settings/skip-service.use-case';
 import { DoctorProfile } from '../../domain/entities/doctor-profile.entity';
 import { PricingPlan } from '../../../packages/domain/entities/pricing-plan.entity';
 import type { CurrentUserPayload } from '../../../../presentation/decorators/current-user.decorator';
@@ -90,6 +93,9 @@ describe('DoctorController', () => {
   const mockSetExchangeRate = { execute: jest.fn() };
   const mockCompleteOnboarding = { execute: jest.fn() };
   const mockDeactivateOwnAccount = { execute: jest.fn() };
+  const mockOnboardingProgress = { execute: jest.fn() };
+  const mockSkipOffice = { execute: jest.fn() };
+  const mockSkipService = { execute: jest.fn() };
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -111,6 +117,9 @@ describe('DoctorController', () => {
         { provide: SetDoctorExchangeRateUseCase, useValue: mockSetExchangeRate },
         { provide: CompleteOnboardingUseCase, useValue: mockCompleteOnboarding },
         { provide: DeactivateOwnAccountUseCase, useValue: mockDeactivateOwnAccount },
+        { provide: OnboardingProgressUseCase, useValue: mockOnboardingProgress },
+        { provide: SkipOfficeUseCase, useValue: mockSkipOffice },
+        { provide: SkipServiceUseCase, useValue: mockSkipService },
       ],
     })
       .overrideGuard(AppAuthGuard)
@@ -466,6 +475,7 @@ describe('DoctorController', () => {
       const dto: import('@delta/shared-types').CreatePricingPlanDto = {
         name: 'Consulta',
         price_usd: 50,
+        price_on_request: false,
         duration_minutes: 30,
         sessions_count: 1,
         type: 'plan',

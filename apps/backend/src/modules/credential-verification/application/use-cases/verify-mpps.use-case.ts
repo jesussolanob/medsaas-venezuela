@@ -193,9 +193,14 @@ export class VerifyMppsUseCase {
     }
 
     // 6b. MPPS number matching + profession check.
-    // Compare on the NORMALIZED license (SACS returns "MPPS-65583", the doctor
-    // declares "65583"). Skip matching entirely when the declared value has no
-    // numeric content so an empty declaration never matches an empty license.
+    //
+    // Two paths:
+    //  - Doctor declared an MPPS number → match the specific license AND require a
+    //    medical profession. Skip matching entirely when declared value has no
+    //    numeric content so an empty declaration never matches an empty license.
+    //  - Doctor did NOT declare an MPPS number → accept if ANY medical profession
+    //    is present in the SACS result. The name match in 6a already confirmed the
+    //    person; this confirms they have a medical credential of any kind.
     const declaredMpps = normalizeMpps(profile.mppsNumber ?? '');
     const professions = sacsResult.professions ?? [];
     const matchedProfession =
@@ -203,10 +208,15 @@ export class VerifyMppsUseCase {
         ? professions.find(
             (p) => normalizeMpps(p.licencia) === declaredMpps && isMedicalProfession(p.profesion),
           )
-        : undefined;
+        : // No MPPS declared — verify by presence of any medical profession
+          professions.find((p) => isMedicalProfession(p.profesion));
 
     if (!matchedProfession) {
-      this.logger.log(`[verify-mpps] doctorId=${doctorId} mpps not in medical professions`);
+      const reason =
+        declaredMpps.length > 0
+          ? 'declared mpps not found in medical professions list'
+          : 'no medical profession found for this cedula';
+      this.logger.log(`[verify-mpps] doctorId=${doctorId} mpps mismatch: ${reason}`);
       const saved = await this.verificationRepo.upsert({
         doctorId,
         credentialType: CREDENTIAL_TYPE,
@@ -215,7 +225,7 @@ export class VerifyMppsUseCase {
         status: 'mismatch',
         evidence: null,
         checkedAt,
-        lastError: 'declared mpps not found in medical professions list',
+        lastError: reason,
       });
       return this.toOutput(doctorId, saved.status, saved.attempts, saved.checkedAt);
     }

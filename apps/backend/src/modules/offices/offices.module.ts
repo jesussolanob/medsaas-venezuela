@@ -40,7 +40,9 @@ import { OfficesController } from './presentation/controllers/offices.controller
     DeleteOfficeUseCase,
     ToggleOfficeUseCase,
   ],
-  // Export the repository token so BookingModule can inject it for slot generation.
-  exports: [OFFICE_REPOSITORY],
+  // Export OFFICE_REPOSITORY so BookingModule can inject it for slot generation.
+  // Export CreateOfficeUseCase so DoctorSettingsModule/SkipOfficeUseCase can reuse it
+  // during the minimum onboarding wizard (creates default "Consultorio" if none exists).
+  exports: [OFFICE_REPOSITORY, CreateOfficeUseCase],
 })
 export class OfficesModule {}

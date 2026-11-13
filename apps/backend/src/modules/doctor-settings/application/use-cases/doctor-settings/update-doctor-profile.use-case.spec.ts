@@ -54,6 +54,7 @@ describe('UpdateDoctorProfileUseCase', () => {
       findPlanSnapshot: jest.fn().mockResolvedValue(null),
       scheduleOwnAccountDeactivation: jest.fn().mockResolvedValue(undefined),
       applyExpiredScheduledDeactivations: jest.fn().mockResolvedValue(0),
+      updateOnboardingState: jest.fn().mockResolvedValue(undefined),
     };
     useCase = new UpdateDoctorProfileUseCase(mockRepo);
   });

@@ -435,15 +435,21 @@ export class SequelizeAppointmentRepository implements IAppointmentRepository {
           ? parseFloat(payerRows[0].plan_price)
           : params.oldPlanPriceUsd;
 
-      const updatedAppointments = await this.sequelize.query<{ id: string }>(
-        `UPDATE appointments a
-            SET plan_id    = :planId,
+      // price_on_request: solo se actualiza nombre/plan_id; los montos de las
+      // citas se dejan intactos — el precio se fija al aprobar el cobro.
+      const appointmentSetClause = params.priceOnRequest
+        ? `plan_id = :planId, plan_name = :planName, updated_at = NOW()`
+        : `plan_id    = :planId,
                 plan_name  = :planName,
                 plan_price = CASE
                                WHEN a.plan_price IS NOT NULL AND a.plan_price > 0 THEN :price
                                ELSE a.plan_price
                              END,
-                updated_at = NOW()
+                updated_at = NOW()`;
+
+      const updatedAppointments = await this.sequelize.query<{ id: string }>(
+        `UPDATE appointments a
+            SET ${appointmentSetClause}
           WHERE a.doctor_id = :doctorId AND ${scope}
           RETURNING a.id`,
         { replacements, type: QueryTypes.SELECT, transaction: t },
@@ -483,8 +489,9 @@ export class SequelizeAppointmentRepository implements IAppointmentRepository {
       // Los bolívares se recalculan con la tasa CONGELADA del propio pago, no con
       // la de hoy: lo ya cobrado no se revalúa (ver el lote de cobros del 09/09).
       // Si el pago no guardó tasa, `amount_bs` se deja como está antes que inventar una.
+      // price_on_request: NO se toca el monto del pago — el precio se fija al aprobar.
       let paymentAdjusted = false;
-      if (paymentId) {
+      if (paymentId && !params.priceOnRequest) {
         const updatedPayments = await this.sequelize.query<{ id: string }>(
           `UPDATE payments
               SET amount_usd = :price,
@@ -508,22 +515,26 @@ export class SequelizeAppointmentRepository implements IAppointmentRepository {
       // Solo la de la sesión que lleva el precio (`session_number IS NULL`, que es
       // como se guarda la sesión 1 y también una consulta suelta). El total se
       // recompone como base + extras, igual que en la aprobación del cobro.
-      await this.sequelize.query(
-        `UPDATE consultations c
-            SET base_amount = :price,
-                amount = :price + COALESCE((
-                  SELECT SUM(ei.amount_usd)
-                    FROM consultation_extra_items ei
-                   WHERE ei.consultation_id = c.id
-                ), 0),
-                updated_at = NOW()
-           FROM appointments a
-          WHERE a.consultation_id = c.id
-            AND c.doctor_id = :doctorId
-            AND a.session_number IS NULL
-            AND ${scope}`,
-        { replacements, type: QueryTypes.UPDATE, transaction: t },
-      );
+      // price_on_request: NO se tocan los montos de la consulta; el especialista
+      // fija el precio en el momento de aprobar el cobro.
+      if (!params.priceOnRequest) {
+        await this.sequelize.query(
+          `UPDATE consultations c
+              SET base_amount = :price,
+                  amount = :price + COALESCE((
+                    SELECT SUM(ei.amount_usd)
+                      FROM consultation_extra_items ei
+                     WHERE ei.consultation_id = c.id
+                  ), 0),
+                  updated_at = NOW()
+             FROM appointments a
+            WHERE a.consultation_id = c.id
+              AND c.doctor_id = :doctorId
+              AND a.session_number IS NULL
+              AND ${scope}`,
+          { replacements, type: QueryTypes.UPDATE, transaction: t },
+        );
+      }
 
       // --- 6. Asiento de auditoría --------------------------------------------
       // El estado NO se mueve: por eso old_status/new_status van en null y el

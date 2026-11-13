@@ -264,6 +264,75 @@ describe('VerifyMppsUseCase', () => {
     });
   });
 
+  describe('execute — no MPPS declared + found with medical profession → verified', () => {
+    it('verifies when cédula is in SACS with any medical profession and no MPPS declared', async () => {
+      const verifiedRecord = makeVerification('verified');
+      const { useCase, verificationRepo, mppsPort } = buildUseCase({
+        profile: {
+          id: DOCTOR_ID,
+          cedula: '12345678',
+          mppsNumber: null, // doctor has not declared an MPPS number
+          fullName: 'JOSE GARCIA',
+        },
+        portalResult: {
+          found: true,
+          name: 'JOSE GARCIA',
+          professions: [
+            {
+              licencia: 'MPPS-65583',
+              profesion: 'MÉDICO CIRUJANO',
+              fechaRegistro: '2010-01-01',
+              tomoRegistro: 'T1',
+              folioRegistro: 'F1',
+            },
+          ],
+        },
+        upsertResult: verifiedRecord,
+      });
+
+      const result = await useCase.execute(DOCTOR_ID);
+
+      expect(result.status).toBe('verified');
+      expect(mppsPort.queryByCedula).toHaveBeenCalledTimes(1);
+      expect(verificationRepo.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: 'verified',
+          evidence: expect.objectContaining({ profesion: 'MÉDICO CIRUJANO' }),
+        }),
+      );
+    });
+  });
+
+  describe('execute — no MPPS declared + found but no medical profession → mismatch', () => {
+    it('returns mismatch when cédula is in SACS but has no medical profession', async () => {
+      const mismatchRecord = makeVerification('mismatch');
+      const { useCase, verificationRepo } = buildUseCase({
+        profile: {
+          id: DOCTOR_ID,
+          cedula: '12345678',
+          mppsNumber: null,
+          fullName: 'JOSE GARCIA',
+        },
+        portalResult: {
+          found: true,
+          name: 'JOSE GARCIA',
+          professions: [], // no professions listed
+        },
+        upsertResult: mismatchRecord,
+      });
+
+      const result = await useCase.execute(DOCTOR_ID);
+
+      expect(result.status).toBe('mismatch');
+      expect(verificationRepo.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: 'mismatch',
+          lastError: 'no medical profession found for this cedula',
+        }),
+      );
+    });
+  });
+
   describe('execute — network error → error status', () => {
     it('returns error status when portal throws', async () => {
       const errorRecord = makeVerification('error');

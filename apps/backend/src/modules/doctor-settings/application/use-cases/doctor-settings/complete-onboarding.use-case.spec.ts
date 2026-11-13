@@ -37,6 +37,7 @@ function makeRepos(profilePhone: string | null = '+58 412 1234567') {
     findPlanSnapshot: jest.fn().mockResolvedValue(null),
     scheduleOwnAccountDeactivation: jest.fn().mockResolvedValue(undefined),
     applyExpiredScheduledDeactivations: jest.fn().mockResolvedValue(0),
+    updateOnboardingState: jest.fn().mockResolvedValue(undefined),
   };
 
   const officeRepo: jest.Mocked<IOfficeRepository> = {
