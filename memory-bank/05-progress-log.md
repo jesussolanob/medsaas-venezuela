@@ -5794,3 +5794,17 @@ especialista ya le puedan agendar.
 - **Pendientes fuera del lote:** Cobros muestra la hora en la zona del navegador, no en la de Caracas
   (desde Argentina, la cita de las 9:00 sale 10:00); el paso 6 "Método de pago" desaparece pero el siguiente
   sigue numerado "7"; en el servicio del onboarding no hay opción de 50 min de duración.
+- **Segunda ronda de QA (13/11, admin + especialista):**
+  - 🐞 Guardar el N.º MPPS en Configuración **no re-verificaba**: `VerifyMppsUseCase | null` con `@Optional()`
+    reflejaba `Object` y Nest inyectaba `null` en silencio (misma trampa que ya tenían otros use cases con el
+    `@Inject` explícito). Arreglado + test de cableado DI. Verificado en staging con logs: dispara SACS y el
+    segundo cambio dentro de 15 min respeta el enfriamiento.
+  - 🐞 CSV: "Último paso del onboarding" salía vacío para todas las cuentas viejas → ahora se deriva
+    (Completado / Servicio / Consultorio / Perfil / Sin completar datos / Nunca ingresó). El BOM se perdía en
+    la ruta BFF (`r.text()`), y Excel mostraba mal los acentos → se pasan los bytes tal cual.
+  - Pedido del dueño: columna **"Última conexión"** en la tabla de Especialistas del admin. De paso: los
+    encabezados "Registro" y "Plan / Estado" estaban invertidos.
+  - ⚠️ Un deploy de staging **falló** (Cloud Build: OOM al compilar el backend + fuentes de Google) y
+    `gh run watch` no lo hizo evidente: se reprobó contra código viejo. Mirar SIEMPRE `gh run view --json
+conclusion`. Además `nx build backend` no valida tipos (fork-ts-checker da OOM): un error TS solo lo vio jest.
+  - Fuera del lote: `/admin/verifications` tira el error de hidratación React #418 (no se tocó en este lote).
