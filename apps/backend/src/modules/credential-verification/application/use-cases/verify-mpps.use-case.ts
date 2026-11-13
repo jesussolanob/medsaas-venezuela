@@ -75,6 +75,7 @@ export class VerifyMppsUseCase {
     doctorId: string,
     { force = false }: { force?: boolean } = {},
   ): Promise<VerifyMppsOutput> {
+    this.logger.log(`[verify-mpps] doctorId=${doctorId} start force=${force}`);
     // 1. Load doctor profile
     const profile = await this.profileRepo.findById(doctorId);
     if (!profile) {
