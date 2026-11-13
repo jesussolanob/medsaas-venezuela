@@ -14,6 +14,8 @@ export interface BackendServiceRaw {
   officeId: string | null;
   name: string;
   priceUsd: number;
+  /** When true, price is 0 in the DB but must be shown as "A consultar con el especialista". */
+  priceOnRequest: boolean;
   durationMinutes: number;
   sessionsCount: number | null;
   /**
@@ -36,6 +38,11 @@ export interface DoctorService {
   /** UUID of the linked office, or null for general (all offices). */
   office_id: string | null;
   price_usd: number;
+  /**
+   * When true, price is 0 in the DB and must be shown as
+   * "A consultar con el especialista" everywhere.
+   */
+  price_on_request: boolean;
   duration_minutes: number;
   sessions_count: number;
   /**
@@ -56,6 +63,7 @@ export function mapDoctorService(raw: BackendServiceRaw): DoctorService {
     name: raw.name,
     office_id: raw.officeId ?? null,
     price_usd: raw.priceUsd ?? 0,
+    price_on_request: raw.priceOnRequest ?? false,
     duration_minutes: raw.durationMinutes ?? 30,
     sessions_count: raw.sessionsCount ?? 1,
     validity_days: raw.validityDays ?? null,

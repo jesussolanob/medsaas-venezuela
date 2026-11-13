@@ -522,14 +522,32 @@ export interface DoctorExportRow {
   fullName: string;
   /** PII — email. Admin export only. */
   email: string;
+  /** PII — phone. Admin export only. Do NOT log. */
+  phone: string | null;
   /** PII — cedula. Admin export only. */
   cedula: string | null;
   specialty: string | null;
+  /** Account creation date in UTC. Formatted as Caracas date in the use case. */
+  registeredAt: Date | null;
   plan: string | null;
   subscriptionStatus: string | null;
   subscriptionExpiresAt: Date | null;
   lastSignInAt: Date | null;
   activityStatus: 'active' | 'cold' | 'inactive';
+  /** Total active patients (soft-deleted excluded). */
+  patientCount: number;
+  /** Active offices (doctor_offices.is_active = true). */
+  officeCount: number;
+  /** Active services / pricing plans (pricing_plans.is_active = true). */
+  serviceCount: number;
+  /** Total consultations (all statuses). */
+  consultationCount: number;
+  /** Last onboarding step reached (null if not started). */
+  onboardingLastStep: string | null;
+  /** True when the office step was explicitly skipped. */
+  onboardingOfficeSkipped: boolean;
+  /** True when the service step was explicitly skipped. */
+  onboardingServiceSkipped: boolean;
 }
 
 /**

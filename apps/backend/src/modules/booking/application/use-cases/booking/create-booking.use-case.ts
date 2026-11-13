@@ -50,6 +50,7 @@ import {
   PRICING_PLAN_REPOSITORY,
   type IPricingPlanRepository,
 } from '../../../../packages/domain/repositories/pricing-plan.repository';
+import { type PricingPlan } from '../../../../packages/domain/entities/pricing-plan.entity';
 import { CreatePendingConsultationsUseCase } from '../../../../pending-consultations/application/use-cases/create-pending-consultations.use-case';
 import {
   CARACAS_OFFSET,
@@ -428,6 +429,20 @@ export class CreateBookingUseCase {
       throw new AppointmentConflictError(scheduledAt);
     }
 
+    // --- Step 4c: Pre-load plan to check price_on_request before the transaction ---
+    // Also reused inside the transaction for multi-session handling (avoids a double query).
+    // Package-covered sessions never have price_on_request (the price was settled at purchase).
+    let preloadedPlan: PricingPlan | null = null;
+    if (dto.plan_id && this.pricingPlanRepo && !dto.package_id) {
+      const foundPlan = await this.pricingPlanRepo.findById(dto.plan_id);
+      // Anti-IDOR: ignore plans that belong to a different doctor. A malicious caller
+      // could pass a price_on_request plan_id from another doctor to bypass payment.
+      if (foundPlan && foundPlan.doctorId === dto.doctor_id) {
+        preloadedPlan = foundPlan;
+      }
+    }
+    const isPriceOnRequest = preloadedPlan?.priceOnRequest === true;
+
     // --- Steps 5+6: Persist appointment and consume package session atomically ---
     // Both writes are wrapped in a single Sequelize transaction so that a failure
     // during package consumption (exhausted, concurrent lock, DB error) rolls back
@@ -463,7 +478,9 @@ export class CreateBookingUseCase {
       // ambiguo con dos servicios homónimos.
       planId: dto.plan_id ?? null,
       planName: dto.plan_name,
-      planPrice: dto.plan_price,
+      // Force null for price_on_request: the client may send a stale plan_price
+      // (0 or the last known price). Don't trust it — the price is set at approval.
+      planPrice: isPriceOnRequest ? null : (dto.plan_price ?? null),
       paymentMethod: dto.package_id ? 'package' : (dto.payment_method ?? null),
       paymentReference: dto.payment_reference ?? null,
       paymentReceiptUrl: dto.receipt_url ?? null,
@@ -512,7 +529,9 @@ export class CreateBookingUseCase {
       if (options?.existingPaymentId) {
         // Reuse the parent payment — no new record created.
         paymentId = options.existingPaymentId;
-      } else if (this.paymentRepo) {
+      } else if (this.paymentRepo && !isPriceOnRequest) {
+        // price_on_request services have no fixed price — skip payment row creation.
+        // The doctor will invoice manually after the consultation.
         const paymentAmount = dto.package_id ? 0 : (dto.plan_price ?? 0);
         const newPayment = await this.paymentRepo.create({
           id: randomUUID(),
@@ -572,7 +591,9 @@ export class CreateBookingUseCase {
       }
 
       if (dto.plan_id && this.pricingPlanRepo && this.createPendingUC) {
-        const plan = await this.pricingPlanRepo.findById(dto.plan_id);
+        // Reuse the pre-loaded plan (fetched before the transaction in Step 4c).
+        // Fall back to a fresh load only when it was not pre-loaded (package-covered path).
+        const plan = preloadedPlan ?? (await this.pricingPlanRepo.findById(dto.plan_id));
 
         // Ownership guard: skip if plan not found, belongs to a different doctor,
         // or has only one session. Degrada con gracia — la reserva igual se crea
@@ -789,7 +810,9 @@ export class CreateBookingUseCase {
           appointmentId: savedAppointment.id,
           consultationDate: savedAppointment.scheduledAt,
           chiefComplaint: dto.chief_complaint ?? null,
-          amount: isCoveredSession ? 0 : (dto.plan_price ?? null),
+          // price_on_request: amount stays null — the doctor will invoice after the visit.
+          // covered session (package): born at 0 to avoid appearing in "Por cobrar".
+          amount: isCoveredSession ? 0 : isPriceOnRequest ? null : (dto.plan_price ?? null),
           initialPaymentStatus: isCoveredSession ? options?.existingPaymentStatus : undefined,
           // El método viaja a la consulta: se guardaba solo en la cita y el
           // especialista tenía que volver a elegirlo al cobrar.

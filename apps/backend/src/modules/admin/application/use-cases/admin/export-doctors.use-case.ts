@@ -9,17 +9,20 @@ import {
  * Builds a UTF-8 CSV string (with BOM) from the full doctor list for super_admin export.
  *
  * Columns (in order):
- *   Nombre, Email, Tipo de documento, Número de documento, Especialidad,
- *   Plan, Estado suscripción, Vencimiento, Último acceso, Estado actividad
+ *   Nombre, Email, Teléfono, Tipo de documento, Número de documento, Especialidad,
+ *   Plan, Estado suscripción, Vencimiento, Fecha de registro, Último acceso,
+ *   Estado actividad, Pacientes, Consultorios, Servicios, Consultas,
+ *   Último paso del onboarding
  *
  * CSV rules applied:
- *   - UTF-8 BOM (﻿) prepended so Excel opens the file with correct accent encoding.
+ *   - UTF-8 BOM (\uFEFF) prepended so Excel opens the file with correct accent encoding.
  *   - Fields containing commas, double-quotes, or newlines are wrapped in double-quotes.
  *   - Double-quotes within a field are escaped as two double-quotes ("").
  *   - Dates formatted as DD/MM/AAAA HH:MM in America/Caracas timezone (UTC-4). Null → empty string.
  *   - Cédula split into "Tipo de documento" (prefix before '-') and "Número de documento"
  *     (digits/value after '-'). If no '-' is present, tipo='' and número=original value.
  *   - Activity status is localised: active→Activo, cold→Frío, inactive→Inactivo.
+ *   - Onboarding step labelled in Spanish; "(omitido)" appended when the step was skipped.
  *
  * No external dependencies — all serialisation is inline.
  */
@@ -28,14 +31,21 @@ export class ExportDoctorsUseCase {
   static readonly CSV_HEADERS = [
     'Nombre',
     'Email',
+    'Teléfono',
     'Tipo de documento',
     'Número de documento',
     'Especialidad',
     'Plan',
     'Estado suscripción',
     'Vencimiento',
+    'Fecha de registro',
     'Último acceso',
     'Estado actividad',
+    'Pacientes',
+    'Consultorios',
+    'Servicios',
+    'Consultas',
+    'Último paso del onboarding',
   ] as const;
 
   constructor(
@@ -61,8 +71,17 @@ export class ExportDoctorsUseCase {
 // ---------------------------------------------------------------------------
 
 function csvEscape(value: string | null | undefined): string {
-  const s = value == null ? '' : String(value);
-  // Wrap in quotes if the field contains a comma, double-quote, or newline
+  let s = value == null ? '' : String(value);
+
+  // OWASP CSV injection prevention: prefix cells whose first character would be
+  // interpreted as a formula trigger by spreadsheet applications (Excel, LibreOffice,
+  // Google Sheets). The leading single-quote signals "text literal" to those apps.
+  if (s.length > 0 && /^[=+\-@\t\r]/.test(s)) {
+    s = `'${s}`;
+  }
+
+  // Wrap in double-quotes if the (possibly prefixed) field contains a delimiter,
+  // double-quote, or newline character.
   if (s.includes(',') || s.includes('"') || s.includes('\n') || s.includes('\r')) {
     return `"${s.replace(/"/g, '""')}"`;
   }
@@ -116,19 +135,60 @@ const ACTIVITY_LABEL: Record<DoctorExportRow['activityStatus'], string> = {
   inactive: 'Inactivo',
 };
 
+const ONBOARDING_STEP_LABEL: Record<string, string> = {
+  profile: 'Perfil',
+  office: 'Consultorio',
+  service: 'Servicio',
+  completed: 'Completado',
+};
+
+/**
+ * Returns a human-readable label for the onboarding step, appending "(omitido)"
+ * when the step was explicitly skipped by the doctor.
+ *
+ * Examples:
+ *   null, false, false   → ""
+ *   "profile", false, false → "Perfil"
+ *   "office", true, false   → "Consultorio (omitido)"
+ *   "service", false, true  → "Servicio (omitido)"
+ *   "completed", false, false → "Completado"
+ */
+function formatOnboardingStep(
+  lastStep: string | null,
+  officeSkipped: boolean,
+  serviceSkipped: boolean,
+): string {
+  if (!lastStep) return '';
+  const label = ONBOARDING_STEP_LABEL[lastStep] ?? lastStep;
+  const skipped =
+    (lastStep === 'office' && officeSkipped) || (lastStep === 'service' && serviceSkipped);
+  return skipped ? `${label} (omitido)` : label;
+}
+
 function buildCsvRow(row: DoctorExportRow): string {
   const { tipo, numero } = parseCedula(row.cedula);
   const fields = [
     row.fullName,
     row.email,
+    row.phone ?? '',
     tipo,
     numero,
     row.specialty ?? '',
     row.plan ?? '',
     row.subscriptionStatus ?? '',
     formatVenezuelanDate(row.subscriptionExpiresAt),
+    formatVenezuelanDate(row.registeredAt),
     formatVenezuelanDate(row.lastSignInAt),
     ACTIVITY_LABEL[row.activityStatus],
+    String(row.patientCount),
+    String(row.officeCount),
+    String(row.serviceCount),
+    String(row.consultationCount),
+    formatOnboardingStep(
+      row.onboardingLastStep,
+      row.onboardingOfficeSkipped,
+      row.onboardingServiceSkipped,
+    ),
   ];
   return fields.map(csvEscape).join(',');
 }

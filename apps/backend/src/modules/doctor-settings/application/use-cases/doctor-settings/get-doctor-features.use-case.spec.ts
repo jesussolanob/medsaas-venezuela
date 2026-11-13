@@ -67,6 +67,7 @@ describe('GetDoctorFeaturesUseCase', () => {
       findPlanSnapshot: jest.fn().mockResolvedValue(null),
       scheduleOwnAccountDeactivation: jest.fn().mockResolvedValue(undefined),
       applyExpiredScheduledDeactivations: jest.fn().mockResolvedValue(0),
+      updateOnboardingState: jest.fn().mockResolvedValue(undefined),
     };
     mockFeaturesRepo = {
       findByPlan: jest.fn(),

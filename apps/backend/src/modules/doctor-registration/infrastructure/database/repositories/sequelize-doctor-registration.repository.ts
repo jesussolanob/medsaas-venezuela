@@ -56,6 +56,10 @@ export class SequelizeDoctorRegistrationRepository implements IDoctorRegistratio
       // sin consultorio ni servicio, y el onboarding obligatorio dejaba de
       // serlo. Lo marca `markOnboardingCompleted`, que sí exige ≥1 consultorio
       // y ≥1 servicio activos.
+      // onboardingLastStep: absent callers (old code paths) are safely ignored.
+      ...(params.onboardingLastStep !== undefined && {
+        onboardingLastStep: params.onboardingLastStep,
+      }),
     });
 
     return this.toDomain(row);

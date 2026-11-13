@@ -71,4 +71,18 @@ export interface IDoctorProfileRepository {
    * plan gratuito. Devuelve cuántas apagó.
    */
   applyExpiredScheduledDeactivations(freePlanKey: string): Promise<number>;
+
+  /**
+   * Persists onboarding state fields atomically.
+   * Only the keys present in `state` are updated — absent keys are left as-is.
+   * Monotonic rule for lastStep is enforced at the use-case level, not here.
+   */
+  updateOnboardingState(
+    doctorId: string,
+    state: {
+      lastStep?: string;
+      officeSkipped?: boolean;
+      serviceSkipped?: boolean;
+    },
+  ): Promise<void>;
 }

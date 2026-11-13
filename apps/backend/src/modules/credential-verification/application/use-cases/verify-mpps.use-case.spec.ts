@@ -264,6 +264,75 @@ describe('VerifyMppsUseCase', () => {
     });
   });
 
+  describe('execute — no MPPS declared + found with medical profession → verified', () => {
+    it('verifies when cédula is in SACS with any medical profession and no MPPS declared', async () => {
+      const verifiedRecord = makeVerification('verified');
+      const { useCase, verificationRepo, mppsPort } = buildUseCase({
+        profile: {
+          id: DOCTOR_ID,
+          cedula: '12345678',
+          mppsNumber: null, // doctor has not declared an MPPS number
+          fullName: 'JOSE GARCIA',
+        },
+        portalResult: {
+          found: true,
+          name: 'JOSE GARCIA',
+          professions: [
+            {
+              licencia: 'MPPS-65583',
+              profesion: 'MÉDICO CIRUJANO',
+              fechaRegistro: '2010-01-01',
+              tomoRegistro: 'T1',
+              folioRegistro: 'F1',
+            },
+          ],
+        },
+        upsertResult: verifiedRecord,
+      });
+
+      const result = await useCase.execute(DOCTOR_ID);
+
+      expect(result.status).toBe('verified');
+      expect(mppsPort.queryByCedula).toHaveBeenCalledTimes(1);
+      expect(verificationRepo.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: 'verified',
+          evidence: expect.objectContaining({ profesion: 'MÉDICO CIRUJANO' }),
+        }),
+      );
+    });
+  });
+
+  describe('execute — no MPPS declared + found but no medical profession → mismatch', () => {
+    it('returns mismatch when cédula is in SACS but has no medical profession', async () => {
+      const mismatchRecord = makeVerification('mismatch');
+      const { useCase, verificationRepo } = buildUseCase({
+        profile: {
+          id: DOCTOR_ID,
+          cedula: '12345678',
+          mppsNumber: null,
+          fullName: 'JOSE GARCIA',
+        },
+        portalResult: {
+          found: true,
+          name: 'JOSE GARCIA',
+          professions: [], // no professions listed
+        },
+        upsertResult: mismatchRecord,
+      });
+
+      const result = await useCase.execute(DOCTOR_ID);
+
+      expect(result.status).toBe('mismatch');
+      expect(verificationRepo.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: 'mismatch',
+          lastError: 'no medical profession found for this cedula',
+        }),
+      );
+    });
+  });
+
   describe('execute — network error → error status', () => {
     it('returns error status when portal throws', async () => {
       const errorRecord = makeVerification('error');
@@ -453,6 +522,137 @@ describe('VerifyMppsUseCase', () => {
       await useCase.execute(DOCTOR_ID);
 
       // cachedMpps.length === 0 → falls through to SACS
+      expect(mppsPort.queryByCedula).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // 15-minute cooldown
+  // ---------------------------------------------------------------------------
+
+  describe('execute — 15-minute cooldown', () => {
+    const makeRecentVerification = (status: string, minutesAgo: number) =>
+      CredentialVerification.create({
+        id: 'cccc3333-cccc-3333-cccc-333333333333',
+        doctorId: DOCTOR_ID,
+        credentialType: 'mpps',
+        declaredValue: 'MPPS-12345',
+        verifierId: VERIFIER_ID,
+        status: status as never,
+        evidence: null,
+        checkedAt: new Date(Date.now() - minutesAgo * 60_000),
+        attempts: 1,
+        lastError: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+
+    it('skips SACS when non-verified record was checked within 15 minutes', async () => {
+      const recentMismatch = makeRecentVerification('mismatch', 5);
+
+      const { useCase, mppsPort, verificationRepo } = buildUseCase({
+        existingVerification: recentMismatch,
+        upsertResult: recentMismatch,
+      });
+
+      const result = await useCase.execute(DOCTOR_ID);
+
+      expect(mppsPort.queryByCedula).not.toHaveBeenCalled();
+      expect(verificationRepo.upsert).not.toHaveBeenCalled();
+      expect(result.status).toBe('mismatch');
+    });
+
+    it('applies cooldown to pending status within 15 minutes', async () => {
+      const recentPending = makeRecentVerification('pending', 1);
+
+      const { useCase, mppsPort } = buildUseCase({
+        existingVerification: recentPending,
+        upsertResult: recentPending,
+      });
+
+      await useCase.execute(DOCTOR_ID);
+
+      expect(mppsPort.queryByCedula).not.toHaveBeenCalled();
+    });
+
+    it('calls SACS when last check was more than 15 minutes ago', async () => {
+      const oldMismatch = makeRecentVerification('mismatch', 20);
+      const verifiedResult = makeVerification('verified');
+
+      const { useCase, mppsPort } = buildUseCase({
+        existingVerification: oldMismatch,
+        upsertResult: verifiedResult,
+      });
+
+      await useCase.execute(DOCTOR_ID);
+
+      expect(mppsPort.queryByCedula).toHaveBeenCalledTimes(1);
+    });
+
+    it('bypasses cooldown when force=true', async () => {
+      const recentMismatch = makeRecentVerification('mismatch', 2);
+      const verifiedResult = makeVerification('verified');
+
+      const { useCase, mppsPort } = buildUseCase({
+        existingVerification: recentMismatch,
+        upsertResult: verifiedResult,
+      });
+
+      await useCase.execute(DOCTOR_ID, { force: true });
+
+      expect(mppsPort.queryByCedula).toHaveBeenCalledTimes(1);
+    });
+
+    it('still calls SACS when verified+MPPS changed even within cooldown window', async () => {
+      // Existing is verified with MPPS-12345 (checked just now = within 15 min).
+      // Profile now declares MPPS-99999 → cache is stale → must re-query SACS.
+      const recentVerified = makeRecentVerification('verified', 2);
+
+      const { useCase, mppsPort } = buildUseCase({
+        existingVerification: recentVerified,
+        profile: {
+          id: DOCTOR_ID,
+          cedula: '12345678',
+          mppsNumber: 'MPPS-99999', // differs from cached MPPS-12345
+          fullName: 'JOSE GARCIA',
+        },
+        portalResult: { found: false },
+        upsertResult: makeVerification('not_found'),
+      });
+
+      await useCase.execute(DOCTOR_ID);
+
+      // Cooldown does NOT block re-verification when MPPS changed.
+      expect(mppsPort.queryByCedula).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not apply cooldown when checkedAt is null', async () => {
+      // A record with status=pending but no checkedAt (e.g. the cedula was missing)
+      // should NOT be blocked by the cooldown — there is no meaningful "last check".
+      const neverChecked = CredentialVerification.create({
+        id: 'cccc3333-cccc-3333-cccc-333333333333',
+        doctorId: DOCTOR_ID,
+        credentialType: 'mpps',
+        declaredValue: null,
+        verifierId: null,
+        status: 'pending',
+        evidence: null,
+        checkedAt: null,
+        attempts: 0,
+        lastError: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+      const verifiedResult = makeVerification('verified');
+
+      const { useCase, mppsPort } = buildUseCase({
+        existingVerification: neverChecked,
+        upsertResult: verifiedResult,
+      });
+
+      await useCase.execute(DOCTOR_ID);
+
+      // No checkedAt → cooldown does not apply → SACS is called.
       expect(mppsPort.queryByCedula).toHaveBeenCalledTimes(1);
     });
   });

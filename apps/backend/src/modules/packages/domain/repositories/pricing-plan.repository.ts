@@ -5,6 +5,11 @@ export const PRICING_PLAN_REPOSITORY = Symbol('IPricingPlanRepository');
 export interface PricingPlanUpdateParams {
   name?: string;
   priceUsd?: number;
+  /**
+   * When true, the plan has no fixed price — the doctor quotes on request.
+   * Setting this to true forces priceUsd to 0.
+   */
+  priceOnRequest?: boolean;
   durationMinutes?: number;
   sessionsCount?: number;
   /** Days after purchase that deferred sessions must be scheduled. null = no expiry. */

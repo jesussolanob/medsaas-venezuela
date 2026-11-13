@@ -16,6 +16,12 @@ export interface PricingPlanCreateParams {
   officeId?: string | null;
   name: string;
   priceUsd: number;
+  /**
+   * When true, the plan has no fixed price — the doctor quotes on request.
+   * priceUsd is stored as 0 and must not be used for billing.
+   * Defaults to false (backward compatible).
+   */
+  priceOnRequest?: boolean;
   durationMinutes: number;
   sessionsCount: number;
   /**
@@ -38,6 +44,11 @@ export class PricingPlan {
   readonly officeId: string | null;
   readonly name: string;
   readonly priceUsd: number;
+  /**
+   * When true, the plan has no fixed price — the doctor quotes on request.
+   * priceUsd is 0 and must not be surfaced as a billing amount.
+   */
+  readonly priceOnRequest: boolean;
   readonly durationMinutes: number;
   readonly sessionsCount: number;
   /**
@@ -58,6 +69,7 @@ export class PricingPlan {
     this.officeId = params.officeId ?? null;
     this.name = params.name;
     this.priceUsd = params.priceUsd;
+    this.priceOnRequest = params.priceOnRequest ?? false;
     this.durationMinutes = params.durationMinutes;
     this.sessionsCount = params.sessionsCount;
     this.validityDays = params.validityDays ?? null;

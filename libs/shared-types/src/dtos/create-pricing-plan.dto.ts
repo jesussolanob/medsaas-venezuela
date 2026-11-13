@@ -4,6 +4,12 @@ export const CreatePricingPlanDtoSchema = z
   .object({
     name: z.string().min(1).max(200),
     price_usd: z.number().nonnegative(),
+    /**
+     * When true, the service has no fixed price — the doctor quotes on request.
+     * price_usd is ignored and stored as 0. No payment row is created on booking.
+     * Defaults to false.
+     */
+    price_on_request: z.boolean().default(false),
     duration_minutes: z.number().int().positive().default(30),
     sessions_count: z.number().int().positive().default(1),
     description: z.string().nullable().optional(),

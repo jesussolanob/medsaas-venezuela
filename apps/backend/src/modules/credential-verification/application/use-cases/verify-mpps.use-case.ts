@@ -103,7 +103,14 @@ export class VerifyMppsUseCase {
       throw new NoActiveVerifierError(CREDENTIAL_TYPE);
     }
 
-    // 4. Check cached verified result (unless forced)
+    // 4. Check cached verified result + 15-minute cooldown (unless forced).
+    //
+    // Two shortcuts are applied in order:
+    //   a) Already verified with same MPPS → return cached (no SACS call).
+    //   b) Any status with checkedAt within 15 min → cooldown, skip SACS.
+    //      Exception: verified+MPPS changed falls through to re-query SACS even
+    //      when within the cooldown window (the MPPS number itself changed, so the
+    //      cached result is stale and must be re-confirmed).
     if (!force) {
       const existing = await this.verificationRepo.findByDoctorAndType(doctorId, CREDENTIAL_TYPE);
       if (existing?.isVerified()) {
@@ -131,9 +138,21 @@ export class VerifyMppsUseCase {
           return this.toOutput(doctorId, existing.status, existing.attempts, existing.checkedAt);
         }
         // MPPS changed or cache has no numeric content — fall through to re-query SACS.
+        // (Cooldown does NOT apply here: the MPPS was updated and must be re-verified.)
         this.logger.log(
           `[verify-mpps] doctorId=${doctorId} cached verified but MPPS changed — re-querying SACS`,
         );
+      } else if (existing?.checkedAt) {
+        // 15-minute cooldown for non-verified records (pending, mismatch, error, not_found).
+        // Prevents hammering SACS when a doctor saves their MPPS multiple times in
+        // quick succession (double-submit, typo → retry within seconds).
+        const msElapsed = Date.now() - existing.checkedAt.getTime();
+        if (msElapsed < 15 * 60_000) {
+          this.logger.log(
+            `[verify-mpps] doctorId=${doctorId} within 15-min cooldown — skipping SACS`,
+          );
+          return this.toOutput(doctorId, existing.status, existing.attempts, existing.checkedAt);
+        }
       }
     }
 
@@ -193,9 +212,14 @@ export class VerifyMppsUseCase {
     }
 
     // 6b. MPPS number matching + profession check.
-    // Compare on the NORMALIZED license (SACS returns "MPPS-65583", the doctor
-    // declares "65583"). Skip matching entirely when the declared value has no
-    // numeric content so an empty declaration never matches an empty license.
+    //
+    // Two paths:
+    //  - Doctor declared an MPPS number → match the specific license AND require a
+    //    medical profession. Skip matching entirely when declared value has no
+    //    numeric content so an empty declaration never matches an empty license.
+    //  - Doctor did NOT declare an MPPS number → accept if ANY medical profession
+    //    is present in the SACS result. The name match in 6a already confirmed the
+    //    person; this confirms they have a medical credential of any kind.
     const declaredMpps = normalizeMpps(profile.mppsNumber ?? '');
     const professions = sacsResult.professions ?? [];
     const matchedProfession =
@@ -203,10 +227,15 @@ export class VerifyMppsUseCase {
         ? professions.find(
             (p) => normalizeMpps(p.licencia) === declaredMpps && isMedicalProfession(p.profesion),
           )
-        : undefined;
+        : // No MPPS declared — verify by presence of any medical profession
+          professions.find((p) => isMedicalProfession(p.profesion));
 
     if (!matchedProfession) {
-      this.logger.log(`[verify-mpps] doctorId=${doctorId} mpps not in medical professions`);
+      const reason =
+        declaredMpps.length > 0
+          ? 'declared mpps not found in medical professions list'
+          : 'no medical profession found for this cedula';
+      this.logger.log(`[verify-mpps] doctorId=${doctorId} mpps mismatch: ${reason}`);
       const saved = await this.verificationRepo.upsert({
         doctorId,
         credentialType: CREDENTIAL_TYPE,
@@ -215,7 +244,7 @@ export class VerifyMppsUseCase {
         status: 'mismatch',
         evidence: null,
         checkedAt,
-        lastError: 'declared mpps not found in medical professions list',
+        lastError: reason,
       });
       return this.toOutput(doctorId, saved.status, saved.attempts, saved.checkedAt);
     }

@@ -18,9 +18,11 @@ import {
   AlertCircle,
   ArrowLeft,
   CheckCircle2,
+  ToggleLeft,
+  ToggleRight,
 } from 'lucide-react';
 import { createDoctorService } from '@/app/doctor/services/actions';
-import { completeOnboarding } from './actions';
+import { completeOnboarding, skipOnboardingService, reportOnboardingProgress } from './actions';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -66,7 +68,9 @@ export default function OnboardingStepService({
 
   const [name, setName] = useState('');
   const [priceUsd, setPriceUsd] = useState('');
+  const [priceOnRequest, setPriceOnRequest] = useState(false);
   const [description, setDescription] = useState('');
+  const [isSkipping, setIsSkipping] = useState(false);
 
   // Arranca en la duración del bloque del consultorio: es la que siempre entra.
   const maxDuration = officeSlotDuration ?? null;
@@ -82,9 +86,11 @@ export default function OnboardingStepService({
   function validate(): boolean {
     const errors: FieldErrors = {};
     if (!name.trim()) errors.name = 'El nombre del servicio es obligatorio';
-    const price = parseFloat(priceUsd);
-    if (!priceUsd.trim() || isNaN(price) || price < 0) {
-      errors.price_usd = 'Ingresa un precio válido en USD (puede ser 0)';
+    if (!priceOnRequest) {
+      const price = parseFloat(priceUsd);
+      if (!priceUsd.trim() || isNaN(price) || price < 0) {
+        errors.price_usd = 'Ingresa un precio válido en USD (puede ser 0)';
+      }
     }
     setFieldErrors(errors);
     // La duración no tiene campo de error propio: el select ya deshabilita lo
@@ -105,7 +111,8 @@ export default function OnboardingStepService({
       //    consulta catalogada como servicio extra en /doctor/services.
       const serviceResult = await createDoctorService({
         name: name.trim(),
-        price_usd: parseFloat(priceUsd),
+        price_usd: priceOnRequest ? 0 : parseFloat(priceUsd),
+        price_on_request: priceOnRequest,
         duration_minutes: durationMins,
         sessions_count: 1,
         description: description.trim() || null,
@@ -119,7 +126,10 @@ export default function OnboardingStepService({
         return;
       }
 
-      // 2. Mark onboarding complete — 422 means backend validation failed (no office/service)
+      // 2. Fire-and-forget progress tracking for the service step.
+      reportOnboardingProgress('service').catch(() => {});
+
+      // 3. Mark onboarding complete — 422 means backend validation failed (no office/service)
       //    which shouldn't happen here, but show the error if it does.
       const completeResult = await completeOnboarding();
       if (!completeResult.ok) {
@@ -132,6 +142,31 @@ export default function OnboardingStepService({
 
       onSuccess();
     });
+  }
+
+  async function handleSkip() {
+    setIsSkipping(true);
+    setServerError(null);
+    try {
+      const skipResult = await skipOnboardingService();
+      if (!skipResult.ok) {
+        setServerError(skipResult.error ?? 'Error al omitir el servicio. Intenta nuevamente.');
+        return;
+      }
+
+      const completeResult = await completeOnboarding();
+      if (!completeResult.ok) {
+        setServerError(
+          completeResult.error ??
+            'La consulta fue creada pero no pudimos confirmar la configuración. Contacta a soporte.',
+        );
+        return;
+      }
+
+      onSuccess();
+    } finally {
+      setIsSkipping(false);
+    }
   }
 
   return (
@@ -204,6 +239,27 @@ export default function OnboardingStepService({
           {fieldErrors.name && <p className="text-xs text-red-500 mt-1">{fieldErrors.name}</p>}
         </div>
 
+        {/* Precio a consultar toggle */}
+        <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-100">
+          <div>
+            <p className="text-xs font-semibold text-slate-700">Precio a consultar</p>
+            <p className="text-[10px] text-slate-400 mt-0.5">
+              El precio se acuerda directamente con el paciente
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setPriceOnRequest((v) => !v)}
+            aria-label="Alternar precio a consultar"
+          >
+            {priceOnRequest ? (
+              <ToggleRight className="w-6 h-6 text-teal-500" />
+            ) : (
+              <ToggleLeft className="w-6 h-6 text-slate-300" />
+            )}
+          </button>
+        </div>
+
         {/* Precio + Duración */}
         <div className="grid grid-cols-2 gap-4">
           <div>
@@ -212,29 +268,39 @@ export default function OnboardingStepService({
               className="block text-xs font-semibold mb-1.5"
               style={{ color: 'var(--dh-gray-700)' }}
             >
-              Precio (USD) <span className="text-red-400">*</span>
+              Precio (USD) {!priceOnRequest && <span className="text-red-400">*</span>}
             </label>
-            <div className="relative">
-              <DollarSign
-                className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none"
+            {priceOnRequest ? (
+              <div
+                className={`${inp} flex items-center`}
                 style={{ color: 'var(--dh-gray-400)' }}
-              />
-              <input
-                id="os-price"
-                type="number"
-                min="0"
-                step="0.01"
-                value={priceUsd}
-                onChange={(e) => {
-                  setPriceUsd(e.target.value);
-                  if (fieldErrors.price_usd)
-                    setFieldErrors((p) => ({ ...p, price_usd: undefined }));
-                }}
-                placeholder="0.00"
-                className={`${fieldErrors.price_usd ? inpErr : inp} pl-10`}
-                aria-invalid={!!fieldErrors.price_usd}
-              />
-            </div>
+                aria-disabled="true"
+              >
+                A consultar con el especialista
+              </div>
+            ) : (
+              <div className="relative">
+                <DollarSign
+                  className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none"
+                  style={{ color: 'var(--dh-gray-400)' }}
+                />
+                <input
+                  id="os-price"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={priceUsd}
+                  onChange={(e) => {
+                    setPriceUsd(e.target.value);
+                    if (fieldErrors.price_usd)
+                      setFieldErrors((p) => ({ ...p, price_usd: undefined }));
+                  }}
+                  placeholder="0.00"
+                  className={`${fieldErrors.price_usd ? inpErr : inp} pl-10`}
+                  aria-invalid={!!fieldErrors.price_usd}
+                />
+              </div>
+            )}
             {fieldErrors.price_usd && (
               <p className="text-xs text-red-500 mt-1">{fieldErrors.price_usd}</p>
             )}
@@ -300,12 +366,18 @@ export default function OnboardingStepService({
           />
         </div>
 
+        {/* Aviso de omitir */}
+        <p className="text-xs" style={{ color: 'var(--dh-gray-400)' }}>
+          Si omites este paso, crearemos la consulta con precio «A consultar con el especialista».
+          Puedes cambiarlo después en Servicios.
+        </p>
+
         {/* Acciones */}
         <div className="flex gap-3 pt-2">
           <button
             type="button"
             onClick={onBack}
-            disabled={isPending}
+            disabled={isPending || isSkipping}
             className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-semibold border border-slate-200 hover:bg-slate-50 transition-colors disabled:opacity-40"
             style={{ color: 'var(--dh-gray-700)' }}
           >
@@ -313,8 +385,24 @@ export default function OnboardingStepService({
             Atrás
           </button>
           <button
+            type="button"
+            onClick={handleSkip}
+            disabled={isPending || isSkipping}
+            className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-semibold border border-slate-200 hover:bg-slate-50 transition-colors disabled:opacity-40"
+            style={{ color: 'var(--dh-gray-600)' }}
+          >
+            {isSkipping ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Omitiendo...
+              </>
+            ) : (
+              'Omitir'
+            )}
+          </button>
+          <button
             type="submit"
-            disabled={isPending}
+            disabled={isPending || isSkipping}
             className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-white font-bold text-sm transition-all hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"
             style={{ background: 'var(--dh-turquoise)' }}
           >

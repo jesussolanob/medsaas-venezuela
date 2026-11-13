@@ -45,12 +45,18 @@ export type ProductExtraItemForApproval = z.infer<typeof ProductExtraItemForAppr
  *   Prices are resolved by the backend; never send amount_usd for these.
  * - method: payment method string (e.g. "zelle", "pago_movil").
  *   Optional — doctor may set it later via update-payment-details.
+ * - base_amount_usd: monto base para consultas price_on_request (amount y base_amount
+ *   son null al momento de la reserva). Solo se aplica en la PRIMERA aprobación;
+ *   si la consulta ya tiene un base_amount fijado, este campo es ignorado.
+ *   Usar para fijar el precio de la consulta antes de agregar extras.
  */
 export const ApprovePaymentWithExtrasDtoSchema = z
   .object({
     extras: z.array(ConsultationExtraItemSchema).default([]),
     product_extras: z.array(ProductExtraItemForApprovalSchema).default([]),
     method: PaymentMethodSchema.optional(),
+    // Max matches MAX_PRICE in inventory.dto.ts (US$ ~10M — any realistic consultation fee).
+    base_amount_usd: z.number().positive().finite().max(9_999_999).optional(),
   })
   .strict();
 

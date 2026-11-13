@@ -94,6 +94,13 @@ export interface ChangeServiceParams {
   oldPlanName: string | null;
   /** Precio anterior de la cita pagadora, para el asiento de auditoría. */
   oldPlanPriceUsd: number | null;
+  /**
+   * Cuando el servicio destino es price_on_request, NO se tocan los montos
+   * (plan_price en citas, amount_usd en el pago, base_amount en la consulta).
+   * Solo se actualizan el nombre y el plan_id.
+   * El precio se fija en el momento de aprobar el cobro.
+   */
+  priceOnRequest?: boolean;
 }
 
 export interface ChangeServiceResult {

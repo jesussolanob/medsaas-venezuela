@@ -5,10 +5,15 @@ import 'server-only';
  *
  * Thin-proxy → NestJS PATCH /api/consultations/:id/approve-payment
  *
- * Body forwarded: { extras: Array<{ description: string; amount_usd: number }>, method?: string }
+ * Body forwarded: {
+ *   extras: Array<{ description: string; amount_usd: number }>,
+ *   product_extras?: Array<{ product_id: string; quantity: number }>,
+ *   method?: string,
+ *   base_amount_usd?: number   ← only for price_on_request consultations (backend: CONSULTATION_AMOUNT_REQUIRED)
+ * }
  *
  * The backend replaces extra_items for the consultation and persists:
- *   consultations.amount = base_amount + Σ(extras.amount_usd)
+ *   consultations.amount = base_amount_usd + Σ(extras.amount_usd)
  *   consultations.payment_status = 'approved'
  *
  * Returns: { success: true, data: <updated consultation> }
@@ -20,14 +25,16 @@ import { log } from '@/lib/logger';
 
 export const dynamic = 'force-dynamic';
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ): Promise<NextResponse> {
   const { id } = await params;
 
-  if (!id) {
-    return NextResponse.json({ error: 'id requerido' }, { status: 400 });
+  if (!id || !UUID_RE.test(id)) {
+    return NextResponse.json({ error: 'id inválido' }, { status: 400 });
   }
 
   let body: Record<string, unknown>;
@@ -37,10 +44,12 @@ export async function PATCH(
     return NextResponse.json({ error: 'Body JSON inválido' }, { status: 400 });
   }
 
-  const { extras, product_extras, method } = body as {
+  const { extras, product_extras, method, base_amount_usd } = body as {
     extras?: Array<{ description: string; amount_usd: number }>;
     product_extras?: Array<{ product_id: string; quantity: number }>;
     method?: string;
+    /** Required by backend when consultation.amount is null (price_on_request plan). */
+    base_amount_usd?: number;
   };
 
   const backendBody: Record<string, unknown> = {
@@ -48,6 +57,10 @@ export async function PATCH(
     product_extras: Array.isArray(product_extras) ? product_extras : [],
   };
   if (method) backendBody.method = method;
+  // Forward base_amount_usd only when provided; backend enforces it when needed.
+  if (typeof base_amount_usd === 'number' && base_amount_usd > 0) {
+    backendBody.base_amount_usd = base_amount_usd;
+  }
 
   const result = await backendPatch<Record<string, unknown>>(
     `/api/consultations/${id}/approve-payment`,
@@ -61,7 +74,7 @@ export async function PATCH(
       status: result.error.status,
     });
     return NextResponse.json(
-      { success: false, error: result.error.message },
+      { success: false, error: result.error.message, code: result.error.code },
       { status: result.error.status || 500 },
     );
   }

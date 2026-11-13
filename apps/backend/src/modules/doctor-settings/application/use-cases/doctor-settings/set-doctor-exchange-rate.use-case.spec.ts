@@ -56,6 +56,7 @@ describe('SetDoctorExchangeRateUseCase', () => {
       findPlanSnapshot: jest.fn().mockResolvedValue(null),
       scheduleOwnAccountDeactivation: jest.fn().mockResolvedValue(undefined),
       applyExpiredScheduledDeactivations: jest.fn().mockResolvedValue(0),
+      updateOnboardingState: jest.fn().mockResolvedValue(undefined),
     };
     mockRateStore = {
       getRate: jest.fn(),

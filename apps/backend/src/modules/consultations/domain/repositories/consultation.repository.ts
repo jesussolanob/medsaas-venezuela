@@ -253,6 +253,12 @@ export interface IConsultationRepository {
       quantity?: number | null;
     }>,
     paymentMethod?: string | null,
+    /**
+     * Monto base para consultas price_on_request (amount y base_amount null en la BD).
+     * Solo se usa cuando base_amount IS NULL en la primera aprobación; en re-aprobaciones
+     * el repositorio reutiliza el base_amount ya almacenado y lo ignora.
+     */
+    baseAmountOverride?: number,
   ): Promise<Consultation>;
 
   /**
