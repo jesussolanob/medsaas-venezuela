@@ -1262,6 +1262,51 @@ button { font-family: var(--dh-font-body); cursor: pointer; border: none; }
 .btn-ink:hover .btn-arrow,
 .btn-coral:hover .btn-arrow { transform: translateX(3px); }
 </style>
+<!-- Meta Pixel — marketing funnel. Keep in sync with lib/meta-pixel.ts.
+     Only production sends events (staging: add ?meta_pixel=1). No automatic
+     events: we report PageView, Lead (signup CTA click) and Contact (WhatsApp). -->
+<script>
+(function () {
+  var PIXEL_ID = '1135740505535622';
+  var hosts = { 'deltasalud.app': 1, 'www.deltasalud.app': 1 };
+  var enabled = !!hosts[location.hostname];
+  try {
+    var top = window.top.location;
+    if (new URLSearchParams(location.search || top.search).get('meta_pixel') === '1') {
+      sessionStorage.setItem('meta_pixel_debug', '1');
+    }
+    enabled = enabled || sessionStorage.getItem('meta_pixel_debug') === '1';
+  } catch (e) { /* storage blocked: stay on the host rule */ }
+  if (!enabled) return;
+
+  !function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+  n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;
+  n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;
+  t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,
+  document,'script','https://connect.facebook.net/en_US/fbevents.js');
+  fbq.disablePushState = true;
+  fbq('set', 'autoConfig', false, PIXEL_ID);
+  fbq('init', PIXEL_ID);
+  fbq('track', 'PageView');
+
+  // Funnel: a click on any specialist signup CTA (/register) is a Lead; the
+  // WhatsApp sales buttons are a Contact. Navigation waits a moment so the
+  // request leaves before the top window unloads.
+  document.addEventListener('click', function (ev) {
+    var a = ev.target && ev.target.closest && ev.target.closest('a');
+    if (!a) return;
+    var href = a.getAttribute('href') || '';
+    var event = href === '/register' ? 'Lead'
+      : (a.id === 'hero-sales-cta' || a.id === 'float-sales-cta') ? 'Contact' : null;
+    if (!event) return;
+    fbq('track', event);
+    if (event === 'Lead' && !ev.metaKey && !ev.ctrlKey && !ev.shiftKey) {
+      ev.preventDefault();
+      setTimeout(function () { window.top.location.href = href; }, 200);
+    }
+  }, true);
+})();
+</script>
 </head>
 <body>
 

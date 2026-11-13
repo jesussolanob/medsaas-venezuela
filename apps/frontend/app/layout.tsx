@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import { Plus_Jakarta_Sans, JetBrains_Mono } from 'next/font/google';
 import './globals.css';
 import { HelpWidget } from '@/components/help/HelpWidget';
+import { MetaPixelPageViews } from '@/components/analytics/MetaPixel';
 
 // 2026-05-02: Cambio de Geist → Plus Jakarta Sans / JetBrains Mono
 // según el design system "Delta Health Tech" (handoff bundle).
@@ -66,6 +67,7 @@ export default function RootLayout({
       <body className="min-h-full flex flex-col">
         {children}
         <HelpWidget />
+        <MetaPixelPageViews />
       </body>
     </html>
   );
