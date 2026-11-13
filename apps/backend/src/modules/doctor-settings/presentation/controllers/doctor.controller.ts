@@ -14,6 +14,8 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { AppAuthGuard } from '../../../../infrastructure/auth/app-auth.guard';
+import { RolesGuard } from '../../../../presentation/guards/roles.guard';
+import { Roles } from '../../../../presentation/decorators/roles.decorator';
 import {
   CurrentUser,
   type CurrentUserPayload,
@@ -450,6 +452,8 @@ export class DoctorController {
    */
   @Post('onboarding/progress')
   @HttpCode(HttpStatus.OK)
+  @Roles('doctor')
+  @UseGuards(RolesGuard)
   async onboardingProgressHandler(
     @Body(new ZodValidationPipe(OnboardingProgressDtoSchema))
     dto: OnboardingProgressDto,
@@ -473,6 +477,8 @@ export class DoctorController {
    */
   @Post('onboarding/skip-office')
   @HttpCode(HttpStatus.OK)
+  @Roles('doctor')
+  @UseGuards(RolesGuard)
   async skipOfficeHandler(
     @CurrentUser() user: CurrentUserPayload,
   ): Promise<SuccessResponse<SkipOfficeOutput>> {
@@ -491,6 +497,8 @@ export class DoctorController {
    */
   @Post('onboarding/skip-service')
   @HttpCode(HttpStatus.OK)
+  @Roles('doctor')
+  @UseGuards(RolesGuard)
   async skipServiceHandler(
     @CurrentUser() user: CurrentUserPayload,
   ): Promise<SuccessResponse<SkipServiceOutput>> {

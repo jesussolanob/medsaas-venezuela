@@ -103,7 +103,14 @@ export class VerifyMppsUseCase {
       throw new NoActiveVerifierError(CREDENTIAL_TYPE);
     }
 
-    // 4. Check cached verified result (unless forced)
+    // 4. Check cached verified result + 15-minute cooldown (unless forced).
+    //
+    // Two shortcuts are applied in order:
+    //   a) Already verified with same MPPS → return cached (no SACS call).
+    //   b) Any status with checkedAt within 15 min → cooldown, skip SACS.
+    //      Exception: verified+MPPS changed falls through to re-query SACS even
+    //      when within the cooldown window (the MPPS number itself changed, so the
+    //      cached result is stale and must be re-confirmed).
     if (!force) {
       const existing = await this.verificationRepo.findByDoctorAndType(doctorId, CREDENTIAL_TYPE);
       if (existing?.isVerified()) {
@@ -131,9 +138,21 @@ export class VerifyMppsUseCase {
           return this.toOutput(doctorId, existing.status, existing.attempts, existing.checkedAt);
         }
         // MPPS changed or cache has no numeric content — fall through to re-query SACS.
+        // (Cooldown does NOT apply here: the MPPS was updated and must be re-verified.)
         this.logger.log(
           `[verify-mpps] doctorId=${doctorId} cached verified but MPPS changed — re-querying SACS`,
         );
+      } else if (existing?.checkedAt) {
+        // 15-minute cooldown for non-verified records (pending, mismatch, error, not_found).
+        // Prevents hammering SACS when a doctor saves their MPPS multiple times in
+        // quick succession (double-submit, typo → retry within seconds).
+        const msElapsed = Date.now() - existing.checkedAt.getTime();
+        if (msElapsed < 15 * 60_000) {
+          this.logger.log(
+            `[verify-mpps] doctorId=${doctorId} within 15-min cooldown — skipping SACS`,
+          );
+          return this.toOutput(doctorId, existing.status, existing.attempts, existing.checkedAt);
+        }
       }
     }
 

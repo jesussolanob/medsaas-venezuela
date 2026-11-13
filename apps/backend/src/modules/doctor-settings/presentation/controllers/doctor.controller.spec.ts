@@ -23,6 +23,8 @@ import { DoctorProfile } from '../../domain/entities/doctor-profile.entity';
 import { PricingPlan } from '../../../packages/domain/entities/pricing-plan.entity';
 import type { CurrentUserPayload } from '../../../../presentation/decorators/current-user.decorator';
 import { AppAuthGuard } from '../../../../infrastructure/auth/app-auth.guard';
+import { RolesGuard } from '../../../../presentation/guards/roles.guard';
+import { ROLES_KEY } from '../../../../presentation/decorators/roles.decorator';
 
 const DOCTOR_ID = 'a1b2c3d4-e5f6-7890-abcd-ef1234567890';
 const USER: CurrentUserPayload = { sub: DOCTOR_ID, role: 'doctor', email: 'doc@test.com' };
@@ -120,9 +122,12 @@ describe('DoctorController', () => {
         { provide: OnboardingProgressUseCase, useValue: mockOnboardingProgress },
         { provide: SkipOfficeUseCase, useValue: mockSkipOffice },
         { provide: SkipServiceUseCase, useValue: mockSkipService },
+        RolesGuard,
       ],
     })
       .overrideGuard(AppAuthGuard)
+      .useValue({ canActivate: jest.fn().mockReturnValue(true) })
+      .overrideGuard(RolesGuard)
       .useValue({ canActivate: jest.fn().mockReturnValue(true) })
       .compile();
 
@@ -517,6 +522,34 @@ describe('DoctorController', () => {
 
       expect(result).toBeUndefined();
       expect(mockDeleteService.execute).toHaveBeenCalledWith(DOCTOR_ID, 'plan-uuid');
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Onboarding guard metadata — role restriction
+  // ---------------------------------------------------------------------------
+
+  describe('POST /doctor/onboarding/progress — role guard metadata', () => {
+    it('requires the doctor role on onboardingProgressHandler', () => {
+      const roles = Reflect.getMetadata(
+        ROLES_KEY,
+        DoctorController.prototype.onboardingProgressHandler,
+      );
+      expect(roles).toEqual(['doctor']);
+    });
+  });
+
+  describe('POST /doctor/onboarding/skip-office — role guard metadata', () => {
+    it('requires the doctor role on skipOfficeHandler', () => {
+      const roles = Reflect.getMetadata(ROLES_KEY, DoctorController.prototype.skipOfficeHandler);
+      expect(roles).toEqual(['doctor']);
+    });
+  });
+
+  describe('POST /doctor/onboarding/skip-service — role guard metadata', () => {
+    it('requires the doctor role on skipServiceHandler', () => {
+      const roles = Reflect.getMetadata(ROLES_KEY, DoctorController.prototype.skipServiceHandler);
+      expect(roles).toEqual(['doctor']);
     });
   });
 });

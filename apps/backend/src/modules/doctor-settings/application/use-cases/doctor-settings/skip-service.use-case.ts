@@ -20,17 +20,18 @@ export interface SkipServiceOutput {
  * Handles the "Omitir" button on the Service step of the minimum onboarding wizard.
  *
  * Behavior:
- *  1. If the doctor already has at least one active service, no default is created
- *     (idempotent). The step is still marked as reached and skipped.
- *  2. If no active service exists, creates a default one:
+ *  1. Full idempotency guard: if `onboarding_service_skipped` is already true AND
+ *     any price_on_request plan (active or inactive) exists for the doctor, the
+ *     existing plan is returned without creating a new one.
+ *  2. If the doctor already has at least one active service (but the skip flag is not
+ *     set), no default is created. The step is marked as reached and skipped.
+ *  3. If no active service exists, creates a default one:
  *     - Name: "Consulta"
  *     - price_on_request = true (no fixed price)
  *     - duration: 50 min, sessions_count: 1
  *     - type: 'plan', show_in_booking: true
- *     - office_id: doctor's first active office (null if none — general plan)
- *  3. Sets onboarding_service_skipped = true and advances step to 'service'.
- *
- * Idempotent: safe to call multiple times.
+ *     - office_id: null (general plan — usable at all offices)
+ *  4. Sets onboarding_service_skipped = true and advances step to 'service'.
  *
  * SECURITY: doctorId always comes from the authenticated token (anti-IDOR).
  */
@@ -46,8 +47,23 @@ export class SkipServiceUseCase {
 
   async execute(doctorId: string): Promise<SkipServiceOutput> {
     const allPlans = await this.pricingPlanRepo.findAllByDoctorId(doctorId);
-    const activePlan = allPlans.find((p) => p.isActive);
 
+    // Full idempotency guard: if the skip was already processed AND any
+    // price_on_request plan (active or inactive) exists, do not create a second
+    // default plan. A doctor may deactivate the default plan, but the skip flag
+    // already signals intent — creating another one would be unexpected.
+    const anyPriceOnRequestPlan = allPlans.find((p) => p.priceOnRequest);
+    const profile = await this.profileRepo.findByDoctorId(doctorId);
+    if (profile?.onboardingServiceSkipped && anyPriceOnRequestPlan) {
+      await this.profileRepo.updateOnboardingState(doctorId, {
+        lastStep: 'service',
+        serviceSkipped: true,
+      });
+      return { serviceSkipped: true, lastStep: 'service', serviceId: anyPriceOnRequestPlan.id };
+    }
+
+    // Normal path: use the first active service or create a default one.
+    const activePlan = allPlans.find((p) => p.isActive);
     let serviceId: string | null = activePlan?.id ?? null;
 
     if (!serviceId) {

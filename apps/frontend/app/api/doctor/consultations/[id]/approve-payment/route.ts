@@ -25,14 +25,16 @@ import { log } from '@/lib/logger';
 
 export const dynamic = 'force-dynamic';
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ): Promise<NextResponse> {
   const { id } = await params;
 
-  if (!id) {
-    return NextResponse.json({ error: 'id requerido' }, { status: 400 });
+  if (!id || !UUID_RE.test(id)) {
+    return NextResponse.json({ error: 'id inválido' }, { status: 400 });
   }
 
   let body: Record<string, unknown>;
@@ -72,7 +74,7 @@ export async function PATCH(
       status: result.error.status,
     });
     return NextResponse.json(
-      { success: false, error: result.error.message },
+      { success: false, error: result.error.message, code: result.error.code },
       { status: result.error.status || 500 },
     );
   }

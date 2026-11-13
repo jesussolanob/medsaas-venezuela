@@ -164,7 +164,7 @@ export class DoctorProfileModel extends Model {
 
   /**
    * MPPS license number. Editable after onboarding.
-   * Added by migration 20261112000001.
+   * Added by migration 20260611000001.
    */
   @Column({ type: DataType.TEXT, allowNull: true, field: 'mpps_number' })
   declare mppsNumber: string | null;

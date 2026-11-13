@@ -319,6 +319,49 @@ describe('ExportDoctorsUseCase', () => {
   });
 
   // ---------------------------------------------------------------------------
+  // OWASP CSV injection prevention
+  // ---------------------------------------------------------------------------
+
+  it('prefixes = with a single quote to prevent formula injection', async () => {
+    const row = makeRow({ fullName: '=SUM(A1)' });
+    const useCase = new ExportDoctorsUseCase(makeRepo([row]));
+    const csv = await useCase.execute();
+    // The cell must start with ' (the injection prefix was added).
+    expect(csv).toContain("'=SUM(A1)");
+    // The row must NOT start with a bare = (no prefix would expose the formula).
+    expect(csv).not.toMatch(/\r\n=SUM/);
+  });
+
+  it('prefixes + with a single quote to prevent formula injection', async () => {
+    const row = makeRow({ fullName: '+1234' });
+    const useCase = new ExportDoctorsUseCase(makeRepo([row]));
+    const csv = await useCase.execute();
+    expect(csv).toContain("'+1234");
+  });
+
+  it('prefixes - with a single quote to prevent formula injection', async () => {
+    const row = makeRow({ specialty: '-1+2+3+4+5' });
+    const useCase = new ExportDoctorsUseCase(makeRepo([row]));
+    const csv = await useCase.execute();
+    expect(csv).toContain("'-1+2+3+4+5");
+  });
+
+  it('prefixes @ with a single quote to prevent formula injection', async () => {
+    const row = makeRow({ specialty: '@SUM(A1)' });
+    const useCase = new ExportDoctorsUseCase(makeRepo([row]));
+    const csv = await useCase.execute();
+    expect(csv).toContain("'@SUM(A1)");
+  });
+
+  it('does not prefix normal text values', async () => {
+    const row = makeRow({ fullName: 'Dr. House', specialty: 'Diagnóstico' });
+    const useCase = new ExportDoctorsUseCase(makeRepo([row]));
+    const csv = await useCase.execute();
+    expect(csv).toContain('Dr. House');
+    expect(csv).not.toContain("'Dr. House");
+  });
+
+  // ---------------------------------------------------------------------------
   // Line endings and multi-row
   // ---------------------------------------------------------------------------
 

@@ -71,8 +71,17 @@ export class ExportDoctorsUseCase {
 // ---------------------------------------------------------------------------
 
 function csvEscape(value: string | null | undefined): string {
-  const s = value == null ? '' : String(value);
-  // Wrap in quotes if the field contains a comma, double-quote, or newline
+  let s = value == null ? '' : String(value);
+
+  // OWASP CSV injection prevention: prefix cells whose first character would be
+  // interpreted as a formula trigger by spreadsheet applications (Excel, LibreOffice,
+  // Google Sheets). The leading single-quote signals "text literal" to those apps.
+  if (s.length > 0 && /^[=+\-@\t\r]/.test(s)) {
+    s = `'${s}`;
+  }
+
+  // Wrap in double-quotes if the (possibly prefixed) field contains a delimiter,
+  // double-quote, or newline character.
   if (s.includes(',') || s.includes('"') || s.includes('\n') || s.includes('\r')) {
     return `"${s.replace(/"/g, '""')}"`;
   }

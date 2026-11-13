@@ -54,6 +54,9 @@ import { OnboardingProgressUseCase } from './application/use-cases/doctor-settin
 import { SkipOfficeUseCase } from './application/use-cases/doctor-settings/skip-office.use-case';
 import { SkipServiceUseCase } from './application/use-cases/doctor-settings/skip-service.use-case';
 
+// Guards
+import { RolesGuard } from '../../presentation/guards/roles.guard';
+
 // Controller
 import { DoctorController } from './presentation/controllers/doctor.controller';
 
@@ -131,6 +134,9 @@ import { DoctorController } from './presentation/controllers/doctor.controller';
       provide: PRICING_PLAN_REPOSITORY,
       useClass: SequelizePricingPlanRepository,
     },
+
+    // Guards
+    RolesGuard,
 
     // Use cases
     GetDoctorProfileUseCase,

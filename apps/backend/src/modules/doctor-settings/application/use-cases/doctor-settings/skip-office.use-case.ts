@@ -20,16 +20,17 @@ export interface SkipOfficeOutput {
  * Handles the "Omitir" button on the Office step of the minimum onboarding wizard.
  *
  * Behavior:
- *  1. If the doctor already has at least one active office, no default is created
- *     (idempotent). The step is still marked as reached and skipped.
- *  2. If no active office exists, creates a default one:
+ *  1. Full idempotency guard: if `onboarding_office_skipped` is already true AND
+ *     any office (active or inactive) exists for the doctor, the existing office is
+ *     returned without creating a new one.
+ *  2. If the doctor has at least one active office (but the skip flag is not set),
+ *     no default is created. The step is marked as reached and skipped.
+ *  3. If no active office exists, creates a default one:
  *     - Name: "Consultorio"
  *     - Modality: online
  *     - Schedule: Mon–Fri 08:00–17:00 (0 = Lunes convention of doctor_offices)
  *     - Slot: 50 min + 10 min buffer
- *  3. Sets onboarding_office_skipped = true and advances step to 'office'.
- *
- * Idempotent: safe to call multiple times.
+ *  4. Sets onboarding_office_skipped = true and advances step to 'office'.
  *
  * SECURITY: doctorId always comes from the authenticated token (anti-IDOR).
  */
@@ -44,9 +45,23 @@ export class SkipOfficeUseCase {
   ) {}
 
   async execute(doctorId: string): Promise<SkipOfficeOutput> {
-    const existing = await this.officeRepo.findActiveByDoctor(doctorId);
+    // Full idempotency guard: if the skip was already processed AND any office
+    // (active or inactive) exists, do not create a second default office.
+    const profile = await this.profileRepo.findByDoctorId(doctorId);
+    if (profile?.onboardingOfficeSkipped) {
+      const allOffices = await this.officeRepo.listByDoctor(doctorId);
+      if (allOffices.length > 0) {
+        await this.profileRepo.updateOnboardingState(doctorId, {
+          lastStep: 'office',
+          officeSkipped: true,
+        });
+        return { officeSkipped: true, lastStep: 'office', officeId: allOffices[0]?.id ?? null };
+      }
+    }
 
-    let officeId: string | null = existing[0]?.id ?? null;
+    // Normal path: use the first active office or create a default one.
+    const activeOffices = await this.officeRepo.findActiveByDoctor(doctorId);
+    let officeId: string | null = activeOffices[0]?.id ?? null;
 
     if (!officeId) {
       // Create a default office so the doctor can receive bookings immediately.
