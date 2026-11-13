@@ -158,6 +158,7 @@ describe('CompleteRegistrationUseCase', () => {
       specialty: null,
       gender: null,
       resetVerification: true,
+      onboardingLastStep: 'profile',
     });
     expect(result.doctorId).toBe('doc-1');
     expect(result.verificationStatus).toBe('pending');
@@ -188,6 +189,7 @@ describe('CompleteRegistrationUseCase', () => {
       specialty: null,
       gender: null,
       resetVerification: true,
+      onboardingLastStep: 'profile',
     });
   });
 
@@ -214,6 +216,7 @@ describe('CompleteRegistrationUseCase', () => {
       specialty: 'Cardiología',
       gender: null,
       resetVerification: true,
+      onboardingLastStep: 'profile',
     });
   });
 

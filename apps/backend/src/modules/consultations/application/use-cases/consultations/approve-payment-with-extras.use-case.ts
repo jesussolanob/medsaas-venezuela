@@ -1,5 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { Consultation } from '../../../domain/entities/consultation.entity';
+import { ConsultationAmountRequiredError } from '../../../domain/errors/consultation-amount-required.error';
 import { ConsultationNotFoundError } from '../../../domain/errors/consultation-not-found.error';
 import { ConsultationNotOwnedError } from '../../../domain/errors/consultation-not-owned.error';
 import { PaymentMethodRequiredError } from '../../../domain/errors/payment-method-required.error';
@@ -34,6 +35,16 @@ export interface ApprovePaymentWithExtrasInput {
   productExtras?: ProductExtraInput[];
   /** Optional payment method. May be set later via update-payment-details. */
   paymentMethod?: string | null;
+  /**
+   * Monto base en USD para consultas price_on_request (amount y base_amount null en BD).
+   *
+   * Solo se aplica en la PRIMERA aprobación (cuando base_amount IS NULL en la BD).
+   * Si la consulta ya tiene un base_amount fijado, este valor es ignorado: el precio
+   * no se puede cambiar por esta vía (el cambio va por cambio de servicio).
+   *
+   * Nombre del campo en el DTO de la API: `base_amount_usd`.
+   */
+  baseAmountUsd?: number;
 }
 
 /**
@@ -102,11 +113,36 @@ export class ApprovePaymentWithExtrasUseCase {
       })),
     ];
 
+    // Determine whether to pass a base amount override to the repo.
+    //
+    // CASE A — price_on_request (amount=null, base_amount=null in DB):
+    //   The doctor must supply the price now. `baseAmountUsd` becomes the base.
+    //   If neither `baseAmountUsd` nor any extras are provided → reject.
+    //
+    // CASE B — regular consultation (amount already set at booking):
+    //   The base is derived from the stored amount/plan_price by the repo.
+    //   `baseAmountUsd` is silently ignored — the price cannot change via this path.
+    //
+    // CASE C — re-approval (base_amount already persisted from first approval):
+    //   The repo reuses the stored base_amount regardless of what is passed here.
+    //   `baseAmountUsd` is ignored.
+    const isPriceOnRequestFirstApproval =
+      consultation.amount === null && consultation.baseAmount === null;
+
+    if (isPriceOnRequestFirstApproval && allExtras.length === 0 && !input.baseAmountUsd) {
+      throw new ConsultationAmountRequiredError();
+    }
+
+    // Only forward the override when this is the price_on_request first-approval path.
+    // For all other paths, passing undefined lets the repo use its normal resolution.
+    const effectiveBaseAmountUsd = isPriceOnRequestFirstApproval ? input.baseAmountUsd : undefined;
+
     return this.repo.approveWithExtras(
       input.consultationId,
       input.doctorId,
       allExtras,
       effectiveMethod,
+      effectiveBaseAmountUsd,
     );
   }
 }

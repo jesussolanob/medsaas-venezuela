@@ -143,6 +143,7 @@ const mockDoctorProfileRepo: jest.Mocked<IDoctorProfileRepository> = {
   findPlanSnapshot: jest.fn().mockResolvedValue(null),
   scheduleOwnAccountDeactivation: jest.fn().mockResolvedValue(undefined),
   applyExpiredScheduledDeactivations: jest.fn().mockResolvedValue(0),
+  updateOnboardingState: jest.fn().mockResolvedValue(undefined),
 };
 
 const mockDoctorTemplateRepo: jest.Mocked<IDoctorTemplateRepository> = {

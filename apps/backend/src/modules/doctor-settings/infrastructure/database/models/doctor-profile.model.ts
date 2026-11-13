@@ -162,6 +162,37 @@ export class DoctorProfileModel extends Model {
   @Column({ type: DataType.DATE, allowNull: true, field: 'onboarding_completed_at' })
   declare onboardingCompletedAt: Date | null;
 
+  /**
+   * MPPS license number. Editable after onboarding.
+   * Added by migration 20260611000001.
+   */
+  @Column({ type: DataType.TEXT, allowNull: true, field: 'mpps_number' })
+  declare mppsNumber: string | null;
+
+  /**
+   * Last onboarding step the doctor reached (monotonic advancement).
+   * Values: null | 'profile' | 'office' | 'service' | 'completed'.
+   * Added by migration 20261112000001.
+   */
+  @Column({ type: DataType.TEXT, allowNull: true, field: 'onboarding_last_step' })
+  declare onboardingLastStep: string | null;
+
+  /**
+   * True when the office setup step was explicitly skipped (Omitir button).
+   * Added by migration 20261112000001.
+   */
+  @Default(false)
+  @Column({ type: DataType.BOOLEAN, allowNull: false, field: 'onboarding_office_skipped' })
+  declare onboardingOfficeSkipped: boolean;
+
+  /**
+   * True when the service setup step was explicitly skipped (Omitir button).
+   * Added by migration 20261112000001.
+   */
+  @Default(false)
+  @Column({ type: DataType.BOOLEAN, allowNull: false, field: 'onboarding_service_skipped' })
+  declare onboardingServiceSkipped: boolean;
+
   @CreatedAt
   @Column({ field: 'created_at' })
   declare createdAt: Date;

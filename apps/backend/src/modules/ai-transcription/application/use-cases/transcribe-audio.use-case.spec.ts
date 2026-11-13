@@ -91,6 +91,7 @@ describe('TranscribeAudioUseCase', () => {
       findPlanSnapshot: jest.fn().mockResolvedValue(null),
       scheduleOwnAccountDeactivation: jest.fn().mockResolvedValue(undefined),
       applyExpiredScheduledDeactivations: jest.fn().mockResolvedValue(0),
+      updateOnboardingState: jest.fn().mockResolvedValue(undefined),
     };
     mockPlanConfigRepo = { findByKey: jest.fn(), findPermanentPlanForRole: jest.fn() };
 

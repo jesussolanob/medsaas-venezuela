@@ -13,6 +13,20 @@
 Fases 0-3 (NX + shared-types + backend NestJS) son base de todo lo de abajo.
 Estado: Fase 0 ✅ · Fase 1 en-progreso.
 
+## Onboarding mínimo + CSV de especialistas (pedido del dueño, 2026-11-12) — en-progreso
+
+> Rama `feature/onboarding-minimo`. Objetivo de negocio: que con lo mínimo al especialista ya le puedan
+> agendar, y que el admin tenga una base de contacto útil para seguimiento comercial.
+
+| Ítem                                              | Decisión del dueño                                                                                                      |
+| ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| Quitar MPPS del onboarding; editable en el perfil | La verificación automática pasa a **cédula + nombre** (SACS); el MPPS solo se exige si el especialista lo cargó         |
+| "Omitir" en los pasos Consultorio y Servicio      | Al omitir se crean valores por defecto. **Solo para nuevos**: no hay backfill de especialistas existentes               |
+| Consultorio por defecto                           | "Consultorio", **solo online**, lun–vie 08:00–17:00, 50 min + 10 min de pausa (9 turnos)                                |
+| Servicio por defecto                              | Precio **"A consultar con el especialista"** (flag nuevo, no $0)                                                        |
+| Pago en la reserva                                | **No se pide** si el servicio es "a consultar" **o** si el especialista no tiene cuentas de pago cargadas               |
+| CSV de especialistas (admin)                      | + teléfono, fecha de registro, cantidad de pacientes, consultorios, servicios y consultas, y último paso del onboarding |
+
 ## Retención de especialistas (pedido del dueño, planificado 2026-10-30)
 
 > Plan completo y vinculante: `docs/plan-retencion.md` (rama `feature/retencion`). Estado:

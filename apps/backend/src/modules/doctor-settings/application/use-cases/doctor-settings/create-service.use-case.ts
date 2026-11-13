@@ -16,6 +16,11 @@ import { PlanRequiresOfficeError } from '../../../domain/errors/plan-requires-of
 export interface CreateServiceInput {
   name: string;
   priceUsd: number;
+  /**
+   * When true, the service has no fixed price — the doctor quotes on request.
+   * priceUsd is ignored and stored as 0 internally.
+   */
+  priceOnRequest?: boolean;
   durationMinutes?: number;
   sessionsCount?: number;
   /** Days after purchase that deferred sessions must be scheduled. null = no expiry. */
@@ -50,13 +55,16 @@ export class CreateServiceUseCase {
       if (!office) throw new OfficeNotOwnedError();
     }
 
+    const priceOnRequest = input.priceOnRequest ?? false;
     const now = new Date();
     const plan = PricingPlanEntity.create({
       id: randomUUID(),
       doctorId,
       officeId,
       name: input.name,
-      priceUsd: input.priceUsd,
+      // When price_on_request, force 0 so no accidental charges are created
+      priceUsd: priceOnRequest ? 0 : input.priceUsd,
+      priceOnRequest,
       durationMinutes: input.durationMinutes ?? 30,
       sessionsCount: input.sessionsCount ?? 1,
       validityDays: input.validityDays ?? null,

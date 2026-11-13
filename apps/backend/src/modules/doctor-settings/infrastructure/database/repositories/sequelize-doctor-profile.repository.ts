@@ -51,6 +51,8 @@ export class SequelizeDoctorProfileRepository implements IDoctorProfileRepositor
       ...(params.welcomeDismissedAt !== undefined && {
         welcomeDismissedAt: params.welcomeDismissedAt,
       }),
+      // mppsNumber is explicitly nullable — pass undefined to leave unchanged, null to clear
+      ...('mppsNumber' in params && { mppsNumber: params.mppsNumber ?? null }),
     });
 
     return this.toDomain(row);
@@ -112,6 +114,10 @@ export class SequelizeDoctorProfileRepository implements IDoctorProfileRepositor
       // They default to false here; GetDoctorProfileUseCase overrides them with live counts.
       hasActiveOffice: false,
       hasActiveService: false,
+      mppsNumber: row.mppsNumber ?? null,
+      onboardingLastStep: row.onboardingLastStep ?? null,
+      onboardingOfficeSkipped: row.onboardingOfficeSkipped ?? false,
+      onboardingServiceSkipped: row.onboardingServiceSkipped ?? false,
     });
   }
 
@@ -229,6 +235,24 @@ export class SequelizeDoctorProfileRepository implements IDoctorProfileRepositor
       { type: QueryTypes.UPDATE, replacements: { freePlanKey } },
     );
     return typeof affected === 'number' ? affected : 0;
+  }
+
+  async updateOnboardingState(
+    doctorId: string,
+    state: {
+      lastStep?: string;
+      officeSkipped?: boolean;
+      serviceSkipped?: boolean;
+    },
+  ): Promise<void> {
+    const updates: Record<string, unknown> = {};
+    if (state.lastStep !== undefined) updates.onboardingLastStep = state.lastStep;
+    if (state.officeSkipped !== undefined) updates.onboardingOfficeSkipped = state.officeSkipped;
+    if (state.serviceSkipped !== undefined) updates.onboardingServiceSkipped = state.serviceSkipped;
+
+    if (Object.keys(updates).length === 0) return;
+
+    await this.model.update(updates, { where: { id: doctorId } });
   }
 
   async deactivateOwnAccount(doctorId: string, reason: string | null): Promise<void> {

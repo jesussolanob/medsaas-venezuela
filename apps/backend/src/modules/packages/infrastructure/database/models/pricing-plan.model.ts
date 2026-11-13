@@ -48,6 +48,15 @@ export class PricingPlanModel extends Model {
   @Column({ type: DataType.DECIMAL(12, 2), allowNull: false, field: 'price_usd' })
   declare priceUsd: number;
 
+  /**
+   * When true, the plan has no fixed price — the doctor quotes on request.
+   * priceUsd is 0 and must not be surfaced as a billing amount.
+   * Added by migration 20261112000001.
+   */
+  @Default(false)
+  @Column({ type: DataType.BOOLEAN, allowNull: false, field: 'price_on_request' })
+  declare priceOnRequest: boolean;
+
   @Default(30)
   @Column({ type: DataType.INTEGER, allowNull: true, field: 'duration_minutes' })
   declare durationMinutes: number;

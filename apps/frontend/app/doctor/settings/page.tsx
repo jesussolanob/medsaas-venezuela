@@ -43,6 +43,7 @@ import {
   saveLogoUrl,
   saveSignatureUrl,
   saveLicenseNumber,
+  saveMppsNumber,
   loadGoogleStatus,
   disconnectGoogle,
   type GoogleStatusView,
@@ -228,6 +229,7 @@ function SettingsPageInner() {
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [signatureUrl, setSignatureUrl] = useState<string | null>(null);
   const [licenseNumber, setLicenseNumber] = useState<string>('');
+  const [mppsNumber, setMppsNumber] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [saved, setSaved] = useState(false);
   const [tab, setTab] = useState<TabId>(initialTab);
@@ -393,6 +395,7 @@ function SettingsPageInner() {
         setLogoUrl(profileData.logo_url ?? null);
         setSignatureUrl(profileData.signature_url ?? null);
         setLicenseNumber(profileData.license_number ?? '');
+        setMppsNumber(profileData.mpps_number ?? '');
         // Datos iniciales para PaymentDetailsEditor. El componente normaliza
         // internamente la FORMA vieja/nueva del JSONB con entriesOf; el
         // VOCABULARIO del método se normaliza acá (`cash_usd` → `efectivo`),
@@ -545,6 +548,16 @@ function SettingsPageInner() {
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
     showToast({ type: 'success', message: 'Matrícula guardada.' });
+  }
+
+  async function saveMpps() {
+    const result = await saveMppsNumber(mppsNumber || null);
+    if (!result.ok) {
+      reportError('doctor/settings', 'saveMpps', new Error(String(result.error)));
+      showToast({ type: 'error', message: 'No se pudo guardar el N.º MPPS.' });
+      return;
+    }
+    showToast({ type: 'success', message: 'N.º MPPS guardado.' });
   }
 
   /* ---------------- PLANS (tab removed — now at /doctor/services) ---------------- */
@@ -971,6 +984,26 @@ function SettingsPageInner() {
                   />
                   <p className="text-[10px] text-slate-400 mt-1.5">
                     Aparecerá debajo de tu nombre en la firma de los PDFs
+                  </p>
+                </div>
+
+                {/* N.º MPPS */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
+                    N.º MPPS{' '}
+                    <span className="normal-case font-normal text-slate-400">(opcional)</span>
+                  </label>
+                  <input
+                    value={mppsNumber}
+                    onChange={(e) => setMppsNumber(e.target.value)}
+                    onBlur={saveMpps}
+                    placeholder="Ej: 12345"
+                    className={fi}
+                    autoComplete="off"
+                  />
+                  <p className="text-[10px] text-slate-400 mt-1.5">
+                    Se usa para verificar tu perfil profesional en el MPPS. Cambiarlo activa la
+                    verificación automática.
                   </p>
                 </div>
               </div>

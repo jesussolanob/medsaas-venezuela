@@ -104,6 +104,7 @@ describe('ChangeAppointmentServiceUseCase', () => {
       // El asiento de auditoría necesita de qué se venía, no solo a dónde se va.
       oldPlanName: 'Paquete 4 consultas',
       oldPlanPriceUsd: 120,
+      priceOnRequest: false,
     });
     expect(result.unchanged).toBe(false);
     expect(result.appointmentsUpdated).toBe(4);
@@ -212,5 +213,35 @@ describe('ChangeAppointmentServiceUseCase', () => {
     appointmentRepo.changeService.mockResolvedValue(null);
 
     await expect(useCase.execute(input)).rejects.toThrow(AppointmentNotFoundError);
+  });
+
+  it('al cambiar a un servicio price_on_request pasa priceOnRequest=true y NO toca los montos', async () => {
+    // Escenario: cita con precio fijo ($120, 1 sesión) → se cambia a "Consulta"
+    // price_on_request (1 sesión, priceUsd=0). Los montos deben quedar intactos.
+    const priceOnRequestPlan = makePlan({
+      id: NEW_PLAN_ID,
+      name: 'Consulta',
+      priceUsd: 0,
+      sessionsCount: 1,
+      priceOnRequest: true,
+    });
+    appointmentRepo.findByIdScopedEnriched.mockResolvedValue(
+      makeAppointment({ planId: OLD_PLAN_ID, planPrice: 120 }),
+    );
+    planRepo.findById.mockImplementation(async (id: string) =>
+      id === NEW_PLAN_ID
+        ? priceOnRequestPlan
+        : makePlan({ id: OLD_PLAN_ID, name: 'Consulta básica', priceUsd: 120, sessionsCount: 1 }),
+    );
+
+    const result = await useCase.execute(input);
+
+    // El repositorio recibe la señal de que NO toque los montos.
+    expect(appointmentRepo.changeService).toHaveBeenCalledWith(
+      expect.objectContaining({ priceOnRequest: true }),
+    );
+    // El use case devuelve el priceUsd del plan (0) pero el SQL lo ignora.
+    expect(result.planPriceUsd).toBe(0);
+    expect(result.unchanged).toBe(false);
   });
 });

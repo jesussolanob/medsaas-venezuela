@@ -64,6 +64,7 @@ interface BackendDoctorProfile {
   logoUrl: string | null;
   signatureUrl: string | null;
   licenseNumber: string | null;
+  mppsNumber: string | null;
   phone: string | null;
   plan: string | null;
   subscriptionStatus: string | null;
@@ -100,6 +101,8 @@ export interface SettingsProfileView {
   logo_url: string | null;
   signature_url: string | null;
   license_number: string | null;
+  /** N.º MPPS del especialista (identificador del Ministerio). Nullable. */
+  mpps_number: string | null;
   payment_methods: string[];
   /** Datos de cobro por método. Un método puede traer UN juego de datos
    *  (forma histórica) o VARIOS en una lista — ver lib/payment-details. */
@@ -140,6 +143,7 @@ function profileToView(b: BackendDoctorProfile): SettingsProfileView {
     logo_url: b.logoUrl ?? null,
     signature_url: b.signatureUrl ?? null,
     license_number: b.licenseNumber ?? null,
+    mpps_number: b.mppsNumber ?? null,
     payment_methods: b.paymentMethods ?? ['pago_movil', 'transferencia'],
     payment_details: (b.paymentDetails as Record<string, unknown>) ?? {},
     phone: b.phone ?? '',
@@ -408,6 +412,28 @@ export async function saveLicenseNumber(licenseNumber: string | null): Promise<A
 
   if (!result.ok) {
     log.error('[saveLicenseNumber] backend error', {
+      code: result.error.code,
+      status: result.error.status,
+    });
+    return { ok: false, error: result.error.message };
+  }
+
+  return { ok: true };
+}
+
+/**
+ * Persist mpps_number.
+ * Changing it re-triggers MPPS verification server-side.
+ *
+ * Backend: PUT /api/doctor/profile { mpps_number }
+ */
+export async function saveMppsNumber(mppsNumber: string | null): Promise<ActionResult> {
+  const result = await backendPut<BackendDoctorProfile>('/api/doctor/profile', {
+    mpps_number: mppsNumber || null,
+  });
+
+  if (!result.ok) {
+    log.error('[saveMppsNumber] backend error', {
       code: result.error.code,
       status: result.error.status,
     });

@@ -763,6 +763,12 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
   const [pagoReceiptPath, setPagoReceiptPath] = useState<string | null>(null);
   const [pagoReceiptUploading, setPagoReceiptUploading] = useState(false);
   const [pagoDetailsSaving, setPagoDetailsSaving] = useState(false);
+  /**
+   * Monto base de la consulta ingresado por el especialista cuando el plan es
+   * "precio a consultar" (price_on_request). Solo se envía a approve-payment
+   * cuando selected.amount == null && selected.base_amount == null.
+   */
+  const [baseAmountInput, setBaseAmountInput] = useState<string>('');
   // Modal de aprobación de pago (con monto base + extras)
   const [showApprovePaymentModal, setShowApprovePaymentModal] = useState(false);
   // Modal de método de pago — se abre cuando el doctor intenta aprobar sin método seleccionado
@@ -1934,6 +1940,7 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
         setPagoReference(fresh.payment_reference ?? '');
         setPagoAmount(fresh.amount != null ? String(fresh.amount) : '');
         setPagoReceiptPath(fresh.payment_receipt_url ?? null);
+        setBaseAmountInput('');
         setConsultations((prev) => prev.map((x) => (x.id === fresh.id ? fresh : x)));
       } else {
         // Fallback to cached data
@@ -1957,6 +1964,7 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
         setPagoReference(c.payment_reference ?? '');
         setPagoAmount(c.amount != null ? String(c.amount) : '');
         setPagoReceiptPath(c.payment_receipt_url ?? null);
+        setBaseAmountInput('');
       }
     } catch {
       // Fallback to cached data on error
@@ -1978,6 +1986,7 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
       setPagoReference(c.payment_reference ?? '');
       setPagoAmount(c.amount != null ? String(c.amount) : '');
       setPagoReceiptPath(c.payment_receipt_url ?? null);
+      setBaseAmountInput('');
     }
 
     // Consumo de los combos del paciente. No bloquea nada: si falla, la tarjeta
@@ -5565,6 +5574,38 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                             </div>
                           </div>
 
+                          {/* Monto de la consulta — solo para planes "precio a consultar" */}
+                          {selected.amount == null && selected.base_amount == null && (
+                            <div className="rounded-lg border border-amber-200 bg-amber-50 p-2.5 space-y-1.5">
+                              <label className="block text-[10px] font-semibold text-amber-700 mb-1">
+                                Monto de la consulta ({currencyCode}){' '}
+                                <span className="text-red-500">*</span>
+                              </label>
+                              <p className="text-[10px] text-amber-600 leading-snug">
+                                Este plan es &quot;precio a consultar&quot;. Ingresa el monto
+                                acordado con el paciente para aprobar el cobro.
+                              </p>
+                              <input
+                                type="number"
+                                min="0.01"
+                                step="any"
+                                inputMode="decimal"
+                                value={baseAmountInput}
+                                disabled={pagoDetailsSaving}
+                                onChange={(e) => setBaseAmountInput(e.target.value)}
+                                placeholder="0.00"
+                                className="w-full text-xs border border-amber-300 rounded-lg py-1.5 px-2.5 outline-none focus:ring-2 focus:ring-amber-400/30 focus:border-amber-400 transition-all bg-white text-slate-700 placeholder:text-slate-400 disabled:text-slate-400 disabled:cursor-wait"
+                              />
+                              {bcvRate &&
+                                baseAmountInput.trim() !== '' &&
+                                !isNaN(Number(baseAmountInput)) && (
+                                  <p className="text-[10px] text-amber-600">
+                                    {toBs(Number(baseAmountInput))}
+                                  </p>
+                                )}
+                            </div>
+                          )}
+
                           {/* Monto cobrado — editable */}
                           <div>
                             <label className="block text-[10px] text-slate-500 mb-1">
@@ -5978,6 +6019,23 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                               // 2. Si el estado es "Aprobado", persistir la aprobación
                               //    (status + extras confirmados + método) en la BD.
                               if (isApproving) {
+                                // Cuando el plan es "precio a consultar", el backend no tiene
+                                // monto base y requiere base_amount_usd en este payload
+                                // (devuelve 422 CONSULTATION_AMOUNT_REQUIRED sin él).
+                                const needsBaseAmount =
+                                  selected.amount == null && selected.base_amount == null;
+                                if (needsBaseAmount) {
+                                  const parsed = parseFloat(baseAmountInput);
+                                  if (!baseAmountInput.trim() || isNaN(parsed) || parsed <= 0) {
+                                    showToast({
+                                      type: 'error',
+                                      message:
+                                        'Ingresa el monto de la consulta para poder aprobar el cobro.',
+                                    });
+                                    return;
+                                  }
+                                }
+
                                 // ⚠️ approve-payment es REEMPLAZAR TODO (ADR-054): el backend
                                 // revierte el stock de la aprobación anterior y vuelve a
                                 // aplicar lo que llegue AHORA. Por eso hay que reenviar los
@@ -6006,27 +6064,40 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                                     quantity: Number(e.quantity ?? 1),
                                   }));
 
+                                const approveBody: Record<string, unknown> = {
+                                  extras,
+                                  product_extras: productExtras,
+                                  method: pagoMethod,
+                                };
+                                // Include base_amount_usd only for price_on_request consultations.
+                                if (needsBaseAmount && baseAmountInput.trim()) {
+                                  approveBody.base_amount_usd = parseFloat(baseAmountInput);
+                                }
+
                                 const res = await fetch(
                                   `/api/doctor/consultations/${selected.id}/approve-payment`,
                                   {
                                     method: 'PATCH',
                                     headers: { 'Content-Type': 'application/json' },
-                                    body: JSON.stringify({
-                                      extras,
-                                      product_extras: productExtras,
-                                      method: pagoMethod,
-                                    }),
+                                    body: JSON.stringify(approveBody),
                                   },
                                 );
                                 const json = (await res.json()) as {
                                   success?: boolean;
                                   error?: string;
+                                  code?: string;
                                   data?: { amount?: number | null };
                                 };
                                 if (!res.ok || !json.success) {
+                                  // Backend 422: CONSULTATION_AMOUNT_REQUIRED
+                                  const isAmountRequired =
+                                    res.status === 422 ||
+                                    json.code === 'CONSULTATION_AMOUNT_REQUIRED';
                                   showToast({
                                     type: 'error',
-                                    message: json.error ?? 'No se pudo aprobar el cobro',
+                                    message: isAmountRequired
+                                      ? 'El monto de la consulta es obligatorio para este plan. Ingresa el monto antes de aprobar.'
+                                      : (json.error ?? 'No se pudo aprobar el cobro'),
                                   });
                                   return;
                                 }

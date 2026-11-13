@@ -41,7 +41,6 @@ La primera vez que entras al portal, el sistema verifica si completaste tu regis
   - **P** = pasaporte. Entre 5 y 20 caracteres alfanumericos (letras y numeros). Ejemplo: AB1234567. Se guarda como P-AB1234567. Al elegir P, la etiqueta del campo cambia a 'Pasaporte'.
   - Debajo del campo veras una vista previa de como se guardara (por ejemplo: 'Se guardara como: V-12345678').
 - **Especialidad medica** (obligatorio). Es un combo con buscador: escribe parte del nombre y selecciona de la lista. Si tu especialidad no aparece, elige la opcion **Otra especialidad** al final de la lista y escribe el nombre manualmente.
-- **Numero MPPS** (opcional). Ejemplo: MPPS-12345.
 - **Numero de colegiado** (opcional). Ejemplo: CVM-56789.
 
 El boton para enviar dice **Activar cuenta y continuar**. Mientras procesa muestra 'Guardando...'. Los campos marcados con asterisco rojo son obligatorios; el boton se mantiene deshabilitado hasta que el nombre, la cedula y la especialidad sean validos.
@@ -60,11 +59,15 @@ Despues del formulario inicial, el sistema exige tres requisitos para darte acce
    **Configuracion > Mi perfil** (/doctor/settings) donde puedes agregar o editar tu telefono.
    Sin telefono, el boton para completar el onboarding devuelve el error:
    **"Falta tu teléfono de contacto. Complétalo para activar tu cuenta."**
-2. **Al menos un consultorio activo.** Crea uno en **Configuracion > Consultorios** (/doctor/settings).
-3. **Al menos un servicio activo.** Crea uno en **Configuracion > Servicios** (/doctor/settings).
+2. **Al menos un consultorio activo.** Se crea en el paso **Consultorio** del onboarding.
+3. **Al menos un servicio activo.** Se crea en el paso **Consulta** del onboarding.
 
-Solo cuando los tres requisitos estan cumplidos puedes pulsar **Completar activacion** y acceder
-al resto del portal sin restricciones.
+**Boton Omitir en los pasos Consultorio y Consulta:** si no quieres configurarlos ahora, pulsa **Omitir** y Delta los crea por ti para que ya te puedan agendar:
+- Consultorio por defecto: se llama **Consultorio**, es **solo online** (videoconsulta), atiende de **lunes a viernes de 8:00 a 17:00**, con consultas de **50 minutos** y **10 minutos** entre una y otra.
+- Servicio por defecto: se llama **Consulta** y su precio aparece como **A consultar con el especialista**.
+Puedes cambiar ambos cuando quieras en **Consultorios** (/doctor/offices) y **Servicios** (/doctor/services).
+
+Solo cuando los tres requisitos estan cumplidos accedes al resto del portal sin restricciones.
 
 ---
 
@@ -74,18 +77,18 @@ Despues de activar tu cuenta, el equipo de Delta verifica tus credenciales profe
 
 **Que se verifica:**
 
-- **MPPS (Ministerio del Poder Popular para la Salud):** se consulta de forma automatica en el sistema oficial (SACS) usando tu cedula normalizada (V/E/P). Es un proceso en segundo plano.
+- **Registro profesional (SACS del MPPS):** se consulta de forma automatica en el sistema oficial (SACS) usando tu cedula normalizada (V/E/P) y tu nombre. Es un proceso en segundo plano. No necesitas cargar tu numero MPPS para que funcione; si lo cargas (en Configuracion > Mi perfil, campo **N.º MPPS**), tambien debe coincidir con el registro oficial.
 - **Colegiado:** se verifica de forma manual por el equipo administrador, ya que no existe un verificador automatico.
 
 **Estados de verificacion que puede tener tu cuenta:**
 
-- **Pendiente:** tu registro fue recibido y aun no se ha verificado. Es el estado inicial tras el onboarding. Si cargaste cedula y MPPS correctamente, el sistema intenta verificarte automaticamente contra el portal SACS al registrarte; si coinciden, pasas a Verificado sin esperar al admin.
-- **Verificado / valido:** tus credenciales fueron confirmadas. Puede haber ocurrido de dos formas: automaticamente por el sistema (cuando el MPPS coincidio en SACS) o manualmente por el equipo administrador de Delta.
+- **Pendiente:** tu registro fue recibido y aun no se ha verificado. Es el estado inicial tras el onboarding. Al registrarte, el sistema intenta verificarte automaticamente contra el portal SACS con tu cedula y tu nombre; si coinciden con un medico registrado, pasas a Verificado sin esperar al admin. Las profesiones que no son medicina (por ejemplo psicologia o nutricion) se verifican de forma manual.
+- **Verificado / valido:** tus credenciales fueron confirmadas. Puede haber ocurrido de dos formas: automaticamente por el sistema (cuando tus datos coincidieron en SACS) o manualmente por el equipo administrador de Delta.
 - **No verificado / invalido (Rechazado):** no se logro confirmar tus credenciales. En ese caso, el equipo Delta se comunica contigo por tu correo para indicarte los pasos a seguir. Esta marca no bloquea tu acceso en la etapa actual.
 
 La cedula es obligatoria precisamente porque se usa para esta verificacion y, ademas, para compartir documentos con pacientes de forma segura.
 
-**Importante:** si actualizas tu numero MPPS despues del registro, el sistema volvera a verificarlo contra SACS con el nuevo valor.
+**Importante:** el numero MPPS ya no se pide en el registro; puedes cargarlo o cambiarlo cuando quieras en **Configuracion > Mi perfil** (campo **N.º MPPS**, distinto de 'Matricula / Licencia'). Al guardarlo, el sistema vuelve a verificarte contra SACS (si lo cambias varias veces seguidas, espera unos 15 minutos entre una verificacion y otra).
 
 **Bloqueo de cuenta (distinto de la verificacion):** un administrador puede bloquear tu cuenta por separado. Si tu cuenta esta bloqueada, al usar cualquier funcion veras una pantalla completa **Cuenta bloqueada** con el mensaje: 'Tu cuenta ha sido bloqueada por el administrador. Para restablecer el acceso, comunicate con el soporte de Delta Salud.' y un boton **Cerrar sesion**. Esto es independiente de tu plan y de la verificacion.
 
@@ -327,10 +330,12 @@ Resumen financiero mensual. (Requiere plan Base o Plus.)
 Tus servicios y tarifas, que tambien aparecen en el booking publico. (Requiere plan Base o Plus.)
 
 - **Filtros:** por tipo, por consultorio (Todos los consultorios) y por estado.
-- **Crear servicio.** Campos: Nombre, Tipo (servicio individual o plan de paquete con varias sesiones), Precio en USD, Duracion en minutos, numero de sesiones (si es paquete), Consultorio asociado (o 'General (todos los consultorios)'), Descripcion (se muestra al paciente en el booking) y **Mostrar en link de booking** (si lo activas, el servicio es 'Visible en booking').
+- **Crear servicio.** Campos: Nombre, Tipo (servicio individual o plan de paquete con varias sesiones), Precio en USD (o la opcion **Precio a consultar con el especialista**, si prefieres no publicar un monto), Duracion en minutos, numero de sesiones (si es paquete), Consultorio asociado (o 'General (todos los consultorios)'), Descripcion (se muestra al paciente en el booking) y **Mostrar en link de booking** (si lo activas, el servicio es 'Visible en booking').
 - **Editar**, **Activar/Desactivar** y **Eliminar** cada servicio.
 - Si no tienes ninguno: 'No tienes servicios configurados'.
 - Solo los servicios con 'Mostrar en booking' activo aparecen en tu pagina publica /book/tu-id.
+- **Precio a consultar:** el servicio se muestra en tu pagina publica como **A consultar con el especialista** y el paciente reserva **sin pagar ni subir comprobante**. No se genera ningun cobro al reservar. Cuando atiendes al paciente, al aprobar el pago de la consulta te aparece el campo **Monto de la consulta (USD)**: escribe lo que cobraste y recien ahi el cobro aparece en Cobros y en Finanzas.
+- **Sin cuentas de pago cargadas:** si no configuraste ningun metodo de pago (Pago Movil, Zelle, etc.), tu pagina publica tampoco le pide pago al paciente al reservar; el cobro queda **Pendiente** con el precio del servicio, para que lo registres cuando te paguen.
 
 ### 6.9 Consultorios — /doctor/offices
 
@@ -358,7 +363,7 @@ Configuracion de recordatorios automaticos a pacientes. (Requiere plan Base o Pl
 
 Perfil, metodos de pago, notificaciones y mas. Incluye:
 
-- **Perfil:** Nombre, Email (no editable, viene del login), Cedula (no editable, del onboarding), Especialidad (no editable), Titulo profesional, Telefono, Ciudad, Estado, **Consultas online** (activar/desactivar) y **Foto de perfil**. Si registras tu **fecha de nacimiento**, esta debe corresponder a una persona de **18 anios o mas** (no se aceptan menores de edad como especialista) y no puede ser una fecha futura.
+- **Perfil:** Nombre, Email (no editable, viene del login), Cedula (no editable, del onboarding), Especialidad (no editable), Titulo profesional, **N.º MPPS** (opcional, se usa para verificar tu registro profesional), Telefono, Ciudad, Estado, **Consultas online** (activar/desactivar) y **Foto de perfil**. Si registras tu **fecha de nacimiento**, esta debe corresponder a una persona de **18 anios o mas** (no se aceptan menores de edad como especialista) y no puede ser una fecha futura.
 - **Metodos de pago:** agregar/editar/eliminar (Pago Movil, Transferencia, Zelle, Binance, Efectivo, Punto de venta), con sus datos. Cada metodo/opcion de pago es **colapsable** (se expande o contrae para ordenar la vista). Tambien puedes configurar seguros. **La tasa de cambio ahora vive DENTRO de esta seccion de Metodos de pago** (ya no es una pantalla aparte): eliges la tasa con la que cobras en bolivares entre **BCV USD**, **BCV EUR** o una **tasa personalizada** que tu defines.
 - **Tu link publico de booking** (solo si tu plan habilita booking): muestra tu enlace publico, un boton **Copiar**, el **Codigo QR de tu link** (descargable como PNG con el boton bajo el codigo) y **Ver mi pagina** para previsualizar como lo ve el paciente. Tambien una descripcion de perfil que se muestra en tu pagina publica. Nota: 'El booking (link publico + QR) se habilita por plan.'
 - **Compartir por WhatsApp:** mensaje de WhatsApp/Correo configurable (con emojis), para enviar tu link a tus contactos. La integracion plena con WhatsApp Business API esta en desarrollo.

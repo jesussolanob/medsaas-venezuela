@@ -690,6 +690,16 @@ export default function DoctorDashboard() {
   // modal para capturarlo (obligatorio) + referencia/comprobante (opcionales) antes
   // de aprobar. Con método → aprueba directo. (Mismo comportamiento que la consulta.)
   function handleApprovePayment(payment: PaymentRow) {
+    // Price_on_request consultations have no base amount yet.
+    // The doctor must open the consultation detail to enter the amount first.
+    if (payment.amount_usd == null) {
+      showToast({
+        type: 'error',
+        message:
+          'Este cobro requiere un monto de consulta. Ábrelo desde la sección Consultas para ingresarlo.',
+      });
+      return;
+    }
     if (!payment.method_snapshot || !payment.method_snapshot.trim()) {
       setMethodModalPayment(payment);
       return;
@@ -1771,7 +1781,7 @@ export default function DoctorDashboard() {
                       payment.appointment?.plan_name ||
                       payment.consultation?.consultation_code ||
                       'Consulta';
-                    const amount = payment.amount_usd ?? 0;
+                    const amount = payment.amount_usd;
                     const dateStr = payment.appointment?.scheduled_at || payment.created_at;
                     const isApproving = approvingPaymentId === payment.id;
 
@@ -1798,9 +1808,15 @@ export default function DoctorDashboard() {
 
                         {/* Monto */}
                         <div className="text-right shrink-0">
-                          <p className="text-sm font-bold text-slate-900">{format(amount)}</p>
-                          {bcvRate && amount > 0 && (
-                            <p className="text-[11px] text-slate-400">{toBs(amount)}</p>
+                          {amount == null ? (
+                            <p className="text-xs text-slate-400 italic">A consultar</p>
+                          ) : (
+                            <>
+                              <p className="text-sm font-bold text-slate-900">{format(amount)}</p>
+                              {bcvRate && amount > 0 && (
+                                <p className="text-[11px] text-slate-400">{toBs(amount)}</p>
+                              )}
+                            </>
                           )}
                         </div>
 
