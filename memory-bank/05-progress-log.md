@@ -5774,3 +5774,23 @@ Más el cobro que salía sin nombre de paciente (ADR-095), mismo patrón que el 
   preconsultas (ver ADR-089).
 
 ---
+
+## 2026-11-12/13 — Onboarding mínimo + CSV de especialistas (en staging, sin promover)
+
+Rama `feature/onboarding-minimo` → `develop` → `staging`. Pedido del dueño: que con lo mínimo al
+especialista ya le puedan agendar.
+
+- **Hecho:** MPPS fuera del onboarding (editable en el perfil); verificación SACS por cédula + nombre;
+  "Omitir" en consultorio y servicio (arriba y abajo) con valores por defecto; precio "A consultar con el
+  especialista"; reserva sin paso de pago si el plan es a consultar o no hay cuentas de pago; CSV del admin
+  con 7 columnas nuevas. Guía del asistente de ayuda actualizada.
+- **Revisión:** code-reviewer aprobado; security-agent encontró 1 HIGH (endpoints sin `@Roles('doctor')`) +
+  CSV injection + re-verificación sin enfriamiento → corregidos. Backend 5.110 tests verdes.
+- **QA en navegador sobre staging (13/11):** el flujo completo funciona. Encontró y se corrigió que el modal
+  "Aprobar pago" no enviaba el monto (422) y que había dos campos de monto. El cobro de $40 queda en Cobros y
+  en Finanzas una sola vez. El SQL real del CSV corrió contra la BD de staging: 17 filas, 0 duplicados, 0,3 s.
+- ⚠️ **Lección:** los tests y el code review no vieron que la confirmación del cobro es OTRO componente
+  (`ApprovePaymentModal`) que no recibía el monto: solo apareció al cobrar en el navegador.
+- **Pendientes fuera del lote:** Cobros muestra la hora en la zona del navegador, no en la de Caracas
+  (desde Argentina, la cita de las 9:00 sale 10:00); el paso 6 "Método de pago" desaparece pero el siguiente
+  sigue numerado "7"; en el servicio del onboarding no hay opción de 50 min de duración.
