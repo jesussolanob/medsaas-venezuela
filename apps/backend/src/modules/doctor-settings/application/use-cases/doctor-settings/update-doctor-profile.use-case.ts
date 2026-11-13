@@ -50,6 +50,11 @@ export class UpdateDoctorProfileUseCase {
     // repeated edits can't hammer the SACS portal.
     // A failure must never surface as an error on the profile update endpoint.
     // We never log the actual mppsNumber value (PII-adjacent).
+    if (mppsChanged) {
+      this.logger.log(
+        `[update-profile] doctorId=${doctorId} mpps changed — verifier ${this.verifyMpps ? 'wired' : 'MISSING'}`,
+      );
+    }
     if (mppsChanged && this.verifyMpps) {
       this.verifyMpps.execute(doctorId).catch(() => {
         this.logger.error(
