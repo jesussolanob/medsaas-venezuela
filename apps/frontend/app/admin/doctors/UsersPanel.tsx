@@ -178,6 +178,12 @@ function subscriptionPillStatus(
 // 'new_month'   → registrado en el mes actual (Caracas timezone)
 type ActiveFilter = 'all' | 'active' | 'inactive_7d' | 'new_month';
 
+/** Email sign-ups may have no real name (empty or the email itself). */
+function displayNameOf(fullName: string | null | undefined): string {
+  const name = fullName?.trim() ?? '';
+  return name && !name.includes('@') && name !== 'Pendiente' ? name : 'Sin nombre registrado';
+}
+
 export default function UsersPanel() {
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [loading, setLoading] = useState(true);
@@ -514,7 +520,7 @@ export default function UsersPanel() {
                               className="font-semibold truncate"
                               style={{ color: 'var(--dh-ink)' }}
                             >
-                              {d.full_name}
+                              {displayNameOf(d.full_name)}
                             </div>
                             <div
                               className="text-[11px] truncate"
@@ -699,7 +705,7 @@ export default function UsersPanel() {
                       className="font-semibold truncate text-sm"
                       style={{ color: 'var(--dh-ink)' }}
                     >
-                      {d.full_name}
+                      {displayNameOf(d.full_name)}
                     </div>
                     <div className="text-[11px] truncate" style={{ color: 'var(--dh-gray-400)' }}>
                       {d.specialty ?? d.email}

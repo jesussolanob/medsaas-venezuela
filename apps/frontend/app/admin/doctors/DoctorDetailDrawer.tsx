@@ -109,6 +109,10 @@ export default function DoctorDetailDrawer({
   if (!isOpen) return null;
 
   const profile = details?.profile || doctor;
+  // Accounts created by email sign-up may have no real name (empty or the email).
+  const rawName = profile?.full_name?.trim() ?? '';
+  const hasRealName = rawName !== '' && !rawName.includes('@') && rawName !== 'Pendiente';
+  const displayName = hasRealName ? rawName : 'Sin nombre registrado';
   const subscription = details?.subscription;
   const trialDaysLeft =
     subscription && subscription.trial_ends_at
@@ -127,7 +131,10 @@ export default function DoctorDetailDrawer({
       <div className="fixed right-0 top-0 bottom-0 w-96 bg-white z-50 shadow-2xl flex flex-col overflow-hidden transition-transform duration-200">
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-slate-200">
-          <h2 className="text-lg font-semibold text-slate-900">Detalle del Especialista</h2>
+          <div className="min-w-0">
+            <p className="text-xs text-slate-500">Detalle del especialista</p>
+            <h2 className="text-lg font-semibold text-slate-900 truncate">{displayName}</h2>
+          </div>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600">
             <X className="w-5 h-5" />
           </button>
@@ -148,9 +155,13 @@ export default function DoctorDetailDrawer({
               {/* Avatar y nombre */}
               <div className="text-center">
                 <div className="w-16 h-16 rounded-full bg-teal-100 flex items-center justify-center text-teal-700 font-semibold text-2xl mx-auto mb-3">
-                  {profile?.full_name?.charAt(0) ?? '?'}
+                  {hasRealName ? rawName.charAt(0) : '?'}
                 </div>
-                <h3 className="text-lg font-semibold text-slate-900">{profile?.full_name}</h3>
+                <h3
+                  className={`text-lg font-semibold ${hasRealName ? 'text-slate-900' : 'text-slate-400 italic'}`}
+                >
+                  {displayName}
+                </h3>
                 <p className="text-sm text-slate-500 mt-1">{profile?.specialty || '—'}</p>
               </div>
 
