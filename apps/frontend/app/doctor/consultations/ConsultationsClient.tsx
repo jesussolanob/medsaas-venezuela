@@ -5606,8 +5606,9 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                             </div>
                           )}
 
-                          {/* Monto cobrado — editable */}
-                          <div>
+                          {/* Monto cobrado — editable. Hidden for "price on request":
+                              the amber field above is the only amount there. */}
+                          <div hidden={selected.amount == null && selected.base_amount == null}>
                             <label className="block text-[10px] text-slate-500 mb-1">
                               Monto cobrado ({currencyCode})
                             </label>
@@ -6822,6 +6823,8 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                 ? PAYMENT_METHOD_OPTIONS.filter((m) => doctorPaymentMethods.includes(m.value))
                 : PAYMENT_METHOD_OPTIONS
             }
+            requiresBaseAmount={selected.amount == null && selected.base_amount == null}
+            initialBaseAmount={baseAmountInput}
             onClose={() => setShowApprovePaymentModal(false)}
             onApproved={handlePaymentApproved}
           />
@@ -8031,6 +8034,8 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                 ? PAYMENT_METHOD_OPTIONS.filter((m) => doctorPaymentMethods.includes(m.value))
                 : PAYMENT_METHOD_OPTIONS
             }
+            requiresBaseAmount={selected.amount == null && selected.base_amount == null}
+            initialBaseAmount={baseAmountInput}
             onClose={() => setShowApprovePaymentModal(false)}
             onApproved={handlePaymentApproved}
           />

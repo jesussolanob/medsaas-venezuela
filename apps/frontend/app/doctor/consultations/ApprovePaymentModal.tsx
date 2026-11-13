@@ -89,6 +89,14 @@ type Props = {
   coveredSession?: boolean;
   /** Opciones de método disponibles para el doctor. Requeridas en sesiones cubiertas. */
   methodOptions?: Array<{ value: string; label: string }>;
+  /**
+   * True for a "price on request" consultation (no base price yet): the modal asks
+   * for the amount and sends it as base_amount_usd, otherwise the backend rejects
+   * the approval with CONSULTATION_AMOUNT_REQUIRED.
+   */
+  requiresBaseAmount?: boolean;
+  /** Amount already typed in the panel, used to prefill the modal input. */
+  initialBaseAmount?: string;
   onClose: () => void;
   /**
    * Llamado con el total y los nuevos extra_items tras aprobar exitosamente.
@@ -148,9 +156,16 @@ export default function ApprovePaymentModal({
   paymentMethod,
   coveredSession = false,
   methodOptions = [],
+  requiresBaseAmount = false,
+  initialBaseAmount = '',
   onClose,
   onApproved,
 }: Props) {
+  const [baseAmountInput, setBaseAmountInput] = useState(initialBaseAmount);
+  const askBaseAmount = requiresBaseAmount && !coveredSession;
+  const parsedBaseAmount = parseFloat(baseAmountInput);
+  const typedBaseAmount =
+    Number.isFinite(parsedBaseAmount) && parsedBaseAmount > 0 ? parsedBaseAmount : 0;
   const [rows, setRows] = useState<ExtraRow[]>([]);
   const [saving, setSaving] = useState(false);
   // Método de pago capturado dentro del modal para sesiones cubiertas.
@@ -177,6 +192,7 @@ export default function ApprovePaymentModal({
       setRows(buildRows(textExtras));
       setProductRows([]);
       setSelectedProductId('');
+      setBaseAmountInput(initialBaseAmount);
       // Preload the method already stored on the consultation. On a re-edit
       // (charging extras a second time) it is the one the patient already used,
       // so the specialist does not have to pick it again.
@@ -254,7 +270,7 @@ export default function ApprovePaymentModal({
         })
         .finally(() => setLoadingInventory(false));
     }
-  }, [open, existingExtras, paymentMethod]);
+  }, [open, existingExtras, paymentMethod, initialBaseAmount]);
 
   // Cerrar con Escape
   useEffect(() => {
@@ -364,7 +380,7 @@ export default function ApprovePaymentModal({
    * since a covered session never prints the base, the doubled total would carry
    * no visible hint of where it came from.
    */
-  const effectiveBase = coveredSession ? 0 : baseAmount;
+  const effectiveBase = coveredSession ? 0 : askBaseAmount ? typedBaseAmount : baseAmount;
   const grandTotal = effectiveBase + textExtrasTotal + productExtrasTotal;
 
   /**
@@ -391,6 +407,14 @@ export default function ApprovePaymentModal({
       return;
     }
 
+    if (askBaseAmount && typedBaseAmount <= 0) {
+      showToast({
+        type: 'error',
+        message: 'Ingresa el monto de la consulta para poder aprobar el cobro.',
+      });
+      return;
+    }
+
     setSaving(true);
     try {
       // Build product_extras — backend resolves price and validates stock.
@@ -409,6 +433,7 @@ export default function ApprovePaymentModal({
           extras: validExtras(),
           product_extras: validProductExtras,
           ...(effectiveMethod ? { method: effectiveMethod } : {}),
+          ...(askBaseAmount ? { base_amount_usd: typedBaseAmount } : {}),
         }),
       });
 
@@ -502,10 +527,28 @@ export default function ApprovePaymentModal({
                 <span className="text-xs text-slate-500 italic">
                   Paquete ya pagado — no se vuelve a cobrar
                 </span>
+              ) : askBaseAmount ? (
+                <input
+                  type="number"
+                  min="0.01"
+                  step="any"
+                  inputMode="decimal"
+                  aria-label="Monto de la consulta"
+                  value={baseAmountInput}
+                  disabled={saving}
+                  onChange={(e) => setBaseAmountInput(e.target.value)}
+                  placeholder="0.00"
+                  className="w-28 text-right text-sm font-bold border border-amber-300 rounded-lg py-1 px-2 outline-none focus:ring-2 focus:ring-amber-400/30 focus:border-amber-400 bg-white text-slate-800"
+                />
               ) : (
                 <span className="text-sm font-bold text-slate-800">{format(baseAmount)}</span>
               )}
             </div>
+            {askBaseAmount && (
+              <p className="text-[11px] text-amber-600 mt-1.5">
+                Precio a consultar: escribe el monto acordado con el paciente.
+              </p>
+            )}
           </div>
 
           {/* Método de pago — solo en sesiones cubiertas, donde el selector del panel
@@ -740,7 +783,7 @@ export default function ApprovePaymentModal({
                 {/* En una sesión cubierta no hay base que desglosar: el paquete se
                     cobró aparte. Imprimir "Base $0.00" invita a leer la consulta
                     como gratis, que es justo lo que el recuadro de arriba desmiente. */}
-                {coveredSession ? 'Solo extras' : `Base ${format(baseAmount)}`}
+                {coveredSession ? 'Solo extras' : `Base ${format(effectiveBase)}`}
                 {extrasTotal > 0 && ` + servicios ${format(extrasTotal)}`}
                 {productExtrasTotal > 0 &&
                   ` + productos ${hasVesProducts ? '≈ ' : ''}${format(productExtrasTotal)}`}
