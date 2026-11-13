@@ -5,6 +5,7 @@ import {
   type IIdentityRepository,
 } from '../../modules/auth/domain/repositories/identity.repository';
 import type { CurrentUserPayload } from '../../presentation/decorators/current-user.decorator';
+import { isPlaceholderName, profileNameOrEmpty } from '../../modules/auth/domain/profile-name';
 
 /**
  * Roles that must NEVER be assigned via self-service identity resolution.
@@ -74,6 +75,10 @@ export class IdentityResolverService {
       if (opts.auth0Sub && !existing.auth0Sub) {
         await this.identityRepo.updateAuth0Sub(existing.id, opts.auth0Sub);
       }
+      // Email sign-ups have no real name; adopt the Google one when it arrives.
+      if (isPlaceholderName(existing.fullName) && !isPlaceholderName(opts.name)) {
+        await this.identityRepo.updateFullName(existing.id, profileNameOrEmpty(opts.name));
+      }
       return {
         profileId: existing.id,
         email: existing.email,
@@ -88,7 +93,7 @@ export class IdentityResolverService {
     const created = await this.identityRepo.create({
       id: randomUUID(),
       email: normalizedEmail,
-      fullName: opts.name ?? 'Pendiente',
+      fullName: profileNameOrEmpty(opts.name),
       role: safeRole,
       auth0Sub: opts.auth0Sub ?? null,
     });
