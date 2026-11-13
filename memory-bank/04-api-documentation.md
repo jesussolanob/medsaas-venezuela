@@ -1473,3 +1473,26 @@ Phase 4 extendió el cron existente. Ahora ejecuta invitaciones PRIMERO:
 - Derivado de `AUTH_RESOLVE_SECRET` (ya en prod, sin nuevo env var)
 - TTL: 45 días. URL: `${APP_BASE_URL}/r/meeting?t=<token>`
 - 204 para tokens inválidos/expirados (sin oracle). Primer click sólo.
+
+## Onboarding mínimo y precio a consultar (2026-11-12)
+
+Todos con `doctorId = user.sub` y `@Roles('doctor')`; respuesta `{ success, data }`.
+
+| Método y ruta                                                            | Uso                                                                                                                 |
+| ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------- |
+| `POST /api/doctor/onboarding/progress` `{ step: 'office' \| 'service' }` | Avanza `profiles.onboarding_last_step`, nunca hacia atrás                                                           |
+| `POST /api/doctor/onboarding/skip-office`                                | Crea el consultorio por defecto ("Consultorio", online, lun–vie 08–17, 50+10 min) si no hay uno activo; idempotente |
+| `POST /api/doctor/onboarding/skip-service`                               | Crea "Consulta" con `price_on_request=true` si no hay servicio activo; idempotente                                  |
+
+Cambios de contrato:
+
+- `pricing_plans.price_on_request` viaja en crear/editar servicio y en `GET /api/booking/:doctorId/plans`.
+  Si es `true`, `price_usd` se guarda en 0 y no se muestra.
+- `POST /api/booking` con un plan `price_on_request` del mismo especialista: **no crea pago**, `plan_price`
+  y el monto de la consulta quedan en `NULL` (se ignora lo que mande el cliente).
+- `PATCH /api/consultations/:id/approve-payment` acepta `base_amount_usd` (opcional, > 0). Solo se usa si la
+  consulta no tiene monto base; sin él y sin extras → 422 `CONSULTATION_AMOUNT_REQUIRED`. En esa primera
+  aprobación se crea el pago y se vincula a la cita (`appointments.payment_id`), así cuenta una sola vez.
+- `PUT /api/doctor/profile` acepta `mpps_number`; si cambia, re-verifica en SACS (máx. 1 vez cada 15 min).
+- `GET /api/admin/doctors/export` (CSV): + Teléfono, Fecha de registro, Pacientes, Consultorios (activos),
+  Servicios (activos), Consultas y Último paso del onboarding. Celdas que empiezan con `= + - @` llevan `'`.
