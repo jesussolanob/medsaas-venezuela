@@ -548,6 +548,8 @@ export interface DoctorExportRow {
   onboardingOfficeSkipped: boolean;
   /** True when the service step was explicitly skipped. */
   onboardingServiceSkipped: boolean;
+  /** profiles.onboarding_completed — used to derive the step for legacy rows. */
+  onboardingCompleted: boolean;
 }
 
 /**

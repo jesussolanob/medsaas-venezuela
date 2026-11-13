@@ -27,7 +27,9 @@ export async function GET() {
     );
   }
 
-  const csv = await r.text();
+  // Pass the bytes through untouched: r.text() decodes UTF-8 and drops the BOM
+  // the backend prepends, and without it Excel shows "TelÃ©fono" instead of "Teléfono".
+  const csv = await r.arrayBuffer();
   return new NextResponse(csv, {
     status: 200,
     headers: {

@@ -414,9 +414,10 @@ export default function UsersPanel() {
                 {[
                   'Especialista',
                   'Especialidad',
-                  'Plan / Estado',
                   'Registro',
+                  'Plan / Estado',
                   'Vencimiento',
+                  'Última conexión',
                   'Actividad',
                   '',
                 ].map((h) => (
@@ -443,7 +444,7 @@ export default function UsersPanel() {
               {loading ? (
                 <tr>
                   <td
-                    colSpan={7}
+                    colSpan={8}
                     className="text-center py-12"
                     style={{ color: 'var(--dh-gray-400)' }}
                   >
@@ -452,7 +453,7 @@ export default function UsersPanel() {
                 </tr>
               ) : filteredDoctors.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="text-center py-16">
+                  <td colSpan={8} className="text-center py-16">
                     <div className="flex flex-col items-center gap-3">
                       <div
                         className="w-12 h-12 rounded-full flex items-center justify-center"
@@ -563,6 +564,28 @@ export default function UsersPanel() {
                       </td>
                       <td style={{ padding: '16px 20px' }}>
                         <ExpiryBadge expiresAt={d.subscription_expires_at} dateText={venceText} />
+                      </td>
+                      <td style={{ padding: '16px 20px' }}>
+                        {d.last_sign_in_at ? (
+                          <span
+                            className="text-[12px] whitespace-nowrap"
+                            style={{
+                              fontFamily: 'var(--dh-font-mono)',
+                              color: 'var(--dh-gray-600)',
+                            }}
+                          >
+                            {new Date(d.last_sign_in_at).toLocaleString('es-VE', {
+                              day: '2-digit',
+                              month: 'short',
+                              year: 'numeric',
+                              hour: '2-digit',
+                              minute: '2-digit',
+                              timeZone: 'America/Caracas',
+                            })}
+                          </span>
+                        ) : (
+                          <span style={{ color: 'var(--dh-gray-400)' }}>Nunca</span>
+                        )}
                       </td>
                       <td style={{ padding: '16px 20px' }}>
                         {days === null ? (
@@ -680,6 +703,18 @@ export default function UsersPanel() {
                     </div>
                     <div className="text-[11px] truncate" style={{ color: 'var(--dh-gray-400)' }}>
                       {d.specialty ?? d.email}
+                    </div>
+                    <div className="text-[11px]" style={{ color: 'var(--dh-gray-400)' }}>
+                      Última conexión:{' '}
+                      {d.last_sign_in_at
+                        ? new Date(d.last_sign_in_at).toLocaleString('es-VE', {
+                            day: '2-digit',
+                            month: 'short',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                            timeZone: 'America/Caracas',
+                          })
+                        : 'Nunca'}
                     </div>
                     {/* Badge de vencimiento en mobile */}
                     <div className="mt-1">
