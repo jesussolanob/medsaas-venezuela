@@ -645,6 +645,31 @@ próxima cita)` — si el bloque siguiente está libre ocupa lo que dura, y si n
   ⚠️ Trampa de sintaxis al documentarlo: **el SQL vive en un template literal**, así que un
   comentario con backticks lo corta. Usar `--` dentro del SQL.
 
+- **ADR-096 (2026-11-02):** **VerifyMppsUseCase ahora promueve `profiles.verification_status`.**
+  Antes, la verificación SACS solo escribía en `credential_verifications`; `profiles.verification_status`
+  quedaba en `'pending'` aunque SACS confirmara el MPPS. 5 doctores en prod lo padecieron.
+
+  **Fix:** `IDoctorProfileForVerificationRepository` gana `promoteToVerified(doctorId)`. La
+  implementación Sequelize hace `UPDATE profiles SET verification_status='verified', verified_at=now(),
+verified_by=NULL WHERE id=:id AND verification_status='pending'` — la guarda `='pending'` impide
+  pisar un `'rejected'` de admin, y `verified_by=NULL` señala origen automático (sin actor humano).
+
+  El use-case promueve en dos puntos: (a) resultado fresco `'verified'` tras upsert en la tabla de
+  credenciales, y (b) ruta de caché — pero SOLO si el MPPS normalizado del caché coincide con el
+  MPPS actual del perfil; si difieren, se cae al portal SACS (el doctor cambió su número).
+
+  **Limitación conocida:** la cédula no se almacena en `credential_verifications`, solo el MPPS
+  declarado (`declared_value`). Si el doctor cambia de cédula sin cambiar el MPPS, el caché se
+  servirá igualmente. El admin puede forzar una nueva verificación con `force=true`.
+
+  **Migración backfill:** `20261030000007-backfill-auto-verified-profiles.cjs` — promueve las filas
+  históricas ya verificadas en SACS que quedaron con `profiles.verification_status='pending'`. El
+  `down()` es no-op documentado (no se puede distinguir qué filas promovió esta migración vs. las que
+  un admin aprobó manualmente con `verified_by=NULL`).
+
+  **Frontend:** `VerificationListItemDto` incluye `verifiedBy`; la tarjeta de especialistas
+  verificados muestra la insignia **"Auto · MPPS"** cuando `verifiedBy===null`.
+
 ## Inventario de tablas (auditoría Fase 0 — fuente de verdad: archivos `*.sql`)
 
 Core: `profiles`, `appointments`, `consultations`, `patients`, `patient_packages`,

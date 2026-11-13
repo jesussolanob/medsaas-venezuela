@@ -271,8 +271,6 @@ export default function CRMPage() {
   return (
     <>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-        * { font-family: 'Inter', sans-serif; }
         .g-bg { background: linear-gradient(135deg, #00C4CC 0%, #0891b2 100%); }
         .input-field { @apply w-full px-3 py-2.5 text-sm border border-slate-200 rounded-xl outline-none focus:border-teal-400 focus:ring-2 focus:ring-teal-500/10 bg-white transition-colors; }
         .kanban-column { @apply min-h-96 scroll-smooth; }

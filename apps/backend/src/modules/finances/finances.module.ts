@@ -171,6 +171,8 @@ import { PatientsModule } from '../patients/patients.module';
   ],
   // Export PAYMENT_REPOSITORY so BookingModule can inject it for CreateBookingUseCase.
   // Export USDT_RATE_STORE so DoctorSettingsModule can resolve the effective exchange rate.
-  exports: [PAYMENT_REPOSITORY, USDT_RATE_STORE],
+  // Export GetFinancialSummaryUseCase so AdminModule can use the same income sources
+  // and month boundaries as the doctor's own Finanzas screen (consistency guarantee).
+  exports: [PAYMENT_REPOSITORY, USDT_RATE_STORE, GetFinancialSummaryUseCase],
 })
 export class FinancesModule {}

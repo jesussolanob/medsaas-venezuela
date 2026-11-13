@@ -7,8 +7,8 @@ import type {
 } from '../../../domain/repositories/doctor-profile.repository';
 
 /**
- * Read-only Sequelize repository that fetches doctor profile fields needed
- * for credential verification. Reuses the existing profiles table via the
+ * Sequelize repository that provides doctor profile fields needed for
+ * credential verification. Reuses the existing profiles table via the
  * RegistrationProfileModel (which is forFeature-registered in this module).
  */
 @Injectable()
@@ -31,5 +31,28 @@ export class SequelizeDoctorProfileForVerificationRepository implements IDoctorP
       mppsNumber: row.mppsNumber,
       fullName: row.fullName,
     };
+  }
+
+  /**
+   * Promotes verification_status to 'verified' ONLY when it is currently 'pending'.
+   * Sets verified_at = now(), verified_by = NULL (system-automated, no human actor).
+   *
+   * The WHERE guard makes this a no-op for 'rejected' (admin decision) and for
+   * already-verified rows (idempotent).
+   */
+  async promoteToVerified(doctorId: string): Promise<void> {
+    await this.model.update(
+      {
+        verificationStatus: 'verified',
+        verifiedAt: new Date(),
+        verifiedBy: null,
+      },
+      {
+        where: {
+          id: doctorId,
+          verificationStatus: 'pending',
+        },
+      },
+    );
   }
 }

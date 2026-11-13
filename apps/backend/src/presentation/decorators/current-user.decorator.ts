@@ -3,7 +3,12 @@ import type { Request } from 'express';
 
 export interface CurrentUserPayload {
   sub: string;
-  role: 'super_admin' | 'doctor' | 'patient' | 'assistant' | 'seller';
+  /**
+   * 'admin' was added (2026-10-30) to support the release-notes module, where
+   * both super_admin and admin may publish notes. 'admin' is a FORBIDDEN_ROLES
+   * entry (cannot self-register), so it is always granted by a super_admin.
+   */
+  role: 'super_admin' | 'admin' | 'doctor' | 'patient' | 'assistant' | 'seller';
   email: string;
 }
 

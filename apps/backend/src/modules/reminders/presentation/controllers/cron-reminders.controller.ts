@@ -18,6 +18,7 @@ import type { DispatchPendingRemindersResult } from '../../../pending-consultati
 import { ApplyScheduledDeactivationsUseCase } from '../../../doctor-settings/application/use-cases/doctor-settings/apply-scheduled-deactivations.use-case';
 import { ExpireDuePendingConsultationsUseCase } from '../../../pending-consultations/application/use-cases/expire-due-pending-consultations.use-case';
 import { DispatchQuoteExpiryNoticesUseCase } from '../../../quotes/application/use-cases/dispatch-quote-expiry-notices.use-case';
+import { DispatchMeetingRemindersUseCase } from '../../../team-meetings/application/use-cases/dispatch-meeting-reminders.use-case';
 
 interface CronRunResult extends DispatchDueRemindersResult {
   /** Pending consultation reminder emails sent in this run. */
@@ -36,6 +37,13 @@ interface CronRunResult extends DispatchDueRemindersResult {
   quoteExpiryRemindersSent: number;
   /** Avisos de "presupuesto por vencer" que fallaron en esta corrida. */
   quoteExpiryRemindersFailed: number;
+  /** Recordatorios de reunión de equipo (24h + 1h) enviados en esta corrida. */
+  meetingReminders24hSent: number;
+  meetingReminders1hSent: number;
+  meetingRemindersFailed: number;
+  /** Meeting invite emails sent in this run (doctor-inactivity cron). */
+  meetingInvitePre: number;
+  meetingInviteExpired: number;
 }
 
 interface SuccessResponse<T> {
@@ -84,6 +92,9 @@ export class CronRemindersController {
     @Optional()
     @Inject(DispatchQuoteExpiryNoticesUseCase)
     private readonly dispatchQuoteExpiryNotices: DispatchQuoteExpiryNoticesUseCase | null,
+    @Optional()
+    @Inject(DispatchMeetingRemindersUseCase)
+    private readonly dispatchMeetingReminders: DispatchMeetingRemindersUseCase | null,
   ) {}
 
   @Post('appointment-reminders')
@@ -155,6 +166,24 @@ export class CronRemindersController {
       }
     }
 
+    // 6. Team meeting reminders (24h + 1h) — best-effort
+    let meetingReminders24hSent = 0;
+    let meetingReminders1hSent = 0;
+    let meetingRemindersFailed = 0;
+    if (this.dispatchMeetingReminders) {
+      try {
+        const result = await this.dispatchMeetingReminders.execute();
+        meetingReminders24hSent = result.reminders24hSent;
+        meetingReminders1hSent = result.reminders1hSent;
+        meetingRemindersFailed = result.remindersFailed;
+      } catch (err: unknown) {
+        this.logger.warn(
+          '[cron] dispatchMeetingReminders failed — other reminders unaffected: ' +
+            (err instanceof Error ? err.message : String(err)),
+        );
+      }
+    }
+
     return {
       success: true,
       data: {
@@ -167,6 +196,13 @@ export class CronRemindersController {
         quotesExpired,
         quoteExpiryRemindersSent,
         quoteExpiryRemindersFailed,
+        meetingReminders24hSent,
+        meetingReminders1hSent,
+        meetingRemindersFailed,
+        // Meeting invite dispatch runs in the doctor-inactivity cron (once/day),
+        // not in the appointment-reminders cron (every 15 min). Always 0 here.
+        meetingInvitePre: 0,
+        meetingInviteExpired: 0,
       },
     };
   }
@@ -180,8 +216,22 @@ export class CronRemindersController {
   @Post('doctor-inactivity')
   @UseGuards(CronSecretGuard)
   @HttpCode(HttpStatus.OK)
-  async runDoctorInactivity(): Promise<SuccessResponse<DispatchDoctorInactivityNoticesResult>> {
-    const data = await this.dispatchDoctorInactivityNotices.execute();
-    return { success: true, data };
+  async runDoctorInactivity(): Promise<
+    SuccessResponse<
+      DispatchDoctorInactivityNoticesResult & {
+        meetingInvitePre: number;
+        meetingInviteExpired: number;
+      }
+    >
+  > {
+    const result = await this.dispatchDoctorInactivityNotices.execute();
+    return {
+      success: true,
+      data: {
+        ...result,
+        meetingInvitePre: result.invitePre,
+        meetingInviteExpired: result.inviteExpired,
+      },
+    };
   }
 }

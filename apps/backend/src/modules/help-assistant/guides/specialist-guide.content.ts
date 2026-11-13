@@ -41,7 +41,6 @@ La primera vez que entras al portal, el sistema verifica si completaste tu regis
   - **P** = pasaporte. Entre 5 y 20 caracteres alfanumericos (letras y numeros). Ejemplo: AB1234567. Se guarda como P-AB1234567. Al elegir P, la etiqueta del campo cambia a 'Pasaporte'.
   - Debajo del campo veras una vista previa de como se guardara (por ejemplo: 'Se guardara como: V-12345678').
 - **Especialidad medica** (obligatorio). Es un combo con buscador: escribe parte del nombre y selecciona de la lista. Si tu especialidad no aparece, elige la opcion **Otra especialidad** al final de la lista y escribe el nombre manualmente.
-- **Numero MPPS** (opcional). Ejemplo: MPPS-12345.
 - **Numero de colegiado** (opcional). Ejemplo: CVM-56789.
 
 El boton para enviar dice **Activar cuenta y continuar**. Mientras procesa muestra 'Guardando...'. Los campos marcados con asterisco rojo son obligatorios; el boton se mantiene deshabilitado hasta que el nombre, la cedula y la especialidad sean validos.
@@ -60,11 +59,15 @@ Despues del formulario inicial, el sistema exige tres requisitos para darte acce
    **Configuracion > Mi perfil** (/doctor/settings) donde puedes agregar o editar tu telefono.
    Sin telefono, el boton para completar el onboarding devuelve el error:
    **"Falta tu teléfono de contacto. Complétalo para activar tu cuenta."**
-2. **Al menos un consultorio activo.** Crea uno en **Configuracion > Consultorios** (/doctor/settings).
-3. **Al menos un servicio activo.** Crea uno en **Configuracion > Servicios** (/doctor/settings).
+2. **Al menos un consultorio activo.** Se crea en el paso **Consultorio** del onboarding.
+3. **Al menos un servicio activo.** Se crea en el paso **Consulta** del onboarding.
 
-Solo cuando los tres requisitos estan cumplidos puedes pulsar **Completar activacion** y acceder
-al resto del portal sin restricciones.
+**Boton Omitir en los pasos Consultorio y Consulta:** si no quieres configurarlos ahora, pulsa **Omitir** y Delta los crea por ti para que ya te puedan agendar:
+- Consultorio por defecto: se llama **Consultorio**, es **solo online** (videoconsulta), atiende de **lunes a viernes de 8:00 a 17:00**, con consultas de **50 minutos** y **10 minutos** entre una y otra.
+- Servicio por defecto: se llama **Consulta** y su precio aparece como **A consultar con el especialista**.
+Puedes cambiar ambos cuando quieras en **Consultorios** (/doctor/offices) y **Servicios** (/doctor/services).
+
+Solo cuando los tres requisitos estan cumplidos accedes al resto del portal sin restricciones.
 
 ---
 
@@ -74,16 +77,18 @@ Despues de activar tu cuenta, el equipo de Delta verifica tus credenciales profe
 
 **Que se verifica:**
 
-- **MPPS (Ministerio del Poder Popular para la Salud):** se consulta de forma automatica en el sistema oficial (SACS) usando tu cedula normalizada (V/E/P). Es un proceso en segundo plano.
+- **Registro profesional (SACS del MPPS):** se consulta de forma automatica en el sistema oficial (SACS) usando tu cedula normalizada (V/E/P) y tu nombre. Es un proceso en segundo plano. No necesitas cargar tu numero MPPS para que funcione; si lo cargas (en Configuracion > Mi perfil, campo **N.º MPPS**), tambien debe coincidir con el registro oficial.
 - **Colegiado:** se verifica de forma manual por el equipo administrador, ya que no existe un verificador automatico.
 
 **Estados de verificacion que puede tener tu cuenta:**
 
-- **Pendiente:** tu registro fue recibido y aun no se ha verificado. Es el estado inicial tras el onboarding.
-- **Verificado / valido:** tus credenciales fueron confirmadas correctamente.
-- **No verificado / invalido:** no se logro confirmar tus credenciales. En ese caso, el equipo Delta se comunica contigo por tu correo.
+- **Pendiente:** tu registro fue recibido y aun no se ha verificado. Es el estado inicial tras el onboarding. Al registrarte, el sistema intenta verificarte automaticamente contra el portal SACS con tu cedula y tu nombre; si coinciden con un medico registrado, pasas a Verificado sin esperar al admin. Las profesiones que no son medicina (por ejemplo psicologia o nutricion) se verifican de forma manual.
+- **Verificado / valido:** tus credenciales fueron confirmadas. Puede haber ocurrido de dos formas: automaticamente por el sistema (cuando tus datos coincidieron en SACS) o manualmente por el equipo administrador de Delta.
+- **No verificado / invalido (Rechazado):** no se logro confirmar tus credenciales. En ese caso, el equipo Delta se comunica contigo por tu correo para indicarte los pasos a seguir. Esta marca no bloquea tu acceso en la etapa actual.
 
 La cedula es obligatoria precisamente porque se usa para esta verificacion y, ademas, para compartir documentos con pacientes de forma segura.
+
+**Importante:** el numero MPPS ya no se pide en el registro; puedes cargarlo o cambiarlo cuando quieras en **Configuracion > Mi perfil** (campo **N.º MPPS**, distinto de 'Matricula / Licencia'). Al guardarlo, el sistema vuelve a verificarte contra SACS (si lo cambias varias veces seguidas, espera unos 15 minutos entre una verificacion y otra).
 
 **Bloqueo de cuenta (distinto de la verificacion):** un administrador puede bloquear tu cuenta por separado. Si tu cuenta esta bloqueada, al usar cualquier funcion veras una pantalla completa **Cuenta bloqueada** con el mensaje: 'Tu cuenta ha sido bloqueada por el administrador. Para restablecer el acceso, comunicate con el soporte de Delta Salud.' y un boton **Cerrar sesion**. Esto es independiente de tu plan y de la verificacion.
 
@@ -181,9 +186,14 @@ Es tu panel de control. Contiene:
 - **Tarjeta guia para configurar plantillas:** si aun no subiste tu **logo** o tu **firma**, aparece en el inicio una tarjeta que te invita a configurar tus plantillas (logo, firma, sello). Desaparece cuando ya subiste tu logo y firma.
 - **Cita actual o proxima** destacada, con el paciente y la hora. Al pulsarla te lleva a **Abrir consulta** (si ya existe la consulta) o a **Ver agenda**.
 - **Acciones rapidas** (botones en el encabezado de bienvenida): **Ver Pacientes**, **Ver Agenda**, **Crear Consulta** (abre el flujo de nueva consulta, un modal tipo acordeon con varios pasos que tambien agenda la cita) y **Crear Paciente** (abre el formulario de paciente en un modal).
+- **Consulta Inmediata** (boton en el encabezado de bienvenida): para el paciente que llega **sin cita**; registra la consulta con la hora actual. Si el paciente que eliges **ya tiene una cita hoy** (Agendada o Confirmada), aparece un aviso '<nombre> ya tiene una cita hoy a las HH:MM' con el boton **Ir a esa cita**, que abre el detalle de esa cita (desde ahi: Ir a consulta, Atendida, etc.): usalo para atender esa cita en vez de crear otra (si creas una nueva, la cita original queda pendiente). Puedes seguir y crear una nueva igual.
 - **Acciones rapidas de finanzas** (en la tarjeta de resumen financiero): **Registrar pago** (abre un modal con los cobros pendientes para aprobarlos) y **Registrar gasto** (abre un modal para anotar un gasto: categoria, monto, moneda, nota).
 - **Resumen financiero del mes:** Ingresos, Gastos y Neto (puede ser negativo), en USD y su equivalente en bolivares.
-- **Citas del Día:** lista con la hora, el paciente y el estado de cada cita de hoy (si no hay, 'No hay citas programadas para hoy').
+- **Citas del Día:** justo debajo de la cita actual o proxima. Lista con la hora, el paciente y el estado de cada cita de hoy (si no hay, 'No hay citas programadas para hoy'). Se actualiza sola cuando confirmas, creas o cambias algo desde los modales del Inicio.
+- **Por confirmar:** citas **Agendadas** de hoy en adelante que todavia no confirmaste, con el boton **Confirmar**. Las citas de dias pasados ya no aparecen aqui.
+- **¿La atendiste?:** citas de **dias pasados** que quedaron **Agendadas** sin confirmar. Cada una tiene **Atendida**, **No asistio** y **Cancelar** para indicar que paso (no se borra nada; cancelar no es posible si el pago ya esta aprobado). Al pulsar la cita se abre su detalle. Si no hay ninguna, la seccion no aparece.
+
+Orden del Inicio: saludo y acciones rapidas → cita actual o proxima → Citas del Día → Por confirmar → ¿La atendiste? → indicadores (KPIs) → resumen financiero del mes.
 
 Si tu plan no incluye finanzas, esa seccion no se muestra. Los KPIs se calculan en tiempo real cada vez que abres el dashboard.
 
@@ -199,7 +209,8 @@ Calendario visual de tus citas. (Requiere plan Base o Plus.)
 - **Detalles de cita** (al pulsar una cita): muestra paciente, hora, modalidad, plan, motivo y estado. Botones disponibles:
   - **Confirmar cita** (cuando esta Agendada): pasa la cita a Confirmada.
   - **Cancelar cita** (cuando esta Agendada o Confirmada): pide una razon opcional; si la cita usaba un paquete prepagado, la sesion se restituye.
-  - **Ir a consulta**: abre la consulta de esa cita. El estado de la consulta (atendida / no asistio) y el pago se gestionan DENTRO de la consulta, no desde la agenda.
+  - **Atendida** y **No asistio** (solo cuando la hora de la cita ya llego o paso, y la cita esta Agendada o Confirmada): cierran la cita directamente, sin entrar a la consulta. Para una cita que ya paso no se ofrece **Confirmar cita**: se marca Atendida o No asistio.
+  - **Ir a consulta**: abre la consulta de esa cita. El pago se gestiona DENTRO de la consulta. Desde la consulta tambien puedes marcar **Atendida** o **No asistio**.
   - Para citas online con Google Meet: boton **Abrir Meet**.
 
 Estados de una cita: Agendada (recien creada), Confirmada (la confirmaste), Atendida/completada (el paciente asistio), No asistio, Cancelada/rechazada. Todo cambio de estado queda auditado automaticamente.
@@ -319,10 +330,12 @@ Resumen financiero mensual. (Requiere plan Base o Plus.)
 Tus servicios y tarifas, que tambien aparecen en el booking publico. (Requiere plan Base o Plus.)
 
 - **Filtros:** por tipo, por consultorio (Todos los consultorios) y por estado.
-- **Crear servicio.** Campos: Nombre, Tipo (servicio individual o plan de paquete con varias sesiones), Precio en USD, Duracion en minutos, numero de sesiones (si es paquete), Consultorio asociado (o 'General (todos los consultorios)'), Descripcion (se muestra al paciente en el booking) y **Mostrar en link de booking** (si lo activas, el servicio es 'Visible en booking').
+- **Crear servicio.** Campos: Nombre, Tipo (servicio individual o plan de paquete con varias sesiones), Precio en USD (o la opcion **Precio a consultar con el especialista**, si prefieres no publicar un monto), Duracion en minutos, numero de sesiones (si es paquete), Consultorio asociado (o 'General (todos los consultorios)'), Descripcion (se muestra al paciente en el booking) y **Mostrar en link de booking** (si lo activas, el servicio es 'Visible en booking').
 - **Editar**, **Activar/Desactivar** y **Eliminar** cada servicio.
 - Si no tienes ninguno: 'No tienes servicios configurados'.
 - Solo los servicios con 'Mostrar en booking' activo aparecen en tu pagina publica /book/tu-id.
+- **Precio a consultar:** el servicio se muestra en tu pagina publica como **A consultar con el especialista** y el paciente reserva **sin pagar ni subir comprobante**. No se genera ningun cobro al reservar. Cuando atiendes al paciente, al aprobar el pago de la consulta te aparece el campo **Monto de la consulta (USD)**: escribe lo que cobraste y recien ahi el cobro aparece en Cobros y en Finanzas.
+- **Sin cuentas de pago cargadas:** si no configuraste ningun metodo de pago (Pago Movil, Zelle, etc.), tu pagina publica tampoco le pide pago al paciente al reservar; el cobro queda **Pendiente** con el precio del servicio, para que lo registres cuando te paguen.
 
 ### 6.9 Consultorios — /doctor/offices
 
@@ -350,7 +363,7 @@ Configuracion de recordatorios automaticos a pacientes. (Requiere plan Base o Pl
 
 Perfil, metodos de pago, notificaciones y mas. Incluye:
 
-- **Perfil:** Nombre, Email (no editable, viene del login), Cedula (no editable, del onboarding), Especialidad (no editable), Titulo profesional, Telefono, Ciudad, Estado, **Consultas online** (activar/desactivar) y **Foto de perfil**. Si registras tu **fecha de nacimiento**, esta debe corresponder a una persona de **18 anios o mas** (no se aceptan menores de edad como especialista) y no puede ser una fecha futura.
+- **Perfil:** Nombre, Email (no editable, viene del login), Cedula (no editable, del onboarding), Especialidad (no editable), Titulo profesional, **N.º MPPS** (opcional, se usa para verificar tu registro profesional), Telefono, Ciudad, Estado, **Consultas online** (activar/desactivar) y **Foto de perfil**. Si registras tu **fecha de nacimiento**, esta debe corresponder a una persona de **18 anios o mas** (no se aceptan menores de edad como especialista) y no puede ser una fecha futura.
 - **Metodos de pago:** agregar/editar/eliminar (Pago Movil, Transferencia, Zelle, Binance, Efectivo, Punto de venta), con sus datos. Cada metodo/opcion de pago es **colapsable** (se expande o contrae para ordenar la vista). Tambien puedes configurar seguros. **La tasa de cambio ahora vive DENTRO de esta seccion de Metodos de pago** (ya no es una pantalla aparte): eliges la tasa con la que cobras en bolivares entre **BCV USD**, **BCV EUR** o una **tasa personalizada** que tu defines.
 - **Tu link publico de booking** (solo si tu plan habilita booking): muestra tu enlace publico, un boton **Copiar**, el **Codigo QR de tu link** (descargable como PNG con el boton bajo el codigo) y **Ver mi pagina** para previsualizar como lo ve el paciente. Tambien una descripcion de perfil que se muestra en tu pagina publica. Nota: 'El booking (link publico + QR) se habilita por plan.'
 - **Compartir por WhatsApp:** mensaje de WhatsApp/Correo configurable (con emojis), para enviar tu link a tus contactos. La integracion plena con WhatsApp Business API esta en desarrollo.
@@ -500,9 +513,9 @@ Permite pedirle al paciente que suba documentos (examenes, resultados, comproban
 
 ---
 
-### 6.19 Plantillas de contenido — /doctor/content-templates
+### 6.19 Plantillas de contenido — Plantillas → pestana Mis plantillas (/doctor/templates)
 
-Disponible en planes **Delta Base y Delta Plus** (y durante el periodo de prueba). Aparece en el menu como **Plantillas de contenido** (dentro de Consultorio o en la seccion de herramientas clinicas).
+Disponible en planes **Delta Base y Delta Plus** (y durante el periodo de prueba). Se entra por el menu **Plantillas** (/doctor/templates) y luego la pestana **Mis plantillas**. No tiene una pantalla propia en el menu.
 
 Permite guardar estructuras reutilizables para cuatro tipos de documento: **Recipe medico** (receta), **Paraclínicos** (examenes solicitados), **Reposo medico** y **Presupuesto**. Son privadas: solo las ve el especialista que las creo.
 
@@ -513,7 +526,7 @@ Permite guardar estructuras reutilizables para cuatro tipos de documento: **Reci
 - **Presupuesto:** lista de items con descripcion, cantidad y precio unitario (en USD). Cuando usas una plantilla de presupuesto para crear un presupuesto, los precios que se copian son los de la plantilla en ese momento — no se actualizan solos si cambias la plantilla despues.
 
 **Crear una plantilla:**
-1. En /doctor/content-templates pulsa **Nueva plantilla**.
+1. En Plantillas → pestana **Mis plantillas**, pulsa **Nueva plantilla**.
 2. Elige el tipo, escribe el nombre y completa los campos del contenido.
 3. Guarda. La plantilla queda disponible para usar en cualquier documento del mismo tipo.
 
@@ -573,7 +586,7 @@ En Delta no existe un boton 'Crear Cita' aparte: la cita se agenda como parte de
 4. Selecciona el **consultorio y la modalidad** (presencial u online).
 5. Indica el **motivo** y el **plan de consulta** (tarifa) y, si aplica, el metodo de pago.
 6. Pulsa **Crear consulta**. La cita queda en estado **Agendada**.
-7. Despues, desde Agenda, abre la cita y pulsa **Confirmar cita**. Para marcarla **Atendida** o **No asistio**, entra a la consulta con **Ir a consulta** (esos estados se gestionan dentro de la consulta, no en la agenda).
+7. Despues, desde Agenda o Inicio, abre la cita y pulsa **Confirmar cita**. Cuando llega la hora, puedes marcarla **Atendida** o **No asistio** desde el mismo detalle de la cita o desde la consulta (**Ir a consulta**).
 
 Si conectaste Google Calendar y la cita es online, se crea automaticamente el evento con link de Google Meet.
 
@@ -809,7 +822,7 @@ Son las sesiones 2..N de un paquete de varias sesiones que el paciente ya compro
 Si. Desde **Solicitudes** (/doctor/patient-requests) crea una solicitud: el paciente recibe un correo con un enlace y un codigo de 6 digitos. Con eso abre la pagina, sube los archivos y escribe su respuesta, sin necesidad de registrarse en la plataforma.
 
 **Para que sirven las plantillas de contenido?**
-Las plantillas de contenido (/doctor/content-templates) guardan estructuras reutilizables para recipes, ordenes de paraclínicos, reposos y presupuestos. Cuando creas uno de esos documentos, puedes cargar una plantilla para no volver a escribir siempre los mismos medicamentos, examenes o items. Son privadas (solo las ves tu) y requieren plan Delta Base o Delta Plus.
+Las plantillas de contenido (menu Plantillas → pestana Mis plantillas) guardan estructuras reutilizables para recipes, ordenes de paraclínicos, reposos y presupuestos. Cuando creas uno de esos documentos, puedes cargar una plantilla para no volver a escribir siempre los mismos medicamentos, examenes o items. Son privadas (solo las ves tu) y requieren plan Delta Base o Delta Plus.
 
 **Puedo editar una plantilla de presupuesto y que se actualicen los presupuestos que ya use con ella?**
 No. Los presupuestos existentes conservan los precios que tenian cuando se creo el presupuesto. Cambiar la plantilla solo afecta los nuevos presupuestos que la usen a partir de ese momento.
@@ -822,4 +835,137 @@ Los documentos en estado Emitido estan bloqueados para garantizar su integridad.
 
 **Que significa el codigo REC-202610-0001 en un recipe?**
 Es el codigo unico del documento: tipo (REC = recipe, PAR = paraclínicos, REP = reposo), anio y mes de emision (202610 = octubre 2026) y numero secuencial del mes (0001 = el primero de ese mes en tu cuenta). Sirve como referencia y para verificar autenticidad.
+
+---
+
+## Contáctame ya
+
+**Que es el boton Contactame ya?**
+Es un boton visible en la barra superior del panel del especialista (junto al icono de Ayuda).
+Te permite pedirle al equipo de Delta que te contacte. Esta disponible para todos los especialistas,
+sin importar el plan.
+
+**Como uso el boton Contactame ya?**
+1. Pulsa el boton "Contactame ya" en la barra superior. Se abre un modal.
+2. Elige como prefieres que te contactemos:
+   - "Llamame ya" — te llamamos en los proximos 15 minutos (disponible solo en horario de atencion).
+   - "WhatsApp" — te escribimos por WhatsApp.
+   - "Llamada" — coordinamos una llamada.
+   - "Correo electronico" — te respondemos por correo.
+3. Opcionalmente, escribe un mensaje (hasta 500 caracteres) para describir tu consulta.
+4. Pulsa Enviar. El equipo de Delta recibe una notificacion inmediata.
+
+**Cual es el compromiso de respuesta?**
+- Con "Llamame ya": te llamamos en los proximos 15 minutos.
+- Con cualquier otro canal: te contactamos en menos de 1 hora.
+- Si estan fuera del horario de atencion, el compromiso cambia a "Te contactamos al iniciar nuestro horario de atencion (lunes a sabado, 8:00 a. m.)".
+
+**En que horario esta disponible la opcion Llamame ya?**
+De lunes a sabado, de 8:00 a. m. a 6:00 p. m., hora de Caracas. Fuera de ese horario la opcion
+"Llamame ya" no aparece en el modal. El sistema evalua el horario con la hora exacta del servidor,
+no la del navegador.
+
+**Que pasa si envio una solicitud cuando ya tenia una abierta?**
+Si ya tienes una solicitud pendiente, la nueva actualiza la anterior con el canal y mensaje mas recientes.
+No se crean solicitudes duplicadas.
+
+**Puedo escribirles directamente por WhatsApp?**
+Si. En el mismo modal hay un enlace "Escribir por WhatsApp ahora" que abre una conversacion con el numero
+de soporte de Delta: +58 422 103 3582. Ese es el unico numero oficial de soporte.
+
+**Donde mas aparece el numero de soporte de Delta?**
+El numero +58 422 103 3582 es el unico numero de contacto oficial. Aparece en el modal de Contactame ya,
+en la pantalla de Ayuda (/doctor/help) y en la pantalla de Actualizacion de plan (/doctor/upgrade).
+
+---
+
+## Novedades de version
+
+**Que son las Novedades de version?**
+Son anuncios del equipo de Delta sobre funciones nuevas, mejoras y cambios en la plataforma.
+Cada novedad tiene fecha, titulo y una descripcion en texto plano. Pueden incluir una imagen.
+
+**Donde veo las Novedades?**
+Al entrar a Inicio (/doctor), si hay novedades que no has visto aparece automaticamente un modal
+llamado "Novedades". Solo aparece una vez por visita (si lo cierras sin pulsar "Entendido",
+vuelve a aparecer la proxima vez que entres).
+Tambien puedes ver el historial completo en cualquier momento desde:
+- **Configuracion → pestana Novedades** (/doctor/settings?tab=novedades).
+- La tarjeta **Actualizate con las novedades de la plataforma** en Inicio, que te lleva directo a esa pestana.
+
+**Como funciona el modal de Novedades?**
+El modal muestra las novedades mas recientes que aun no has visto (maximo 5 a la vez), de la mas
+nueva a la mas antigua. Cada novedad muestra la fecha de publicacion, el titulo y el contenido
+en texto plano (con listas con guiones si el redactor las incluyo). Puede haber una imagen.
+El boton "Entendido" cierra el modal y marca todas esas novedades como vistas. Si cierras el
+modal de otra forma (sin pulsar "Entendido"), las novedades vuelven a aparecer la proxima visita.
+
+**Que es el historial de Novedades?**
+En Configuracion, la pestana "Novedades" muestra todas las novedades publicadas
+para tu plan, ordenadas de la mas reciente a la mas antigua (limite: 50). Ahi puedes revisar
+cualquier novedad aunque ya la hayas marcado como vista.
+
+**Por que algunas novedades no me aparecen?**
+El equipo de Delta puede publicar novedades dirigidas solo a ciertos planes. Si una novedad es
+solo para Delta Plus y tu tienes Delta Base, no te aparecera ni en el modal ni en el historial.
+Las novedades sin restriccion de plan llegan a todos los especialistas.
+
+**Cuando deja de aparecer el modal de Novedades?**
+El modal no aparece si no hay novedades nuevas para tu plan desde la ultima vez que pulsaste
+"Entendido". Si el equipo publica una novedad nueva, el modal vuelve a aparecer la proxima vez
+que entres a Inicio.
+
+---
+
+## Reunion de equipo Delta (Queremos conocerte)
+
+**Que es la reunion de equipo Delta?**
+Es una videollamada de 30 minutos entre tu y el equipo de Delta. Es gratis, voluntaria, y sirve
+para que el equipo te conozca mejor y entienda como puede ayudarte a crecer en la plataforma.
+La reunion se programa directamente desde tu panel, sin necesidad de salir de Delta.
+
+**Como agendo una reunion de equipo Delta?**
+Si eres elegible, un modal llamado "Queremos conocerte" aparece automaticamente en tu pantalla
+de Inicio. Puedes:
+1. Pulsar "Agendar reunion" — se abre un selector de fechas y horas.
+2. Elegir el dia y la hora que te convenga (de lunes a sabado, dentro de tu horario disponible).
+3. Confirmar. Recibiras un correo con el enlace de la videollamada.
+
+**Donde veo y gestiono mi reunion ya agendada?**
+En Inicio (/doctor), si tienes una reunion agendada, aparece un bloque mostrando la fecha, hora
+y el enlace de acceso. Desde ese mismo lugar puedes reagendarla o cancelarla.
+
+**Puedo reagendar la reunion?**
+Si, siempre que falten mas de 2 horas para el inicio. Pulsa "Reagendar" en el bloque de la reunion,
+elige el nuevo horario y confirma. Recibiras un correo con la nueva hora.
+
+**Puedo cancelar la reunion?**
+Si, siempre que falten mas de 2 horas para el inicio. Pulsa "Cancelar" en el bloque de la reunion
+y confirma. Recibiras un correo de confirmacion de la cancelacion.
+
+**Por que no puedo reagendar ni cancelar?**
+Si faltan menos de 2 horas para el inicio ya no se puede modificar. Contacta al equipo de Delta
+usando el boton "Contactame ya" si necesitas un cambio urgente.
+
+**A traves de que plataforma es la videollamada?**
+La videollamada se realiza por Google Meet o por Jitsi, segun la configuracion del equipo de Delta.
+El enlace de acceso llega en el correo de confirmacion y tambien esta visible en tu panel.
+
+**Recibo algun recordatorio de la reunion?**
+Si. El sistema envia dos recordatorios automaticos por correo: uno 24 horas antes y otro 1 hora antes.
+
+**Que pasa si ya tuve una reunion con el equipo?**
+El modal no vuelve a aparecer una vez que agendas o ya realizaste una reunion. Si el equipo quiere
+coordinar otra, te contactaran directamente.
+
+**Recibi un correo de invitacion a la reunion. Que hago?**
+Si estas en el periodo de prueba o tu prueba vencio recientemente, puedes recibir un correo con
+asunto "Queremos conocerte" invitandote a programar una reunion con el equipo. Ese correo incluye
+un boton "Iniciar sesion en Delta" que te lleva directamente a tu panel. Una vez dentro, el modal
+"Queremos conocerte" estara disponible para que agendes tu cita.
+
+**Me ofrecieron un mes de gracia. Que significa?**
+Despues de tu reunion con el equipo Delta, el equipo puede otorgarte un mes adicional de acceso
+sin costo. Si te lo otorgaron, tu suscripcion se extendera automaticamente y recibiras un correo
+de confirmacion. No necesitas hacer nada: el cambio se aplica de inmediato.
 `;

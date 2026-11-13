@@ -36,6 +36,13 @@ import { PendingConsultationsModule } from '../pending-consultations/pending-con
 // endpoint (no dedicated Cloud Scheduler job for quote expiry). QuotesModule
 // does not import RemindersModule anywhere in its own graph — no cycle.
 import { QuotesModule } from '../quotes/quotes.module';
+// TeamMeetingsModule exports DispatchMeetingRemindersUseCase for the same cron
+// endpoint. No cycle: TeamMeetingsModule does not import RemindersModule.
+import { TeamMeetingsModule } from '../team-meetings/team-meetings.module';
+// RetentionInvitesModule exports DispatchMeetingInvitesUseCase which is injected
+// @Optional into DispatchDoctorInactivityNoticesUseCase so invite dispatch runs
+// first in the daily cron. No cycle: RetentionInvitesModule does not import RemindersModule.
+import { RetentionInvitesModule } from '../retention-invites/retention-invites.module';
 
 /**
  * RemindersModule — Doctor reminder configuration + queue monitoring + cron dispatch.
@@ -81,6 +88,8 @@ import { QuotesModule } from '../quotes/quotes.module';
     EmailModule,
     PendingConsultationsModule,
     QuotesModule,
+    TeamMeetingsModule,
+    RetentionInvitesModule,
   ],
   controllers: [DoctorRemindersController, AdminRemindersController, CronRemindersController],
   providers: [

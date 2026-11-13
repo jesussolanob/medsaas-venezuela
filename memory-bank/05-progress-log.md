@@ -4,6 +4,190 @@
 > ⚠️ Orden: **la entrada más nueva va ARRIBA**. La del 2026-08-11 quedó al final
 > del archivo por error; no se movió para no ensuciar el diff.
 
+## 2026-11-03 — Inicio: citas pasadas, Atendida/No asistió y refresco (`feature/inicio-citas`)
+
+> Sale de la reunión "Check In - Delta Salud" del 02/11 (notas de Gemini). Solo lo que quedó
+> decidido; el código único, los motivos de consulta configurables, el perfil de clínica y los
+> recordatorios por WhatsApp (van con Chatwoot) quedan fuera a propósito.
+
+1. **"Por confirmar" mostraba las 5 citas MÁS VIEJAS**: pedía `status=scheduled` sin fecha y el
+   backend ordena ASC. Ahora `date_from` = hoy 00:00 Caracas.
+2. **Sección nueva "¿La atendiste?"** (`components/doctor/PastUnconfirmedWidget.tsx`): citas
+   `scheduled` de días pasados, más recientes primero, con total real (`backendGetPaged`; si hay
+   más de 100 pide la última página y cae a la primera si falla). Atendida / No asistió / Cancelar.
+   No se borra nada y no hay proceso automático: marcar "No asistió" solo una consulta atendida y
+   no cobrada haría perder el ingreso sin que nadie lo vea.
+3. **AppointmentDetailModal**: Atendida y No asistió cuando la hora ya llegó (scheduled|confirmed);
+   "Confirmar" se oculta para citas pasadas.
+4. **"Atendida" sin cita vinculada no se guardaba y no avisaba** (`updateConsultaStatus`): ahora
+   avisa y no cambia la pantalla; revierte si falla el PUT.
+5. **Consulta inmediata duplicaba la cita**: si el paciente ya tenía cita hoy se creaba otra y la
+   original quedaba eterna en "Por confirmar" (causa más probable del reporte de Paola). Ahora avisa
+   y ofrece abrir esa cita.
+6. **Citas del Día** sube debajo de la cita en curso; Finanzas a ancho completo.
+7. **Refresco del Inicio — causa real (medida en staging):** el Inicio pedía sus datos con 7
+   server actions y **Next.js ejecuta las server actions del cliente de a una**: ~7 viajes en
+   fila (~0,5 s c/u). Tras confirmar, "Citas del Día" tardaba **5 s** en cambiar y la gente
+   recargaba. Ahora `getDashboardData()` (una sola server action) los hace en paralelo en el
+   servidor. Además, guarda `isStale` contra respuestas viejas en el `useEffect`.
+   Regla: **nunca varias server actions en `Promise.all` desde el cliente** — no corren en paralelo.
+8. **Horas del Inicio en la zona del navegador**: un especialista fuera de Venezuela (o el QA desde
+   Chile) veía la cita de las 4:00 p. m. a las 5:00 p. m. Ahora todo el Inicio formatea en
+   `America/Caracas` (`VE_TIMEZONE`), igual que el detalle de la cita.
+
+Verificado: tsc 0, build frontend 0, lint sin errores nuevos (los de `page.tsx` y
+`ConsultationsClient.tsx` son preexistentes), tests de help-assistant 77/77. Guía del especialista
+actualizada (Inicio, detalle de cita, Consulta Inmediata).
+
+## 2026-11-02/03 — Lote en staging: novedades, una sola fuente, vendedores, MPPS y sesión de 5 días
+
+> Todo en `feature/retencion` → `develop` → `staging`. **Nada de esto está en `main`.** Al
+> promover se aplican 2 migraciones nuevas: `20261030000006` (plantilla `seller_welcome`) y
+> `20261030000007` (backfill de verificación MPPS). 529 suites / 5075 tests en verde.
+
+1. **Novedades accesibles** (`b36c8240`, `ef5e50c6`): pestaña **Configuración → Novedades**
+   (`/doctor/settings?tab=novedades`, lista extraída a `components/release-notes/ReleaseNotesList`)
+   y tarjeta en Inicio "Actualízate con las novedades de la plataforma". En teléfono la barra de
+   pestañas se desplaza sola hasta la activa. Se quitó "Las novedades no incluyen imágenes aún".
+2. **"Contáctame ya" tapaba el icono de ayuda**: su `animate-ping` (2x) se dibujaba encima y se
+   comía los clics. Ahora usa keyframes propios `contact-ya-pulse` (scale 1.06x1.35) en
+   `globals.css` + `pointer-events-none`.
+3. **Una sola fuente** (`824548d5`): 11 pantallas inyectaban `* { font-family: 'Inter' }` y
+   cambiaban la letra de TODA la ventana (menú, barra) al navegar. Quitadas junto con sus
+   `@import` de Google Fonts; los buscadores pedían 'Plus Jakarta Sans' por nombre (no existe con
+   next/font) → `var(--dh-font-body)`. Impresos/PDF conservan su fuente. Verificado midiendo
+   `getComputedStyle` en 24 pantallas navegando con `window.next.router.push`.
+4. **Tablas anchas desbordaban la página** (`a2d0e798`): la columna `flex-1` de los layouts
+   (admin, doctor, seller, patient) no tenía `min-w-0`. Ahora la tabla se desplaza en su caja.
+5. **Correo de bienvenida a vendedores** (`37de77aa`): al crear un vendedor se envía
+   `seller_welcome` (cómo entrar con el correo exacto, aviso de no usar otro correo, código,
+   enlace `/r/CODIGO`, secciones del portal, cargar datos de cobro). Si falla, el vendedor igual se
+   crea (`welcomeEmailSent`). `POST /api/admin/sellers/:id/welcome-email` + botón **Reenviar** en
+   la columna "Bienvenida" de `/admin/sellers`. Probado en staging con `lucas.a.rivas.d@gmail.com`.
+   **Pendiente en prod:** pulsar Reenviar para Ana Solano (`anasolano2303@gmail.com`, vendedora,
+   creada el 02/11 antes de esto, nunca entró).
+6. **Verificación automática por MPPS** (`e670626f`, ADR-096): el scraper SACS guardaba
+   'verified' en `credential_verifications` pero nunca promovía `profiles.verification_status`.
+   Ahora promueve pending→verified (`verified_by` NULL = sistema; nunca pisa 'rejected'); el
+   caché solo vale si el MPPS declarado no cambió. La migración 7 corrige a **exactamente 5
+   especialistas de prod** (comprobado en solo lectura). Insignia "Auto · MPPS" solo con
+   `verified_by` NULL **y** coincidencia SACS (las aprobaciones manuales viejas también tienen NULL).
+7. **Sesión de 5 días** (`7946c593`): `lib/auth0.ts` y `proxy.ts` en 5 días. El backend valida el
+   **ID token** (exp) y no hay refresh token: en Auth0 se subió "Maximum ID Token Lifetime" de
+   28800 a **432000** ANTES del deploy. Riesgo aceptado por el dueño.
+8. **Error "Oops, something went wrong" de Auth0 al volver atrás en el selector de cuentas**: el
+   "Tenant Login URI" estaba vacío. Ahora tenant y aplicación apuntan a
+   `https://deltasalud.app/login` (la app apuntaba al viejo `delta-frontend-…run.app`). Prod y
+   staging comparten la MISMA aplicación Auth0 (client `ktiIpuO9…`): en esos casos raros staging cae
+   al login de prod. Opción pendiente: aplicación Auth0 propia para staging.
+9. **Guía del asistente**: las plantillas de contenido viven en Plantillas → "Mis plantillas" (la
+   guía mandaba a `/doctor/content-templates`, 404).
+
+**Hallazgos sin resolver (decisiones del dueño):**
+
+- **Reuniones con Jitsi:** `team_meeting_host_profile_id` está vacío en staging → sin anfitrión
+  con Google conectado, `create-team-meeting` cae a `meet.jit.si`. El dueño quiere SOLO Meet:
+  configurar anfitrión en Admin → Reuniones ("Conectar Google") en staging y en prod al promover;
+  luego quitar el respaldo de Jitsi (opción recomendada: agendar sin enlace + avisar al equipo).
+- **Staging envía correo REAL** (`EMAIL_DRIVER=resend` en `delta-backend-staging`); el CLAUDE.md
+  dice `noop` y está desactualizado. Probar solo con correos propios.
+- **Costos a 100 especialistas** (ritmo de la Dra. Ana Solano Bracamonte y Paola Linares):
+  ~US$100/mes como está hoy (Resend Pro obligatorio por el tope de 100 correos/día); ~US$210–245
+  recomendado (Cloud SQL dedicada con HA + min-instances). Las 2 BD son el 85% de la factura actual.
+- Prod y staging comparten bucket GCS; Artifact Registry 39 GB sin limpieza; `tsc` estricto del
+  backend marca 20 errores preexistentes (release-notes, standalone-documents).
+
+## 2026-10-30 — Plan de retención de especialistas: 4 fases en `feature/retencion`
+
+> Plan vinculante: `docs/plan-retencion.md`. Rama `feature/retencion` → `develop` → `staging`
+> (NO en `main`). 5 migraciones `20261030000001..05`. 528 suites / 5058 tests.
+
+1. **"Contáctame ya"** (`contact-requests`): botón para todo especialista, "Llámame ya" (15 min)
+   solo lun–sáb 8–18 Caracas, promesa 1 h; correo URGENTE a todos los super_admin; Admin →
+   Solicitudes de contacto; número único de soporte +58 422 103 3582 en toda la app y la landing.
+2. **Novedades** (`release-notes`): admin/super_admin publican; modal carrusel solo para
+   especialistas; imágenes solo de la propia carga (`logo/<uuid>/…`, re-firmadas al leer).
+3. **"Queremos conocerte"** (`doctor-prompts` + `team-meetings`): modal + agendamiento en la
+   agenda del propio especialista (o lun–sáb 8–18), bloqueo en su agenda, Google Meet con
+   anfitrión Jesús (o Jitsi), reprogramar/cancelar hasta 2 h antes, recordatorios 24 h / 1 h.
+4. **Correo de invitación + mes de gracia** (`retention-invites`): 7 días antes y al vencer;
+   máximo un correo de ciclo de vida por día; mes de gracia tras la reunión (una vez).
+
+**Lo que la suite verde no veía y se corrigió al verificar:** el down de la migración 1 tiraba
+los parámetros; el equipo nunca habría recibido correos de reuniones (faltaban las 4
+plantillas `*_admin`) y las del doctor le hablaban al equipo; enlaces a `app.deltasalud.app` y
+rutas inexistentes; las entradas del menú admin quedaban ocultas (sin `role_capabilities`); el
+correo de invitación no encontraba a nadie (fecha de fin en `subscriptions`, no en `profiles`, y
+downgrade a past_due perezoso); `/r/meeting` redirigía a `0.0.0.0:8080`; IDOR de storage con la
+imagen de novedades; secreto HMAC con fallback vacío.
+
+**QA en navegador (Playwright, 30/10) — corregido en staging:** modal de «Contáctame ya»
+cortado (barra con backdrop-blur → portal a body); 4 rutas BFF con `params` síncrono (Next 16:
+es Promise → «ID inválido» al publicar novedades/atender solicitudes); métricas sin «hoy»
+(`new Date('YYYY-MM-DD')` UTC); «++58»; doble punto en la hora; motivo del bloqueo distinto
+entre back y front (constante `TEAM_MEETING_BLOCK_REASON`); tarjeta sin recargar; correos al
+equipo sin registro (`recipient_id` uuid recibía el email). 3 novedades publicadas en staging.
+Guía de QA: `~/Downloads/guia-pruebas-retencion.txt`.
+
+**También en este lote (fallaban en producción):** "Ingresos (mes)" del panel admin de
+Especialistas ahora usa el MISMO cálculo que la Finanzas del especialista
+(`GetFinancialSummaryUseCase`: consultas aprobadas + pagos sin consulta —paquetes y
+presupuestos— + ingresos manuales); antes solo sumaba consultas aprobadas (caso Dra. Ana: 22
+citas, 135 USD). Rama `hotfix/ingresos-admin-mes` integrada. Y "marcar notificación como
+leída" (`app/api/doctor/notifications/[id]/read`) respondía "ID inválido" (params de Next 16).
+Estado al cierre: `develop` = `staging` = `364a73ba`; `main` sin tocar (`1d682771`). Falta el
+QA del equipo y promover.
+
+**Incidente:** al validar SQL real contra staging, un `sequelize.transaction()` del código
+commiteó la transacción de prueba: quedaron en staging las estructuras de las 5 migraciones y
+datos de prueba (2 especialistas del clon con la prueba extendida hasta el 29/11, 2 filas
+`grace_month`, 1 aviso, 1 reunión "done"). El dueño decidió no revertir; se borró solo el
+duplicado de `grace_month` que habría bloqueado el índice único de la migración 4.
+
+## 2026-10-30 — Retención especialistas Fase 4 backend (branch `feature/retencion-fase4-be`)
+
+### Qué se implementó
+
+Módulo `retention-invites` completo (DDD 4 capas):
+
+1. **Invitaciones email automáticas** — cron diario despacha dos tipos de invitación a
+   free_trial doctors (pre-vencimiento ≤7d y post-vencimiento ≤30d). Integrado en
+   `DispatchDoctorInactivityNoticesUseCase` (invitaciones corren primero, one-per-day).
+2. **Click-tracking HMAC** — `POST /api/public/retention/click`, token derivado de
+   `AUTH_RESOLVE_SECRET` (sin env var nuevo). TTL 45 días. 204 siempre.
+3. **Mes de gracia** — `POST /api/admin/team-meetings/:id/grant-grace` (super_admin).
+   Sólo después de status=done, una vez por doctor (409 si ya tiene). Date math en UTC.
+4. **Métricas retención** — `GET /api/admin/retention/metrics?from=&to=` (super_admin).
+5. **Migración** `20261030000004-retention-invite-and-grace.cjs` — template email +
+   índices en `email_send_log` y `doctor_prompts`.
+6. **Guías de ayuda** — `specialist-guide.content.ts` + `super-admin-guide.content.ts`
+   actualizadas con invitaciones y mes de gracia.
+
+### Fixes técnicos relevantes
+
+- `addMonthsClamped` usa métodos UTC (`getUTCDate`, `setUTCDate`, etc.) para evitar
+  desfases en timezones UTC-X (América/Caracas = UTC-4).
+- `verifyToken` usa `parts[0] as string` / `parts[1] as string` tras el guard de longitud
+  para satisfacer `strict` TypeScript (array spread no narrowea).
+- `CronRunResult` en `cron-reminders.controller.ts` ahora exige `meetingInvitePre` y
+  `meetingInviteExpired` en ambos endpoints (appointment-reminders los fija en 0).
+
+### Verificación final
+
+5029 tests / 0 fallos. Build webpack OK. ESLint 0 warnings en archivos nuevos/tocados.
+
+## 2026-10-29 — Promoción a producción: lote admin + "Cambios 12-10" completo
+
+> `main` `aee24229` → `1d682771` (fast-forward desde `staging`, aprobado por el QA). 39 commits,
+> 2 migraciones (`20261022000001`, `20261022000002`), ambas `migrated` en el deploy de prod.
+
+Entró: lote admin del 22/10 (filtros de fecha, Contactar, teléfono obligatorio, nombres, plan
+desde `profiles`, "Nuevos este mes"), entrega 1 (nota "Precio de lanzamiento"), entregas 2 y 3
+(Mis plantillas; Recipes y paraclínicos sin consulta con REC/PAR/REP, compartir y anular) y los
+arreglos del QA, incluido el **PDF del reposo con la fecha un día antes**, que ya vivía en prod.
+Verificado tras el deploy: home y `/api/public/plans` 200, rutas nuevas redirigen a login,
+0 errores del backend en Cloud Run (revisiones `delta-backend-00480`, `delta-frontend-00465`).
+
 ## 2026-10-28 — Observaciones del QA sobre plantillas y documentos
 
 > Rama `feature/plantillas-y-documentos` → `develop` → `staging`. Sin migraciones.
@@ -20,6 +204,17 @@
 
 Preexistente, sin tocar: la receta no guarda la **vía** (la tabla `prescriptions` no tiene
 columna), así que "Vía: Oral" desaparece al reabrir la consulta.
+
+**Deploy a staging:** falló 2 veces el 28/10 en Cloud Build con el mismo error: `next build`
+(Turbopack) no pudo bajar las fuentes de Google (`fonts.gstatic.com` → "Can't resolve
+'@vercel/turbopack-next/internal/font/google/font'"). No es del código: relanzar el run
+(`gh run rerun <id>`) pasó las dos veces. El log se lee con
+`gcloud builds log <build-id> --account=lucas@deltasalud.app`. El `SIGABRT` del paso backend es
+el OOM conocido de ForkTsChecker y no rompe nada. **Pendiente de decisión del dueño:** servir
+las fuentes desde el proyecto (`next/font/local`) para que el build no dependa de Google.
+
+**Estado al cierre del 28/10:** `develop` = `staging` con todo lo de plantillas y documentos.
+Promovido a producción el 29/10 (ver entrada de arriba).
 
 ## 2026-10-23 — Entregas 2 y 3 de "Cambios 12-10": plantillas de contenido y documentos sin consulta
 
@@ -5577,3 +5772,25 @@ Más el cobro que salía sin nombre de paciente (ADR-095), mismo patrón que el 
   producto sin tomar.
 - 🟡 `appointment_code` y el evento de Google Calendar siguen sin generarse en el camino de
   preconsultas (ver ADR-089).
+
+---
+
+## 2026-11-12/13 — Onboarding mínimo + CSV de especialistas (en staging, sin promover)
+
+Rama `feature/onboarding-minimo` → `develop` → `staging`. Pedido del dueño: que con lo mínimo al
+especialista ya le puedan agendar.
+
+- **Hecho:** MPPS fuera del onboarding (editable en el perfil); verificación SACS por cédula + nombre;
+  "Omitir" en consultorio y servicio (arriba y abajo) con valores por defecto; precio "A consultar con el
+  especialista"; reserva sin paso de pago si el plan es a consultar o no hay cuentas de pago; CSV del admin
+  con 7 columnas nuevas. Guía del asistente de ayuda actualizada.
+- **Revisión:** code-reviewer aprobado; security-agent encontró 1 HIGH (endpoints sin `@Roles('doctor')`) +
+  CSV injection + re-verificación sin enfriamiento → corregidos. Backend 5.110 tests verdes.
+- **QA en navegador sobre staging (13/11):** el flujo completo funciona. Encontró y se corrigió que el modal
+  "Aprobar pago" no enviaba el monto (422) y que había dos campos de monto. El cobro de $40 queda en Cobros y
+  en Finanzas una sola vez. El SQL real del CSV corrió contra la BD de staging: 17 filas, 0 duplicados, 0,3 s.
+- ⚠️ **Lección:** los tests y el code review no vieron que la confirmación del cobro es OTRO componente
+  (`ApprovePaymentModal`) que no recibía el monto: solo apareció al cobrar en el navegador.
+- **Pendientes fuera del lote:** Cobros muestra la hora en la zona del navegador, no en la de Caracas
+  (desde Argentina, la cita de las 9:00 sale 10:00); el paso 6 "Método de pago" desaparece pero el siguiente
+  sigue numerado "7"; en el servicio del onboarding no hay opción de 50 min de duración.

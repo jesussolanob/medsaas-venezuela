@@ -49,6 +49,7 @@ export class SequelizeSellerRepository implements ISellerRepository {
       return {
         id: row.id,
         fullName: row.fullName,
+        email: row.email,
         sellerCode: row.sellerCode!,
         createdAt: row.createdAt,
       };
@@ -72,6 +73,7 @@ export class SequelizeSellerRepository implements ISellerRepository {
     return {
       id: row.id,
       fullName: row.fullName,
+      email: row.email,
       sellerCode: row.sellerCode!,
       createdAt: row.createdAt,
     };
@@ -85,6 +87,7 @@ export class SequelizeSellerRepository implements ISellerRepository {
     return {
       id: row.id,
       fullName: row.fullName,
+      email: row.email,
       sellerCode: row.sellerCode!,
       createdAt: row.createdAt,
     };

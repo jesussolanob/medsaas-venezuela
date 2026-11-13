@@ -7,7 +7,9 @@ import {
   DollarSign,
   MessageCircle,
   Mail,
+  Megaphone,
 } from 'lucide-react';
+import { SUPPORT_WHATSAPP_NUMBER, SUPPORT_WHATSAPP_DISPLAY } from '@/lib/support-contact';
 
 export const metadata = { title: 'Centro de ayuda — Delta Salud' };
 
@@ -127,6 +129,28 @@ export default function HelpPage() {
           );
         })}
 
+        {/* Novedades */}
+        <div className="bg-white rounded-2xl border border-slate-200 p-6 sm:p-8 shadow-sm">
+          <div className="flex items-start gap-4">
+            <div className="flex-shrink-0 w-12 h-12 bg-teal-100 rounded-xl flex items-center justify-center">
+              <Megaphone className="w-6 h-6 text-teal-600" />
+            </div>
+            <div className="flex-1">
+              <h2 className="text-xl font-bold text-slate-900 mb-2">Novedades</h2>
+              <p className="text-sm text-slate-700 mb-4">
+                Revisa las últimas actualizaciones y nuevas funciones de Delta Salud disponibles
+                para tu plan.
+              </p>
+              <Link
+                href="/doctor/settings?tab=novedades"
+                className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium bg-teal-500 text-white rounded-lg hover:bg-teal-600 transition-colors"
+              >
+                Ver novedades
+              </Link>
+            </div>
+          </div>
+        </div>
+
         {/* Contacto */}
         <div className="bg-slate-100 rounded-2xl p-6 sm:p-8 mt-12">
           <h3 className="text-lg font-bold text-slate-900 mb-2">¿Necesitas más ayuda?</h3>
@@ -145,13 +169,13 @@ export default function HelpPage() {
               </div>
             </a>
             <a
-              href="https://wa.me/584145209751"
+              href={`https://wa.me/${SUPPORT_WHATSAPP_NUMBER}`}
               className="flex items-center gap-3 p-4 rounded-xl bg-white border border-slate-200 hover:border-teal-400 transition-colors"
             >
               <MessageCircle className="w-5 h-5 text-teal-600 flex-shrink-0" />
               <div>
                 <p className="text-sm font-semibold text-slate-900">WhatsApp</p>
-                <p className="text-xs text-slate-500">+58 414 520 9751</p>
+                <p className="text-xs text-slate-500">{SUPPORT_WHATSAPP_DISPLAY}</p>
               </div>
             </a>
           </div>

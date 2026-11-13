@@ -59,6 +59,7 @@ interface PricingPlan {
   id: string;
   name: string;
   priceUsd: number;
+  priceOnRequest?: boolean;
   durationMinutes: number;
   sessionsCount?: number;
   description?: string | null;
@@ -139,6 +140,7 @@ export default async function PublicBookingPage({
     id: p.id,
     name: p.name,
     price_usd: p.priceUsd,
+    price_on_request: p.priceOnRequest ?? false,
     duration_minutes: p.durationMinutes,
     sessions_count: p.sessionsCount ?? 1,
     description: p.description ?? null,

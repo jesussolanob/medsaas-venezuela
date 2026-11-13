@@ -57,8 +57,6 @@ export default async function ConsultationReportPage({
   return (
     <>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
-        * { font-family: 'Inter', sans-serif; }
         .g-bg { background: linear-gradient(135deg,#00C4CC 0%,#0891b2 100%); }
         @media print {
           .no-print { display: none !important; }

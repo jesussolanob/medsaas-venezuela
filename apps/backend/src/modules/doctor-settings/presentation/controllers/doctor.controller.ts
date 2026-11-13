@@ -14,6 +14,8 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { AppAuthGuard } from '../../../../infrastructure/auth/app-auth.guard';
+import { RolesGuard } from '../../../../presentation/guards/roles.guard';
+import { Roles } from '../../../../presentation/decorators/roles.decorator';
 import {
   CurrentUser,
   type CurrentUserPayload,
@@ -32,6 +34,8 @@ import {
   type UpdateDoctorExchangeRateDto,
   DeactivateAccountDtoSchema,
   type DeactivateAccountDto,
+  OnboardingProgressDtoSchema,
+  type OnboardingProgressDto,
 } from '@delta/shared-types';
 
 import { GetDoctorProfileUseCase } from '../../application/use-cases/doctor-settings/get-doctor-profile.use-case';
@@ -65,6 +69,18 @@ import {
   DeactivateOwnAccountUseCase,
   type DeactivateOwnAccountOutput,
 } from '../../application/use-cases/doctor-settings/deactivate-own-account.use-case';
+import {
+  OnboardingProgressUseCase,
+  type OnboardingProgressOutput,
+} from '../../application/use-cases/doctor-settings/onboarding-progress.use-case';
+import {
+  SkipOfficeUseCase,
+  type SkipOfficeOutput,
+} from '../../application/use-cases/doctor-settings/skip-office.use-case';
+import {
+  SkipServiceUseCase,
+  type SkipServiceOutput,
+} from '../../application/use-cases/doctor-settings/skip-service.use-case';
 import type { DoctorProfile } from '../../domain/entities/doctor-profile.entity';
 import type { DoctorScheduleParams } from '../../domain/value-objects/doctor-schedule.vo';
 import type { PricingPlan } from '../../../packages/domain/entities/pricing-plan.entity';
@@ -110,6 +126,9 @@ export class DoctorController {
     private readonly setDoctorExchangeRate: SetDoctorExchangeRateUseCase,
     private readonly completeOnboarding: CompleteOnboardingUseCase,
     private readonly deactivateOwnAccount: DeactivateOwnAccountUseCase,
+    private readonly onboardingProgress: OnboardingProgressUseCase,
+    private readonly skipOffice: SkipOfficeUseCase,
+    private readonly skipService: SkipServiceUseCase,
   ) {}
 
   /** GET /api/doctor/profile */
@@ -145,6 +164,8 @@ export class DoctorController {
       gender: dto.gender,
       // El cliente solo manda la intencion; la marca de tiempo la pone el servidor.
       welcomeDismissedAt: dto.welcome_dismissed === true ? new Date().toISOString() : undefined,
+      // mpps_number is explicitly nullable — pass 'mppsNumber' in params when present in DTO
+      ...('mpps_number' in dto && { mppsNumber: dto.mpps_number ?? null }),
     });
     return { success: true, data: result };
   }
@@ -323,6 +344,7 @@ export class DoctorController {
     const result = await this.createService.execute(user.sub, {
       name: dto.name,
       priceUsd: dto.price_usd,
+      priceOnRequest: dto.price_on_request,
       durationMinutes: dto.duration_minutes,
       sessionsCount: dto.sessions_count,
       validityDays: dto.validity_days ?? null,
@@ -345,6 +367,7 @@ export class DoctorController {
     const result = await this.updateService.execute(user.sub, id, {
       name: dto.name,
       priceUsd: dto.price_usd,
+      priceOnRequest: dto.price_on_request,
       durationMinutes: dto.duration_minutes,
       sessionsCount: dto.sessions_count,
       description: dto.description,
@@ -414,6 +437,72 @@ export class DoctorController {
       role: user.role,
       reason: dto.reason ?? null,
     });
+    return { success: true, data: result };
+  }
+
+  /**
+   * POST /api/doctor/onboarding/progress
+   *
+   * Advances the onboarding step tracker to the given step (monotonic — never
+   * goes backward). Idempotent: safe to call multiple times with the same step.
+   *
+   * Body: { step: 'office' | 'service' }
+   *
+   * SECURITY: doctorId from authenticated token (anti-IDOR).
+   */
+  @Post('onboarding/progress')
+  @HttpCode(HttpStatus.OK)
+  @Roles('doctor')
+  @UseGuards(RolesGuard)
+  async onboardingProgressHandler(
+    @Body(new ZodValidationPipe(OnboardingProgressDtoSchema))
+    dto: OnboardingProgressDto,
+    @CurrentUser() user: CurrentUserPayload,
+  ): Promise<SuccessResponse<OnboardingProgressOutput>> {
+    const result = await this.onboardingProgress.execute({
+      doctorId: user.sub,
+      step: dto.step,
+    });
+    return { success: true, data: result };
+  }
+
+  /**
+   * POST /api/doctor/onboarding/skip-office
+   *
+   * Handles the "Omitir" button on the Office step of the onboarding wizard.
+   * Creates a default "Consultorio" (online, Mon–Fri 08:00–17:00, 50min+10min buffer)
+   * if no active office exists. Marks the step as reached and skipped. Idempotent.
+   *
+   * SECURITY: doctorId from authenticated token (anti-IDOR).
+   */
+  @Post('onboarding/skip-office')
+  @HttpCode(HttpStatus.OK)
+  @Roles('doctor')
+  @UseGuards(RolesGuard)
+  async skipOfficeHandler(
+    @CurrentUser() user: CurrentUserPayload,
+  ): Promise<SuccessResponse<SkipOfficeOutput>> {
+    const result = await this.skipOffice.execute(user.sub);
+    return { success: true, data: result };
+  }
+
+  /**
+   * POST /api/doctor/onboarding/skip-service
+   *
+   * Handles the "Omitir" button on the Service step of the onboarding wizard.
+   * Creates a default "Consulta" service (price_on_request=true, 50min, 1 session)
+   * if no active service exists. Marks the step as reached and skipped. Idempotent.
+   *
+   * SECURITY: doctorId from authenticated token (anti-IDOR).
+   */
+  @Post('onboarding/skip-service')
+  @HttpCode(HttpStatus.OK)
+  @Roles('doctor')
+  @UseGuards(RolesGuard)
+  async skipServiceHandler(
+    @CurrentUser() user: CurrentUserPayload,
+  ): Promise<SuccessResponse<SkipServiceOutput>> {
+    const result = await this.skipService.execute(user.sub);
     return { success: true, data: result };
   }
 

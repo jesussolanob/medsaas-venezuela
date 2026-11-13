@@ -26,6 +26,12 @@ export interface RegistrationUpdateParams {
    * The caller decides, because only it can compare against the prior state.
    */
   resetVerification: boolean;
+  /**
+   * Last onboarding step the doctor reached. Set to 'profile' when the doctor
+   * submits the registration form for the first time.
+   * Absent = do not update (backward compat for callers that do not set it).
+   */
+  onboardingLastStep?: string;
 }
 
 export interface VerificationUpdateParams {

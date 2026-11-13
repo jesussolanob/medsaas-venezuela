@@ -28,7 +28,7 @@ import {
   FilePlus,
 } from 'lucide-react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { StatCard, Card } from '@/components/dh';
 import NewAppointmentFlow from '@/components/appointment-flow/NewAppointmentFlow';
 import ImmediateConsultationModal from '@/components/doctor/ImmediateConsultationModal';
@@ -64,7 +64,10 @@ import { getDoctorId } from '@/app/doctor/actions';
 import { showToast } from '@/components/ui/Toaster';
 import { SetupStepper } from '@/components/doctor/SetupStepper';
 import { WelcomeModal } from '@/components/doctor/WelcomeModal';
-import { getDoctorPlanFeatures } from '@/app/doctor/plan-features-actions';
+import ReleaseNotesModal from '@/components/release-notes/ReleaseNotesModal';
+import ReleaseNotesHomeLink from '@/components/release-notes/ReleaseNotesHomeLink';
+import MeetingInviteModal from '@/components/team-meetings/MeetingInviteModal';
+import UpcomingMeetingCard from '@/components/team-meetings/UpcomingMeetingCard';
 import {
   planUnlocks,
   planAccessSummary,
@@ -74,13 +77,12 @@ import {
 } from '@/lib/plan-features';
 // MIGRATED (Etapa 1): data fetching now goes through NestJS backend actions.
 import {
-  getDoctorProfile,
-  getTodayAppointments,
-  getDashboardFinanceSummary,
-  getDashboardAllTimeStats,
-  getScheduledAppointments,
+  getDashboardData,
   type ScheduledAppointment,
+  type PastUnconfirmedResult,
 } from '@/app/doctor/dashboard-actions';
+import PastUnconfirmedWidget from '@/components/doctor/PastUnconfirmedWidget';
+import { VE_TIMEZONE } from '@/lib/timezone';
 
 type Profile = {
   full_name: string;
@@ -102,6 +104,8 @@ type Profile = {
 
 type Appointment = {
   id: string;
+  /** UUID of the registered patient — null for anonymous bookings. Never masked. */
+  patientId: string | null;
   patient_name: string;
   scheduled_at: string;
   status: string;
@@ -139,6 +143,11 @@ const ACTIVE_WINDOW_MS = 60 * 60 * 1000;
 
 export default function DoctorDashboard() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  // FASE 4 — detect meeting invite link click (?from=meeting_invite).
+  // Captured in a ref at mount so the data-loading effect doesn't need it as
+  // a dependency (the value is intentionally read only once per page visit).
+  const fromMeetingInviteRef = useRef(searchParams.get('from') === 'meeting_invite');
   const { rate: bcvRate, toBs, toBsNum, format } = useBcvRate();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [todayAppointments, setTodayAppointments] = useState<Appointment[]>([]);
@@ -160,9 +169,16 @@ export default function DoctorDashboard() {
   const [hasServices, setHasServices] = useState<boolean | null>(null);
   // Modal de bienvenida: se abre si el perfil no tiene welcome_dismissed_at.
   const [showWelcome, setShowWelcome] = useState(false);
+  const [meetingCardKey, setMeetingCardKey] = useState(0);
   // Se evalua UNA sola vez por sesion de pagina: el efecto tambien corre al cambiar
   // de mes y tras cada mutacion, y el modal no debe reaparecer en esos casos.
   const welcomeCheckedRef = useRef(false);
+  // Modal de novedades (fase 2 retencion): se abre SOLO si el tour de bienvenida
+  // no va a mostrarse esta visita (ver B.3 del plan de retencion).
+  // false = aun no evaluado o evaluado y sin novedades.
+  const [showReleaseNotes, setShowReleaseNotes] = useState(false);
+  // FASE 3 — Modal "Queremos conocerte": se abre solo si no hay otro modal esta visita (spec B.3).
+  const [showMeetingModal, setShowMeetingModal] = useState(false);
   const [planFeatures, setPlanFeatures] = useState<PlanFeatures>(EMPTY_PLAN_FEATURES);
   // null = desconocido (cargando o fetch falló), true = tiene consultorios, false = sin consultorios
   const [hasOffices, setHasOffices] = useState<boolean | null>(null);
@@ -206,6 +222,11 @@ export default function DoctorDashboard() {
   // "Por confirmar" widget — citas con status=scheduled pendientes de confirmación.
   const [scheduledAppointments, setScheduledAppointments] = useState<ScheduledAppointment[]>([]);
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
+  // "¿La atendiste?" widget — citas con status=scheduled cuya fecha ya pasó.
+  const [pastUnconfirmed, setPastUnconfirmed] = useState<PastUnconfirmedResult>({
+    items: [],
+    total: 0,
+  });
   // Cita seleccionada para ver detalle en AppointmentDetailModal.
   const [detailApptId, setDetailApptId] = useState<string | null>(null);
   // Target for RescheduleModal (emitted by AppointmentDetailModal.onReschedule).
@@ -272,20 +293,27 @@ export default function DoctorDashboard() {
   // vuelva a pedir los datos y las tarjetas no queden viejas. Mismo patron que
   // /doctor/finances. `loading` solo pasa a false, asi que refrescar no parpadea.
   useEffect(() => {
+    // A newer refresh (refreshKey bump) supersedes this one: its responses must not
+    // overwrite the fresher data when they arrive late.
+    let isStale = false;
+
     async function fetchData() {
       try {
         // Build 'YYYY-MM' string for the selected month.
         const monthStr = `${selectedMonth.year}-${String(selectedMonth.month + 1).padStart(2, '0')}`;
 
-        // Fetch all independent data in parallel for performance.
-        const [prof, appts, financeSummary, allTimeData, scheduled, planFeat] = await Promise.all([
-          getDoctorProfile(),
-          getTodayAppointments(),
-          getDashboardFinanceSummary(monthStr),
-          getDashboardAllTimeStats(),
-          getScheduledAppointments(),
-          getDoctorPlanFeatures(),
-        ]);
+        // One server action for the whole home: Next.js serializes client-invoked
+        // server actions, so seven separate calls meant ~seven sequential round-trips.
+        const {
+          profile: prof,
+          todayAppointments: appts,
+          financeSummary,
+          allTimeStats: allTimeData,
+          scheduledAppointments: scheduled,
+          pastUnconfirmed,
+          planFeatures: planFeat,
+        } = await getDashboardData(monthStr);
+        if (isStale) return;
 
         setPlanFeatures(planFeat);
 
@@ -307,7 +335,78 @@ export default function DoctorDashboard() {
           // carga inicial: un refetch tras una mutacion no debe reabrirlo.
           if (!welcomeCheckedRef.current) {
             welcomeCheckedRef.current = true;
-            if (!prof.welcomeDismissedAt) setShowWelcome(true);
+            if (!prof.welcomeDismissedAt) {
+              // Welcome tour will show — skip release notes this visit (spec B.3).
+              setShowWelcome(true);
+            } else if (fromMeetingInviteRef.current) {
+              // FASE 4 — invitation email link: meeting modal gets priority over
+              // release notes for this visit only (spec F, B.3). Still never over
+              // onboarding / welcome tour.
+              // Clean the query param so a reload does not re-trigger.
+              router.replace('/doctor');
+              // Release notes are the fallback whenever the meeting modal does not
+              // open — not applicable, a non-OK answer or a network error alike.
+              const fallbackToReleaseNotes = () => {
+                void fetch('/api/doctor/release-notes/unseen', { cache: 'no-store' })
+                  .then(async (res) => {
+                    if (!res.ok) return;
+                    const json = (await res.json()) as { data?: unknown[] };
+                    if ((json.data ?? []).length > 0) {
+                      setShowReleaseNotes(true);
+                    }
+                  })
+                  .catch(() => {
+                    // Non-critical — skip silently.
+                  });
+              };
+              void fetch('/api/doctor/prompts/meeting', { cache: 'no-store' })
+                .then(async (mRes) => {
+                  if (!mRes.ok) {
+                    fallbackToReleaseNotes();
+                    return;
+                  }
+                  const mJson = (await mRes.json()) as { data?: { show: boolean } };
+                  if (mJson.data?.show) {
+                    // Meeting modal will show — skip release notes this visit (spec B.3).
+                    setShowMeetingModal(true);
+                  } else {
+                    fallbackToReleaseNotes();
+                  }
+                })
+                .catch(() => {
+                  fallbackToReleaseNotes();
+                });
+            } else {
+              // Welcome tour won't show: check for unseen release notes (spec B.3).
+              // Fetch happens in the modal itself; we just need to know whether to
+              // open it.  We open it optimistically and let it close itself when
+              // the backend returns 0 notes.
+              void fetch('/api/doctor/release-notes/unseen', { cache: 'no-store' })
+                .then(async (res) => {
+                  if (!res.ok) return;
+                  const json = (await res.json()) as { data?: unknown[] };
+                  if ((json.data ?? []).length > 0) {
+                    setShowReleaseNotes(true);
+                    // Release notes will show — skip meeting modal this visit (spec B.3).
+                  } else {
+                    // No release notes: check meeting modal conditions (FASE 3, spec B.3).
+                    void fetch('/api/doctor/prompts/meeting', { cache: 'no-store' })
+                      .then(async (mRes) => {
+                        if (!mRes.ok) return;
+                        const mJson = (await mRes.json()) as { data?: { show: boolean } };
+                        if (mJson.data?.show) {
+                          setShowMeetingModal(true);
+                        }
+                      })
+                      .catch(() => {
+                        // Non-critical — skip silently.
+                      });
+                  }
+                })
+                .catch(() => {
+                  // Network error — silently skip; modal is non-critical.
+                });
+            }
           }
         }
 
@@ -316,6 +415,7 @@ export default function DoctorDashboard() {
         setTodayAppointments(
           appts.map((a) => ({
             id: a.id,
+            patientId: a.patientId ?? null,
             patient_name: a.patientName ?? '',
             scheduled_at: a.scheduledAt,
             status: a.status,
@@ -345,6 +445,8 @@ export default function DoctorDashboard() {
 
         // Citas pendientes de confirmación para el widget "Por confirmar".
         setScheduledAppointments(scheduled);
+        // Citas de días pasados que quedaron en status=scheduled para el widget "¿La atendiste?".
+        setPastUnconfirmed(pastUnconfirmed);
 
         // Verificar si el médico tiene consultorios configurados para mostrar alerta de onboarding.
         // No crítico: si el fetch falla, no se muestra la alerta (degradar silenciosamente).
@@ -388,7 +490,12 @@ export default function DoctorDashboard() {
     }
 
     void fetchData();
-  }, [selectedMonth, refreshKey]);
+    return () => {
+      isStale = true;
+    };
+    // router is included in deps to satisfy exhaustive-deps; it is a stable Next.js
+    // reference (same object across renders) so adding it does not cause extra runs.
+  }, [selectedMonth, refreshKey, router]);
 
   const greeting = () => {
     const h = new Date().getHours();
@@ -399,7 +506,12 @@ export default function DoctorDashboard() {
 
   const formatTime = (dateString: string) => {
     const date = new Date(dateString);
-    return date.toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit', hour12: true });
+    return date.toLocaleTimeString('es-VE', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true,
+      timeZone: VE_TIMEZONE,
+    });
   };
 
   const getStatusBadgeColor = (status: string, isPast: boolean = false) => {
@@ -578,6 +690,16 @@ export default function DoctorDashboard() {
   // modal para capturarlo (obligatorio) + referencia/comprobante (opcionales) antes
   // de aprobar. Con método → aprueba directo. (Mismo comportamiento que la consulta.)
   function handleApprovePayment(payment: PaymentRow) {
+    // Price_on_request consultations have no base amount yet.
+    // The doctor must open the consultation detail to enter the amount first.
+    if (payment.amount_usd == null) {
+      showToast({
+        type: 'error',
+        message:
+          'Este cobro requiere un monto de consulta. Ábrelo desde la sección Consultas para ingresarlo.',
+      });
+      return;
+    }
     if (!payment.method_snapshot || !payment.method_snapshot.trim()) {
       setMethodModalPayment(payment);
       return;
@@ -840,6 +962,13 @@ export default function DoctorDashboard() {
             ]}
           />
         )}
+        {/* FASE 3 — Próxima reunión con el equipo Delta */}
+        {/* key: remounts (reloads) the card after the meeting modal closes, so a
+            meeting booked there shows up without a page reload (QA, 30/10). */}
+        <UpcomingMeetingCard key={meetingCardKey} />
+
+        <ReleaseNotesHomeLink />
+
         {/* Hero welcome card */}
         <div
           className="g-bg p-6 sm:p-8 relative overflow-hidden text-white"
@@ -991,6 +1120,61 @@ export default function DoctorDashboard() {
           </button>
         )}
 
+        {/* ── Citas del Día ── */}
+        <Card padding={24}>
+          <div className="flex items-center gap-2 mb-4">
+            <Calendar className="w-5 h-5" style={{ color: 'var(--dh-turquoise)' }} />
+            <h2 className="text-sm font-bold" style={{ color: 'var(--dh-ink)' }}>
+              Citas del Día
+            </h2>
+            <span
+              className="ml-auto text-xs font-semibold px-2.5 py-1 rounded-full"
+              style={{
+                background: 'var(--dh-gray-50)',
+                color: 'var(--dh-gray-600)',
+                fontFamily: 'var(--dh-font-mono)',
+              }}
+            >
+              {todayAppointments.length}
+            </span>
+          </div>
+
+          {todayAppointments.length === 0 ? (
+            <p className="text-sm text-slate-400 py-8 text-center">
+              No hay citas programadas para hoy
+            </p>
+          ) : (
+            <div className="space-y-2 overflow-y-auto pr-0.5" style={{ maxHeight: '320px' }}>
+              {todayAppointments.map((apt) => {
+                const appointmentTime = new Date(apt.scheduled_at);
+                const now = new Date();
+                const isPast = appointmentTime < now;
+                return (
+                  <button
+                    key={apt.id}
+                    onClick={() => handleAppointmentClick(apt)}
+                    className="w-full flex items-center justify-between p-3 bg-slate-50 rounded-lg border border-slate-100 hover:border-teal-200 hover:bg-teal-50/30 transition-colors text-left"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-slate-900">
+                        {apt.patient_name || 'Paciente sin nombre'}
+                      </p>
+                      <p className="text-xs text-slate-400 mt-0.5">
+                        {formatTime(apt.scheduled_at)}
+                      </p>
+                    </div>
+                    <span
+                      className={`text-xs font-medium px-2.5 py-1 rounded-full shrink-0 ml-2 ${getStatusBadgeColor(apt.status, isPast)}`}
+                    >
+                      {getStatusBadgeText(apt, isPast)}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </Card>
+
         {/* ── Por confirmar: citas con status=scheduled pendientes de acción ── */}
         {scheduledAppointments.length > 0 && (
           <div
@@ -1033,11 +1217,13 @@ export default function DoctorDashboard() {
                   weekday: 'short',
                   day: 'numeric',
                   month: 'short',
+                  timeZone: VE_TIMEZONE,
                 }).format(new Date(apt.scheduledAt));
                 const timeStr = new Intl.DateTimeFormat('es-VE', {
                   hour: '2-digit',
                   minute: '2-digit',
                   hour12: true,
+                  timeZone: VE_TIMEZONE,
                 }).format(new Date(apt.scheduledAt));
 
                 return (
@@ -1089,6 +1275,14 @@ export default function DoctorDashboard() {
           </div>
         )}
 
+        {/* ── ¿La atendiste? — citas pasadas sin confirmar ── */}
+        <PastUnconfirmedWidget
+          appointments={pastUnconfirmed.items}
+          total={pastUnconfirmed.total}
+          onActionDone={() => setRefreshKey((k) => k + 1)}
+          onOpenDetail={(id) => setDetailApptId(id)}
+        />
+
         {/* ── 3 KPI Cards: ingresos, pacientes, atendidos ── */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
           <StatCard
@@ -1113,318 +1307,257 @@ export default function DoctorDashboard() {
           />
         </div>
 
-        {/* Widgets Grid - Bento style */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-5">
-          {/* Citas del Día Widget */}
-          <Card padding={24}>
-            <div className="flex items-center gap-2 mb-4">
-              <Calendar className="w-5 h-5" style={{ color: 'var(--dh-turquoise)' }} />
-              <h2 className="text-sm font-bold" style={{ color: 'var(--dh-ink)' }}>
-                Citas del Día
-              </h2>
-              <span
-                className="ml-auto text-xs font-semibold px-2.5 py-1 rounded-full"
-                style={{
-                  background: 'var(--dh-gray-50)',
-                  color: 'var(--dh-gray-600)',
-                  fontFamily: 'var(--dh-font-mono)',
+        {/* ── Finanzas del Mes — tarjeta independiente (full-width) ── */}
+        <Card padding={24}>
+          <div className="flex items-center gap-2 mb-4">
+            <DollarSign className="w-5 h-5" style={{ color: 'var(--dh-turquoise)' }} />
+            <h2 className="text-sm font-bold" style={{ color: 'var(--dh-ink)' }}>
+              Finanzas
+            </h2>
+            <div className="ml-auto flex items-center gap-1">
+              <button
+                onClick={goToPrevMonth}
+                className="p-1 rounded-lg transition-colors"
+                style={{ color: 'var(--dh-gray-400)' }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = 'var(--dh-gray-50)';
+                  e.currentTarget.style.color = 'var(--dh-gray-600)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'transparent';
+                  e.currentTarget.style.color = 'var(--dh-gray-400)';
                 }}
               >
-                {todayAppointments.length}
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <span
+                className="text-xs font-semibold min-w-[110px] text-center capitalize"
+                style={{ color: 'var(--dh-gray-600)', fontFamily: 'var(--dh-font-mono)' }}
+              >
+                {monthLabel}
               </span>
-            </div>
-
-            {todayAppointments.length === 0 ? (
-              <p className="text-sm text-slate-400 py-8 text-center">
-                No hay citas programadas para hoy
-              </p>
-            ) : (
-              <div className="space-y-2 overflow-y-auto pr-0.5" style={{ maxHeight: '320px' }}>
-                {todayAppointments.map((apt) => {
-                  const appointmentTime = new Date(apt.scheduled_at);
-                  const now = new Date();
-                  const isPast = appointmentTime < now;
-                  return (
-                    <button
-                      key={apt.id}
-                      onClick={() => handleAppointmentClick(apt)}
-                      className="w-full flex items-center justify-between p-3 bg-slate-50 rounded-lg border border-slate-100 hover:border-teal-200 hover:bg-teal-50/30 transition-colors text-left"
-                    >
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-slate-900">
-                          {apt.patient_name || 'Paciente sin nombre'}
-                        </p>
-                        <p className="text-xs text-slate-400 mt-0.5">
-                          {formatTime(apt.scheduled_at)}
-                        </p>
-                      </div>
-                      <span
-                        className={`text-xs font-medium px-2.5 py-1 rounded-full shrink-0 ml-2 ${getStatusBadgeColor(apt.status, isPast)}`}
-                      >
-                        {getStatusBadgeText(apt, isPast)}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </Card>
-
-          {/* Finanzas del Mes Widget */}
-          <Card padding={24}>
-            <div className="flex items-center gap-2 mb-4">
-              <DollarSign className="w-5 h-5" style={{ color: 'var(--dh-turquoise)' }} />
-              <h2 className="text-sm font-bold" style={{ color: 'var(--dh-ink)' }}>
-                Finanzas
-              </h2>
-              <div className="ml-auto flex items-center gap-1">
-                <button
-                  onClick={goToPrevMonth}
-                  className="p-1 rounded-lg transition-colors"
-                  style={{ color: 'var(--dh-gray-400)' }}
-                  onMouseEnter={(e) => {
+              <button
+                onClick={goToNextMonth}
+                disabled={isCurrentMonth}
+                className="p-1 rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                style={{ color: 'var(--dh-gray-400)' }}
+                onMouseEnter={(e) => {
+                  if (!isCurrentMonth) {
                     e.currentTarget.style.background = 'var(--dh-gray-50)';
                     e.currentTarget.style.color = 'var(--dh-gray-600)';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = 'transparent';
-                    e.currentTarget.style.color = 'var(--dh-gray-400)';
-                  }}
-                >
-                  <ChevronLeft className="w-4 h-4" />
-                </button>
-                <span
-                  className="text-xs font-semibold min-w-[110px] text-center capitalize"
-                  style={{ color: 'var(--dh-gray-600)', fontFamily: 'var(--dh-font-mono)' }}
-                >
-                  {monthLabel}
-                </span>
-                <button
-                  onClick={goToNextMonth}
-                  disabled={isCurrentMonth}
-                  className="p-1 rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-                  style={{ color: 'var(--dh-gray-400)' }}
-                  onMouseEnter={(e) => {
-                    if (!isCurrentMonth) {
-                      e.currentTarget.style.background = 'var(--dh-gray-50)';
-                      e.currentTarget.style.color = 'var(--dh-gray-600)';
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = 'transparent';
-                    e.currentTarget.style.color = 'var(--dh-gray-400)';
-                  }}
-                >
-                  <ChevronRightIcon className="w-4 h-4" />
-                </button>
-              </div>
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'transparent';
+                  e.currentTarget.style.color = 'var(--dh-gray-400)';
+                }}
+              >
+                <ChevronRightIcon className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <div
+              className="p-4"
+              style={{
+                background:
+                  'linear-gradient(135deg, var(--dh-turquoise-50) 0%, var(--dh-turquoise-100) 100%)',
+                border: '1px solid var(--dh-turquoise-100)',
+                borderRadius: 'var(--dh-r-md)',
+              }}
+            >
+              <p className="text-xs font-semibold mb-1" style={{ color: 'var(--dh-gray-600)' }}>
+                Ingresos Totales
+              </p>
+              <p
+                className="font-semibold"
+                style={{
+                  color: 'var(--dh-turquoise-700)',
+                  fontFamily: 'var(--dh-font-display)',
+                  fontSize: 28,
+                  letterSpacing: '-0.02em',
+                }}
+              >
+                {format(financialData.total_revenue)}
+              </p>
+              {bcvRate && (
+                <p className="text-sm font-semibold" style={{ color: 'var(--dh-turquoise)' }}>
+                  {toBs(financialData.total_revenue)}
+                </p>
+              )}
+              <p className="text-xs mt-1" style={{ color: 'var(--dh-gray-400)' }}>
+                USD
+              </p>
             </div>
 
-            <div className="space-y-4">
-              <div
-                className="p-4"
-                style={{
-                  background:
-                    'linear-gradient(135deg, var(--dh-turquoise-50) 0%, var(--dh-turquoise-100) 100%)',
-                  border: '1px solid var(--dh-turquoise-100)',
-                  borderRadius: 'var(--dh-r-md)',
-                }}
-              >
-                <p className="text-xs font-semibold mb-1" style={{ color: 'var(--dh-gray-600)' }}>
-                  Ingresos Totales
-                </p>
-                <p
-                  className="font-semibold"
-                  style={{
-                    color: 'var(--dh-turquoise-700)',
-                    fontFamily: 'var(--dh-font-display)',
-                    fontSize: 28,
-                    letterSpacing: '-0.02em',
-                  }}
-                >
-                  {format(financialData.total_revenue)}
-                </p>
-                {bcvRate && (
-                  <p className="text-sm font-semibold" style={{ color: 'var(--dh-turquoise)' }}>
-                    {toBs(financialData.total_revenue)}
-                  </p>
-                )}
-                <p className="text-xs mt-1" style={{ color: 'var(--dh-gray-400)' }}>
-                  USD
-                </p>
-              </div>
-
-              {/* Por ingresar = cuentas por cobrar (consultas con pago pendiente). */}
-              <div
-                className="p-3"
-                style={{
-                  background: 'var(--dh-amber-50, #fffbeb)',
-                  border: '1px solid var(--dh-amber-100, #fde68a)',
-                  borderRadius: 'var(--dh-r-md)',
-                }}
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Clock className="w-4 h-4" style={{ color: '#b45309' }} />
-                    <p className="text-xs font-semibold" style={{ color: '#92400e' }}>
-                      Por ingresar
-                    </p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-sm font-bold" style={{ color: '#92400e' }}>
-                      {format(financialData.pending_amount)}
-                    </p>
-                    {bcvRate && financialData.pending_amount > 0 && (
-                      <p className="text-[11px]" style={{ color: '#b45309' }}>
-                        {toBs(financialData.pending_amount)}
-                      </p>
-                    )}
-                  </div>
-                </div>
-                {financialData.pending_amount > 0 && (
-                  <Link
-                    href="/doctor/cobros"
-                    className="mt-2 flex items-center gap-1 text-[11px] font-semibold"
-                    style={{ color: '#b45309' }}
-                  >
-                    Ver consultas pendientes de cobro
-                    <ArrowRight className="w-3 h-3" />
-                  </Link>
-                )}
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div
-                  className="p-3"
-                  style={{
-                    background: 'var(--dh-gray-50)',
-                    border: '1px solid var(--dh-gray-100)',
-                    borderRadius: 'var(--dh-r-md)',
-                  }}
-                >
-                  <p className="text-xs font-semibold" style={{ color: 'var(--dh-gray-600)' }}>
-                    Citas Completadas
-                  </p>
-                  <p
-                    className="font-bold mt-1"
-                    style={{
-                      color: 'var(--dh-ink)',
-                      fontFamily: 'var(--dh-font-display)',
-                      fontSize: 22,
-                    }}
-                  >
-                    {financialData.appointment_count}
+            {/* Por ingresar = cuentas por cobrar (consultas con pago pendiente). */}
+            <div
+              className="p-3"
+              style={{
+                background: 'var(--dh-amber-50, #fffbeb)',
+                border: '1px solid var(--dh-amber-100, #fde68a)',
+                borderRadius: 'var(--dh-r-md)',
+              }}
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Clock className="w-4 h-4" style={{ color: '#b45309' }} />
+                  <p className="text-xs font-semibold" style={{ color: '#92400e' }}>
+                    Por ingresar
                   </p>
                 </div>
-                <div
-                  className="p-3"
-                  style={{
-                    background: 'var(--dh-gray-50)',
-                    border: '1px solid var(--dh-gray-100)',
-                    borderRadius: 'var(--dh-r-md)',
-                  }}
-                >
-                  <p className="text-xs font-semibold" style={{ color: 'var(--dh-gray-600)' }}>
-                    Promedio por Cita
+                <div className="text-right">
+                  <p className="text-sm font-bold" style={{ color: '#92400e' }}>
+                    {format(financialData.pending_amount)}
                   </p>
-                  <p
-                    className="font-bold mt-1"
-                    style={{
-                      color: 'var(--dh-ink)',
-                      fontFamily: 'var(--dh-font-display)',
-                      fontSize: 22,
-                    }}
-                  >
-                    {format(
-                      financialData.appointment_count > 0
-                        ? financialData.total_revenue / financialData.appointment_count
-                        : 0,
-                    )}
-                  </p>
-                  {bcvRate && financialData.appointment_count > 0 && (
-                    <p className="text-xs" style={{ color: 'var(--dh-gray-400)' }}>
-                      {toBs(financialData.total_revenue / financialData.appointment_count)}
+                  {bcvRate && financialData.pending_amount > 0 && (
+                    <p className="text-[11px]" style={{ color: '#b45309' }}>
+                      {toBs(financialData.pending_amount)}
                     </p>
                   )}
                 </div>
               </div>
-
-              {/* Acciones rápidas de finanzas */}
-              {planUnlocks(planFeatures, 'finances') ? (
-                <>
-                  <div className="grid grid-cols-3 gap-2 pt-1">
-                    <button
-                      onClick={() => void handleOpenIncomeModal()}
-                      className="flex flex-col items-center gap-1 py-2 px-2 rounded-lg text-[11px] font-semibold text-white transition-opacity hover:opacity-90"
-                      style={{ background: 'var(--dh-turquoise)' }}
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                      Ingreso
-                    </button>
-                    <button
-                      onClick={handleOpenPaymentModal}
-                      className="flex flex-col items-center gap-1 py-2 px-2 rounded-lg text-[11px] font-semibold transition-colors"
-                      style={{
-                        background: 'var(--dh-turquoise-50)',
-                        border: '1px solid var(--dh-turquoise-100)',
-                        color: 'var(--dh-turquoise-700)',
-                      }}
-                    >
-                      <Wallet className="w-3.5 h-3.5" />
-                      Cobros
-                    </button>
-                    <button
-                      onClick={() => setShowExpenseModal(true)}
-                      className="flex flex-col items-center gap-1 py-2 px-2 rounded-lg text-[11px] font-semibold transition-colors"
-                      style={{
-                        background: 'var(--dh-gray-50)',
-                        border: '1px solid var(--dh-gray-200)',
-                        color: 'var(--dh-gray-800)',
-                      }}
-                    >
-                      <Receipt className="w-3.5 h-3.5" />
-                      Gasto
-                    </button>
-                  </div>
-
-                  <Link
-                    href="/doctor/finances"
-                    className="text-xs font-semibold flex items-center gap-1 pt-2"
-                    style={{ color: 'var(--dh-turquoise-700)' }}
-                  >
-                    Ver más detalles
-                    <ArrowRight className="w-3 h-3" />
-                  </Link>
-                </>
-              ) : (
-                <div
-                  className="mt-2 px-4 py-3 rounded-lg flex items-center justify-between gap-3"
-                  style={{
-                    background: 'var(--dh-gray-50)',
-                    border: '1px solid var(--dh-gray-100)',
-                  }}
+              {financialData.pending_amount > 0 && (
+                <Link
+                  href="/doctor/cobros"
+                  className="mt-2 flex items-center gap-1 text-[11px] font-semibold"
+                  style={{ color: '#b45309' }}
                 >
-                  <div className="flex items-center gap-2 min-w-0">
-                    <Lock
-                      className="w-3.5 h-3.5 shrink-0"
-                      style={{ color: 'var(--dh-gray-400)' }}
-                    />
-                    <p className="text-xs text-slate-500">
-                      Finanzas disponible en Delta Base o superior
-                    </p>
-                  </div>
-                  <Link
-                    href="/doctor/upgrade"
-                    className="shrink-0 text-[11px] font-bold text-white px-3 py-1.5 rounded-lg transition-colors"
-                    style={{ background: 'var(--dh-turquoise)' }}
-                  >
-                    Mejorar plan
-                  </Link>
-                </div>
+                  Ver consultas pendientes de cobro
+                  <ArrowRight className="w-3 h-3" />
+                </Link>
               )}
             </div>
-          </Card>
-        </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div
+                className="p-3"
+                style={{
+                  background: 'var(--dh-gray-50)',
+                  border: '1px solid var(--dh-gray-100)',
+                  borderRadius: 'var(--dh-r-md)',
+                }}
+              >
+                <p className="text-xs font-semibold" style={{ color: 'var(--dh-gray-600)' }}>
+                  Citas Completadas
+                </p>
+                <p
+                  className="font-bold mt-1"
+                  style={{
+                    color: 'var(--dh-ink)',
+                    fontFamily: 'var(--dh-font-display)',
+                    fontSize: 22,
+                  }}
+                >
+                  {financialData.appointment_count}
+                </p>
+              </div>
+              <div
+                className="p-3"
+                style={{
+                  background: 'var(--dh-gray-50)',
+                  border: '1px solid var(--dh-gray-100)',
+                  borderRadius: 'var(--dh-r-md)',
+                }}
+              >
+                <p className="text-xs font-semibold" style={{ color: 'var(--dh-gray-600)' }}>
+                  Promedio por Cita
+                </p>
+                <p
+                  className="font-bold mt-1"
+                  style={{
+                    color: 'var(--dh-ink)',
+                    fontFamily: 'var(--dh-font-display)',
+                    fontSize: 22,
+                  }}
+                >
+                  {format(
+                    financialData.appointment_count > 0
+                      ? financialData.total_revenue / financialData.appointment_count
+                      : 0,
+                  )}
+                </p>
+                {bcvRate && financialData.appointment_count > 0 && (
+                  <p className="text-xs" style={{ color: 'var(--dh-gray-400)' }}>
+                    {toBs(financialData.total_revenue / financialData.appointment_count)}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {/* Acciones rápidas de finanzas */}
+            {planUnlocks(planFeatures, 'finances') ? (
+              <>
+                <div className="grid grid-cols-3 gap-2 pt-1">
+                  <button
+                    onClick={() => void handleOpenIncomeModal()}
+                    className="flex flex-col items-center gap-1 py-2 px-2 rounded-lg text-[11px] font-semibold text-white transition-opacity hover:opacity-90"
+                    style={{ background: 'var(--dh-turquoise)' }}
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    Ingreso
+                  </button>
+                  <button
+                    onClick={handleOpenPaymentModal}
+                    className="flex flex-col items-center gap-1 py-2 px-2 rounded-lg text-[11px] font-semibold transition-colors"
+                    style={{
+                      background: 'var(--dh-turquoise-50)',
+                      border: '1px solid var(--dh-turquoise-100)',
+                      color: 'var(--dh-turquoise-700)',
+                    }}
+                  >
+                    <Wallet className="w-3.5 h-3.5" />
+                    Cobros
+                  </button>
+                  <button
+                    onClick={() => setShowExpenseModal(true)}
+                    className="flex flex-col items-center gap-1 py-2 px-2 rounded-lg text-[11px] font-semibold transition-colors"
+                    style={{
+                      background: 'var(--dh-gray-50)',
+                      border: '1px solid var(--dh-gray-200)',
+                      color: 'var(--dh-gray-800)',
+                    }}
+                  >
+                    <Receipt className="w-3.5 h-3.5" />
+                    Gasto
+                  </button>
+                </div>
+
+                <Link
+                  href="/doctor/finances"
+                  className="text-xs font-semibold flex items-center gap-1 pt-2"
+                  style={{ color: 'var(--dh-turquoise-700)' }}
+                >
+                  Ver más detalles
+                  <ArrowRight className="w-3 h-3" />
+                </Link>
+              </>
+            ) : (
+              <div
+                className="mt-2 px-4 py-3 rounded-lg flex items-center justify-between gap-3"
+                style={{
+                  background: 'var(--dh-gray-50)',
+                  border: '1px solid var(--dh-gray-100)',
+                }}
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  <Lock className="w-3.5 h-3.5 shrink-0" style={{ color: 'var(--dh-gray-400)' }} />
+                  <p className="text-xs text-slate-500">
+                    Finanzas disponible en Delta Base o superior
+                  </p>
+                </div>
+                <Link
+                  href="/doctor/upgrade"
+                  className="shrink-0 text-[11px] font-bold text-white px-3 py-1.5 rounded-lg transition-colors"
+                  style={{ background: 'var(--dh-turquoise)' }}
+                >
+                  Mejorar plan
+                </Link>
+              </div>
+            )}
+          </div>
+        </Card>
       </div>
 
       {/* AppointmentDetailModal — se abre al hacer click en una cita "Por confirmar" */}
@@ -1463,6 +1596,11 @@ export default function DoctorDashboard() {
             // sistema estaba trabajando. El modal se queda mostrando "Abriendo la
             // consulta…" y se va solo cuando esta página se desmonta al navegar.
             if (consultationId) {
+              // router.refresh() invalida el router cache de /doctor ANTES de navegar
+              // hacia /consultations. Sin esto, al volver con el botón atrás el navegador
+              // sirve la versión cacheada pre-creación y las "Citas del Día" no se
+              // actualizan hasta que el usuario fuerza un F5.
+              router.refresh();
               router.push(`/doctor/consultations?open=${consultationId}`);
               return;
             }
@@ -1470,6 +1608,20 @@ export default function DoctorDashboard() {
             setShowImmediate(false);
             setRefreshKey((k) => k + 1);
           }}
+          onOpenExistingAppointment={(appointmentId) => {
+            setShowImmediate(false);
+            setDetailApptId(appointmentId);
+          }}
+          // Pass today's scheduled/confirmed appointments so the modal can warn
+          // when the selected patient already has a booking today.
+          todayScheduledAppointments={todayAppointments
+            .filter((a) => a.status === 'scheduled' || a.status === 'confirmed')
+            .map((a) => ({
+              patientId: a.patientId,
+              scheduledAt: a.scheduled_at,
+              appointmentId: a.id,
+              consultationId: a.consultation_id ?? null,
+            }))}
         />
       )}
 
@@ -1629,7 +1781,7 @@ export default function DoctorDashboard() {
                       payment.appointment?.plan_name ||
                       payment.consultation?.consultation_code ||
                       'Consulta';
-                    const amount = payment.amount_usd ?? 0;
+                    const amount = payment.amount_usd;
                     const dateStr = payment.appointment?.scheduled_at || payment.created_at;
                     const isApproving = approvingPaymentId === payment.id;
 
@@ -1649,15 +1801,22 @@ export default function DoctorDashboard() {
                               day: '2-digit',
                               month: 'short',
                               year: 'numeric',
+                              timeZone: VE_TIMEZONE,
                             }).format(new Date(dateStr))}
                           </p>
                         </div>
 
                         {/* Monto */}
                         <div className="text-right shrink-0">
-                          <p className="text-sm font-bold text-slate-900">{format(amount)}</p>
-                          {bcvRate && amount > 0 && (
-                            <p className="text-[11px] text-slate-400">{toBs(amount)}</p>
+                          {amount == null ? (
+                            <p className="text-xs text-slate-400 italic">A consultar</p>
+                          ) : (
+                            <>
+                              <p className="text-sm font-bold text-slate-900">{format(amount)}</p>
+                              {bcvRate && amount > 0 && (
+                                <p className="text-[11px] text-slate-400">{toBs(amount)}</p>
+                              )}
+                            </>
                           )}
                         </div>
 
@@ -1909,6 +2068,24 @@ export default function DoctorDashboard() {
           planFeatures={planFeatures}
           onClose={() => setShowWelcome(false)}
           onDismissForever={dismissWelcomeForever}
+        />
+      )}
+
+      {/* Novedades de version (fase 2 retencion): carousel de hasta 5 novedades no vistas.
+          Solo se abre cuando el tour de bienvenida NO va a mostrarse esta visita (spec B.3).
+          "Entendido" marca como vistas; X/Escape cierra sin marcar. */}
+      {showReleaseNotes && !showWelcome && (
+        <ReleaseNotesModal onClose={() => setShowReleaseNotes(false)} />
+      )}
+
+      {/* FASE 3 — Modal "Queremos conocerte": solo se abre si no hay otro modal esta visita. */}
+      {showMeetingModal && !showWelcome && !showReleaseNotes && (
+        <MeetingInviteModal
+          doctorName={profile?.full_name ?? 'Doctor'}
+          onClose={() => {
+            setShowMeetingModal(false);
+            setMeetingCardKey((k) => k + 1);
+          }}
         />
       )}
     </>

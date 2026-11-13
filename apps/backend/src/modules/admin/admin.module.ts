@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { SequelizeModule } from '@nestjs/sequelize';
 import { SellerCommissionsModule } from '../seller-commissions/seller-commissions.module';
+import { FinancesModule } from '../finances/finances.module';
 
 // Models
 import { ProfileAdminModel } from './infrastructure/database/models/profile.model';
@@ -80,6 +81,10 @@ import { PublicStatsController } from './presentation/controllers/public-stats.c
     // SellerCommissionsModule exports AccruePlanCommissionUseCase, injected into
     // UpdateDoctorSubscriptionUseCase (best-effort, @Optional).
     SellerCommissionsModule,
+    // FinancesModule exports GetFinancialSummaryUseCase, injected into
+    // GetDoctorDetailUseCase so monthlyRevenue uses the same sources and month
+    // boundaries as the doctor's own Finanzas screen.
+    FinancesModule,
   ],
   controllers: [AdminController, PlansCatalogController, PublicStatsController],
   providers: [

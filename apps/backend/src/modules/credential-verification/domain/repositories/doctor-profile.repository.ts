@@ -25,4 +25,23 @@ export interface IDoctorProfileForVerificationRepository {
    * Returns null when the profile does not exist.
    */
   findById(doctorId: string): Promise<DoctorProfileForVerification | null>;
+
+  /**
+   * Conditionally promotes a doctor's profile to 'verified'.
+   *
+   * Executes:
+   *   UPDATE profiles
+   *   SET verification_status = 'verified', verified_at = NOW(), verified_by = NULL
+   *   WHERE id = :doctorId AND verification_status = 'pending'
+   *
+   * The WHERE guard ensures:
+   *   - 'rejected' profiles set by an admin are NEVER overridden.
+   *   - Already-verified profiles are a no-op (idempotent).
+   *
+   * verified_by = NULL signals a system-automated verification (SACS match),
+   * as opposed to a human admin action.
+   *
+   * SECURITY: Never log the doctorId combined with PII fields.
+   */
+  promoteToVerified(doctorId: string): Promise<void>;
 }

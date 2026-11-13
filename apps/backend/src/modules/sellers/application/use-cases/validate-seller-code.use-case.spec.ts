@@ -33,6 +33,7 @@ describe('ValidateSellerCodeUseCase', () => {
     repoMock.findByCode.mockResolvedValue({
       id: 'seller-1',
       fullName: 'María González',
+      email: 'maria@delta.app',
       sellerCode: 'ABCDEF',
       createdAt: new Date(),
     });

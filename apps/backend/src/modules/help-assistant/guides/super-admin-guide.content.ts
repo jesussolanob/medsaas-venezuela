@@ -386,9 +386,17 @@ pendientes, se muestra un aviso con la cantidad.
 (Pendiente, Verificado, Rechazado), email, cédula, MPPS, colegiado.
 
 **Verificación automática de MPPS (contra SACS):**
-- Junto al número MPPS hay un botón **Verificar MPPS** (o **Re-verificar MPPS** si ya se intentó).
-- Al pulsarlo, el sistema consulta el portal SACS por la cédula del especialista y devuelve un resultado
-  visible como insignia:
+- Cuando un especialista completa su registro, el sistema consulta automáticamente el portal SACS
+  con su cédula. Si el número MPPS declarado coincide (nombre + MPPS + profesión médica), el
+  especialista pasa directamente a **Verificado** sin que ningún admin intervenga. En su tarjeta
+  aparece la insignia **"Auto · MPPS"** junto al estado, para indicar que fue verificado de forma
+  automática y no manualmente.
+- Los especialistas cuyo MPPS **no coincide** o **no se encuentra** en SACS quedan en
+  **Pendiente** para que el admin los revise manualmente.
+- Un especialista **Rechazado** por un admin nunca es promovido automáticamente por SACS,
+  incluso si luego el portal lo confirma: la decisión del admin prevalece.
+- Junto al número MPPS hay un botón **Verificar MPPS** (o **Re-verificar MPPS** si ya se intentó)
+  para lanzar la consulta manualmente o forzar una nueva verificación:
   - **MPPS verificado** (verde): el número coincide en SACS.
   - **MPPS no coincide** (ámbar): el número declarado no coincide con SACS; muestra detalle.
   - **No encontrado en SACS** (gris): no se halló el registro.
@@ -412,9 +420,10 @@ un control de acceso de cuenta independiente de la verificación:
 
 1. Entra a **Verificaciones** (/admin/verifications) y quédate en **Pendientes**.
 2. Ubica la tarjeta del especialista.
-3. Para el **MPPS (automático):** pulsa **Verificar MPPS**. Espera el resultado (insignia). Si dice
-   "MPPS verificado", su número es legítimo según SACS. Si dice "no coincide" o "no encontrado",
-   revisa el dato manualmente.
+3. Para el **MPPS (automático):** el sistema ya pudo haberlo verificado al registrarse. Si la
+   insignia dice "MPPS verificado" y ves "Auto · MPPS" en el estado, el proceso fue automático.
+   Si no, pulsa **Verificar MPPS** manualmente. Si dice "no coincide" o "no encontrado", revisa
+   el dato con el especialista antes de aprobarlo.
 4. Para el **colegiado (manual):** no hay verificador automático. Confirma el número con la fuente
    correspondiente por tu cuenta.
 5. Cuando estés conforme, pulsa **Verificar** para aprobar al especialista, o **Rechazar** si las
@@ -654,6 +663,13 @@ propio. Boton **Nuevo vendedor** — despliega el formulario de alta en la misma
 - **Correo** (obligatorio, email valido).
 - El codigo lo genera el sistema al crear al vendedor; aparece en el mensaje de exito del toast.
 - Botones **Cancelar** y **Crear vendedor**.
+- Al crear el vendedor, el sistema envia automaticamente un **correo de bienvenida** al email
+  registrado con: instrucciones paso a paso para iniciar sesion (URL + correo exacto a usar +
+  advertencia de no usar otro correo), su codigo de referido y enlace personalizado
+  (/r/CODIGO), descripcion de las secciones del portal (Inicio, Especialistas, Comisiones,
+  Datos de cobro) y un boton "Entrar a mi portal". El aviso confirma "Vendedor creado y correo
+  de bienvenida enviado"; si el correo no salio, el aviso lo dice y se puede reenviar desde la
+  fila del vendedor (columna **Bienvenida**).
 
 **Tabla de vendedores (columnas):**
 - **Vendedor:** nombre en negrita y, debajo, el email con icono de sobre.
@@ -671,6 +687,10 @@ propio. Boton **Nuevo vendedor** — despliega el formulario de alta en la misma
   portal.
 - **Acceso:** boton **Deshabilitar** (rojo) si esta habilitado, o **Habilitar** (verde) si
   esta deshabilitado.
+- **Bienvenida:** boton **Reenviar** (al pasar el cursor dice "Reenviar correo de
+  bienvenida"), disponible siempre en cada fila. Vuelve a mandar el correo de bienvenida al
+  email del vendedor. Sirve si el envio inicial fallo, si el vendedor lo borro o si fue creado
+  antes de que existiera este correo. El aviso confirma si salio o si fallo.
 
 **Deshabilitar un vendedor (pide confirmacion):**
 - Consecuencias que muestra el dialogo: su enlace de referido deja de atribuir especialistas
@@ -855,7 +875,9 @@ No. Rechazar la verificación es una marca sobre sus credenciales y en Etapa 1 N
 acceso. Bloquear acceso sí le impide entrar.
 
 **¿Cómo verifico el MPPS de un especialista?**
-En /admin/verifications, en la tarjeta del especialista pulsa Verificar MPPS. El sistema consulta el
+Si el especialista ya registró su cédula y MPPS, es posible que el sistema lo haya verificado
+automáticamente al registrarse (verás "Auto · MPPS" en su estado). Si aún aparece Pendiente,
+en /admin/verifications, en la tarjeta del especialista pulsa Verificar MPPS. El sistema consulta el
 portal SACS por su cédula y muestra el resultado. El colegiado se verifica de forma manual.
 
 **¿Dónde cambio el precio de un plan?**
@@ -939,4 +961,185 @@ no las borra. Podes volver a habilitarlo en cualquier momento desde /admin/selle
 En /admin/promotions (no esta en el menu lateral, se accede por URL directa) o en la pestana
 Configuracion de /admin/subscriptions. Ambas permiten crear paquetes multi-mes con precio
 promocional para atraer especialistas.
+
+---
+
+## Solicitudes de contacto (Admin)
+
+**Que son las Solicitudes de contacto?**
+Cuando un especialista pulsa el boton "Contactame ya" en su panel, se genera una solicitud de contacto.
+El equipo de Delta recibe un correo inmediato y la solicitud aparece en Admin → Solicitudes de contacto
+(/admin/contact-requests). Esta seccion permite hacer seguimiento de cada solicitud hasta resolverla.
+
+**Como llego a las Solicitudes de contacto?**
+Ruta directa: /admin/contact-requests. Tambien hay un contador de solicitudes pendientes en la
+campana de notificaciones del admin (punto rojo con el numero de pendientes).
+
+**Que informacion muestra la lista de solicitudes?**
+Cada fila muestra: nombre del especialista, plan, especialidad, telefono, correo, canal preferido
+(Llamame ya / WhatsApp / Llamada / Correo), mensaje (si lo escribio), estado, y fecha de creacion.
+Se puede filtrar por estado (pendiente / contactado / resuelto) y por rango de fechas.
+
+**Cuales son los estados de una solicitud?**
+- Pendiente: el especialista envio la solicitud pero aun no lo contactaron.
+- Contactado: el equipo ya lo contacto (se registra quien lo marco y cuando).
+- Resuelto: la solicitud fue atendida y cerrada.
+
+**Como cambio el estado de una solicitud?**
+En la fila de la solicitud, usa el boton Editar o el selector de estado para cambiar de Pendiente
+a Contactado, o de Contactado a Resuelto. Solo es posible avanzar el estado, no retrocederlo.
+Al cambiar el estado se registra automaticamente quien lo hizo y la fecha/hora.
+
+**Puedo agregar notas internas a una solicitud?**
+Si. Al editar una solicitud puedes escribir notas internas visibles solo para el equipo de administracion.
+Son utiles para registrar que se hablo con el especialista o acordar un seguimiento.
+
+**Que correo recibe el equipo cuando llega una solicitud?**
+El sistema envia el correo a todos los perfiles con rol super_admin. El asunto incluye el nombre del
+especialista. Si el canal elegido fue "Llamame ya", el asunto lleva el prefijo URGENTE para distinguirlo.
+El correo incluye nombre, plan, especialidad, telefono, correo, canal preferido, mensaje y un boton
+que lleva directamente a la solicitud en el panel.
+
+**Que pasa si el especialista envia varias solicitudes seguidas?**
+El sistema permite maximo 3 notificaciones al equipo por especialista en 24 horas. Si el especialista
+ya tiene una solicitud pendiente, la nueva actualiza la existente (mismo registro, nuevo canal y mensaje);
+no se crea una solicitud duplicada. Si supera el limite de 3 notificaciones en 24 horas, recibe un
+aviso de que lo intente mas tarde.
+
+**Donde configuro el numero de soporte y el horario de atencion?**
+En Admin → Configuracion (/admin/settings), seccion "Contacto y soporte":
+- Numero de WhatsApp de soporte (solo digitos con codigo de pais; valor actual: 584221033582).
+- Horario de atencion: dias de la semana (ISO, 1=lunes ... 7=domingo), hora de inicio y hora de fin
+  en formato HH:MM, y zona horaria (America/Caracas). Este horario determina cuando aparece la opcion
+  "Llamame ya" en el panel del especialista y cuando el backend acepta ese canal.
+Cambiar estos valores afecta inmediatamente el comportamiento del modal para todos los especialistas.
+El numero correcto y unico de soporte de Delta es +58 422 103 3582 (584221033582 sin el +).
+
+---
+
+## Novedades de version (Admin)
+
+**Que son las Novedades de version en el panel admin?**
+La seccion Admin → Novedades (/admin/release-notes) permite al equipo crear, editar, publicar
+y despublicar anuncios de novedades que los especialistas ven al entrar a su panel.
+Tanto los super_admin como los admin pueden gestionar novedades.
+
+**Como creo una novedad?**
+1. Ve a Admin → Novedades.
+2. Pulsa "Nueva novedad". Se abre el formulario.
+3. Completa: Titulo (max 80 caracteres), Cuerpo (max 1500 caracteres, texto plano, sin HTML).
+4. Opcionalmente sube una imagen (JPG, PNG o WEBP, max 10 MB) y selecciona los planes
+   a los que va dirigida (dejar en blanco = llega a todos los planes).
+5. Pulsa "Guardar como borrador". La novedad se crea como BORRADOR y no es visible para los
+   especialistas hasta que la publiques.
+
+**Como publico o despublico una novedad?**
+- Para publicar: en la lista de novedades, abre el borrador y pulsa "Publicar".
+  El sistema asigna la fecha y hora de publicacion automaticamente (hora del servidor).
+  Desde ese momento los especialistas del plan correspondiente ven la novedad en su modal.
+- Para despublicar: abre la novedad publicada y pulsa "Despublicar". Vuelve a ser un borrador.
+  Los especialistas que ya la vieron no vuelven a verla si la republicas.
+
+**Puedo editar una novedad publicada?**
+Si. Puedes editar el titulo, cuerpo, imagen y planes de una novedad en cualquier momento, tanto
+si esta en borrador como si esta publicada. Editar una novedad publicada NO la re-muestra a los
+especialistas que ya la vieron; solo afecta a quienes aun no la han visto.
+
+**Como elimino una novedad?**
+Solo se pueden eliminar BORRADORES. Si la novedad ya esta publicada, primero despublicala y luego
+eliminala. Esto evita eliminar por error una novedad que los especialistas estan viendo.
+
+**Que significa el filtro de planes (audiencia)?**
+Puedes restringir una novedad a uno o varios planes (por ejemplo, solo Delta Plus). Los especialistas
+con un plan diferente no veran esa novedad ni en el modal ni en su historial.
+Si dejas el campo en blanco (null), la novedad llega a todos los especialistas sin importar el plan.
+
+**El contenido es texto plano. Que significa?**
+No se puede incluir HTML en el titulo ni en el cuerpo. El sistema rechaza cualquier texto que
+contenga etiquetas HTML (como <b>, <p>, <script>, etc.). Si quieres formato visual, usa listas
+con guiones (-) o saltos de linea; el frontend las renderiza como texto con formato basico.
+
+**Para que sirve la imagen en una novedad?**
+La imagen es opcional. Si la subes, aparece en el modal del especialista junto al titulo y el cuerpo.
+Para subir la imagen, usa el boton de carga en el formulario de la novedad (multipart upload).
+La imagen se almacena en GCS y se sirve con una URL permanente.
+
+**Como veo la vista previa de una novedad antes de publicarla?**
+En el formulario de edicion hay una vista previa que muestra como vera el especialista la novedad
+en su modal (fecha, titulo, cuerpo e imagen). Siempre revisa la vista previa antes de publicar.
+
+**Los especialistas ven automaticamente las novedades nuevas?**
+Si. Al entrar a Inicio (/doctor), el sistema verifica si hay novedades publicadas para su plan
+que no ha visto (fecha de publicacion posterior a su ultima marca de "visto"). Si las hay, el
+modal se abre automaticamente mostrando hasta 5 novedades a la vez. El especialista pulsa
+"Entendido" para marcarlas como vistas; si cierra el modal de otra forma, vuelven a aparecer
+la proxima visita.
+
+---
+
+## Reuniones de equipo Delta (Admin)
+
+**Que son las Reuniones de equipo Delta?**
+Son videollamadas de 30 minutos que los especialistas pueden agendar con el equipo de Delta.
+El panel admin permite ver todas las reuniones programadas, marcarlas como realizadas,
+cancelarlas, y configurar quien del equipo actua como anfitrion (host) en Google Calendar.
+
+**Donde gestiono las reuniones de equipo?**
+En Admin → Reuniones de equipo (/admin/team-meetings). Ahi puedes:
+- Ver la lista completa de reuniones con filtros por estado, fecha de inicio y fin.
+- Cambiar el estado de una reunion a "Realizada" (done), "No se presento" (no_show) o "Cancelada".
+- Agregar notas internas sobre la reunion.
+
+**Quien actua como anfitrion de las videollamadas?**
+Un super_admin cuya cuenta de Google Calendar esta conectada a Delta. El sistema usa las
+credenciales de ese anfitrion para crear los eventos en Google Meet y agregar al especialista
+como participante.
+
+**Como configuro el anfitrion?**
+En Admin → Reuniones de equipo → pestana "Configuracion del anfitrion":
+1. Ingresa el ID de perfil del super_admin que sera el anfitrion.
+2. Pulsa "Guardar". Desde ese momento todas las reuniones nuevas usaran ese perfil.
+Para que funcione Google Meet, el anfitrion debe tener su Google Calendar conectado
+(ver la guia de Integraciones → Google Calendar en el panel admin).
+
+**Si el anfitrion no tiene Google conectado, que pasa?**
+El sistema crea la reunion igualmente, pero usa Jitsi como plataforma de videollamada
+(enlace del tipo meet.jit.si/delta-...). El especialista recibe ese enlace por correo.
+
+**Que emails reciben los especialistas?**
+- Al agendar: correo de confirmacion con el enlace y la hora.
+- Al reagendar: correo con la nueva hora y enlace.
+- Al cancelar: correo de notificacion de cancelacion.
+- 24 horas antes y 1 hora antes del inicio: recordatorios automaticos por correo.
+
+**Puedo cancelar una reunion sin importar el horario?**
+Si. Como admin puedes cancelar cualquier reunion agendada en cualquier momento, sin el limite
+de 2 horas que aplica a los especialistas.
+
+**Que significa el estado "No se presento"?**
+Indica que el especialista tenia la reunion agendada pero no se conecto. Solo un admin puede
+marcar este estado; el sistema no lo asigna automaticamente.
+
+**Como otorgo un mes de gracia a un especialista despues de la reunion?**
+En Admin → Reuniones de equipo, abre la reunion cuyo estado es "Realizada" (done). Pulsa el
+boton "Otorgar mes de gracia". El sistema extiende la suscripcion del especialista en 1 mes
+(para cuentas en prueba) o 30 dias (para cuentas de pago). Solo se puede otorgar una vez por
+especialista; si ya tiene uno asignado, el boton muestra un error. Solo super_admin puede
+hacer esta accion.
+
+**Que correos de invitacion se envian automaticamente a los especialistas?**
+El cron diario (POST /api/cron/doctor-inactivity) envia dos tipos de invitacion a la reunion:
+- **Invitacion pre-vencimiento**: al especialista cuyo plan free_trial vence en 7 dias o menos
+  y aun no ha recibido esta invitacion.
+- **Invitacion post-vencimiento**: al especialista cuyo plan vencio hace 30 dias o menos, esta
+  en estado past_due, y aun no ha recibido esta invitacion.
+El correo incluye el asunto "Queremos conocerte" y un boton "Iniciar sesion en Delta". Se
+respeta la regla de un solo email de ciclo de vida por dia por especialista (junto con los
+avisos de inactividad).
+
+**Donde veo metricas de retencion?**
+Endpoint GET /api/admin/retention/metrics?from=YYYY-MM-DD&to=YYYY-MM-DD (solo super_admin).
+Devuelve conteos de: especialistas en ventana pre-vencimiento, ventana post-vencimiento, con
+reunion agendada, con reunion realizada, con mes de gracia otorgado, clicks en el enlace de
+invitacion, y conversiones (paso de prueba a plan de pago dentro del periodo).
 `;

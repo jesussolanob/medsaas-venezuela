@@ -88,6 +88,10 @@ import { DoctorSettingsModule } from '../doctor-settings/doctor-settings.module'
     GetIntegrationStatusUseCase,
     AppointmentNotificationService,
     APPOINTMENT_NOTIFICATION_SERVICE,
+    // Exported so TeamMeetingsModule can create Meet events on the host's calendar
+    // without re-implementing token refresh logic.
+    GoogleCalendarService,
+    GOOGLE_INTEGRATION_REPOSITORY,
   ],
 })
 export class IntegrationsModule {}

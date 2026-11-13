@@ -1135,3 +1135,62 @@ texto gris encima), y como nace deshabilitado, era lo primero que se veía.
 ⚠️ **Los modales de captura no cierran por clic en el fondo** (regla del ADR-021). Se aplicó a
 alta y envío de presupuesto, y alta/edición y carga masiva de producto. El visor de movimientos
 de inventario SÍ cierra: es de solo lectura.
+
+## Módulo RetentionInvites (2026-10-30 — Fase 4 retención especialistas)
+
+`apps/backend/src/modules/retention-invites/`
+
+| Capa          | Componente                                                                                                           | Descripción                                                                   |
+| ------------- | -------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| Domain        | `IRetentionInviteRepository`                                                                                         | Puerto con 14 métodos: candidatos, prompts, métricas, grace                   |
+| Domain errors | `GraceMonthAlreadyGrantedError` (409), `GraceMonthMeetingNotDoneError` (422), `GraceMonthMeetingNotFoundError` (404) | Errores tipados DDD                                                           |
+| Use cases     | `DispatchMeetingInvitesUseCase`                                                                                      | Envía invitaciones email pre/post vencimiento. Exporta `verifyToken` estático |
+| Use cases     | `GrantGraceMonthUseCase`                                                                                             | Otorga mes de gracia post-reunión. Exporta `addMonthsClamped`                 |
+| Use cases     | `RecordInviteClickUseCase`                                                                                           | Registra primer click en link de invitación (HMAC token)                      |
+| Use cases     | `GetRetentionMetricsUseCase`                                                                                         | Métricas agregadas de retención                                               |
+| Infra         | `SequelizeRetentionInviteRepository`                                                                                 | Raw SQL, sin registrar modelos Sequelize                                      |
+| Infra         | `20261030000004-retention-invite-and-grace.cjs`                                                                      | Siembra template email, crea índices                                          |
+| Controllers   | `PublicRetentionController`                                                                                          | `POST /api/public/retention/click` sin auth                                   |
+| Controllers   | `AdminRetentionController`                                                                                           | `GET /api/admin/retention/metrics` super_admin                                |
+
+**Integración con TeamMeetingsModule**: `AdminTeamMeetingsController` inyecta `@Optional() GrantGraceMonthUseCase` para `POST /api/admin/team-meetings/:id/grant-grace`.
+
+**Integración con RemindersModule**: `DispatchDoctorInactivityNoticesUseCase` inyecta `@Optional() DispatchMeetingInvitesUseCase`. Las invitaciones corren PRIMERO en el cron diario; los doctores invitados quedan excluidos del aviso de inactividad (regla one-lifecycle-email-per-day).
+
+## Lote 2026-11-02/03 (en staging)
+
+| Archivo                                             | Qué hace                                                                                                                   |
+| --------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `components/release-notes/ReleaseNotesList.tsx`     | Lista de novedades del plan (la usan `/doctor/release-notes` y la pestaña **Configuración → Novedades**, `?tab=novedades`) |
+| `components/release-notes/ReleaseNotesHomeLink.tsx` | Tarjeta en Inicio "Actualízate con las novedades de la plataforma" → `/doctor/settings?tab=novedades`                      |
+| `app/api/admin/sellers/[id]/welcome-email/route.ts` | Thin-proxy del reenvío del correo de bienvenida al vendedor (super_admin)                                                  |
+| `app/admin/sellers/page.tsx`                        | Columna nueva **Bienvenida** con botón "Reenviar"; el aviso al crear dice si el correo salió (`welcomeEmailSent`)          |
+
+**Backend:** `sellers` → `ResendSellerWelcomeEmailUseCase` + `CreateSellerUseCase` envía la plantilla
+`seller_welcome` (variables `sellerName`, `sellerEmail`, `sellerCode`, `referralUrl`, `loginUrl`);
+`email_send_log.recipient_type` acepta `'seller'` (columna TEXT). `credential-verification` →
+`VerifyMppsUseCase` promueve el perfil a verificado con `promoteToVerified` (ADR-096).
+
+**Convenciones nuevas:** ninguna página puede fijar `font-family` global ni importar Google Fonts
+(la app usa solo Plus Jakarta Sans vía `next/font`, tokens `--dh-font-*`); la columna `flex-1` de
+los layouts lleva `min-w-0` para que las tablas anchas no desborden la página.
+
+## Lote Inicio-citas (2026-11-03)
+
+| Archivo                                                                | Qué hace                                                                                                    |
+| ---------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `components/doctor/PastUnconfirmedWidget.tsx`                          | Sección "¿La atendiste?" del Inicio: citas `scheduled` de días pasados con Atendida / No asistió / Cancelar |
+| `app/doctor/dashboard-actions.ts` → `getPastUnconfirmedAppointments()` | Citas pasadas sin confirmar, más recientes primero + total real (`backendGetPaged`)                         |
+| `components/doctor/AppointmentDetailModal.tsx`                         | Atendida / No asistió cuando la cita ya llegó                                                               |
+| `components/doctor/ImmediateConsultationModal.tsx`                     | Aviso si el paciente ya tiene cita hoy; `onOpenExistingAppointment` abre su detalle                         |
+
+### Onboarding mínimo (2026-11-12)
+
+| Pieza                                                                                                        | Qué hace                                                                                                                 |
+| ------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------ |
+| `doctor-settings/.../skip-office.use-case.ts`, `skip-service.use-case.ts`, `onboarding-progress.use-case.ts` | "Omitir" con valores por defecto y seguimiento del paso                                                                  |
+| Migración `20261112000001-onboarding-skip-and-price-on-request.cjs`                                          | `pricing_plans.price_on_request`, `profiles.onboarding_last_step/_office_skipped/_service_skipped`                       |
+| `app/doctor/onboarding/OnboardingStep{Office,Service}.tsx`                                                   | Botón "Omitir" arriba y abajo; sin campo MPPS en el paso 1                                                               |
+| `app/doctor/settings/page.tsx`                                                                               | Campo "N.º MPPS" (distinto de Matrícula / Licencia)                                                                      |
+| `app/doctor/consultations/ApprovePaymentModal.tsx`                                                           | Pide "Monto de la consulta" si el servicio es a consultar (`requiresBaseAmount`)                                         |
+| `app/book/[doctorId]/BookingClient.tsx`                                                                      | "A consultar con el especialista"; sin paso de pago si el plan es a consultar o el especialista no tiene cuentas de pago |

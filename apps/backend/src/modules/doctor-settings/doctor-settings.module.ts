@@ -4,6 +4,7 @@ import { FinancesModule } from '../finances/finances.module';
 import { OfficesModule } from '../offices/offices.module';
 import { StorageModule } from '../storage/storage.module';
 import { SellerCommissionsModule } from '../seller-commissions/seller-commissions.module';
+import { CredentialVerificationModule } from '../credential-verification/credential-verification.module';
 
 // Models
 import { DoctorProfileModel } from './infrastructure/database/models/doctor-profile.model';
@@ -49,6 +50,12 @@ import { GetDoctorSubscriptionPanelUseCase } from './application/use-cases/docto
 import { CompleteOnboardingUseCase } from './application/use-cases/doctor-settings/complete-onboarding.use-case';
 import { DeactivateOwnAccountUseCase } from './application/use-cases/doctor-settings/deactivate-own-account.use-case';
 import { ApplyScheduledDeactivationsUseCase } from './application/use-cases/doctor-settings/apply-scheduled-deactivations.use-case';
+import { OnboardingProgressUseCase } from './application/use-cases/doctor-settings/onboarding-progress.use-case';
+import { SkipOfficeUseCase } from './application/use-cases/doctor-settings/skip-office.use-case';
+import { SkipServiceUseCase } from './application/use-cases/doctor-settings/skip-service.use-case';
+
+// Guards
+import { RolesGuard } from '../../presentation/guards/roles.guard';
 
 // Controller
 import { DoctorController } from './presentation/controllers/doctor.controller';
@@ -89,6 +96,9 @@ import { DoctorController } from './presentation/controllers/doctor.controller';
     // SellerCommissionsModule exports AccrueSignupCommissionUseCase, injected into
     // CompleteOnboardingUseCase (best-effort, @Optional).
     SellerCommissionsModule,
+    // CredentialVerificationModule exports VerifyMppsUseCase, injected into
+    // UpdateDoctorProfileUseCase fire-and-forget when mppsNumber changes.
+    CredentialVerificationModule,
   ],
   controllers: [DoctorController],
   providers: [
@@ -125,6 +135,9 @@ import { DoctorController } from './presentation/controllers/doctor.controller';
       useClass: SequelizePricingPlanRepository,
     },
 
+    // Guards
+    RolesGuard,
+
     // Use cases
     GetDoctorProfileUseCase,
     UpdateDoctorProfileUseCase,
@@ -143,6 +156,9 @@ import { DoctorController } from './presentation/controllers/doctor.controller';
     CompleteOnboardingUseCase,
     DeactivateOwnAccountUseCase,
     ApplyScheduledDeactivationsUseCase,
+    OnboardingProgressUseCase,
+    SkipOfficeUseCase,
+    SkipServiceUseCase,
   ],
   // Export DOCTOR_PROFILE_REPOSITORY so other modules can inject the doctor profile
   // without duplicating model registrations.

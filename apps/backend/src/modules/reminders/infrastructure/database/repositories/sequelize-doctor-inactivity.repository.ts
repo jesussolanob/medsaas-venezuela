@@ -66,4 +66,21 @@ export class SequelizeDoctorInactivityRepository implements IDoctorInactivityRep
       },
     );
   }
+
+  async hasReceivedLifecycleEmailToday(doctorId: string, caracasDateStr: string): Promise<boolean> {
+    // Uses the index email_send_log_recipient_created_idx (recipient_id + created_at).
+    // :tz is bound as a replacement — never interpolated into the SQL string.
+    const rows = await this.sequelize.query<{ cnt: string }>(
+      `SELECT COUNT(*) AS cnt FROM email_send_log
+        WHERE recipient_id = :doctorId
+          AND template_name IN ('doctor_inactivity_10d', 'doctor_inactivity_15d', 'retention_meeting_invite')
+          AND DATE(created_at AT TIME ZONE :tz) = :caracasDate::date
+          AND status = 'sent'`,
+      {
+        type: QueryTypes.SELECT,
+        replacements: { doctorId, caracasDate: caracasDateStr, tz: 'America/Caracas' },
+      },
+    );
+    return parseInt(rows[0]?.cnt ?? '0', 10) > 0;
+  }
 }

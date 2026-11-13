@@ -14,9 +14,10 @@ import { completeOnboarding } from './actions';
 import { redirect } from 'next/navigation';
 import OnboardingForm from './OnboardingForm';
 import { DeltaMark } from '@/components/dh/Logo';
+import { SUPPORT_WHATSAPP_NUMBER } from '@/lib/support-contact';
 
-// Soporte por WhatsApp — mismo número que usa la pantalla de planes.
-const WHATSAPP_SOPORTE = '584221033582';
+// Support WhatsApp link — number from the single source of truth.
+const WHATSAPP_SOPORTE = SUPPORT_WHATSAPP_NUMBER;
 const WHATSAPP_MENSAJE = encodeURIComponent(
   'Hola, estoy creando mi cuenta de especialista en Delta Salud y tengo una duda.',
 );

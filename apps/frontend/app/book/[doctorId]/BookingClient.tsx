@@ -62,6 +62,8 @@ type PricingPlan = {
   id: string;
   name: string;
   price_usd: number;
+  /** When true, price is 0 in DB; show "A consultar con el especialista" everywhere. */
+  price_on_request?: boolean;
   duration_minutes: number;
   sessions_count?: number;
   description?: string | null;
@@ -516,6 +518,12 @@ export default function BookingClient({
     });
   };
 
+  // Derived: skip the payment step entirely when:
+  // (a) selected plan is price_on_request (no charge at booking time), or
+  // (b) the doctor has no payment accounts configured (patient pays later in-office).
+  const skipPaymentRequired =
+    selectedPlan?.price_on_request === true || paymentMethods.length === 0;
+
   // Fetch active packages for this doctor via backend booking endpoint.
   // Requires patient email (only available after guest step) — called lazily.
   // ETAPA 2 TODO: replace with Auth0 session-based package lookup.
@@ -684,7 +692,8 @@ export default function BookingClient({
       submittingRef.current = false;
       return;
     }
-    if (!usingPackage && !useInsurance && !selectedPaymentMethod) {
+    // skipPaymentRequired is derived at component level (above state declarations).
+    if (!usingPackage && !useInsurance && !skipPaymentRequired && !selectedPaymentMethod) {
       setError('Selecciona un método de pago');
       submittingRef.current = false;
       return;
@@ -783,13 +792,22 @@ export default function BookingClient({
           scheduledAt: dateTime.toISOString(),
           chiefComplaint: form.notes.trim() || null,
           planName: selectedPlan?.name ?? 'Consulta General',
-          planPrice: selectedPlan ? planTotal(selectedPlan) : 20,
+          // price_on_request plans have no fixed price: send null so the backend
+          // creates no payment record. The `: 20` fallback is intentionally removed
+          // to avoid leaking a fake price when no plan is selected.
+          planPrice: selectedPlan?.price_on_request
+            ? null
+            : selectedPlan
+              ? planTotal(selectedPlan)
+              : null,
           sessionsCount: selectedPlan?.sessions_count || 1,
           paymentMethod: usingPackage
             ? 'package'
             : useInsurance
               ? 'insurance'
-              : selectedPaymentMethod,
+              : selectedPlan?.price_on_request
+                ? null
+                : selectedPaymentMethod,
           insuranceName: useInsurance ? selectedInsurance : null,
           receiptUrl,
           appointmentMode: appointmentMode || 'presencial',
@@ -939,6 +957,11 @@ export default function BookingClient({
                 <span className="font-semibold">💼 Plan:</span> {selectedPlan.name}
                 {usingPackage ? (
                   ' (paquete prepagado)'
+                ) : selectedPlan.price_on_request ? (
+                  <>
+                    {' '}
+                    — <span className="font-bold">A consultar con el especialista</span>
+                  </>
                 ) : (
                   <>
                     {' — '}
@@ -1224,7 +1247,9 @@ export default function BookingClient({
               usingPackage && activePackage
                 ? `${activePackage.plan_name} (paquete: ${activePackage.used_sessions}/${activePackage.total_sessions} usadas)`
                 : selectedPlan
-                  ? `${selectedPlan.name} — ${format(Number(planTotal(selectedPlan)))}`
+                  ? selectedPlan.price_on_request
+                    ? `${selectedPlan.name} — A consultar con el especialista`
+                    : `${selectedPlan.name} — ${format(Number(planTotal(selectedPlan)))}`
                   : undefined
             }
             completed={!!selectedPlan && activeStep > 1}
@@ -1326,13 +1351,27 @@ export default function BookingClient({
                         )}
                       </div>
                       <div className="text-right">
-                        <p className="text-2xl font-extrabold" style={{ color: BRAND.turquoise }}>
-                          {format(Number(planTotal(plan)))}
-                        </p>
-                        {bcvRate && (
-                          <p className="text-[11px] text-slate-400 mt-0.5">
-                            {toBs(planTotal(plan))}
+                        {plan.price_on_request ? (
+                          <p
+                            className="text-sm font-bold leading-tight max-w-[8rem]"
+                            style={{ color: BRAND.turquoise }}
+                          >
+                            A consultar con el especialista
                           </p>
+                        ) : (
+                          <>
+                            <p
+                              className="text-2xl font-extrabold"
+                              style={{ color: BRAND.turquoise }}
+                            >
+                              {format(Number(planTotal(plan)))}
+                            </p>
+                            {bcvRate && (
+                              <p className="text-[11px] text-slate-400 mt-0.5">
+                                {toBs(planTotal(plan))}
+                              </p>
+                            )}
+                          </>
                         )}
                       </div>
                     </div>
@@ -2045,7 +2084,7 @@ export default function BookingClient({
                   </div>
                   <button
                     type="button"
-                    onClick={() => setActiveStep(usingPackage ? 7 : 6)}
+                    onClick={() => setActiveStep(usingPackage || skipPaymentRequired ? 7 : 6)}
                     className="w-full py-3 rounded-xl text-sm font-bold transition-all text-white hover:opacity-90"
                     style={{ background: BRAND.turquoise }}
                   >
@@ -2508,7 +2547,7 @@ export default function BookingClient({
                         atrapa sus propios errores y degrada a 0.
                       */
                       void fetchUnusedPaidSessions(form.email.trim());
-                      setActiveStep(usingPackage ? 7 : 6);
+                      setActiveStep(usingPackage || skipPaymentRequired ? 7 : 6);
                     }}
                     className="w-full text-white py-3 rounded-xl text-sm font-bold transition-all hover:opacity-90"
                     style={{ background: BRAND.turquoise }}
@@ -2520,8 +2559,8 @@ export default function BookingClient({
             </div>
           </AccordionSection>
 
-          {/* ── Step 6: Método de pago (skip if using package) ─────────────── */}
-          {!usingPackage && (
+          {/* ── Step 6: Método de pago (skip if using package, price_on_request, or no payment accounts) ── */}
+          {!usingPackage && !skipPaymentRequired && (
             <AccordionSection
               step={6}
               currentStep={activeStep}
@@ -2788,6 +2827,10 @@ export default function BookingClient({
                     <span className="text-xs font-bold text-violet-700 bg-violet-100 px-2.5 py-1 rounded-full">
                       Paquete ({activePackage.used_sessions + 1}/{activePackage.total_sessions})
                     </span>
+                  ) : selectedPlan?.price_on_request ? (
+                    <span className="text-xs font-semibold text-slate-500">
+                      A consultar con el especialista
+                    </span>
                   ) : (
                     <div className="text-right">
                       <span className="font-bold" style={{ color: BRAND.ink }}>
@@ -2825,7 +2868,7 @@ export default function BookingClient({
                   )}
                   {appointmentMode === 'online' ? 'Videoconsulta' : 'Presencial'}
                 </div>
-                {!usingPackage && (
+                {!usingPackage && !selectedPlan?.price_on_request && selectedPaymentMethod && (
                   <div className="flex items-center gap-2 text-xs text-cyan-700">
                     <CreditCard className="w-3.5 h-3.5" />
                     <span>
@@ -2835,6 +2878,18 @@ export default function BookingClient({
                     </span>
                   </div>
                 )}
+                {!usingPackage && selectedPlan?.price_on_request && (
+                  <p className="text-xs text-slate-500 font-medium">
+                    El monto se acordará con el especialista al momento de la consulta.
+                  </p>
+                )}
+                {!usingPackage &&
+                  !selectedPlan?.price_on_request &&
+                  paymentMethods.length === 0 && (
+                    <p className="text-xs text-slate-500 font-medium">
+                      El pago se coordina directamente con el especialista.
+                    </p>
+                  )}
                 {usingPackage && (
                   <p className="text-xs text-violet-600 font-medium">
                     Ya pagado con tu paquete activo

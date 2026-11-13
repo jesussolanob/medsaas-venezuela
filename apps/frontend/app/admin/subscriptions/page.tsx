@@ -29,17 +29,12 @@ import {
   DollarSign,
   Percent,
   ArrowLeftRight,
-  Phone,
-  Mail,
-  Copy,
-  X,
-  MessageCircle,
 } from 'lucide-react';
 import { showToast } from '@/components/ui/Toaster';
 import { reportError } from '@/lib/report-error';
 import DateRangeFilter, { type DateRangeValue } from '@/components/admin/DateRangeFilter';
+import { ContactarModal } from '@/components/admin/ContactarModal';
 import { isWithinRange } from '@/lib/date-range';
-import { normalizePhoneIntl } from '@/lib/phone-utils';
 
 /** Pause after the last keystroke before searching. */
 const SEARCH_DEBOUNCE_MS = 300;
@@ -97,7 +92,6 @@ type AppSettings = {
   payment_methods_config: Record<string, Record<string, string>>;
   stripe_enabled: boolean;
   expiration_warning_days: number[];
-  sales_whatsapp_number: string;
   sales_whatsapp_message: string;
 };
 
@@ -1606,47 +1600,21 @@ function ConfigTab() {
           <h2 className="font-bold text-slate-900">Botón "Hablar con ventas" del landing</h2>
         </div>
         <p className="text-xs text-slate-500">
-          El landing page muestra un botón "Hablar con ventas" que abre WhatsApp con un mensaje
-          pre-rellenado. Configura aquí el número (con código país, sin <code>+</code>) y el
-          mensaje.
+          El landing muestra un botón "Hablar con ventas" que abre WhatsApp. El número usado es el
+          número de soporte configurado en <strong>Configuración → Contacto y soporte</strong>.
         </p>
-        <div className="grid md:grid-cols-2 gap-3">
-          <div>
-            <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-              Número WhatsApp
-            </label>
-            <input
-              type="text"
-              defaultValue={settings.sales_whatsapp_number}
-              onBlur={(e) => save({ sales_whatsapp_number: e.target.value.replace(/\D/g, '') })}
-              placeholder="584141234567"
-              className="mt-1.5 w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none font-mono"
-            />
-            <p className="text-xs text-slate-400 mt-1">Sin "+" ni espacios. Ej: 584141234567</p>
-          </div>
-          <div>
-            <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-              Mensaje pre-rellenado
-            </label>
-            <input
-              type="text"
-              defaultValue={settings.sales_whatsapp_message}
-              onBlur={(e) => save({ sales_whatsapp_message: e.target.value })}
-              placeholder="Hola, vengo de la web…"
-              className="mt-1.5 w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none"
-            />
-          </div>
+        <div>
+          <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+            Mensaje pre-rellenado
+          </label>
+          <input
+            type="text"
+            defaultValue={settings.sales_whatsapp_message}
+            onBlur={(e) => save({ sales_whatsapp_message: e.target.value })}
+            placeholder="Hola, vengo de la web…"
+            className="mt-1.5 w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 outline-none"
+          />
         </div>
-        {settings.sales_whatsapp_number && (
-          <a
-            href={`https://wa.me/${settings.sales_whatsapp_number.replace(/\D/g, '')}?text=${encodeURIComponent(settings.sales_whatsapp_message)}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-2 text-sm text-teal-600 hover:underline"
-          >
-            🔗 Probar link →
-          </a>
-        )}
       </div>
 
       {/* Promociones multi-mes */}
@@ -1770,269 +1738,4 @@ function ConfigTab() {
   );
 }
 
-// ─── CONTACTAR MODAL ─────────────────────────────────────────────────────────
-/**
- * Modal that lazily fetches a doctor's contact details and shows:
- *   - Nombre, Cédula, Correo, Teléfono
- *   - Copy-to-clipboard buttons
- *   - Quick actions: WhatsApp, email, phone call
- *
- * PII is never pre-fetched for all rows — only fetched on open.
- * Accessible: real focus trap (Tab/Shift+Tab cycle), initial focus on close
- * button (autoFocus), Esc closes, role=dialog, aria-labelledby.
- * Returns focus to the element that opened it on close.
- */
-
-interface DoctorContact {
-  id: string;
-  fullName: string;
-  email: string;
-  phone: string | null;
-  cedula: string | null;
-}
-
-function ContactarModal({ doctorId, onClose }: { doctorId: string; onClose: () => void }) {
-  const dialogRef = useRef<HTMLDivElement>(null);
-  const [contact, setContact] = useState<DoctorContact | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [copiedField, setCopiedField] = useState<string | null>(null);
-
-  // Botón que abrió el modal. Se captura en el PRIMER RENDER (inicializador de
-  // useState), no en un efecto: el autoFocus del botón "Cerrar" se aplica en el
-  // commit, antes de que corran los efectos, así que dentro de un useEffect
-  // `document.activeElement` ya era "Cerrar" y el foco nunca volvía al
-  // "Contactar" (verificado en staging, 22/10).
-  const [returnTo] = useState<HTMLElement | null>(() =>
-    typeof document === 'undefined' ? null : (document.activeElement as HTMLElement | null),
-  );
-
-  // Return focus to the element that had it before the modal opened.
-  useEffect(() => {
-    return () => {
-      // Si el botón que lo abrió ya no está en pantalla (re-render de la tabla),
-      // no hay a dónde devolver el foco.
-      if (returnTo?.isConnected) returnTo.focus();
-    };
-  }, [returnTo]);
-
-  // Tab / Shift+Tab focus trap — queries focusable elements dynamically so it
-  // works correctly while the dialog contents change (loading → loaded).
-  useEffect(() => {
-    const dialog = dialogRef.current;
-    if (!dialog) return;
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key !== 'Tab') return;
-      const focusable = Array.from(
-        dialog.querySelectorAll<HTMLElement>(
-          'a[href], button:not([disabled]), input:not([disabled]), ' +
-            'select:not([disabled]), textarea:not([disabled]), ' +
-            '[tabindex]:not([tabindex="-1"])',
-        ),
-      ).filter((el) => el.offsetParent !== null);
-      if (focusable.length === 0) return;
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-      if (e.shiftKey) {
-        if (document.activeElement === first) {
-          e.preventDefault();
-          last.focus();
-        }
-      } else {
-        if (document.activeElement === last) {
-          e.preventDefault();
-          first.focus();
-        }
-      }
-    };
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, []); // runs once — focusable elements are queried dynamically inside the handler
-
-  useEffect(() => {
-    let cancelled = false;
-    async function load() {
-      try {
-        const res = await fetch(`/api/admin/doctor-details?id=${doctorId}`);
-        const body = await res.json();
-        if (cancelled) return;
-        if (!res.ok) throw new Error(body.error || 'Error al cargar detalles');
-        setContact({
-          id: doctorId,
-          fullName: body.profile?.full_name ?? '—',
-          email: body.profile?.email ?? '',
-          phone: body.profile?.phone ?? null,
-          cedula: body.profile?.cedula ?? null,
-        });
-      } catch (e: unknown) {
-        if (!cancelled) setError(e instanceof Error ? e.message : 'Error al cargar detalles');
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-    void load();
-    return () => {
-      cancelled = true;
-    };
-  }, [doctorId]);
-
-  // Close on Escape key
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [onClose]);
-
-  async function copyToClipboard(value: string, field: string) {
-    try {
-      await navigator.clipboard.writeText(value);
-      setCopiedField(field);
-      setTimeout(() => setCopiedField(null), 2000);
-    } catch {
-      // fallback — ignore
-    }
-  }
-
-  // Use the shared normalizePhoneIntl helper (handles VE local + international E.164).
-  // Returns '' for invalid numbers → convert to null so the WhatsApp button stays hidden.
-  const waNumber = contact?.phone ? normalizePhoneIntl(contact.phone) || null : null;
-
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ background: 'rgba(15,23,42,0.5)' }}
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-    >
-      <div
-        ref={dialogRef}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="contactar-title"
-        className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden"
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
-          <h2 id="contactar-title" className="text-base font-bold text-slate-900">
-            Información de contacto
-          </h2>
-          <button
-            type="button"
-            onClick={onClose}
-            autoFocus
-            className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors"
-            aria-label="Cerrar"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
-        {/* Body */}
-        <div className="px-6 py-5">
-          {loading ? (
-            <div className="flex items-center justify-center gap-2 py-10 text-slate-400">
-              <Loader2 className="w-5 h-5 animate-spin" />
-              <span className="text-sm">Cargando datos…</span>
-            </div>
-          ) : error ? (
-            <div className="py-8 text-center">
-              <p className="text-sm text-red-600">{error}</p>
-            </div>
-          ) : contact ? (
-            <div className="space-y-4">
-              {/* Contact fields */}
-              {[
-                { key: 'name', label: 'Nombre', value: contact.fullName },
-                {
-                  key: 'cedula',
-                  label: 'Identificación',
-                  value: contact.cedula ?? 'No registrado',
-                },
-                { key: 'email', label: 'Correo', value: contact.email || 'No registrado' },
-                {
-                  key: 'phone',
-                  label: 'Teléfono',
-                  value: contact.phone || null,
-                  hint: !contact.phone ? 'El especialista aún no cargó su teléfono' : undefined,
-                },
-              ].map(({ key, label, value, hint }) => (
-                <div key={key} className="flex items-start justify-between gap-3">
-                  <div className="flex-1 min-w-0">
-                    <div className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-0.5">
-                      {label}
-                    </div>
-                    {value ? (
-                      <div className="text-sm font-medium text-slate-800 break-all">{value}</div>
-                    ) : (
-                      <div className="text-sm text-slate-400 italic">{hint ?? 'No registrado'}</div>
-                    )}
-                  </div>
-                  {value && (
-                    <button
-                      type="button"
-                      onClick={() => copyToClipboard(value, key)}
-                      className="shrink-0 p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors"
-                      title={`Copiar ${label.toLowerCase()}`}
-                    >
-                      {copiedField === key ? (
-                        <CheckCircle2 className="w-4 h-4 text-teal-500" />
-                      ) : (
-                        <Copy className="w-4 h-4" />
-                      )}
-                    </button>
-                  )}
-                </div>
-              ))}
-
-              {/* Toast feedback */}
-              {copiedField && (
-                <p className="text-xs text-teal-600 font-medium">Copiado al portapapeles</p>
-              )}
-            </div>
-          ) : null}
-        </div>
-
-        {/* Actions footer */}
-        {contact && !loading && !error && (
-          <div className="px-6 py-4 border-t border-slate-100 flex flex-wrap gap-2">
-            {/* Only render the mailto link when the address passes a safe-pattern check
-                (no `?`, `&`, `#`, whitespace, CR/LF) to prevent href injection.
-                The copy button above always shows regardless. */}
-            {contact.email && /^[^\s&#?'<>\r\n]+@[^\s&#?'<>\r\n]+$/.test(contact.email) && (
-              <a
-                href={`mailto:${contact.email}`}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition-colors"
-              >
-                <Mail className="w-3.5 h-3.5" />
-                Escribir correo
-              </a>
-            )}
-            {waNumber && (
-              <a
-                href={`https://wa.me/${waNumber}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs font-semibold transition-colors"
-              >
-                <MessageCircle className="w-3.5 h-3.5" />
-                WhatsApp
-              </a>
-            )}
-            {contact.phone && (
-              <a
-                href={`tel:${contact.phone}`}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-semibold transition-colors"
-              >
-                <Phone className="w-3.5 h-3.5" />
-                Llamar
-              </a>
-            )}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
+// ContactarModal extracted to @/components/admin/ContactarModal — imported above.

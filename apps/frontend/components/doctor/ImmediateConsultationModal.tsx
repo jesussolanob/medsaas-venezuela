@@ -20,7 +20,8 @@
  */
 
 import { useCallback, useEffect, useState } from 'react';
-import { X, Zap, Loader2, AlertCircle, Search, UserPlus, Check } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { X, Zap, Loader2, AlertCircle, Search, UserPlus, Check, CalendarClock } from 'lucide-react';
 import {
   fetchDoctorOffices,
   normalizePatient,
@@ -59,10 +60,29 @@ type Window = {
   fits: boolean;
 };
 
+/** Minimal appointment reference used to detect today's duplicate bookings. */
+export interface TodayApptRef {
+  patientId: string | null;
+  scheduledAt: string;
+  appointmentId: string;
+  consultationId: string | null;
+}
+
 export interface ImmediateConsultationModalProps {
   onClose: () => void;
   /** Se llama con el id de la consulta creada para abrirla. */
   onCreated: (consultationId: string | null, appointmentId: string) => void;
+  /**
+   * Today's scheduled/confirmed appointments for the doctor, keyed by patient id.
+   * Used to warn when a patient already has a booking today before creating a new one.
+   * Optional — if absent, the duplicate-booking check is skipped.
+   */
+  todayScheduledAppointments?: TodayApptRef[];
+  /**
+   * Opens the existing appointment's detail (with all its actions). When absent,
+   * "Ir a esa cita" falls back to the consultation or the agenda.
+   */
+  onOpenExistingAppointment?: (appointmentId: string) => void;
 }
 
 const DEFAULT_DURATION = 30;
@@ -78,7 +98,10 @@ function hhmm(iso: string): string {
 export default function ImmediateConsultationModal({
   onClose,
   onCreated,
+  todayScheduledAppointments,
+  onOpenExistingAppointment,
 }: ImmediateConsultationModalProps) {
+  const router = useRouter();
   // ── Paciente ──────────────────────────────────────────────────────────
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<PatientLookup[]>([]);
@@ -541,6 +564,46 @@ export default function ImmediateConsultationModal({
 
         {patient && (
           <>
+            {/* Warning: patient already has a scheduled/confirmed booking today */}
+            {(() => {
+              const existingAppt =
+                todayScheduledAppointments?.find(
+                  (a) => a.patientId !== null && a.patientId === patient.id,
+                ) ?? null;
+              if (!existingAppt) return null;
+              return (
+                <div className="flex flex-col gap-2 rounded-xl bg-amber-50 border border-amber-200 p-3">
+                  <div className="flex items-start gap-2">
+                    <CalendarClock className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                    <p className="text-sm font-semibold text-amber-800">
+                      {patient.full_name.split(' ')[0] || patient.full_name} ya tiene una cita hoy a
+                      las {hhmm(existingAppt.scheduledAt)}
+                    </p>
+                  </div>
+                  <p className="text-xs text-amber-700 ml-6">
+                    Puedes abrir esa cita o seguir registrando una nueva consulta inmediata.
+                  </p>
+                  <button
+                    onClick={() => {
+                      if (onOpenExistingAppointment) {
+                        onOpenExistingAppointment(existingAppt.appointmentId);
+                        return;
+                      }
+                      onClose();
+                      if (existingAppt.consultationId) {
+                        router.push(`/doctor/consultations?open=${existingAppt.consultationId}`);
+                      } else {
+                        router.push('/doctor/agenda');
+                      }
+                    }}
+                    className="ml-6 self-start flex items-center gap-1 text-xs font-bold text-amber-800 underline underline-offset-2 hover:text-amber-900"
+                  >
+                    Ir a esa cita →
+                  </button>
+                </div>
+              );
+            })()}
+
             {/* Consultorio: solo se pregunta si no se pudo inferir */}
             {needsOfficePick && offices.length > 0 && (
               <div className="space-y-1.5">

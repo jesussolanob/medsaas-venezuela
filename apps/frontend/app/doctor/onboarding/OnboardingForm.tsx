@@ -481,7 +481,6 @@ export default function OnboardingForm({
   });
   // Genero: opcional, con fines estadisticos. No condiciona nada del sistema.
   const [gender, setGender] = useState('');
-  const [mppsNumber, setMppsNumber] = useState('');
   const [colegiadoNumber, setColegiadoNumber] = useState('');
   // Código del vendedor que lo trajo — OPCIONAL. Se valida mientras lo escribe
   // porque un error de tipeo deja la venta sin acreditar y el vendedor se
@@ -641,7 +640,6 @@ export default function OnboardingForm({
         phone: phone.trim(),
         specialty: resolvedSpecialty || undefined,
         gender: gender || null,
-        mpps_number: mppsNumber.trim() || null,
         colegiado_number: colegiadoNumber.trim() || null,
         seller_code: sellerCode.trim() || null,
         accepted_terms: true,
@@ -1068,29 +1066,6 @@ export default function OnboardingForm({
               <option value="M">Masculino</option>
               <option value="O">Otro</option>
             </select>
-          </div>
-
-          {/* MPPS — optional */}
-          <div>
-            <label
-              htmlFor="field-mpps"
-              className="block text-xs font-semibold mb-1.5"
-              style={{ color: 'var(--dh-gray-700)' }}
-            >
-              Número MPPS{' '}
-              <span className="font-normal" style={{ color: 'var(--dh-gray-400)' }}>
-                (opcional)
-              </span>
-            </label>
-            <input
-              id="field-mpps"
-              type="text"
-              value={mppsNumber}
-              onChange={(e) => setMppsNumber(e.target.value)}
-              placeholder="Ej. MPPS-12345"
-              className={inputNormal}
-              autoComplete="off"
-            />
           </div>
 
           {/* Colegiado — optional */}

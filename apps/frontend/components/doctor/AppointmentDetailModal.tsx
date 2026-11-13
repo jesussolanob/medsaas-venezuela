@@ -29,6 +29,8 @@ import {
   Loader2,
   AlertCircle,
   Phone,
+  UserCheck,
+  UserX,
 } from 'lucide-react';
 import type { AppointmentDetailData } from '@/app/api/doctor/appointments/[id]/route';
 import { showToast } from '@/components/ui/Toaster';
@@ -198,6 +200,9 @@ export default function AppointmentDetailModal({
   const [cancelling, setCancelling] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  // "Atendida" / "No asistió" — only available once the appointment time has passed.
+  const [markingAttended, setMarkingAttended] = useState(false);
+  const [markingNoShow, setMarkingNoShow] = useState(false);
 
   // ---------------------------------------------------------------------------
   // Fetch appointment detail on mount (and on manual retry via retryKey)
@@ -347,6 +352,54 @@ export default function AppointmentDetailModal({
     onClose();
   }
 
+  async function handleMarkAttended() {
+    if (!appt) return;
+    setMarkingAttended(true);
+    try {
+      const res = await fetch('/api/doctor/appointment-status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ appointment_id: appt.id, new_status: 'completed' }),
+      });
+      const j = (await res.json()) as { error?: string };
+      if (!res.ok) {
+        showToast({ type: 'error', message: j.error ?? 'Error al marcar como atendida' });
+        return;
+      }
+      setAppt((prev) => (prev ? { ...prev, status: 'completed' } : prev));
+      showToast({ type: 'success', message: 'Cita marcada como atendida' });
+      onChanged?.();
+    } catch {
+      showToast({ type: 'error', message: 'Error de conexión' });
+    } finally {
+      setMarkingAttended(false);
+    }
+  }
+
+  async function handleMarkNoShow() {
+    if (!appt) return;
+    setMarkingNoShow(true);
+    try {
+      const res = await fetch('/api/doctor/appointment-status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ appointment_id: appt.id, new_status: 'no_show' }),
+      });
+      const j = (await res.json()) as { error?: string };
+      if (!res.ok) {
+        showToast({ type: 'error', message: j.error ?? 'Error al marcar como no asistió' });
+        return;
+      }
+      setAppt((prev) => (prev ? { ...prev, status: 'no_show' } : prev));
+      showToast({ type: 'success', message: 'Paciente marcado como no asistió' });
+      onChanged?.();
+    } catch {
+      showToast({ type: 'error', message: 'Error de conexión' });
+    } finally {
+      setMarkingNoShow(false);
+    }
+  }
+
   // ---------------------------------------------------------------------------
   // Derived display values
   // ---------------------------------------------------------------------------
@@ -382,8 +435,18 @@ export default function AppointmentDetailModal({
     ? (STATUS_BADGE[appt.status] ?? 'bg-slate-100 text-slate-700 border border-slate-200')
     : '';
   const statusLabel = appt ? (STATUS_LABELS[appt.status] ?? appt.status) : '';
-  const isActive = appt && appt.status !== 'completed' && appt.status !== 'cancelled';
+  // completed / cancelled / no_show are final states (shared-types transitions):
+  // the backend rejects any change, so no action button may offer one.
+  const isActive =
+    appt && appt.status !== 'completed' && appt.status !== 'cancelled' && appt.status !== 'no_show';
   const endTime = appt ? fmtEndTime(appt.scheduledAt, appt.durationMinutes) : null;
+  // Whether the appointment slot has already started — "Atendida"/"No asistió" only
+  // make sense after the appointment time (not for future appointments).
+  const appointmentIsPast = appt ? new Date(appt.scheduledAt).getTime() <= Date.now() : false;
+  const canMarkOutcome =
+    appt !== null &&
+    appointmentIsPast &&
+    (appt.status === 'scheduled' || appt.status === 'confirmed');
 
   return (
     <>
@@ -596,7 +659,7 @@ export default function AppointmentDetailModal({
 
               {/* Appointment actions — shown when the appointment is active OR
                   when Reagendar is available (which is always, per spec). */}
-              {(isActive || onReschedule) && (
+              {(isActive || onReschedule || canMarkOutcome) && (
                 <div className="pt-3 border-t border-slate-100 space-y-2">
                   <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
                     Acciones de la cita
@@ -611,8 +674,8 @@ export default function AppointmentDetailModal({
                   )}
 
                   <div className="flex flex-wrap gap-2">
-                    {/* Confirmar — only when scheduled */}
-                    {appt.status === 'scheduled' && (
+                    {/* Confirmar — only when scheduled and NOT in the past */}
+                    {appt.status === 'scheduled' && !appointmentIsPast && (
                       <button
                         onClick={() => void handleConfirm()}
                         disabled={confirming}
@@ -624,6 +687,38 @@ export default function AppointmentDetailModal({
                           <CheckCircle className="w-3.5 h-3.5" />
                         )}
                         Confirmar cita
+                      </button>
+                    )}
+
+                    {/* Atendida — once the appointment slot has passed */}
+                    {canMarkOutcome && (
+                      <button
+                        onClick={() => void handleMarkAttended()}
+                        disabled={markingAttended || markingNoShow}
+                        className="flex items-center gap-1 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs font-bold rounded-lg border border-emerald-200 disabled:opacity-50"
+                      >
+                        {markingAttended ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <UserCheck className="w-3.5 h-3.5" />
+                        )}
+                        Atendida
+                      </button>
+                    )}
+
+                    {/* No asistió — once the appointment slot has passed */}
+                    {canMarkOutcome && (
+                      <button
+                        onClick={() => void handleMarkNoShow()}
+                        disabled={markingAttended || markingNoShow}
+                        className="flex items-center gap-1 px-3 py-1.5 bg-orange-50 hover:bg-orange-100 text-orange-700 text-xs font-bold rounded-lg border border-orange-200 disabled:opacity-50"
+                      >
+                        {markingNoShow ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <UserX className="w-3.5 h-3.5" />
+                        )}
+                        No asistió
                       </button>
                     )}
 
@@ -648,8 +743,7 @@ export default function AppointmentDetailModal({
                     )}
                   </div>
                   <p className="text-[11px] text-slate-500 italic mt-1">
-                    El estado de la <strong>consulta</strong> y del <strong>pago</strong> se
-                    gestionan en &ldquo;Ir a consulta&rdquo;.
+                    El estado del <strong>pago</strong> se gestiona en &ldquo;Ir a consulta&rdquo;.
                   </p>
                 </div>
               )}

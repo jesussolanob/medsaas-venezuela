@@ -33,6 +33,7 @@ import {
   Smartphone,
   CreditCard,
   Lock,
+  Megaphone,
 } from 'lucide-react';
 import {
   loadSettingsProfile,
@@ -42,6 +43,7 @@ import {
   saveLogoUrl,
   saveSignatureUrl,
   saveLicenseNumber,
+  saveMppsNumber,
   loadGoogleStatus,
   disconnectGoogle,
   type GoogleStatusView,
@@ -53,6 +55,7 @@ import AvatarUploader from './avatar-uploader';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import SubscriptionPanel from '@/components/doctor/SubscriptionPanel';
 import BookingQrCode from '@/components/doctor/BookingQrCode';
+import ReleaseNotesList from '@/components/release-notes/ReleaseNotesList';
 import { reportError } from '@/lib/report-error';
 import { validateBirthDate, maxBirthDateForMinAge } from '@/lib/date-validation';
 import { showToast } from '@/components/ui/Toaster';
@@ -178,7 +181,8 @@ type TabId =
   | 'subscription'
   | 'notifications'
   | 'integrations'
-  | 'assistants';
+  | 'assistants'
+  | 'novedades';
 
 function SettingsPageInner() {
   const searchParams = useSearchParams();
@@ -192,6 +196,7 @@ function SettingsPageInner() {
     'notifications',
     'integrations',
     'assistants',
+    'novedades',
   ];
   const rawTab = searchParams.get('tab') as TabId | null;
   const initialTab: TabId =
@@ -224,6 +229,7 @@ function SettingsPageInner() {
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [signatureUrl, setSignatureUrl] = useState<string | null>(null);
   const [licenseNumber, setLicenseNumber] = useState<string>('');
+  const [mppsNumber, setMppsNumber] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [saved, setSaved] = useState(false);
   const [tab, setTab] = useState<TabId>(initialTab);
@@ -231,6 +237,7 @@ function SettingsPageInner() {
 
   // Used by the ?focus=phone effect to run the scroll+focus only once.
   const focusPhoneRanRef = useRef(false);
+  const tabsBarRef = useRef<HTMLDivElement>(null);
 
   // Logo upload
   const [uploadingLogo, setUploadingLogo] = useState(false);
@@ -388,6 +395,7 @@ function SettingsPageInner() {
         setLogoUrl(profileData.logo_url ?? null);
         setSignatureUrl(profileData.signature_url ?? null);
         setLicenseNumber(profileData.license_number ?? '');
+        setMppsNumber(profileData.mpps_number ?? '');
         // Datos iniciales para PaymentDetailsEditor. El componente normaliza
         // internamente la FORMA vieja/nueva del JSONB con entriesOf; el
         // VOCABULARIO del método se normaliza acá (`cash_usd` → `efectivo`),
@@ -540,6 +548,16 @@ function SettingsPageInner() {
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
     showToast({ type: 'success', message: 'Matrícula guardada.' });
+  }
+
+  async function saveMpps() {
+    const result = await saveMppsNumber(mppsNumber || null);
+    if (!result.ok) {
+      reportError('doctor/settings', 'saveMpps', new Error(String(result.error)));
+      showToast({ type: 'error', message: 'No se pudo guardar el N.º MPPS.' });
+      return;
+    }
+    showToast({ type: 'success', message: 'N.º MPPS guardado.' });
   }
 
   /* ---------------- PLANS (tab removed — now at /doctor/services) ---------------- */
@@ -698,6 +716,20 @@ function SettingsPageInner() {
     setTimeout(() => setSaved(false), 2500);
   }
 
+  // On a phone the tab bar overflows sideways: the last tabs (e.g. Novedades,
+  // reached from the home card) would start off-screen. Scroll the bar — not the
+  // page — so the active tab is always visible.
+  useEffect(() => {
+    const bar = tabsBarRef.current;
+    const active = bar?.querySelector<HTMLElement>(`[data-tab="${tab}"]`);
+    if (!bar || !active) return;
+    const overflowRight =
+      active.offsetLeft + active.offsetWidth - (bar.scrollLeft + bar.clientWidth);
+    const overflowLeft = bar.scrollLeft - active.offsetLeft;
+    if (overflowRight > 0) bar.scrollLeft += overflowRight + 4;
+    else if (overflowLeft > 0) bar.scrollLeft -= overflowLeft + 4;
+  }, [tab, bookingEnabled]);
+
   const tabs: { id: TabId; label: string; icon: any }[] = [
     { id: 'profile', label: 'Mi perfil', icon: User },
     { id: 'subscription', label: 'Suscripción', icon: CreditCard },
@@ -708,11 +740,12 @@ function SettingsPageInner() {
     // Descomentar cuando se implemente el módulo de notificaciones push/email.
     // { id: 'notifications', label: 'Notificaciones', icon: Bell },
     { id: 'integrations', label: 'Integraciones', icon: ExternalLink },
+    { id: 'novedades', label: 'Novedades', icon: Megaphone },
   ];
 
   return (
     <>
-      <style>{`* { font-family: 'Inter', sans-serif; } .g-bg{background:linear-gradient(135deg,#00C4CC 0%,#0891b2 100%)}`}</style>
+      <style>{`.g-bg{background:linear-gradient(135deg,#00C4CC 0%,#0891b2 100%)}`}</style>
 
       <ConfirmDialog
         open={confirmRemoveSignature}
@@ -731,10 +764,14 @@ function SettingsPageInner() {
         </div>
 
         {/* Tabs */}
-        <div className="flex gap-1 bg-slate-100 rounded-xl p-1 overflow-x-auto no-scrollbar">
+        <div
+          ref={tabsBarRef}
+          className="flex gap-1 bg-slate-100 rounded-xl p-1 overflow-x-auto no-scrollbar"
+        >
           {tabs.map((t) => (
             <button
               key={t.id}
+              data-tab={t.id}
               onClick={() => setTab(t.id)}
               className={`shrink-0 flex items-center gap-1.5 px-3 sm:px-4 py-2 rounded-lg text-sm font-semibold transition-all ${tab === t.id ? 'bg-white text-teal-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
             >
@@ -947,6 +984,26 @@ function SettingsPageInner() {
                   />
                   <p className="text-[10px] text-slate-400 mt-1.5">
                     Aparecerá debajo de tu nombre en la firma de los PDFs
+                  </p>
+                </div>
+
+                {/* N.º MPPS */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
+                    N.º MPPS{' '}
+                    <span className="normal-case font-normal text-slate-400">(opcional)</span>
+                  </label>
+                  <input
+                    value={mppsNumber}
+                    onChange={(e) => setMppsNumber(e.target.value)}
+                    onBlur={saveMpps}
+                    placeholder="Ej: 12345"
+                    className={fi}
+                    autoComplete="off"
+                  />
+                  <p className="text-[10px] text-slate-400 mt-1.5">
+                    Se usa para verificar tu perfil profesional en el MPPS. Cambiarlo activa la
+                    verificación automática.
                   </p>
                 </div>
               </div>
@@ -1881,6 +1938,9 @@ function SettingsPageInner() {
             )}
           </div>
         )}
+
+        {/* ---------------- NOVEDADES ---------------- */}
+        {tab === 'novedades' && <ReleaseNotesList />}
 
         {/* ---------------- INTEGRATIONS ---------------- */}
         {tab === 'integrations' && (

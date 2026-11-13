@@ -750,6 +750,7 @@ export class SequelizeConsultationRepository implements IConsultationRepository 
       quantity?: number | null;
     }>,
     paymentMethod?: string | null,
+    baseAmountOverride?: number,
   ): Promise<Consultation> {
     return this.sequelize.transaction(async (t) => {
       // H — Serialize concurrent approvals of the same consultation.
@@ -764,8 +765,10 @@ export class SequelizeConsultationRepository implements IConsultationRepository 
       );
 
       // Step 1 — Resolve base amount inside the transaction for a consistent read.
-      // Also fetch session_number (non-null ↔ covered session 2..N) and patient_id
-      // for the extras payment INSERT that Step 5b creates for covered sessions.
+      // Also fetch session_number (non-null ↔ covered session 2..N), patient_id
+      // for the extras payment INSERT that Step 5b creates for covered sessions,
+      // and appointment_id + appointment_payment_id to detect the price_on_request
+      // path where no payment row was created at booking time.
       const baseRows = await this.sequelize.query<{
         base_amount: string | null;
         amount: string | null;
@@ -779,8 +782,20 @@ export class SequelizeConsultationRepository implements IConsultationRepository 
         session_number: number | null;
         /** Needed to create the extras payment row in Step 5b. */
         patient_id: string;
+        /**
+         * The appointment linked to this consultation, if any.
+         * Null for consultations created without an appointment (direct entry).
+         */
+        appointment_id: string | null;
+        /**
+         * The payment already linked to the appointment via appointments.payment_id.
+         * Null when the booking was price_on_request (no payment row created).
+         * Used in Step 5b to decide whether to INSERT a new payment row.
+         */
+        appointment_payment_id: string | null;
       }>(
-        `SELECT c.base_amount, c.amount, a.plan_price, a.session_number, c.patient_id
+        `SELECT c.base_amount, c.amount, a.plan_price, a.session_number, c.patient_id,
+                a.id AS appointment_id, a.payment_id AS appointment_payment_id
            FROM consultations c
            LEFT JOIN appointments a ON a.id = c.appointment_id
            WHERE c.id = :id AND c.doctor_id = :doctorId
@@ -793,12 +808,16 @@ export class SequelizeConsultationRepository implements IConsultationRepository 
         throw new ConsultationNotFoundError();
       }
 
-      // On first approval, fix base_amount from COALESCE(current amount, plan_price, 0).
-      // On re-approval use the already-stored base_amount unchanged.
+      // On first approval, resolve base_amount from (priority):
+      //   1. baseAmountOverride — the doctor-supplied amount for price_on_request consultations
+      //   2. current consultation.amount (set at booking for regular services)
+      //   3. appointment.plan_price snapshot
+      //   4. 0 (fallback, triggering ConsultationAmountRequiredError in the use case)
+      // On re-approval use the already-stored base_amount unchanged (baseAmountOverride ignored).
       const resolvedBase =
         baseRow.base_amount !== null
           ? parseFloat(baseRow.base_amount)
-          : parseFloat(baseRow.amount ?? baseRow.plan_price ?? '0');
+          : (baseAmountOverride ?? parseFloat(baseRow.amount ?? baseRow.plan_price ?? '0'));
 
       // Step 2 — Delete all previous extra items.
       await this.extraItemModel.destroy({
@@ -1175,6 +1194,71 @@ export class SequelizeConsultationRepository implements IConsultationRepository 
                AND pp.doctor_id       = :doctorId`,
           { replacements: paymentSyncReplacements, type: QueryTypes.UPDATE, transaction: t },
         );
+
+        // --- price_on_request: INSERT payment row if the appointment has none ---
+        //
+        // Bookings for price_on_request services skip payment row creation at
+        // reserve time (the price is unknown until the consultation happens).
+        // The UPDATE above is therefore a no-op: appointments.payment_id IS NULL,
+        // so the JOIN finds nothing. We create the payment row here and link it
+        // to the appointment atomically inside the same transaction.
+        //
+        // Idempotent via ON CONFLICT (consultation_id): a second call (re-approval)
+        // updates the existing row to the new total instead of inserting a duplicate.
+        // The appointments.payment_id UPDATE is guarded by `WHERE payment_id IS NULL`
+        // so it only runs on the first approval.
+        //
+        // SECURITY: doctor_id is included in every INSERT column; a leaked
+        // consultation_id cannot create a payment under another doctor.
+        if (baseRow.appointment_id && baseRow.appointment_payment_id === null) {
+          const newPaymentId = randomUUID();
+          const insertedRows = await this.sequelize.query<{ id: string }>(
+            `INSERT INTO payments (
+               id, doctor_id, patient_id, amount_usd, status,
+               method_snapshot, consultation_id, paid_at, created_at, updated_at
+             )
+             VALUES (
+               :newId, :doctorId, :patientId, :total, 'approved',
+               :methodSnapshot, :consultationId, now(), now(), now()
+             )
+             ON CONFLICT (consultation_id) WHERE consultation_id IS NOT NULL
+             DO UPDATE SET
+               amount_usd      = EXCLUDED.amount_usd,
+               status          = 'approved',
+               method_snapshot = EXCLUDED.method_snapshot,
+               paid_at         = COALESCE(payments.paid_at, now()),
+               updated_at      = now()
+             RETURNING id`,
+            {
+              replacements: {
+                newId: newPaymentId,
+                doctorId,
+                patientId,
+                total,
+                methodSnapshot: paymentMethod ?? null,
+                consultationId: id,
+              },
+              type: QueryTypes.SELECT,
+              transaction: t,
+            },
+          );
+          const actualPaymentId = insertedRows[0]?.id ?? newPaymentId;
+
+          // Link the appointment to the new payment row.
+          // WHERE payment_id IS NULL makes this idempotent across re-approvals.
+          await this.sequelize.query(
+            `UPDATE appointments
+               SET payment_id = :paymentId,
+                   updated_at = NOW()
+             WHERE id = :appointmentId
+               AND payment_id IS NULL`,
+            {
+              replacements: { paymentId: actualPaymentId, appointmentId: baseRow.appointment_id },
+              type: QueryTypes.UPDATE,
+              transaction: t,
+            },
+          );
+        }
       }
 
       // Step 5c — Sincronizar las consultas HERMANAS del paquete.

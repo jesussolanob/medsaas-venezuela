@@ -1,4 +1,5 @@
 import { UpdateDoctorProfileUseCase } from './update-doctor-profile.use-case';
+import { VerifyMppsUseCase } from '../../../../credential-verification/application/use-cases/verify-mpps.use-case';
 import { DoctorProfileNotFoundError } from '../../../domain/errors/doctor-profile-not-found.error';
 import type { IDoctorProfileRepository } from '../../../domain/repositories/doctor-profile.repository';
 import { DoctorProfile } from '../../../domain/entities/doctor-profile.entity';
@@ -54,6 +55,7 @@ describe('UpdateDoctorProfileUseCase', () => {
       findPlanSnapshot: jest.fn().mockResolvedValue(null),
       scheduleOwnAccountDeactivation: jest.fn().mockResolvedValue(undefined),
       applyExpiredScheduledDeactivations: jest.fn().mockResolvedValue(0),
+      updateOnboardingState: jest.fn().mockResolvedValue(undefined),
     };
     useCase = new UpdateDoctorProfileUseCase(mockRepo);
   });
@@ -143,5 +145,17 @@ describe('UpdateDoctorProfileUseCase', () => {
     expect(mockRepo.update).toHaveBeenCalledWith(DOCTOR_ID, { specialty: 'Cardiología' });
     // cedula in the returned entity is whatever the DB has — unchanged
     expect(updated.cedula).toBe('V-12345678');
+  });
+});
+
+describe('UpdateDoctorProfileUseCase — DI wiring', () => {
+  it('declares an explicit injection token for the optional MPPS verifier', () => {
+    // Regression: with `VerifyMppsUseCase | null` TypeScript reflects `Object`,
+    // so Nest injected null silently and re-verification never ran in staging.
+    const injected = Reflect.getMetadata('self:paramtypes', UpdateDoctorProfileUseCase) as
+      | Array<{ index: number; param: unknown }>
+      | undefined;
+    const tokens = (injected ?? []).map((p) => p.param);
+    expect(tokens).toContain(VerifyMppsUseCase);
   });
 });

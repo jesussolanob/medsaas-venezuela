@@ -35,7 +35,7 @@ import type { DevUserRole } from '@/lib/dev-auth';
 // Types
 // ---------------------------------------------------------------------------
 
-export type UserRole = DevUserRole | 'assistant';
+export type UserRole = DevUserRole | 'assistant' | 'admin';
 
 interface ProfileMin {
   id: string;
@@ -126,4 +126,17 @@ export async function requireSuperAdmin(): Promise<Guard> {
 /** Requires authentication of any role. */
 export async function requireAuth(): Promise<Guard> {
   return requireRole(['super_admin', 'doctor', 'assistant', 'patient']);
+}
+
+/**
+ * Requires super_admin OR admin role.
+ *
+ * Used for endpoints that both administrators and super-administrators
+ * can access, e.g. release notes management (fase 2 retencion).
+ */
+export async function requireAdminOrSuperAdmin(): Promise<Guard> {
+  return requireRole(
+    ['super_admin', 'admin'],
+    'Tu sesión no tiene permisos de administrador. Si iniciaste sesión con otra cuenta en esta ventana, cerrá sesión y volvé a entrar.',
+  );
 }

@@ -51,6 +51,7 @@ function makeSellerProfile(overrides: Partial<SellerProfile> = {}): SellerProfil
   return {
     id: 'seller-uuid-001',
     fullName: 'María González',
+    email: 'maria@delta.app',
     sellerCode: 'ABCDEF',
     createdAt: new Date('2026-08-16T10:00:00Z'),
     ...overrides,
@@ -157,6 +158,7 @@ describe('CompleteRegistrationUseCase', () => {
       specialty: null,
       gender: null,
       resetVerification: true,
+      onboardingLastStep: 'profile',
     });
     expect(result.doctorId).toBe('doc-1');
     expect(result.verificationStatus).toBe('pending');
@@ -187,6 +189,7 @@ describe('CompleteRegistrationUseCase', () => {
       specialty: null,
       gender: null,
       resetVerification: true,
+      onboardingLastStep: 'profile',
     });
   });
 
@@ -213,6 +216,7 @@ describe('CompleteRegistrationUseCase', () => {
       specialty: 'Cardiología',
       gender: null,
       resetVerification: true,
+      onboardingLastStep: 'profile',
     });
   });
 

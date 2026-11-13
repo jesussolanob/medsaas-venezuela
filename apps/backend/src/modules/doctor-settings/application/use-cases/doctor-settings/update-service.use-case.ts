@@ -37,6 +37,10 @@ export class UpdateServiceUseCase {
       if (!office) throw new OfficeNotOwnedError();
     }
 
-    return this.pricingPlanRepo.update(serviceId, params);
+    // When switching to price_on_request, force priceUsd to 0 to avoid accidental charges
+    const resolvedParams: PricingPlanUpdateParams =
+      params.priceOnRequest === true ? { ...params, priceUsd: 0 } : params;
+
+    return this.pricingPlanRepo.update(serviceId, resolvedParams);
   }
 }

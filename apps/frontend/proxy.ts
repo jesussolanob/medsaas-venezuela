@@ -196,7 +196,8 @@ async function handleAuth0Mode(request: NextRequest): Promise<NextResponse> {
     signInReturnToPath: '/post-login',
     session: {
       rolling: false,
-      absoluteDuration: 60 * 60 * 8,
+      // 5 days — must match lib/auth0.ts SESSION_MAX_AGE_SECONDS (see the warning there).
+      absoluteDuration: 60 * 60 * 24 * 5,
     },
   });
 

@@ -920,15 +920,16 @@ y otro monto en bolívares que el especialista para el mismo servicio. Ver ADR-0
 
 Todos en **camelCase** (convención de estos controllers — verificada, no asumida).
 
-| Endpoint                            | Rol           | Devuelve                                                                           |
-| ----------------------------------- | ------------- | ---------------------------------------------------------------------------------- |
-| `GET /api/admin/sellers`            | `super_admin` | `{ id, fullName, email, sellerCode, specialistsCount, createdAt, lastSignInAt }[]` |
-| `POST /api/admin/sellers`           | `super_admin` | `{ id, sellerCode, createdAt }`                                                    |
-| `GET /api/seller/me`                | `seller`      | `{ sellerCode, fullName }`                                                         |
-| `GET /api/seller/specialists`       | `seller`      | `{ id, fullName, specialty, plan, subscriptionStatus, createdAt, lastSignInAt }[]` |
-| `GET /api/seller/specialists/:id`   | `seller`      | Igual, una fila. **422 si no es suyo** (anti-IDOR)                                 |
-| `POST /api/seller/specialists`      | `seller`      | Alta. `sold_by` y plan los fija el backend                                         |
-| `GET /api/public/seller-code/:code` | público       | `{ valid, sellerName }` — **nada más**                                             |
+| Endpoint                                    | Rol           | Devuelve                                                                                                                                          |
+| ------------------------------------------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /api/admin/sellers`                    | `super_admin` | `{ id, fullName, email, sellerCode, specialistsCount, createdAt, lastSignInAt }[]`                                                                |
+| `POST /api/admin/sellers`                   | `super_admin` | `{ id, sellerCode, createdAt, welcomeEmailSent: boolean }` — `welcomeEmailSent: false` indica que el envío inicial falló y hay que usar el resend |
+| `POST /api/admin/sellers/:id/welcome-email` | `super_admin` | `{ sent: boolean }` — reenvía `seller_welcome` al vendedor. 404 si el id no corresponde a un vendedor. Email failure → `sent: false` (nunca 5xx)  |
+| `GET /api/seller/me`                        | `seller`      | `{ sellerCode, fullName }`                                                                                                                        |
+| `GET /api/seller/specialists`               | `seller`      | `{ id, fullName, specialty, plan, subscriptionStatus, createdAt, lastSignInAt }[]`                                                                |
+| `GET /api/seller/specialists/:id`           | `seller`      | Igual, una fila. **422 si no es suyo** (anti-IDOR)                                                                                                |
+| `POST /api/seller/specialists`              | `seller`      | Alta. `sold_by` y plan los fija el backend                                                                                                        |
+| `GET /api/public/seller-code/:code`         | público       | `{ valid, sellerName }` — **nada más**                                                                                                            |
 
 > ⚠️ **Corregido 2026-08-17:** los endpoints de admin decían `@Roles('super_admin', 'admin')`,
 > pero **`'admin'` no existe** en `CurrentUserPayload['role']` — ninguna sesión puede tener ese
@@ -1448,3 +1449,50 @@ Se saltea con aviso y la aceptación funciona igual.
 Enviar un presupuesto cuya `valid_until` ya pasó devuelve `QuoteValidUntilExpiredError` en español.
 Antes se enviaba y el share link nacía **ya vencido**: el paciente recibía un enlace muerto al
 instante. Un `expired` ahora se puede editar y reenviar (deja de ser un callejón sin salida).
+
+### Retención de especialistas — Fase 4 (2026-10-30)
+
+Módulo `retention-invites`. Envelope `{success,data}`. Todos los endpoint admin requieren `super_admin`.
+
+| Endpoint                                   | Método | Auth        | Descripción                                                                                              |
+| ------------------------------------------ | ------ | ----------- | -------------------------------------------------------------------------------------------------------- |
+| `/api/public/retention/click`              | POST   | Pública     | Registra click en enlace de invitación. Body: `{t: string}`. Siempre 204.                                |
+| `/api/admin/retention/metrics`             | GET    | super_admin | Métricas de retención. Query: `from=YYYY-MM-DD&to=YYYY-MM-DD`.                                           |
+| `/api/admin/team-meetings/:id/grant-grace` | POST   | super_admin | Otorga mes de gracia al doctor de la reunión. Sólo si status=done y no tiene ya uno. 409 si ya otorgado. |
+
+#### Cron integrado: `POST /api/cron/doctor-inactivity`
+
+Phase 4 extendió el cron existente. Ahora ejecuta invitaciones PRIMERO:
+
+- Invitación pre-vencimiento (`email:meeting_invite_pre`): free_trial, vence ≤7 días
+- Invitación post-vencimiento (`email:meeting_invite_expired`): past_due, venció ≤30 días
+  Respuesta ahora incluye `meetingInvitePre` y `meetingInviteExpired`.
+
+#### HMAC token (click-tracking)
+
+- Derivado de `AUTH_RESOLVE_SECRET` (ya en prod, sin nuevo env var)
+- TTL: 45 días. URL: `${APP_BASE_URL}/r/meeting?t=<token>`
+- 204 para tokens inválidos/expirados (sin oracle). Primer click sólo.
+
+## Onboarding mínimo y precio a consultar (2026-11-12)
+
+Todos con `doctorId = user.sub` y `@Roles('doctor')`; respuesta `{ success, data }`.
+
+| Método y ruta                                                            | Uso                                                                                                                 |
+| ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------- |
+| `POST /api/doctor/onboarding/progress` `{ step: 'office' \| 'service' }` | Avanza `profiles.onboarding_last_step`, nunca hacia atrás                                                           |
+| `POST /api/doctor/onboarding/skip-office`                                | Crea el consultorio por defecto ("Consultorio", online, lun–vie 08–17, 50+10 min) si no hay uno activo; idempotente |
+| `POST /api/doctor/onboarding/skip-service`                               | Crea "Consulta" con `price_on_request=true` si no hay servicio activo; idempotente                                  |
+
+Cambios de contrato:
+
+- `pricing_plans.price_on_request` viaja en crear/editar servicio y en `GET /api/booking/:doctorId/plans`.
+  Si es `true`, `price_usd` se guarda en 0 y no se muestra.
+- `POST /api/booking` con un plan `price_on_request` del mismo especialista: **no crea pago**, `plan_price`
+  y el monto de la consulta quedan en `NULL` (se ignora lo que mande el cliente).
+- `PATCH /api/consultations/:id/approve-payment` acepta `base_amount_usd` (opcional, > 0). Solo se usa si la
+  consulta no tiene monto base; sin él y sin extras → 422 `CONSULTATION_AMOUNT_REQUIRED`. En esa primera
+  aprobación se crea el pago y se vincula a la cita (`appointments.payment_id`), así cuenta una sola vez.
+- `PUT /api/doctor/profile` acepta `mpps_number`; si cambia, re-verifica en SACS (máx. 1 vez cada 15 min).
+- `GET /api/admin/doctors/export` (CSV): + Teléfono, Fecha de registro, Pacientes, Consultorios (activos),
+  Servicios (activos), Consultas y Último paso del onboarding. Celdas que empiezan con `= + - @` llevan `'`.

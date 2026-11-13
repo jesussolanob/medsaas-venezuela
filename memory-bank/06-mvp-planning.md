@@ -13,6 +13,38 @@
 Fases 0-3 (NX + shared-types + backend NestJS) son base de todo lo de abajo.
 Estado: Fase 0 ✅ · Fase 1 en-progreso.
 
+## Onboarding mínimo + CSV de especialistas (pedido del dueño, 2026-11-12) — completado (en staging 2026-11-13, sin promover)
+
+> Rama `feature/onboarding-minimo`. Objetivo de negocio: que con lo mínimo al especialista ya le puedan
+> agendar, y que el admin tenga una base de contacto útil para seguimiento comercial.
+
+| Ítem                                              | Decisión del dueño                                                                                                      |
+| ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| Quitar MPPS del onboarding; editable en el perfil | La verificación automática pasa a **cédula + nombre** (SACS); el MPPS solo se exige si el especialista lo cargó         |
+| "Omitir" en los pasos Consultorio y Servicio      | Al omitir se crean valores por defecto. **Solo para nuevos**: no hay backfill de especialistas existentes               |
+| Consultorio por defecto                           | "Consultorio", **solo online**, lun–vie 08:00–17:00, 50 min + 10 min de pausa (9 turnos)                                |
+| Servicio por defecto                              | Precio **"A consultar con el especialista"** (flag nuevo, no $0)                                                        |
+| Pago en la reserva                                | **No se pide** si el servicio es "a consultar" **o** si el especialista no tiene cuentas de pago cargadas               |
+| CSV de especialistas (admin)                      | + teléfono, fecha de registro, cantidad de pacientes, consultorios, servicios y consultas, y último paso del onboarding |
+
+## Retención de especialistas (pedido del dueño, planificado 2026-10-30)
+
+> Plan completo y vinculante: `docs/plan-retencion.md` (rama `feature/retencion`). Estado:
+> **implementado y en staging (2026-10-30), QA en navegador hecho; falta QA del equipo y
+> promover a `main`**. Guía de QA: `~/Downloads/guia-pruebas-retencion.txt`.
+
+Cuatro piezas, en este orden de fases: (1) base común + botón **"Contáctame ya"** (solicitud +
+correo a todos los super_admin, promesa 1 h / "Llámame ya" 15 min en horario lun–sáb 8–18;
+número único de soporte +58 422 103 3582 en toda la app, incluida la landing); (2) **Novedades**
+(admin/super_admin publican; solo fecha y título; todas en modal; solo especialistas);
+(3) **modal "Queremos conocerte"** con agendamiento **dentro de Delta** en los horarios libres
+del propio especialista (o lun–sáb 8–18 si no tiene), bloqueo en su agenda, Google Meet con
+anfitrión **Jesús Solano**, reprogramable hasta 2 h antes, recordatorios 24 h y 1 h;
+(4) **correo de invitación** (7 días antes del vencimiento de la prueba y al vencer; incluye a
+los que ya están en la ventana al lanzar) que invita a **iniciar sesión** y agendar desde el
+modal; **mes de gracia** (o 30 días sobre plan pago) que otorga un admin tras la reunión.
+Regla: máximo un correo automático de ciclo de vida por especialista por día.
+
 ## Cambios 12-10 (pedido del dueño) — entregas 2 y 3 (en-progreso desde 2026-10-22)
 
 > Pedido original copiado en `docs/cambios-12-10-pedido-original.md`. Entrega 1 (nota de

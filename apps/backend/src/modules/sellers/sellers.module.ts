@@ -3,6 +3,7 @@ import { SequelizeModule } from '@nestjs/sequelize';
 
 // Sibling modules
 import { SellerCommissionsModule } from '../seller-commissions/seller-commissions.module';
+import { EmailModule } from '../email/email.module';
 
 // Model
 import { SellerProfileModel } from './infrastructure/persistence/models/seller-profile.model';
@@ -25,6 +26,7 @@ import { UpdateSellerPaymentDetailsUseCase } from './application/use-cases/updat
 import { GetAdminSellerPaymentDetailsUseCase } from './application/use-cases/get-admin-seller-payment-details.use-case';
 import { GetSpecialistSellerAssignmentUseCase } from './application/use-cases/get-specialist-seller-assignment.use-case';
 import { DeactivateSellerAccountUseCase } from './application/use-cases/deactivate-seller-account.use-case';
+import { ResendSellerWelcomeEmailUseCase } from './application/use-cases/resend-seller-welcome-email.use-case';
 
 // Guards
 import { RolesGuard } from '../../presentation/guards/roles.guard';
@@ -58,7 +60,7 @@ import {
  * by SequelizeModule.forRootAsync in AppModule.
  */
 @Module({
-  imports: [SequelizeModule.forFeature([SellerProfileModel]), SellerCommissionsModule],
+  imports: [SequelizeModule.forFeature([SellerProfileModel]), SellerCommissionsModule, EmailModule],
   controllers: [SellersController, SellersPublicController],
   providers: [
     {
@@ -79,6 +81,7 @@ import {
     GetAdminSellerPaymentDetailsUseCase,
     GetSpecialistSellerAssignmentUseCase,
     DeactivateSellerAccountUseCase,
+    ResendSellerWelcomeEmailUseCase,
   ],
   exports: [SELLER_REPOSITORY, ValidateSellerCodeUseCase],
 })

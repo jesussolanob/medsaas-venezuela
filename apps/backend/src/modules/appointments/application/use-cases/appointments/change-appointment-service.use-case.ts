@@ -102,6 +102,10 @@ export class ChangeAppointmentServiceUseCase {
       newPlanPriceUsd: newPlan.priceUsd,
       oldPlanName: appointment.planName,
       oldPlanPriceUsd: appointment.planPrice,
+      // When the target service is price_on_request, the repo skips price-related
+      // updates (plan_price on citas, amount_usd on payment, base_amount on
+      // consultation). The price is set at approval time by the doctor.
+      priceOnRequest: newPlan.priceOnRequest,
     });
     // null = la cita se borró entre la lectura y la escritura. Es la misma
     // respuesta que si nunca hubiera existido.

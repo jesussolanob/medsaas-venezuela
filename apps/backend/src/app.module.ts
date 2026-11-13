@@ -57,6 +57,11 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
 import { InfraAuthModule } from './infrastructure/auth/infra-auth.module';
 import { ContentTemplatesModule } from './modules/content-templates/content-templates.module';
 import { StandaloneDocumentsModule } from './modules/standalone-documents/standalone-documents.module';
+import { ContactRequestsModule } from './modules/contact-requests/contact-requests.module';
+import { ReleaseNotesModule } from './modules/release-notes/release-notes.module';
+import { DoctorPromptsModule } from './modules/doctor-prompts/doctor-prompts.module';
+import { TeamMeetingsModule } from './modules/team-meetings/team-meetings.module';
+import { RetentionInvitesModule } from './modules/retention-invites/retention-invites.module';
 
 @Module({
   imports: [
@@ -122,6 +127,11 @@ import { StandaloneDocumentsModule } from './modules/standalone-documents/standa
     NotificationsModule,
     ContentTemplatesModule,
     StandaloneDocumentsModule,
+    ContactRequestsModule,
+    ReleaseNotesModule,
+    DoctorPromptsModule,
+    TeamMeetingsModule,
+    RetentionInvitesModule,
   ],
   controllers: [HealthController],
   providers: [

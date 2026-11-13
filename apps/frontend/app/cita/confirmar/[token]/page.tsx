@@ -69,22 +69,12 @@ function formatModality(raw: string): string {
 
 // ── Subcomponentes ────────────────────────────────────────────────────────────
 
-function GlobalStyle() {
-  return (
-    <style>{`
-      @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
-      * { font-family: 'Inter', sans-serif; }
-    `}</style>
-  );
-}
-
 function SpinnerView() {
   return (
     <div
       className="min-h-screen flex items-center justify-center"
       style={{ background: BRAND.bone }}
     >
-      <GlobalStyle />
       <div className="flex items-center gap-3 text-slate-400">
         <Loader2 className="w-5 h-5 animate-spin" />
         <span className="text-sm">Verificando enlace...</span>
@@ -100,8 +90,6 @@ interface PageShellProps {
 function PageShell({ children }: PageShellProps) {
   return (
     <div className="min-h-screen flex flex-col" style={{ background: BRAND.bone }}>
-      <GlobalStyle />
-
       {/* Header con gradiente */}
       <div className="relative overflow-hidden" style={{ background: BRAND.gradient }}>
         <div

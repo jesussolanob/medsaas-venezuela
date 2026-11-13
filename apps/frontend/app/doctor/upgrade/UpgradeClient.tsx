@@ -10,6 +10,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { getLaunchPromo } from '@/lib/launch-price';
+import { SUPPORT_WHATSAPP_NUMBER as WHATSAPP_NUMBER } from '@/lib/support-contact';
 import {
   Check,
   X,
@@ -101,7 +102,7 @@ const FEATURE_LABELS: Record<string, string> = {
   quotes: 'Presupuestos',
 };
 
-const WHATSAPP_NUMBER = '584221033582'; // WhatsApp de soporte Delta Salud (+58 422 103 3582)
+// WHATSAPP_NUMBER is imported at the top of the file from lib/support-contact.ts.
 const WHATSAPP_MESSAGE = encodeURIComponent(
   'Hola, soy especialista de Delta Salud y tengo una consulta sobre mi plan.',
 );

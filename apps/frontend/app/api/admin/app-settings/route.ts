@@ -23,6 +23,8 @@ const ALLOWED_KEYS: (keyof AppSettings)[] = [
   'expiration_warning_days',
   'sales_whatsapp_number',
   'sales_whatsapp_message',
+  'support_whatsapp_number',
+  'support_hours',
 ];
 
 export async function GET() {

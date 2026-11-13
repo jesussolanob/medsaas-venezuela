@@ -22,6 +22,7 @@
 
 import 'server-only';
 import { backendGet, backendPost } from './api-client.server';
+import { SUPPORT_WHATSAPP_NUMBER } from './support-contact';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 export type PlanKey = 'trial' | 'basic' | 'professional' | 'enterprise' | 'clinic';
@@ -209,8 +210,16 @@ export type AppSettings = {
   };
   stripe_enabled: boolean;
   expiration_warning_days: number[];
+  /** @deprecated Use support_whatsapp_number via the backend settings endpoint. */
   sales_whatsapp_number: string;
   sales_whatsapp_message: string;
+  /** Digits-only WhatsApp number for support (e.g. "584221033582"). */
+  support_whatsapp_number: string;
+  /**
+   * JSON-serialized support hours config:
+   *   { days: number[] (ISO 1=Mon..7=Sun), start: "HH:MM", end: "HH:MM", timezone: string }
+   */
+  support_hours: string;
 };
 
 export type DurationOption = {
@@ -243,9 +252,16 @@ const DEFAULT_SETTINGS: AppSettings = {
   payment_methods_config: {},
   stripe_enabled: false,
   expiration_warning_days: [7, 3, 1],
-  sales_whatsapp_number: '584221033582',
+  sales_whatsapp_number: SUPPORT_WHATSAPP_NUMBER,
   sales_whatsapp_message:
     'Hola, vengo de la web de Delta Salud y me interesa conocer más sobre el plan.',
+  support_whatsapp_number: SUPPORT_WHATSAPP_NUMBER,
+  support_hours: JSON.stringify({
+    days: [1, 2, 3, 4, 5, 6],
+    start: '08:00',
+    end: '18:00',
+    timezone: 'America/Caracas',
+  }),
 };
 
 /**

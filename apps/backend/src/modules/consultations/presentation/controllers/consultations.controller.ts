@@ -305,6 +305,7 @@ export class ConsultationsController {
         quantity: p.quantity,
       })),
       paymentMethod: dto.method ?? null,
+      baseAmountUsd: dto.base_amount_usd,
     });
     return { success: true, data: toConsultationResponse(consultation) };
   }

@@ -110,7 +110,7 @@ export default function EHRPage() {
   if (selectedConsultation) {
     return (
       <>
-        <style>{`@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');* { font-family: 'Inter', sans-serif; }.g-bg{background:linear-gradient(135deg,#00C4CC 0%,#0891b2 100%)}`}</style>
+        <style>{`.g-bg{background:linear-gradient(135deg,#00C4CC 0%,#0891b2 100%)}`}</style>
         <div className="max-w-2xl space-y-5">
           <div className="flex items-center gap-3">
             <button
@@ -204,7 +204,7 @@ export default function EHRPage() {
   if (selectedPatient) {
     return (
       <>
-        <style>{`@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');* { font-family: 'Inter', sans-serif; }.g-bg{background:linear-gradient(135deg,#00C4CC 0%,#0891b2 100%)}`}</style>
+        <style>{`.g-bg{background:linear-gradient(135deg,#00C4CC 0%,#0891b2 100%)}`}</style>
         <div className="max-w-3xl space-y-5">
           <div className="flex items-center gap-3">
             <button
@@ -369,7 +369,7 @@ export default function EHRPage() {
   // ── Vista 1: Lista de pacientes ──
   return (
     <>
-      <style>{`@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');* { font-family: 'Inter', sans-serif; }.g-bg{background:linear-gradient(135deg,#00C4CC 0%,#0891b2 100%)}`}</style>
+      <style>{`.g-bg{background:linear-gradient(135deg,#00C4CC 0%,#0891b2 100%)}`}</style>
 
       <div className="max-w-4xl space-y-5">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">

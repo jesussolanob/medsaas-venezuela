@@ -28,12 +28,16 @@ export interface CreateEventInput {
   startISO: string;
   endISO: string;
   /**
-   * Patient email — optional.
-   * When present, the patient is added as an attendee on the Google Calendar event.
-   * When absent, the attendees array is omitted entirely so Google does not reject
-   * the request due to an empty or invalid attendee email.
+   * Primary attendee email (patient or doctor) — optional.
+   * Preserved for backward compatibility with existing callers.
    */
   attendeeEmail?: string;
+  /**
+   * Additional attendee emails (e.g. team super-admins).
+   * Merged with attendeeEmail into a de-duplicated attendees list.
+   * When both are absent the attendees array is omitted entirely.
+   */
+  attendeeEmails?: string[];
 }
 
 /**
@@ -183,9 +187,15 @@ export class GoogleCalendarService implements OnModuleInit {
 
     const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
 
-    // Only include attendees when the patient email is present.
-    // Google Calendar rejects events with empty or missing attendee email values.
-    const attendees = input.attendeeEmail ? [{ email: input.attendeeEmail }] : undefined;
+    // Build a de-duplicated attendee list from both sources.
+    // Google Calendar rejects events with empty / missing attendee email values.
+    const emailSet = new Set<string>();
+    if (input.attendeeEmail) emailSet.add(input.attendeeEmail);
+    for (const e of input.attendeeEmails ?? []) {
+      if (e) emailSet.add(e);
+    }
+    const attendees =
+      emailSet.size > 0 ? Array.from(emailSet).map((e) => ({ email: e })) : undefined;
 
     if (input.withMeet) {
       const requestId = `delta-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;

@@ -75,6 +75,7 @@ export class VerifyMppsUseCase {
     doctorId: string,
     { force = false }: { force?: boolean } = {},
   ): Promise<VerifyMppsOutput> {
+    this.logger.log(`[verify-mpps] doctorId=${doctorId} start force=${force}`);
     // 1. Load doctor profile
     const profile = await this.profileRepo.findById(doctorId);
     if (!profile) {
@@ -103,12 +104,56 @@ export class VerifyMppsUseCase {
       throw new NoActiveVerifierError(CREDENTIAL_TYPE);
     }
 
-    // 4. Check cached verified result (unless forced)
+    // 4. Check cached verified result + 15-minute cooldown (unless forced).
+    //
+    // Two shortcuts are applied in order:
+    //   a) Already verified with same MPPS → return cached (no SACS call).
+    //   b) Any status with checkedAt within 15 min → cooldown, skip SACS.
+    //      Exception: verified+MPPS changed falls through to re-query SACS even
+    //      when within the cooldown window (the MPPS number itself changed, so the
+    //      cached result is stale and must be re-confirmed).
     if (!force) {
       const existing = await this.verificationRepo.findByDoctorAndType(doctorId, CREDENTIAL_TYPE);
       if (existing?.isVerified()) {
-        this.logger.log(`[verify-mpps] doctorId=${doctorId} already verified — returning cached`);
-        return this.toOutput(doctorId, existing.status, existing.attempts, existing.checkedAt);
+        // Validate the cache is still current: compare the normalized MPPS that was
+        // verified against the doctor's current declared MPPS.  If the doctor updated
+        // their MPPS number since the last check, the cache is stale — fall through to
+        // re-query SACS so the new number is verified against the portal.
+        //
+        // NOTE: cédula changes cannot be detected from the cache alone because
+        // credential_verifications does not store the cédula used at verification time.
+        // A cédula change is uncommon; if it happens the admin can force a re-check.
+        const cachedMpps = normalizeMpps(existing.declaredValue ?? '');
+        const currentMpps = normalizeMpps(profile.mppsNumber ?? '');
+        if (cachedMpps.length > 0 && cachedMpps === currentMpps) {
+          this.logger.log(`[verify-mpps] doctorId=${doctorId} already verified — returning cached`);
+          // Promote the profile if it is still pending (e.g. the system restarted
+          // before promotion completed, or this is the backfill path).
+          try {
+            await this.profileRepo.promoteToVerified(doctorId);
+          } catch {
+            this.logger.error(
+              `[verify-mpps] doctorId=${doctorId} cached-path profile promotion failed`,
+            );
+          }
+          return this.toOutput(doctorId, existing.status, existing.attempts, existing.checkedAt);
+        }
+        // MPPS changed or cache has no numeric content — fall through to re-query SACS.
+        // (Cooldown does NOT apply here: the MPPS was updated and must be re-verified.)
+        this.logger.log(
+          `[verify-mpps] doctorId=${doctorId} cached verified but MPPS changed — re-querying SACS`,
+        );
+      } else if (existing?.checkedAt) {
+        // 15-minute cooldown for non-verified records (pending, mismatch, error, not_found).
+        // Prevents hammering SACS when a doctor saves their MPPS multiple times in
+        // quick succession (double-submit, typo → retry within seconds).
+        const msElapsed = Date.now() - existing.checkedAt.getTime();
+        if (msElapsed < 15 * 60_000) {
+          this.logger.log(
+            `[verify-mpps] doctorId=${doctorId} within 15-min cooldown — skipping SACS`,
+          );
+          return this.toOutput(doctorId, existing.status, existing.attempts, existing.checkedAt);
+        }
       }
     }
 
@@ -168,9 +213,14 @@ export class VerifyMppsUseCase {
     }
 
     // 6b. MPPS number matching + profession check.
-    // Compare on the NORMALIZED license (SACS returns "MPPS-65583", the doctor
-    // declares "65583"). Skip matching entirely when the declared value has no
-    // numeric content so an empty declaration never matches an empty license.
+    //
+    // Two paths:
+    //  - Doctor declared an MPPS number → match the specific license AND require a
+    //    medical profession. Skip matching entirely when declared value has no
+    //    numeric content so an empty declaration never matches an empty license.
+    //  - Doctor did NOT declare an MPPS number → accept if ANY medical profession
+    //    is present in the SACS result. The name match in 6a already confirmed the
+    //    person; this confirms they have a medical credential of any kind.
     const declaredMpps = normalizeMpps(profile.mppsNumber ?? '');
     const professions = sacsResult.professions ?? [];
     const matchedProfession =
@@ -178,10 +228,15 @@ export class VerifyMppsUseCase {
         ? professions.find(
             (p) => normalizeMpps(p.licencia) === declaredMpps && isMedicalProfession(p.profesion),
           )
-        : undefined;
+        : // No MPPS declared — verify by presence of any medical profession
+          professions.find((p) => isMedicalProfession(p.profesion));
 
     if (!matchedProfession) {
-      this.logger.log(`[verify-mpps] doctorId=${doctorId} mpps not in medical professions`);
+      const reason =
+        declaredMpps.length > 0
+          ? 'declared mpps not found in medical professions list'
+          : 'no medical profession found for this cedula';
+      this.logger.log(`[verify-mpps] doctorId=${doctorId} mpps mismatch: ${reason}`);
       const saved = await this.verificationRepo.upsert({
         doctorId,
         credentialType: CREDENTIAL_TYPE,
@@ -190,7 +245,7 @@ export class VerifyMppsUseCase {
         status: 'mismatch',
         evidence: null,
         checkedAt,
-        lastError: 'declared mpps not found in medical professions list',
+        lastError: reason,
       });
       return this.toOutput(doctorId, saved.status, saved.attempts, saved.checkedAt);
     }
@@ -220,6 +275,19 @@ export class VerifyMppsUseCase {
     this.logger.log(
       `[verify-mpps] doctorId=${doctorId} status=verified attempts=${saved.attempts}`,
     );
+
+    // Promote the profile's verification_status to 'verified'.
+    // Only takes effect when the profile is currently 'pending' — 'rejected'
+    // (admin decision) is never overridden.  A failure here must not convert a
+    // successful SACS verification into an error; catch and log only.
+    try {
+      await this.profileRepo.promoteToVerified(doctorId);
+    } catch {
+      this.logger.error(
+        `[verify-mpps] doctorId=${doctorId} profile promotion failed — credential verified but profile status unchanged`,
+      );
+    }
+
     return this.toOutput(doctorId, saved.status, saved.attempts, saved.checkedAt);
   }
 

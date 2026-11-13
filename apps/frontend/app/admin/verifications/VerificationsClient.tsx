@@ -57,6 +57,11 @@ export interface VerificationItem {
   isActive?: boolean;
   /** 'self' = el especialista se dio de baja · 'admin' = lo bloqueó un admin. */
   deactivatedBy?: string | null;
+  /**
+   * UUID del admin que verificó manualmente, o null si fue verificado automáticamente
+   * por cotejo SACS/MPPS.  Solo significativo cuando verificationStatus === 'verified'.
+   */
+  verifiedBy?: string | null;
 }
 
 type MppsStatus = 'pending' | 'verified' | 'not_found' | 'mismatch' | 'error';
@@ -184,6 +189,12 @@ function extractMppsFromCredentials(records: CredentialRecord[]): MppsState | nu
     attempts: mppsRecord.attempts,
     lastError: mppsRecord.lastError,
   };
+}
+
+// ---------------------------------------------------------------------------
+/** True when the loaded MPPS state is a confirmed SACS match. */
+function isMppsVerified(state: MppsState | 'loading' | 'idle' | undefined): boolean {
+  return typeof state === 'object' && state !== null && state.status === 'verified';
 }
 
 // ---------------------------------------------------------------------------
@@ -477,7 +488,6 @@ export default function VerificationsClient({ initialItems }: Props) {
   // ---------------------------------------------------------------------------
 
   async function handleToggleAccess(doctorId: string, targetActive: boolean, fullName: string) {
-    const action = targetActive ? 'desbloquear' : 'bloquear';
     const confirmed = window.confirm(
       targetActive
         ? `¿Confirmas que deseas DESBLOQUEAR el acceso de ${fullName}? El especialista podrá usar la plataforma nuevamente.`
@@ -740,6 +750,19 @@ export default function VerificationsClient({ initialItems }: Props) {
                       >
                         {style.label}
                       </span>
+                      {/* Auto-verification provenance hint: verified with no human actor AND a
+                          SACS match. Legacy manual approvals also have verified_by = NULL, so the
+                          null alone would mislabel them as automatic. */}
+                      {item.verificationStatus === 'verified' &&
+                        item.verifiedBy === null &&
+                        isMppsVerified(mppsMap[item.doctorId]) && (
+                          <span
+                            className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600 border border-emerald-100"
+                            title="Verificado automáticamente por cotejo SACS/MPPS — sin intervención manual"
+                          >
+                            Auto · MPPS
+                          </span>
+                        )}
                     </div>
 
                     {/* Fields grid */}

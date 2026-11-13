@@ -30,6 +30,7 @@ import {
   X,
   AlertTriangle,
   CreditCard,
+  Send,
 } from 'lucide-react';
 import { showToast } from '@/components/ui/Toaster';
 import SellerPaymentDetailsModal from './SellerPaymentDetailsModal';
@@ -270,6 +271,7 @@ export default function SellersPage() {
 
   /** Vendedor cuyo modal de datos de cobro está abierto. */
   const [paymentModal, setPaymentModal] = useState<SellerRow | null>(null);
+  const [resendingId, setResendingId] = useState<string | null>(null);
 
   /**
    * Aplica el resultado del fetch al estado. Separado del efecto a propósito:
@@ -356,7 +358,7 @@ export default function SellersPage() {
       const json = (await res.json().catch(() => ({}))) as {
         success?: boolean;
         error?: string;
-        data?: { sellerCode?: string };
+        data?: { sellerCode?: string; welcomeEmailSent?: boolean };
       };
 
       if (!res.ok || !json.success) {
@@ -367,12 +369,18 @@ export default function SellersPage() {
         return;
       }
 
-      showToast({
-        type: 'success',
-        message: json.data?.sellerCode
-          ? `Vendedor creado. Su código es ${json.data.sellerCode}`
-          : 'Vendedor creado',
-      });
+      const codeText = json.data?.sellerCode ? ` Su código es ${json.data.sellerCode}.` : '';
+      if (json.data?.welcomeEmailSent === false) {
+        showToast({
+          type: 'error',
+          message: `Vendedor creado, pero el correo de bienvenida no salió.${codeText} Usa «Reenviar» en su fila.`,
+        });
+      } else {
+        showToast({
+          type: 'success',
+          message: `Vendedor creado y correo de bienvenida enviado.${codeText}`,
+        });
+      }
       setFullName('');
       setEmail('');
       setShowForm(false);
@@ -381,6 +389,34 @@ export default function SellersPage() {
       showToast({ type: 'error', message: 'Error de conexión al crear el vendedor.' });
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleResendWelcome(seller: SellerRow) {
+    setResendingId(seller.id);
+    try {
+      const res = await fetch(`/api/admin/sellers/${seller.id}/welcome-email`, { method: 'POST' });
+      const json = (await res.json().catch(() => ({}))) as {
+        success?: boolean;
+        error?: string;
+        data?: { sent?: boolean };
+      };
+      if (!res.ok || !json.success) {
+        showToast({ type: 'error', message: json.error ?? 'No se pudo reenviar el correo.' });
+        return;
+      }
+      showToast(
+        json.data?.sent
+          ? { type: 'success', message: `Correo de bienvenida reenviado a ${seller.email}.` }
+          : {
+              type: 'error',
+              message: 'El proveedor de correo falló. Intenta de nuevo en unos minutos.',
+            },
+      );
+    } catch {
+      showToast({ type: 'error', message: 'Error de conexión al reenviar el correo.' });
+    } finally {
+      setResendingId(null);
     }
   }
 
@@ -554,6 +590,9 @@ export default function SellersPage() {
                   <th className="px-5 py-3 text-xs font-bold text-slate-400 uppercase">
                     Último ingreso
                   </th>
+                  <th className="px-5 py-3 text-xs font-bold text-slate-400 uppercase">
+                    Bienvenida
+                  </th>
                   <th className="px-5 py-3 text-xs font-bold text-slate-400 uppercase">Cobro</th>
                   <th className="px-5 py-3 text-xs font-bold text-slate-400 uppercase">Acceso</th>
                 </tr>
@@ -611,6 +650,22 @@ export default function SellersPage() {
                         ) : (
                           <span className="text-xs text-slate-400">Nunca entró</span>
                         )}
+                      </td>
+                      <td className="px-5 py-3">
+                        <button
+                          type="button"
+                          onClick={() => void handleResendWelcome(s)}
+                          disabled={resendingId === s.id}
+                          title="Reenviar correo de bienvenida"
+                          className="inline-flex items-center gap-1.5 text-xs font-semibold rounded-lg px-3 py-1.5 border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors disabled:opacity-60"
+                        >
+                          {resendingId === s.id ? (
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                          ) : (
+                            <Send className="w-3 h-3" />
+                          )}
+                          Reenviar
+                        </button>
                       </td>
                       <td className="px-5 py-3">
                         <button

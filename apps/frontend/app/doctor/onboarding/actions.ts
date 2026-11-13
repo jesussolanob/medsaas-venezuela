@@ -175,3 +175,89 @@ export async function completeOnboarding(): Promise<{
   }
   return { ok: true };
 }
+
+// ---------------------------------------------------------------------------
+// Onboarding progress tracker
+// ---------------------------------------------------------------------------
+
+/**
+ * POST /api/doctor/onboarding/progress
+ * Records the furthest onboarding step reached (monotonic — never goes back).
+ * Fire-and-forget safe: a failure here must NOT block the user.
+ */
+export async function reportOnboardingProgress(
+  step: 'office' | 'service',
+): Promise<{ ok: boolean }> {
+  const result = await backendPost<{ step: string }>('/api/doctor/onboarding/progress', { step });
+  if (!result.ok) {
+    log.error('[reportOnboardingProgress] backend error', {
+      step,
+      code: result.error.code,
+      status: result.error.status,
+    });
+    return { ok: false };
+  }
+  return { ok: true };
+}
+
+// ---------------------------------------------------------------------------
+// Skip-office (Omitir step 2)
+// ---------------------------------------------------------------------------
+
+export interface SkipOfficeResult {
+  ok: boolean;
+  officeId?: string;
+  error?: string;
+}
+
+interface BackendSkipOffice {
+  id: string;
+}
+
+/**
+ * POST /api/doctor/onboarding/skip-office
+ * Creates a default "Consultorio" (online, Mon–Fri 08:00–17:00, 50 min + 10 min buffer)
+ * if the doctor has no active office. Idempotent.
+ */
+export async function skipOnboardingOffice(): Promise<SkipOfficeResult> {
+  const result = await backendPost<BackendSkipOffice>('/api/doctor/onboarding/skip-office', {});
+  if (!result.ok) {
+    log.error('[skipOnboardingOffice] backend error', {
+      code: result.error.code,
+      status: result.error.status,
+    });
+    return { ok: false, error: result.error.message };
+  }
+  return { ok: true, officeId: result.value.id };
+}
+
+// ---------------------------------------------------------------------------
+// Skip-service (Omitir step 3)
+// ---------------------------------------------------------------------------
+
+export interface SkipServiceResult {
+  ok: boolean;
+  serviceId?: string;
+  error?: string;
+}
+
+interface BackendSkipService {
+  id: string;
+}
+
+/**
+ * POST /api/doctor/onboarding/skip-service
+ * Creates a default "Consulta" service with price_on_request=true if the doctor
+ * has no active service. Idempotent.
+ */
+export async function skipOnboardingService(): Promise<SkipServiceResult> {
+  const result = await backendPost<BackendSkipService>('/api/doctor/onboarding/skip-service', {});
+  if (!result.ok) {
+    log.error('[skipOnboardingService] backend error', {
+      code: result.error.code,
+      status: result.error.status,
+    });
+    return { ok: false, error: result.error.message };
+  }
+  return { ok: true, serviceId: result.value.id };
+}

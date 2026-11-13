@@ -23,6 +23,8 @@ interface SellerCreated {
   id: string;
   sellerCode: string;
   createdAt: string;
+  /** false = el vendedor se creó pero el correo de bienvenida no salió. */
+  welcomeEmailSent?: boolean;
 }
 
 /** Fila del listado — el backend serializa en camelCase. */

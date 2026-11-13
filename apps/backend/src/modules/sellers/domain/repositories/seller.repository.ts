@@ -16,11 +16,13 @@ export const SELLER_REPOSITORY = Symbol('ISellerRepository');
 // Value objects / read models
 // ---------------------------------------------------------------------------
 
-/** Minimal seller profile returned to callers. No contact PII beyond fullName. */
+/** Minimal seller profile returned to callers. */
 export interface SellerProfile {
   id: string;
   /** PII — full name. Seller portal context only. Do NOT log. */
   fullName: string;
+  /** PII — email address. Do NOT log. Needed to send the welcome email. */
+  email: string;
   sellerCode: string;
   createdAt: Date;
 }

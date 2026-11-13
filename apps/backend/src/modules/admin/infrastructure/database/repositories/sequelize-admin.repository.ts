@@ -132,7 +132,8 @@ interface MonthlyGrowthRow {
 interface DoctorStatsRow {
   patient_count: string;
   consultation_count: string;
-  monthly_revenue: string | null;
+  // monthly_revenue removed: GetDoctorDetailUseCase now fetches it from
+  // GetFinancialSummaryUseCase so both admin and doctor see the same sources.
 }
 
 /**
@@ -307,12 +308,7 @@ export class SequelizeAdminRepository implements IAdminRepository {
          (SELECT COUNT(*) FROM consultations
            WHERE doctor_id = :doctorId
              AND consultation_date >= :monthStart
-             AND consultation_date < :monthEnd) AS consultation_count,
-         (SELECT COALESCE(SUM(amount), 0) FROM consultations
-           WHERE doctor_id = :doctorId
-             AND payment_status = 'approved'
-             AND consultation_date >= :monthStart
-             AND consultation_date < :monthEnd) AS monthly_revenue`,
+             AND consultation_date < :monthEnd) AS consultation_count`,
       {
         type: QueryTypes.SELECT,
         replacements: { doctorId, monthStart, monthEnd },
@@ -322,7 +318,6 @@ export class SequelizeAdminRepository implements IAdminRepository {
     const stats = statsRows ?? {
       patient_count: '0',
       consultation_count: '0',
-      monthly_revenue: '0',
     };
 
     const base = this.profileRowToDomainWithSub(row, sub ?? undefined);
@@ -363,7 +358,10 @@ export class SequelizeAdminRepository implements IAdminRepository {
       lastSignInAt: base.lastSignInAt,
       patientCount: parseInt(stats.patient_count ?? '0', 10),
       consultationCount: parseInt(stats.consultation_count ?? '0', 10),
-      monthlyRevenue: parseFloat(stats.monthly_revenue ?? '0') || 0,
+      // 0 is a placeholder — GetDoctorDetailUseCase replaces this with the value
+      // from GetFinancialSummaryUseCase (approved consultations + manual income +
+      // orphan payments), matching the doctor's own Finanzas screen exactly.
+      monthlyRevenue: 0,
       soldById,
       soldByName,
       soldBySource,
@@ -1286,28 +1284,63 @@ export class SequelizeAdminRepository implements IAdminRepository {
     interface ExportRawRow {
       full_name: string;
       email: string;
+      phone: string | null;
       cedula: string | null;
       specialty: string | null;
+      registered_at: Date | null;
       plan: string | null;
       subscription_status: string | null;
       subscription_expires_at: Date | null;
       last_sign_in_at: Date | null;
+      patient_count: string; // Postgres COUNT returns string
+      office_count: string;
+      service_count: string;
+      consultation_count: string;
+      onboarding_last_step: string | null;
+      onboarding_office_skipped: boolean;
+      onboarding_service_skipped: boolean;
+      onboarding_completed: boolean | null;
     }
 
+    // Uses correlated subqueries for subscription fields to avoid row multiplication
+    // that would occur with LEFT JOIN subscriptions when a doctor has multiple rows.
+    // Aggregated counts are also correlated subqueries — single query, no N+1.
     const rows = await this.sequelize.query<ExportRawRow>(
       `SELECT
          p.full_name,
          p.email,
+         p.phone,
          p.cedula,
          p.specialty,
-         -- ADR-042: profiles is the source of truth. Subscription as fallback for
-         -- legacy accounts whose profile columns have not been backfilled yet.
-         COALESCE(p.plan, s.plan::text)                            AS plan,
-         COALESCE(p.subscription_status::text, s.status::text)    AS subscription_status,
-         COALESCE(p.subscription_expires_at, s.current_period_end) AS subscription_expires_at,
-         p.last_sign_in_at
+         p.created_at                                              AS registered_at,
+         p.onboarding_last_step,
+         COALESCE(p.onboarding_office_skipped, false)            AS onboarding_office_skipped,
+         COALESCE(p.onboarding_service_skipped, false)           AS onboarding_service_skipped,
+         COALESCE(p.onboarding_completed, false)                 AS onboarding_completed,
+         -- ADR-042: profiles is the source of truth. Correlated subquery (not JOIN) to avoid
+         -- row duplication when a doctor has multiple subscription rows.
+         COALESCE(
+           p.plan,
+           (SELECT s.plan::text FROM subscriptions s WHERE s.doctor_id = p.id ORDER BY s.created_at DESC LIMIT 1)
+         )                                                        AS plan,
+         COALESCE(
+           p.subscription_status::text,
+           (SELECT s.status::text FROM subscriptions s WHERE s.doctor_id = p.id ORDER BY s.created_at DESC LIMIT 1)
+         )                                                        AS subscription_status,
+         COALESCE(
+           p.subscription_expires_at,
+           (SELECT s.current_period_end FROM subscriptions s WHERE s.doctor_id = p.id ORDER BY s.created_at DESC LIMIT 1)
+         )                                                        AS subscription_expires_at,
+         p.last_sign_in_at,
+         -- Patients not soft-deleted
+         (SELECT COUNT(*) FROM patients WHERE doctor_id = p.id AND deleted_at IS NULL) AS patient_count,
+         -- Active offices
+         (SELECT COUNT(*) FROM doctor_offices WHERE doctor_id = p.id AND is_active = true) AS office_count,
+         -- Active services / pricing plans
+         (SELECT COUNT(*) FROM pricing_plans WHERE doctor_id = p.id AND is_active = true) AS service_count,
+         -- All consultations (no status filter)
+         (SELECT COUNT(*) FROM consultations WHERE doctor_id = p.id) AS consultation_count
        FROM profiles p
-       LEFT JOIN subscriptions s ON s.doctor_id = p.id
        WHERE p.role = 'doctor'
        ORDER BY p.full_name ASC`,
       { type: QueryTypes.SELECT },
@@ -1328,13 +1361,23 @@ export class SequelizeAdminRepository implements IAdminRepository {
       return {
         fullName: r.full_name,
         email: r.email,
+        phone: r.phone ?? null,
         cedula: r.cedula ?? null,
         specialty: r.specialty ?? null,
+        registeredAt: r.registered_at ?? null,
         plan: r.plan ?? null,
         subscriptionStatus: r.subscription_status ?? null,
         subscriptionExpiresAt: r.subscription_expires_at ?? null,
         lastSignInAt: r.last_sign_in_at ?? null,
         activityStatus,
+        patientCount: parseInt(r.patient_count ?? '0', 10),
+        officeCount: parseInt(r.office_count ?? '0', 10),
+        serviceCount: parseInt(r.service_count ?? '0', 10),
+        consultationCount: parseInt(r.consultation_count ?? '0', 10),
+        onboardingLastStep: r.onboarding_last_step ?? null,
+        onboardingOfficeSkipped: r.onboarding_office_skipped ?? false,
+        onboardingServiceSkipped: r.onboarding_service_skipped ?? false,
+        onboardingCompleted: r.onboarding_completed ?? false,
       };
     });
   }
