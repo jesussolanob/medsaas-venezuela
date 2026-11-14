@@ -57,6 +57,12 @@ interface Props {
   specialties: Specialty[];
   /** Step to begin on (computed from profile state in page.tsx). */
   initialStep?: 1 | 2 | 3;
+  /**
+   * Profile pre-registered by a seller: personal data is already there, so step 1
+   * is skipped — but Terms & Conditions were never accepted. The welcome screen
+   * asks for them and registers the existing data with accepted_terms.
+   */
+  termsPending?: boolean;
   /** Error message shown at top of step 1 (e.g. phone required). */
   initialErrorMessage?: string;
   /**
@@ -458,6 +464,7 @@ export default function OnboardingForm({
   initialPhone = '',
   specialties,
   initialStep = 1,
+  termsPending = false,
   initialErrorMessage,
   initialOfficeId = null,
 }: Props) {
@@ -549,7 +556,8 @@ export default function OnboardingForm({
    * en el paso 2 o 3 es porque ya avanzó, y darle la bienvenida ahí se leería
    * como que perdió lo hecho.
    */
-  const [showWelcome, setShowWelcome] = useState(initialStep === 1);
+  const [showWelcome, setShowWelcome] = useState(initialStep === 1 || termsPending);
+  const [welcomeError, setWelcomeError] = useState<string | null>(null);
   /**
    * Id del consultorio del paso 2. Se inicializa con `initialOfficeId` (que
    * page.tsx resuelve al detectar un consultorio activo previo) para que al
@@ -716,7 +724,32 @@ export default function OnboardingForm({
     return (
       <OnboardingWelcome
         fullName={initialFullName.includes('@') ? '' : initialFullName}
-        onStart={() => setShowWelcome(false)}
+        requireTerms={termsPending}
+        starting={isPending}
+        error={welcomeError}
+        onStart={() => {
+          if (!termsPending) {
+            setShowWelcome(false);
+            return;
+          }
+          setWelcomeError(null);
+          startTransition(async () => {
+            // Same registration step 1 does, with the data the seller loaded.
+            // No seller_code: attribution was written when the seller invited them.
+            const result = await submitDoctorRegistration({
+              full_name: initialFullName,
+              cedula: `${initialCedulaPrefix}-${initialCedulaNumber}`,
+              phone: initialPhone,
+              specialty: initialSpecialty || undefined,
+              accepted_terms: true,
+            });
+            if (!result.ok) {
+              setWelcomeError(result.error ?? 'No pudimos continuar. Intenta nuevamente.');
+              return;
+            }
+            setShowWelcome(false);
+          });
+        }}
       />
     );
   }

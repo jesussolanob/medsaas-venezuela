@@ -34,6 +34,9 @@ import { GetAdminSellerPaymentDetailsUseCase } from '../../application/use-cases
 import { GetSpecialistSellerAssignmentUseCase } from '../../application/use-cases/get-specialist-seller-assignment.use-case';
 import { DeactivateSellerAccountUseCase } from '../../application/use-cases/deactivate-seller-account.use-case';
 import { ResendSellerWelcomeEmailUseCase } from '../../application/use-cases/resend-seller-welcome-email.use-case';
+import { InviteSellerSpecialistUseCase } from '../../application/use-cases/invite-seller-specialist.use-case';
+import { InviteSellerSpecialistBodySchema } from '@delta/shared-types';
+import type { InviteSellerSpecialistBody } from '@delta/shared-types';
 import type {
   SellerProfile,
   SellerAdminRow,
@@ -254,6 +257,7 @@ export class SellersController {
     private readonly getSellerAssignment: GetSpecialistSellerAssignmentUseCase,
     private readonly deactivateAccount: DeactivateSellerAccountUseCase,
     private readonly resendWelcomeEmail: ResendSellerWelcomeEmailUseCase,
+    private readonly inviteSpecialist: InviteSellerSpecialistUseCase,
   ) {}
 
   // ---------------------------------------------------------------------------
@@ -513,6 +517,47 @@ export class SellersController {
     });
 
     return ok(toSpecialistDto(specialist));
+  }
+
+  // ---------------------------------------------------------------------------
+  // POST /api/seller/specialist-invitations
+  // ---------------------------------------------------------------------------
+
+  /**
+   * A seller pre-registers a specialist by filling in their details.
+   *
+   * Business rules:
+   *   - Duplicate cédula → 409 (SpecialistCedulaConflictError)
+   *   - Duplicate email  → 409 (SpecialistEmailConflictError)
+   *   - sold_by is always the authenticated seller (from session).
+   *   - Plan is always 'free_trial'.
+   *   - onboarding_last_step = 'profile' so the wizard starts at the office step.
+   *   - If email is provided, an invitation email is sent (non-fatal on failure).
+   *
+   * SECURITY: @Roles('seller'). Never log request body (PII).
+   */
+  @Post('seller/specialist-invitations')
+  @HttpCode(HttpStatus.CREATED)
+  @UseGuards(RolesGuard)
+  @Roles('seller')
+  async inviteSpecialistEndpoint(
+    @CurrentUser() user: CurrentUserPayload,
+    @Body(new ZodValidationPipe(InviteSellerSpecialistBodySchema))
+    body: InviteSellerSpecialistBody,
+  ): Promise<
+    SuccessResponse<ReturnType<typeof toSpecialistDto> & { invitationEmailSent: boolean }>
+  > {
+    const { specialist, invitationEmailSent } = await this.inviteSpecialist.execute({
+      sellerId: user.sub,
+      firstName: body.first_name,
+      lastName: body.last_name,
+      cedula: body.cedula,
+      phone: body.phone,
+      email: body.email,
+      specialty: body.specialty ?? null,
+    });
+
+    return ok({ ...toSpecialistDto(specialist), invitationEmailSent });
   }
 
   // ---------------------------------------------------------------------------

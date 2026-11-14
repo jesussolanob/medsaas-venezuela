@@ -193,6 +193,15 @@ export class DoctorProfileModel extends Model {
   @Column({ type: DataType.BOOLEAN, allowNull: false, field: 'onboarding_service_skipped' })
   declare onboardingServiceSkipped: boolean;
 
+  /**
+   * Timestamp when the specialist accepted the current Terms & Conditions.
+   * Null = never accepted (or accepted before this column was added).
+   * Written by CompleteRegistrationUseCase → IDoctorRegistrationRepository.acceptTerms.
+   * Column lives on `profiles` (same table). Added together with `terms_accepted_version`.
+   */
+  @Column({ type: DataType.DATE, allowNull: true, field: 'terms_accepted_at' })
+  declare termsAcceptedAt: Date | null;
+
   @CreatedAt
   @Column({ field: 'created_at' })
   declare createdAt: Date;

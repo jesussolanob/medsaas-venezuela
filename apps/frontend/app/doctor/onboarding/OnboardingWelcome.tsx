@@ -14,7 +14,8 @@
  * camino se lee como que se perdió el avance.
  */
 
-import { Building2, Stethoscope, UserRound, ArrowRight } from 'lucide-react';
+import { useState } from 'react';
+import { Building2, Stethoscope, UserRound, ArrowRight, Loader2 } from 'lucide-react';
 
 const STEPS = [
   {
@@ -38,9 +39,21 @@ interface Props {
   /** Nombre del especialista, si ya lo tenemos del registro. */
   fullName?: string;
   onStart: () => void;
+  /** Pre-registered by a seller: Terms & Conditions must be accepted to continue. */
+  requireTerms?: boolean;
+  starting?: boolean;
+  error?: string | null;
 }
 
-export default function OnboardingWelcome({ fullName, onStart }: Props) {
+export default function OnboardingWelcome({
+  fullName,
+  onStart,
+  requireTerms = false,
+  starting = false,
+  error = null,
+}: Props) {
+  const [termsAccepted, setTermsAccepted] = useState(false);
+  const canStart = !starting && (!requireTerms || termsAccepted);
   // Solo el primer nombre: "Bienvenido, José Ramón Villalobos" suena a carta
   // formal; "Bienvenido, José" suena a que lo estábamos esperando.
   const firstName = fullName?.trim().split(/\s+/)[0] ?? '';
@@ -96,14 +109,45 @@ export default function OnboardingWelcome({ fullName, onStart }: Props) {
       </ol>
 
       <div className="px-6 sm:px-8 py-6">
+        {requireTerms && (
+          <label className="flex items-start gap-3 mb-4 cursor-pointer select-none text-sm">
+            <input
+              type="checkbox"
+              checked={termsAccepted}
+              onChange={(e) => setTermsAccepted(e.target.checked)}
+              className="mt-0.5 w-4 h-4 accent-teal-600"
+            />
+            <span style={{ color: 'var(--dh-gray-600)' }}>
+              Acepto los{' '}
+              <a href="/terms" target="_blank" rel="noopener noreferrer" className="underline">
+                Términos y Condiciones
+              </a>{' '}
+              y la{' '}
+              <a href="/privacy" target="_blank" rel="noopener noreferrer" className="underline">
+                Política de Privacidad
+              </a>
+              .
+            </span>
+          </label>
+        )}
+        {error && (
+          <p className="text-xs text-red-600 mb-3" role="alert">
+            {error}
+          </p>
+        )}
         <button
           type="button"
           onClick={onStart}
-          className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-white font-bold text-sm transition-all hover:opacity-90"
+          disabled={!canStart}
+          className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-white font-bold text-sm transition-all hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
           style={{ background: 'var(--dh-turquoise)' }}
         >
           Comenzar
-          <ArrowRight className="w-4 h-4" />
+          {starting ? (
+            <Loader2 className="w-4 h-4 animate-spin" />
+          ) : (
+            <ArrowRight className="w-4 h-4" />
+          )}
         </button>
         <p className="text-[11px] text-center mt-3" style={{ color: 'var(--dh-gray-400)' }}>
           Puedes cambiar todo esto más adelante desde Configuración.

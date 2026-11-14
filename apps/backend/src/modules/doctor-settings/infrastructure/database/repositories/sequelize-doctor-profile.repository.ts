@@ -118,6 +118,7 @@ export class SequelizeDoctorProfileRepository implements IDoctorProfileRepositor
       onboardingLastStep: row.onboardingLastStep ?? null,
       onboardingOfficeSkipped: row.onboardingOfficeSkipped ?? false,
       onboardingServiceSkipped: row.onboardingServiceSkipped ?? false,
+      termsAccepted: row.termsAcceptedAt != null,
     });
   }
 

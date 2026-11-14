@@ -67,6 +67,13 @@ export interface DoctorProfileCreateParams {
   onboardingOfficeSkipped?: boolean;
   /** True when the service setup step was explicitly skipped (Omitir button). */
   onboardingServiceSkipped?: boolean;
+  /**
+   * True when the specialist has accepted the current Terms & Conditions.
+   * Derived from `terms_accepted_at IS NOT NULL`.
+   * Exposed on GET /api/doctor/profile so the frontend can gate
+   * T&C acceptance before the first post-onboarding session.
+   */
+  termsAccepted?: boolean;
 }
 
 export interface DoctorProfileUpdateParams {
@@ -188,6 +195,7 @@ export class DoctorProfile {
     this.onboardingLastStep = params.onboardingLastStep ?? null;
     this.onboardingOfficeSkipped = params.onboardingOfficeSkipped ?? false;
     this.onboardingServiceSkipped = params.onboardingServiceSkipped ?? false;
+    this.termsAccepted = params.termsAccepted ?? false;
   }
 
   /** MPPS license number (optional, editable, nullable). */
@@ -198,6 +206,11 @@ export class DoctorProfile {
   readonly onboardingOfficeSkipped: boolean;
   /** True when service step was explicitly skipped. */
   readonly onboardingServiceSkipped: boolean;
+  /**
+   * True when the specialist has accepted the current Terms & Conditions.
+   * Derived from `terms_accepted_at IS NOT NULL` in the repository mapper.
+   */
+  readonly termsAccepted: boolean;
 
   /** Public booking link for sharing with patients. */
   get bookingLink(): string {
@@ -262,6 +275,7 @@ export class DoctorProfile {
       onboardingLastStep: this.onboardingLastStep,
       onboardingOfficeSkipped: this.onboardingOfficeSkipped,
       onboardingServiceSkipped: this.onboardingServiceSkipped,
+      termsAccepted: this.termsAccepted,
     });
   }
 }
