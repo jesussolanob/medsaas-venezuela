@@ -127,6 +127,7 @@ import ChangeServiceModal from './ChangeServiceModal';
 import IncomeModal, { type IncomeForm } from '@/components/finances/IncomeModal';
 import { UseTemplateButton } from '@/components/doctor/document-editors/UseTemplateButton';
 import { formatYmdEs, todayCaracas } from '@/lib/date-range';
+import { mapAppointmentStatusToConsulta, type ConsultaStatus } from './consultation-status';
 import {
   getIncomeConcepts,
   addIncome,
@@ -145,7 +146,7 @@ type Consultation = {
   notes: string | null;
   diagnosis: string | null;
   treatment: string | null;
-  status: 'pending' | 'in_progress' | 'completed' | 'no_show' | 'cancelled'; // Estado de la CONSULTA (no del pago)
+  status: ConsultaStatus; // Estado de la CONSULTA (no del pago)
   /** Raw appointment status (scheduled/confirmed/completed/no_show) — preservado para mostrar "Por confirmar" */
   appointment_status?: string | null;
   /** Servicio contratado por el paciente. Se muestra siempre, con monto o sin él. */
@@ -197,19 +198,6 @@ type Consultation = {
   // AUDIT FIX 2026-04-28 (C-5): contador para optimistic locking del autosave.
   version?: number | null;
 };
-
-// Maps the linked appointment status (scheduled/confirmed/completed/no_show/cancelled)
-// to the consultation status shown in this view. "Atendida" (completed),
-// "No asistió" (no_show) and "Cancelada" persist across reloads instead of
-// resetting to pending — a cancelled appointment used to show as "Pendiente".
-function mapAppointmentStatusToConsulta(
-  apptStatus: string | null | undefined,
-): Consultation['status'] {
-  if (apptStatus === 'completed') return 'completed';
-  if (apptStatus === 'no_show') return 'no_show';
-  if (apptStatus === 'cancelled') return 'cancelled';
-  return 'pending';
-}
 
 // Estados de CONSULTA
 const CONSULTA_STATUS: Record<string, { label: string; color: string; dot: string }> = {
