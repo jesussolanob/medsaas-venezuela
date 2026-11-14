@@ -73,6 +73,9 @@ function applyRbac(request: NextRequest, role: string): NextResponse | null {
 
 function handleDevMode(request: NextRequest): NextResponse {
   const path = request.nextUrl.pathname;
+  // /login is in the matcher only for the auth0-mode session shortcut. In dev it
+  // must stay public, or an unauthenticated visit would redirect to itself.
+  if (path === '/login') return NextResponse.next();
   const devUserIdCookie = request.cookies.get('dev_user_id')?.value ?? null;
   const isAuthenticated = devUserIdCookie !== null && devUserIdCookie.trim().length > 0;
 
@@ -212,6 +215,18 @@ async function handleAuth0Mode(request: NextRequest): Promise<NextResponse> {
     return auth0Response as NextResponse;
   }
 
+  // /login with a live session goes straight to the portal. The landing's
+  // "Iniciar sesión" lands here and the login buttons use prompt=login, so
+  // without this shortcut a specialist with a valid 5-day session had to type
+  // their credentials again every time they came in through deltasalud.app.
+  if (path === '/login') {
+    const existing = await auth0.getSession();
+    if (existing?.user && !request.nextUrl.searchParams.has('reauth')) {
+      return NextResponse.redirect(new URL('/post-login', request.url));
+    }
+    return auth0Response as NextResponse;
+  }
+
   // For protected routes: check that a valid session exists.
   //
   // ORDEN CRÍTICO: la sesión de Auth0 se evalúa ANTES del atajo de reviewer. Al
@@ -279,5 +294,7 @@ export const config = {
     '/seller/:path*',
     '/auth/:path*',
     '/post-login',
+    // Only to send a visitor who still has a session straight to their portal.
+    '/login',
   ],
 };
