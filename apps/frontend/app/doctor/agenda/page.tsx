@@ -208,9 +208,13 @@ const DEFAULT_SLOTS: AvailabilitySlot[] = [
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
+// Calendar cells are anchored at local NOON, not midnight: dateToYMD() reads the
+// date in America/Caracas, and a local midnight from a browser east of Caracas
+// (e.g. UTC-3) is still the previous day there — every cell showed the day before.
 function getWeekDates(offset = 0): Date[] {
   const today = new Date();
   const monday = new Date(today);
+  monday.setHours(12, 0, 0, 0);
   monday.setDate(today.getDate() - today.getDay() + 1 + offset * 7);
   return Array.from({ length: 7 }, (_, i) => {
     const d = new Date(monday);
@@ -225,7 +229,7 @@ function getMonthDates(year: number, month: number): (Date | null)[] {
   const startPad = (firstDay.getDay() + 6) % 7;
   const cells: (Date | null)[] = [];
   for (let i = 0; i < startPad; i++) cells.push(null);
-  for (let d = 1; d <= lastDay.getDate(); d++) cells.push(new Date(year, month, d));
+  for (let d = 1; d <= lastDay.getDate(); d++) cells.push(new Date(year, month, d, 12));
   while (cells.length % 7 !== 0) cells.push(null);
   return cells;
 }
