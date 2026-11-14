@@ -384,7 +384,8 @@ Aqui defines los bloques que apareceran al registrar una consulta. Puedes crear,
 - **Sugerencias** — /doctor/suggestions: envia comentarios o ideas al equipo Delta y ve el historial con el estado (Nuevo, En progreso, Resuelto, Rechazado) y la respuesta del administrador.
 - **Historia clinica (EHR)** — /doctor/ehr: diagnosticos y planes de tratamiento cifrados por paciente.
 - **Facturacion** — /doctor/billing: documentos fiscales (factura, recibo, comprobante) con IVA e IGTF.
-- **Reportes** — /doctor/reports y **Mensajes** — /doctor/messages: funciones complementarias, algunas en desarrollo.
+- **Reportes** — /doctor/reports: tabla de tus consultas con filtro de fechas y boton **Exportar a CSV** (incluye la columna Estado). La tarjeta **Ingresos** suma los montos de las consultas del rango y **no cuenta las citas canceladas**: en la tabla aparecen con el monto tachado y la etiqueta 'Cancelada'. La **Tasa de no-show** es el porcentaje de citas marcadas **No asistio** sobre las ya resueltas (Atendidas + No asistio); las canceladas y las que todavia no ocurren no cuentan.
+- **Mensajes** — /doctor/messages: funcion complementaria, en desarrollo.
 - **CRM** — /doctor/crm: gestion de prospectos (leads) que aun no son pacientes.
 
 ### 6.15 Inventario — /doctor/inventory
