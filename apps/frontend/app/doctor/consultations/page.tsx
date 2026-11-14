@@ -17,18 +17,7 @@
 
 import { listConsultationsPaged } from './actions';
 import ConsultationsClient from './ConsultationsClient';
-
-/**
- * Mapea el estado del appointment a estado de la consulta tal como lo hace el cliente.
- * Duplicado aquí para pre-procesar los datos antes de serializarlos como props.
- */
-function mapAppointmentStatusToConsulta(
-  apptStatus: string | null | undefined,
-): 'pending' | 'in_progress' | 'completed' | 'no_show' {
-  if (apptStatus === 'completed') return 'completed';
-  if (apptStatus === 'no_show') return 'no_show';
-  return 'pending';
-}
+import { mapAppointmentStatusToConsulta } from './consultation-status';
 
 export default async function ConsultationsPage() {
   // Fetch server-side — cero round-trips desde el navegador en la primera carga.
