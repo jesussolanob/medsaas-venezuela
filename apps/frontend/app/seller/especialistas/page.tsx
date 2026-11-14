@@ -30,13 +30,16 @@ export default function SellerEspecialistasPage() {
 
   const [busqueda, setBusqueda] = useState('');
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({
-    fullName: '',
+  const EMPTY_FORM = {
+    firstName: '',
+    lastName: '',
+    cedulaPrefix: 'V',
+    cedulaNumber: '',
+    phone: '',
     email: '',
     specialty: '',
-    phone: '',
-    cedula: '',
-  });
+  };
+  const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -141,30 +144,56 @@ export default function SellerEspecialistasPage() {
     }
   }
 
+  // Invites the specialist: the seller pre-registers all personal data, the
+  // specialist gets an email to log in and onboarding starts at the office step.
   async function crear() {
-    if (!form.fullName.trim() || !form.email.trim()) {
-      setError('El nombre y el correo son obligatorios.');
+    const cedulaNumber = form.cedulaNumber.replace(/\D/g, '');
+    const required = [
+      form.firstName,
+      form.lastName,
+      cedulaNumber,
+      form.phone,
+      form.email,
+      form.specialty,
+    ];
+    if (required.some((v) => !v.trim())) {
+      setError('Completa todos los campos para enviar la invitación.');
       return;
     }
     setSaving(true);
     setError('');
     try {
-      const res = await fetch('/api/seller/specialists', {
+      const res = await fetch('/api/seller/specialist-invitations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
+        body: JSON.stringify({
+          firstName: form.firstName,
+          lastName: form.lastName,
+          cedula: `${form.cedulaPrefix}-${cedulaNumber}`,
+          phone: form.phone,
+          email: form.email,
+          specialty: form.specialty,
+        }),
       });
-      const j = (await res.json()) as { error?: string };
+      const j = (await res.json()) as { error?: string; data?: { invitationEmailSent?: boolean } };
       if (!res.ok) {
-        setError(j.error || 'No se pudo registrar el especialista.');
+        setError(j.error || 'No se pudo enviar la invitación.');
         return;
       }
-      showToast({ type: 'success', message: 'Especialista registrado' });
-      setForm({ fullName: '', email: '', specialty: '', phone: '', cedula: '' });
+      showToast(
+        j.data?.invitationEmailSent === false
+          ? {
+              type: 'info',
+              message:
+                'Especialista registrado, pero el correo de invitación no salió. Avísale por WhatsApp.',
+            }
+          : { type: 'success', message: 'Invitación enviada al especialista' },
+      );
+      setForm(EMPTY_FORM);
       setShowForm(false);
       await recargar();
     } catch {
-      setError('No se pudo registrar el especialista.');
+      setError('No se pudo enviar la invitación.');
     } finally {
       setSaving(false);
     }
@@ -174,14 +203,14 @@ export default function SellerEspecialistasPage() {
     <div className="space-y-5">
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <p className="text-sm text-slate-500">
-          Los que registraste vos o que se registraron con tu código.
+          Los que invitaste o que se registraron con tu link.
         </p>
         <button
           onClick={() => setShowForm(true)}
           className="flex items-center gap-2 px-4 py-2 g-bg text-white rounded-lg text-sm font-semibold hover:opacity-90 transition-opacity"
         >
           <UserPlus className="w-4 h-4" />
-          Registrar especialista
+          Invitar especialista
         </button>
       </div>
 
@@ -193,9 +222,9 @@ export default function SellerEspecialistasPage() {
         ) : rows.length === 0 ? (
           <div className="p-8 text-center">
             <Users className="w-8 h-8 text-slate-300 mx-auto mb-2" />
-            <p className="text-sm text-slate-500">Todavía no registraste ningún especialista.</p>
+            <p className="text-sm text-slate-500">Todavía no tienes especialistas.</p>
             <p className="text-xs text-slate-400 mt-1">
-              Compartí tu código o usá &ldquo;Registrar especialista&rdquo;.
+              Comparte tu link o usa &ldquo;Invitar especialista&rdquo;.
             </p>
           </div>
         ) : (
@@ -500,7 +529,7 @@ export default function SellerEspecialistasPage() {
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-start justify-between">
-              <h2 className="text-lg font-bold text-slate-900">Registrar especialista</h2>
+              <h2 className="text-lg font-bold text-slate-900">Invitar especialista</h2>
               <button
                 onClick={() => setShowForm(false)}
                 disabled={saving}
@@ -512,55 +541,72 @@ export default function SellerEspecialistasPage() {
             </div>
 
             <div className="space-y-2">
+              <div className="flex gap-2">
+                <input
+                  autoFocus
+                  value={form.firstName}
+                  onChange={(e) => setForm({ ...form, firstName: e.target.value })}
+                  placeholder="Nombre"
+                  aria-label="Nombre"
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:border-teal-400 outline-none"
+                />
+                <input
+                  value={form.lastName}
+                  onChange={(e) => setForm({ ...form, lastName: e.target.value })}
+                  placeholder="Apellido"
+                  aria-label="Apellido"
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:border-teal-400 outline-none"
+                />
+              </div>
+              <div className="flex gap-2">
+                <select
+                  value={form.cedulaPrefix}
+                  onChange={(e) => setForm({ ...form, cedulaPrefix: e.target.value })}
+                  aria-label="Tipo de documento"
+                  className="px-2 py-2 border border-slate-200 rounded-lg text-sm focus:border-teal-400 outline-none bg-white"
+                >
+                  <option value="V">V</option>
+                  <option value="E">E</option>
+                  <option value="P">P</option>
+                </select>
+                <input
+                  value={form.cedulaNumber}
+                  onChange={(e) => setForm({ ...form, cedulaNumber: e.target.value })}
+                  placeholder="Cédula"
+                  aria-label="Cédula"
+                  inputMode="numeric"
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:border-teal-400 outline-none"
+                />
+              </div>
               <input
-                autoFocus
-                value={form.fullName}
-                onChange={(e) => setForm({ ...form, fullName: e.target.value })}
-                placeholder="Nombre y apellido"
+                value={form.phone}
+                onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                placeholder="Teléfono (WhatsApp)"
+                aria-label="Teléfono"
+                type="tel"
                 className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:border-teal-400 outline-none"
               />
               <input
                 value={form.email}
                 onChange={(e) => setForm({ ...form, email: e.target.value })}
-                placeholder="Correo"
+                placeholder="Correo con el que va a iniciar sesión"
+                aria-label="Correo"
                 type="email"
                 className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:border-teal-400 outline-none"
               />
-              <div className="flex gap-2">
-                <input
-                  value={form.specialty}
-                  onChange={(e) => setForm({ ...form, specialty: e.target.value })}
-                  placeholder="Especialidad (opcional)"
-                  className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:border-teal-400 outline-none"
-                />
-                <input
-                  value={form.phone}
-                  onChange={(e) => setForm({ ...form, phone: e.target.value })}
-                  placeholder="Teléfono"
-                  className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:border-teal-400 outline-none"
-                />
-              </div>
-              {/*
-                La cédula la aceptaba el backend desde siempre, pero el
-                formulario no la pedía: el especialista terminaba tecleándola él
-                en el onboarding, que es justo lo que el dueño quiere evitar.
-                Cuanto más complete el vendedor acá, menos le piden a él después.
-              */}
               <input
-                value={form.cedula}
-                onChange={(e) => setForm({ ...form, cedula: e.target.value })}
-                placeholder="Cédula"
+                value={form.specialty}
+                onChange={(e) => setForm({ ...form, specialty: e.target.value })}
+                placeholder="Especialidad"
+                aria-label="Especialidad"
                 className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:border-teal-400 outline-none"
               />
             </div>
 
             <p className="text-xs text-slate-500">
-              La cuenta arranca en el <strong>plan de prueba</strong>, igual que cualquier registro.
-              El especialista mejora su plan pagando.
-            </p>
-            <p className="text-xs text-slate-500">
-              Todo lo que cargues acá le queda precargado: cuanto más completo, menos datos le pide
-              el sistema cuando entre por primera vez.
+              Le llega un correo para iniciar sesión. Al entrar no le pedimos de nuevo estos datos:
+              arranca directo por su consultorio y sus servicios. La cuenta empieza en el{' '}
+              <strong>plan de prueba</strong>, igual que cualquier registro.
             </p>
 
             {error && (
@@ -584,7 +630,7 @@ export default function SellerEspecialistasPage() {
                 className="flex-1 py-2.5 g-bg text-white rounded-lg text-sm font-semibold hover:opacity-90 disabled:opacity-50 inline-flex items-center justify-center gap-2"
               >
                 {saving && <Loader2 className="w-4 h-4 animate-spin" />}
-                Registrar
+                Enviar invitación
               </button>
             </div>
           </div>

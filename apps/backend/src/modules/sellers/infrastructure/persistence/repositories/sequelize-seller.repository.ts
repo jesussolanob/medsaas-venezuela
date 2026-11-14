@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/sequelize';
-import { Op, UniqueConstraintError } from 'sequelize';
+import { Op, QueryTypes, UniqueConstraintError } from 'sequelize';
 import { Sequelize } from 'sequelize-typescript';
 import type {
   ISellerRepository,
@@ -220,6 +220,10 @@ export class SequelizeSellerRepository implements ISellerRepository {
           // from 'code' so the payout detail can tell the two apart.
           soldBySource: 'seller_manual',
           sellerCode: null,
+          // When a seller pre-registers a specialist via the invitation flow,
+          // set the wizard position so the specialist skips the profile step.
+          // null = standard first-step flow (no invitation).
+          onboardingLastStep: params.onboardingLastStep ?? null,
         } as Parameters<typeof SellerProfileModel.create>[0],
         { transaction: t },
       );
@@ -269,6 +273,26 @@ export class SequelizeSellerRepository implements ISellerRepository {
         where: { id: specialistId, soldBy: null },
       },
     );
+  }
+
+  async findByCedula(cedula: string): Promise<{ id: string } | null> {
+    // Raw SQL for a case-insensitive, whitespace-trimmed cédula look-up.
+    // UPPER() on both sides handles the common V-/E-/P- prefix variants.
+    // Returns at most one row (application-level uniqueness — no DB constraint).
+    // SECURITY: never log the cedula input.
+    type Row = { id: string };
+    const rows = await this.sequelize.query<Row>(
+      `SELECT id FROM profiles
+       WHERE UPPER(TRIM(cedula)) = UPPER(TRIM(:cedula))
+         AND cedula IS NOT NULL
+       LIMIT 1`,
+      {
+        replacements: { cedula },
+        type: QueryTypes.SELECT,
+      },
+    );
+    // rows[0]! is safe: length > 0 guard above.
+    return rows.length > 0 ? { id: rows[0]!.id } : null;
   }
 
   // ---------------------------------------------------------------------------

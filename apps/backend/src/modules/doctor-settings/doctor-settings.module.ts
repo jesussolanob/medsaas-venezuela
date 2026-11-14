@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { forwardRef, Module } from '@nestjs/common';
 import { SequelizeModule } from '@nestjs/sequelize';
 import { FinancesModule } from '../finances/finances.module';
 import { OfficesModule } from '../offices/offices.module';
@@ -89,7 +89,9 @@ import { DoctorController } from './presentation/controllers/doctor.controller';
     // Import FinancesModule to access USDT_RATE_STORE for exchange-rate resolution.
     FinancesModule,
     // Import OfficesModule to resolve OFFICE_REPOSITORY for office ownership checks.
-    OfficesModule,
+    // forwardRef() is required because OfficesModule also imports DoctorSettingsModule
+    // to access DOCTOR_PROFILE_REPOSITORY for clearing the onboarding skip flag.
+    forwardRef(() => OfficesModule),
     // StorageModule exports STORAGE_PORT, used by GetDoctorProfileUseCase to re-sign
     // GCS image URLs (avatar, logo, signature) at read time.
     StorageModule,

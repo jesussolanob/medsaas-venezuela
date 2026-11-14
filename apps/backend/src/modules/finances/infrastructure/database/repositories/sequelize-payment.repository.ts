@@ -160,7 +160,11 @@ export class SequelizePaymentRepository implements IPaymentRepository {
              FROM appointments ap
              INNER JOIN payments pp ON pp.id = ap.payment_id
              WHERE ap.consultation_id = c.id
-           )${consultDateWhere}`
+           )
+           -- Excluir consultas cuya cita fue cancelada: no hay cobro pendiente
+           -- sobre una cita que el especialista o el paciente rechazaron.
+           -- a.id IS NULL = consulta directa (sin cita) → siempre mostrar.
+           AND (a.id IS NULL OR COALESCE(a.status, '') != 'cancelled')${consultDateWhere}`
       : '';
 
     const rows = await this.sequelize.query<PaymentListRow>(
@@ -200,6 +204,11 @@ export class SequelizePaymentRepository implements IPaymentRepository {
         */
        LEFT JOIN consultations c ON c.id = COALESCE(a.consultation_id, p.consultation_id)
        WHERE ${where}
+         -- Exclude pending payments for cancelled appointments: once an appointment
+         -- is cancelled its pending charge is no longer collectible. Approved
+         -- payments (ingresos ya cobrados) are always shown regardless.
+         -- When no appointment exists (a.id IS NULL) the payment is always shown.
+         AND NOT (p.status = 'pending' AND a.status = 'cancelled')
        ${unionSql}
        ORDER BY created_at DESC`,
       { replacements, type: QueryTypes.SELECT },
@@ -213,30 +222,38 @@ export class SequelizePaymentRepository implements IPaymentRepository {
     fromDate?: string;
     toDate?: string;
   }): Promise<PaymentTotals> {
-    const conditions: string[] = ['doctor_id = :doctorId'];
+    const conditions: string[] = ['p.doctor_id = :doctorId'];
     const replacements: Record<string, unknown> = { doctorId: filters.doctorId };
 
     if (filters.fromDate) {
-      conditions.push('created_at >= :fromDate::timestamptz');
+      conditions.push('p.created_at >= :fromDate::timestamptz');
       replacements['fromDate'] = filters.fromDate;
     }
     if (filters.toDate) {
-      conditions.push('created_at <= :toDate::timestamptz');
+      conditions.push('p.created_at <= :toDate::timestamptz');
       replacements['toDate'] = filters.toDate;
     }
 
     const where = conditions.join(' AND ');
 
-    // Misma regla que la lista y que el resumen: cobrado = pago APROBADO. El estado
-    // de la cita no entra en el cálculo (regla del dueño, 2026-09-07).
+    // Misma regla que la lista: cobrado = pago APROBADO (regla del dueño, 2026-09-07).
+    // Para los pendientes: excluir los vinculados a citas canceladas — no hay cobro
+    // pendiente sobre una cita rechazada. Los aprobados se cuentan siempre
+    // (ya se cobró, es un ingreso real independientemente del estado de la cita).
+    // El LEFT JOIN appointments + el filtro IS NULL cubre pagos sin cita (cotizaciones).
 
     const rows = await this.sequelize.query<TotalsRow>(
       `SELECT
-         COALESCE(SUM(CASE WHEN status = 'approved' THEN amount_usd ELSE 0 END), 0) AS approved_usd,
-         COALESCE(SUM(CASE WHEN status = 'pending' THEN amount_usd ELSE 0 END), 0) AS pending_usd,
-         COUNT(CASE WHEN status = 'approved' THEN 1 ELSE NULL END)::text AS approved_count,
-         COUNT(CASE WHEN status = 'pending' THEN 1 ELSE NULL END)::text AS pending_count
-       FROM payments
+         COALESCE(SUM(CASE WHEN p.status = 'approved' THEN p.amount_usd ELSE 0 END), 0) AS approved_usd,
+         COALESCE(SUM(CASE WHEN p.status = 'pending'
+                           AND (a.id IS NULL OR a.status != 'cancelled')
+                           THEN p.amount_usd ELSE 0 END), 0) AS pending_usd,
+         COUNT(CASE WHEN p.status = 'approved' THEN 1 ELSE NULL END)::text AS approved_count,
+         COUNT(CASE WHEN p.status = 'pending'
+                    AND (a.id IS NULL OR a.status != 'cancelled')
+                    THEN 1 ELSE NULL END)::text AS pending_count
+       FROM payments p
+       LEFT JOIN appointments a ON a.payment_id = p.id
        WHERE ${where}`,
       { replacements, type: QueryTypes.SELECT },
     );
