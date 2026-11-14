@@ -26,6 +26,9 @@ import {
   Plus,
   Lock,
   FilePlus,
+  Copy,
+  MessageCircle,
+  ExternalLink,
 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -128,6 +131,67 @@ type AllTimeStats = {
   patients_attended: number;
 };
 
+// ---------------------------------------------------------------------------
+// BookingLinkCard — tarjeta del enlace de reservas público (feature 'booking')
+// ---------------------------------------------------------------------------
+
+interface BookingLinkCardProps {
+  doctorId: string;
+  copied: boolean;
+  onCopy: () => void;
+}
+
+function BookingLinkCard({ doctorId, copied, onCopy }: BookingLinkCardProps) {
+  const bookingUrl = `${window.location.origin}/book/${doctorId}`;
+  const waText = encodeURIComponent(`Puedes agendar tu cita en línea aquí: ${bookingUrl}`);
+
+  return (
+    <div className="p-4 sm:p-5 rounded-xl border border-teal-200 bg-white">
+      <div className="flex items-center gap-2 mb-3">
+        <ExternalLink className="w-4 h-4 shrink-0" style={{ color: 'var(--dh-turquoise)' }} />
+        <p className="text-sm font-bold" style={{ color: 'var(--dh-ink)' }}>
+          Tu enlace de reservas
+        </p>
+        <Link
+          href="/doctor/settings?tab=booking"
+          className="ml-auto text-xs font-semibold"
+          style={{ color: 'var(--dh-turquoise-700)' }}
+        >
+          Ver QR
+        </Link>
+      </div>
+      <div
+        className="flex items-center px-3 py-2 rounded-lg text-xs font-mono truncate"
+        style={{ background: 'var(--dh-gray-50)', border: '1px solid var(--dh-gray-100)' }}
+      >
+        <span className="flex-1 truncate" style={{ color: 'var(--dh-gray-600)' }}>
+          {bookingUrl}
+        </span>
+      </div>
+      <div className="flex gap-2 mt-3">
+        <button
+          onClick={onCopy}
+          className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-semibold border border-slate-200 hover:bg-slate-50 transition-colors"
+          style={{ color: 'var(--dh-gray-700)' }}
+        >
+          <Copy className="w-3.5 h-3.5" />
+          {copied ? 'Copiado' : 'Copiar enlace'}
+        </button>
+        <a
+          href={`https://wa.me/?text=${waText}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-semibold text-white transition-opacity hover:opacity-90"
+          style={{ background: '#25D366' }}
+        >
+          <MessageCircle className="w-3.5 h-3.5" />
+          Compartir por WhatsApp
+        </a>
+      </div>
+    </div>
+  );
+}
+
 const EXPENSE_CATEGORIES = [
   { value: 'rent', label: 'Alquiler' },
   { value: 'staff', label: 'Personal' },
@@ -182,6 +246,10 @@ export default function DoctorDashboard() {
   const [planFeatures, setPlanFeatures] = useState<PlanFeatures>(EMPTY_PLAN_FEATURES);
   // null = desconocido (cargando o fetch falló), true = tiene consultorios, false = sin consultorios
   const [hasOffices, setHasOffices] = useState<boolean | null>(null);
+  // Doctor id for the public booking link — set from the profile once it loads.
+  const [bookingDoctorId, setBookingDoctorId] = useState<string | null>(null);
+  // Copied-to-clipboard indicator for the booking link.
+  const [bookingLinkCopied, setBookingLinkCopied] = useState(false);
   // Controla si el doctor descartó el banner de plantillas en esta sesión.
   // Modal de consulta inmediata (paciente sin cita).
   const [showImmediate, setShowImmediate] = useState(false);
@@ -319,6 +387,8 @@ export default function DoctorDashboard() {
 
         // Map profile — DoctorProfile uses camelCase (NestJS wire format).
         if (prof) {
+          // Store the doctor's id for building the public booking URL.
+          setBookingDoctorId(prof.id);
           setProfile({
             full_name: prof.fullName,
             specialty: prof.specialty ?? null,
@@ -918,13 +988,6 @@ export default function DoctorDashboard() {
           <SetupStepper
             steps={[
               {
-                id: 'telefono',
-                label: 'Agrega tu teléfono de contacto',
-                hint: 'Delta Salud te contacta por este número; también lo necesitan tus pacientes.',
-                href: '/doctor/settings?tab=profile&focus=phone',
-                done: Boolean(profile.phone),
-              },
-              {
                 id: 'datos',
                 label: 'Completa tu información profesional',
                 hint: 'Título profesional y especialidad para que tus pacientes te conozcan.',
@@ -1070,6 +1133,27 @@ export default function DoctorDashboard() {
             </div>
           </div>
         </div>
+
+        {/* ── Link de booking público ── */}
+        {/* Solo cuando el plan habilita la feature 'booking' y ya tenemos el id.
+            bookingDoctorId solo se establece desde el efecto (client-side), así
+            que window siempre está disponible cuando este bloque se renderiza. */}
+        {planUnlocks(planFeatures, 'booking') && bookingDoctorId && (
+          <BookingLinkCard
+            doctorId={bookingDoctorId}
+            copied={bookingLinkCopied}
+            onCopy={() => {
+              const url = `${window.location.origin}/book/${bookingDoctorId}`;
+              navigator.clipboard
+                .writeText(url)
+                .then(() => {
+                  setBookingLinkCopied(true);
+                  setTimeout(() => setBookingLinkCopied(false), 2500);
+                })
+                .catch(() => {});
+            }}
+          />
+        )}
 
         {/* ── Cita actual / próxima destacada ── */}
         {featuredAppt && (

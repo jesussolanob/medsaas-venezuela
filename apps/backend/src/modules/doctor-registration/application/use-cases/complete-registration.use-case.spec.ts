@@ -382,6 +382,7 @@ describe('CompleteRegistrationUseCase', () => {
         fullName: 'Carlos M.',
         doctorEmail: 'carlos@example.com',
         cedula: 'V-12345678',
+        phone: '584141234567',
         specialty: 'Cardiología',
         mppsNumber: 'MP-001',
         colegiadoNumber: 'COL-002',

@@ -91,7 +91,7 @@ export function SetupStepper({ steps }: Props) {
                 <p
                   className={`text-sm truncate ${
                     step.done
-                      ? 'text-slate-400 line-through'
+                      ? 'text-slate-400'
                       : isNext
                         ? 'font-semibold text-slate-800'
                         : 'text-slate-500'
@@ -99,10 +99,24 @@ export function SetupStepper({ steps }: Props) {
                 >
                   {step.label}
                 </p>
-                {isNext && <p className="text-xs text-slate-500 mt-0.5">{step.hint}</p>}
+                {step.done && (
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Ya lo completaste, puedes revisarlo aquí
+                  </p>
+                )}
+                {!step.done && isNext && (
+                  <p className="text-xs text-slate-500 mt-0.5">{step.hint}</p>
+                )}
               </div>
 
-              {!step.done && (
+              {step.done ? (
+                <Link
+                  href={step.href}
+                  className="shrink-0 px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors whitespace-nowrap text-slate-500 hover:bg-slate-100 border border-slate-200"
+                >
+                  Revisar
+                </Link>
+              ) : (
                 <Link
                   href={step.href}
                   className={`shrink-0 px-3 py-1.5 text-xs font-bold rounded-lg transition-colors whitespace-nowrap ${
