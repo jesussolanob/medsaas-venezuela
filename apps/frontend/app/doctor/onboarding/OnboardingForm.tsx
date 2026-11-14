@@ -492,11 +492,10 @@ export default function OnboardingForm({
   // Genero: opcional, con fines estadisticos. No condiciona nada del sistema.
   const [gender, setGender] = useState('');
   const [colegiadoNumber, setColegiadoNumber] = useState('');
-  // Código del vendedor que lo trajo — OPCIONAL. Se valida mientras lo escribe
-  // porque un error de tipeo deja la venta sin acreditar y el vendedor se
-  // entera semanas después, cuando reclama.
+  // Seller who referred the specialist. Sellers refer ONLY by link (/r/<code>):
+  // there is no field to type it — it comes from the referral link, so a typo can
+  // never leave a sale unattributed.
   const [sellerCode, setSellerCode] = useState('');
-  const [sellerName, setSellerName] = useState<string | null>(null);
 
   /**
    * Autopoblar el código del vendedor.
@@ -506,8 +505,6 @@ export default function OnboardingForm({
    *   2. localStorage — lo normal: lo dejó la página /r/<código> ANTES del login
    *      de Auth0, que es donde el parámetro de la URL se pierde.
    *
-   * Solo autopobla si el campo está vacío: si el especialista ya escribió algo,
-   * manda lo que él escribió.
    */
   useEffect(() => {
     if (sellerCode) return;
@@ -523,39 +520,6 @@ export default function OnboardingForm({
     // Solo al montar: es una precarga, no un binding permanente.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  const [sellerCodeInvalid, setSellerCodeInvalid] = useState(false);
-  const [checkingSellerCode, setCheckingSellerCode] = useState(false);
-
-  // Valida el código contra el backend mientras lo escribe. Público a
-  // propósito: acá todavía no hay sesión del vendedor, y el endpoint devuelve
-  // solo { valid, sellerName } — nada más del perfil.
-  useEffect(() => {
-    const code = sellerCode.trim();
-    if (code.length < 4) {
-      const clear = setTimeout(() => {
-        setSellerName(null);
-        setSellerCodeInvalid(false);
-      }, 0);
-      return () => clearTimeout(clear);
-    }
-    const timer = setTimeout(() => {
-      setCheckingSellerCode(true);
-      fetch(`/api/public/seller-code/${encodeURIComponent(code)}`)
-        .then((r) => (r.ok ? r.json() : { valid: false, sellerName: null }))
-        .then((j: { valid?: boolean; sellerName?: string | null }) => {
-          setSellerName(j.valid ? (j.sellerName ?? null) : null);
-          setSellerCodeInvalid(!j.valid);
-        })
-        .catch(() => {
-          // Si falla la verificación no se bloquea el registro: el campo es
-          // opcional y el backend vuelve a validarlo al guardar.
-          setSellerName(null);
-          setSellerCodeInvalid(false);
-        })
-        .finally(() => setCheckingSellerCode(false));
-    }, 400);
-    return () => clearTimeout(timer);
-  }, [sellerCode]);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [serverError, setServerError] = useState<string | null>(initialErrorMessage ?? null);
   const [termsAccepted, setTermsAccepted] = useState(false);
@@ -1114,35 +1078,6 @@ export default function OnboardingForm({
               className={inputNormal}
               autoComplete="off"
             />
-          </div>
-
-          {/* Código de vendedor — opcional, solo atribuye la venta */}
-          <div>
-            <label
-              htmlFor="field-seller-code"
-              className="block text-sm font-medium text-slate-700 mb-1.5"
-            >
-              Código de vendedor <span className="text-slate-400">(opcional)</span>
-            </label>
-            <input
-              id="field-seller-code"
-              type="text"
-              value={sellerCode}
-              onChange={(e) => setSellerCode(e.target.value.toUpperCase())}
-              placeholder=""
-              className={sellerCodeInvalid ? inputError : inputNormal}
-              autoComplete="off"
-              autoCapitalize="characters"
-            />
-            {checkingSellerCode && <p className="text-xs text-slate-400 mt-1">Verificando…</p>}
-            {!checkingSellerCode && sellerName && (
-              <p className="text-xs text-emerald-600 mt-1 font-medium">Vendedor: {sellerName}</p>
-            )}
-            {!checkingSellerCode && sellerCodeInvalid && (
-              <p className="text-xs text-red-500 mt-1">
-                Ese código no existe. Revisalo o dejalo vacío.
-              </p>
-            )}
           </div>
 
           {/* Terms acceptance */}

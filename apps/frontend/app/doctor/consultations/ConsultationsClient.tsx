@@ -243,6 +243,29 @@ const PAYMENT_STATUS: Record<string, { label: string; color: string; dot: string
   approved: { label: 'Aprobado', color: 'bg-emerald-100 text-emerald-700', dot: 'bg-emerald-500' },
 };
 
+// Payment of a cancelled appointment that was never collected: there is nothing
+// left to collect, so it reads "Cancelado" instead of "Pendiente". The stored
+// payment_status stays 'pending' (the enum has no cancelled value on purpose).
+const PAYMENT_CANCELLED = {
+  label: 'Cancelado',
+  color: 'bg-slate-100 text-slate-500',
+  dot: 'bg-slate-300',
+};
+
+function isUncollectedCancellation(c: Pick<Consultation, 'status' | 'payment_status'>): boolean {
+  return c.status === 'cancelled' && c.payment_status !== 'approved';
+}
+
+function paymentBadgeOf(c: Pick<Consultation, 'status' | 'payment_status'>) {
+  return isUncollectedCancellation(c)
+    ? PAYMENT_CANCELLED
+    : (PAYMENT_STATUS[c.payment_status] ?? {
+        label: c.payment_status,
+        color: 'bg-slate-100 text-slate-700',
+        dot: 'bg-slate-400',
+      });
+}
+
 // Helper para resolver aliases legacy ('unpaid','pending_approval','cancelled') a 'pending'
 function normalizePaymentStatus(s: string | null | undefined): 'pending' | 'approved' {
   return s === 'approved' ? 'approved' : 'pending';
@@ -3532,7 +3555,9 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
             color: 'bg-amber-100 text-amber-700',
             dot: 'bg-amber-500',
           }
-      : PAYMENT_STATUS[report.payment_status];
+      : isUncollectedCancellation(selected)
+        ? PAYMENT_CANCELLED
+        : PAYMENT_STATUS[report.payment_status];
 
     /*
       Qué puede hacerse todavía con la CITA vinculada.
@@ -3613,14 +3638,13 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                     Consulta: {CONSULTA_STATUS[selected.status]?.label || selected.status}
                   </span>
                   <span
-                    className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${PAYMENT_STATUS[selected.payment_status]?.color || 'bg-slate-100 text-slate-700'}`}
+                    className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${paymentBadgeOf(selected).color}`}
                     title="Estado del pago"
                   >
                     <span
-                      className={`w-1.5 h-1.5 rounded-full ${PAYMENT_STATUS[selected.payment_status]?.dot || 'bg-slate-400'}`}
+                      className={`w-1.5 h-1.5 rounded-full ${paymentBadgeOf(selected).dot}`}
                     ></span>
-                    Pago:{' '}
-                    {PAYMENT_STATUS[selected.payment_status]?.label || selected.payment_status}
+                    Pago: {paymentBadgeOf(selected).label}
                   </span>
                 </div>
               </div>
@@ -5759,7 +5783,12 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                           Oculto en una sesión cubierta: su estado lo manda el pago del
                           paquete, no esta consulta. Dejarlo editable permitía marcar
                           "pendiente" una consulta que en realidad está pagada. */}
-                      {!coverage && (
+                      {!coverage && isUncollectedCancellation(selected) && (
+                        <p className="text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+                          Cita cancelada — no hay nada que cobrar.
+                        </p>
+                      )}
+                      {!coverage && !isUncollectedCancellation(selected) && (
                         <div>
                           <label className="block text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
                             Estado del pago
@@ -7339,8 +7368,13 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                     {/* === RONDA 17 — BADGE PAGO (estilo SÓLIDO, verde/naranja, icono billete) === */}
                     {(() => {
                       const isPaid = c.payment_status === 'approved';
-                      const cls = isPaid ? 'bg-emerald-500 text-white' : 'bg-amber-500 text-white';
-                      const label = isPaid ? 'Pagado' : 'Pendiente';
+                      const isCancelled = isUncollectedCancellation(c);
+                      const cls = isPaid
+                        ? 'bg-emerald-500 text-white'
+                        : isCancelled
+                          ? 'bg-slate-200 text-slate-500'
+                          : 'bg-amber-500 text-white';
+                      const label = isPaid ? 'Pagado' : isCancelled ? 'Cancelado' : 'Pendiente';
                       return (
                         <span
                           className={`text-[10px] font-bold px-2 py-0.5 rounded-full inline-flex items-center gap-1 ${cls}`}
