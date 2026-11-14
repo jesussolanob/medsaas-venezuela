@@ -170,7 +170,7 @@ export class CompleteRegistrationUseCase {
     });
 
     // 5. Notify all super_admins — fire-and-forget
-    this.notifySuperAdmins(updated).catch((err: unknown) => {
+    this.notifySuperAdmins(updated, input.phone).catch((err: unknown) => {
       this.logger.error(
         `[registration] failed to notify super_admins for doctorId=${input.doctorId}`,
         err instanceof Error ? err.message : String(err),
@@ -250,7 +250,10 @@ export class CompleteRegistrationUseCase {
     return /^https?:\/\//i.test(configured) ? configured : 'https://deltasalud.app';
   }
 
-  private async notifySuperAdmins(registration: DoctorRegistration): Promise<void> {
+  private async notifySuperAdmins(
+    registration: DoctorRegistration,
+    phone: string | null,
+  ): Promise<void> {
     const admins = await this.repo.findAllSuperAdmins();
 
     if (admins.length === 0) {
@@ -269,6 +272,8 @@ export class CompleteRegistrationUseCase {
         fullName: registration.fullName || NOT_SPECIFIED,
         doctorEmail: registration.email || NOT_SPECIFIED,
         cedula: registration.cedula || NOT_SPECIFIED,
+        // The team calls new specialists right away (owner request, 2026-11-13).
+        phone: phone || NOT_SPECIFIED,
         specialty: registration.specialty || NOT_SPECIFIED,
         mppsNumber: registration.mppsNumber || NOT_SPECIFIED,
         colegiadoNumber: registration.colegiadoNumber || NOT_SPECIFIED,

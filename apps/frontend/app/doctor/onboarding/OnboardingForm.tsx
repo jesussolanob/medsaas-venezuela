@@ -59,6 +59,12 @@ interface Props {
   initialStep?: 1 | 2 | 3;
   /** Error message shown at top of step 1 (e.g. phone required). */
   initialErrorMessage?: string;
+  /**
+   * Id del consultorio activo ya existente (creado en un intento previo o por
+   * "Omitir"). Si se pasa, el paso 2 lo edita en vez de crear uno nuevo,
+   * evitando el error de solapamiento de horarios.
+   */
+  initialOfficeId?: string | null;
 }
 
 interface FieldErrors {
@@ -453,6 +459,7 @@ export default function OnboardingForm({
   specialties,
   initialStep = 1,
   initialErrorMessage,
+  initialOfficeId = null,
 }: Props) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -579,7 +586,14 @@ export default function OnboardingForm({
    * como que perdió lo hecho.
    */
   const [showWelcome, setShowWelcome] = useState(initialStep === 1);
-  const [officeId, setOfficeId] = useState<string | null>(null);
+  /**
+   * Id del consultorio del paso 2. Se inicializa con `initialOfficeId` (que
+   * page.tsx resuelve al detectar un consultorio activo previo) para que al
+   * pulsar "Atrás" desde el paso 3 el formulario edite ese consultorio en vez
+   * de intentar crear uno nuevo — lo que causaba el error de solapamiento de
+   * horarios cuando ya existía el consultorio por omisión (Lun–Vie 08–17).
+   */
+  const [officeId, setOfficeId] = useState<string | null>(initialOfficeId ?? null);
   /** Duración del bloque del consultorio creado en el paso 2 — acota la duración
    *  que se puede elegir en el paso 3. */
   const [officeSlotDuration, setOfficeSlotDuration] = useState<number | null>(null);
@@ -1115,7 +1129,7 @@ export default function OnboardingForm({
               type="text"
               value={sellerCode}
               onChange={(e) => setSellerCode(e.target.value.toUpperCase())}
-              placeholder="Si alguien te lo dio, escribilo acá"
+              placeholder=""
               className={sellerCodeInvalid ? inputError : inputNormal}
               autoComplete="off"
               autoCapitalize="characters"
