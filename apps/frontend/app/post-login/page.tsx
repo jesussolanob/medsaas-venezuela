@@ -32,8 +32,10 @@ export default async function PostLoginPage(): Promise<never> {
     const { role } = await resolveIdentity();
     destination = destinationForRole(role);
   } catch {
-    // No session / resolution failed — send back to login.
-    destination = '/login';
+    // No session / resolution failed — send back to login. `reauth=1` tells
+    // proxy.ts NOT to bounce /login back here: with a session whose identity
+    // cannot be resolved that would loop forever.
+    destination = '/login?reauth=1';
   }
 
   redirect(destination);
