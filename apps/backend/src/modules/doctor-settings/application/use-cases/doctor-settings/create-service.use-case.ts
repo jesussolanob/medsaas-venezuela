@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import type { PricingPlan } from '../../../../packages/domain/entities/pricing-plan.entity';
 import { PricingPlan as PricingPlanEntity } from '../../../../packages/domain/entities/pricing-plan.entity';
@@ -10,6 +10,10 @@ import {
   OFFICE_REPOSITORY,
   type IOfficeRepository,
 } from '../../../../offices/domain/repositories/office.repository';
+import {
+  DOCTOR_PROFILE_REPOSITORY,
+  type IDoctorProfileRepository,
+} from '../../../domain/repositories/doctor-profile.repository';
 import { OfficeNotOwnedError } from '../../../domain/errors/office-not-owned.error';
 import { PlanRequiresOfficeError } from '../../../domain/errors/plan-requires-office.error';
 
@@ -34,11 +38,15 @@ export interface CreateServiceInput {
 
 @Injectable()
 export class CreateServiceUseCase {
+  private readonly logger = new Logger(CreateServiceUseCase.name);
+
   constructor(
     @Inject(PRICING_PLAN_REPOSITORY)
     private readonly pricingPlanRepo: IPricingPlanRepository,
     @Inject(OFFICE_REPOSITORY)
     private readonly officeRepo: IOfficeRepository,
+    @Inject(DOCTOR_PROFILE_REPOSITORY)
+    private readonly profileRepo: IDoctorProfileRepository,
   ) {}
 
   async execute(doctorId: string, input: CreateServiceInput): Promise<PricingPlan> {
@@ -76,6 +84,20 @@ export class CreateServiceUseCase {
       updatedAt: now,
     });
 
-    return this.pricingPlanRepo.save(plan);
+    const saved = await this.pricingPlanRepo.save(plan);
+
+    // Best-effort: clear the service-skipped flag so the onboarding checklist
+    // recognises that the doctor has set up a real service.
+    // A failure here must NOT roll back the successful service creation.
+    try {
+      await this.profileRepo.updateOnboardingState(doctorId, { serviceSkipped: false });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.warn(
+        `[create-service] failed to clear service_skipped flag for doctorId=${doctorId}: ${msg}`,
+      );
+    }
+
+    return saved;
   }
 }

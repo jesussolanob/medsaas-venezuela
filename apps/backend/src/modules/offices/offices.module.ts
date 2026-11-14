@@ -1,5 +1,6 @@
-import { Module } from '@nestjs/common';
+import { forwardRef, Module } from '@nestjs/common';
 import { SequelizeModule } from '@nestjs/sequelize';
+import { DoctorSettingsModule } from '../doctor-settings/doctor-settings.module';
 
 import { OfficeModel } from './infrastructure/database/models/office.model';
 import { SequelizeOfficeRepository } from './infrastructure/database/repositories/sequelize-office.repository';
@@ -24,7 +25,14 @@ import { OfficesController } from './presentation/controllers/offices.controller
  * without registering the model a second time.
  */
 @Module({
-  imports: [SequelizeModule.forFeature([OfficeModel])],
+  imports: [
+    SequelizeModule.forFeature([OfficeModel]),
+    // forwardRef breaks the circular dependency:
+    // DoctorSettingsModule → OfficesModule → DoctorSettingsModule
+    // We need DOCTOR_PROFILE_REPOSITORY to clear the onboarding skip flag
+    // when a doctor creates or updates a real office.
+    forwardRef(() => DoctorSettingsModule),
+  ],
   controllers: [OfficesController],
   providers: [
     // Repository binding: domain interface → Sequelize implementation

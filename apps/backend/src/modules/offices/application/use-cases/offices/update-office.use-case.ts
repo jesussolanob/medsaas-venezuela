@@ -1,8 +1,12 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import {
   IOfficeRepository,
   OFFICE_REPOSITORY,
 } from '../../../domain/repositories/office.repository';
+import {
+  DOCTOR_PROFILE_REPOSITORY,
+  type IDoctorProfileRepository,
+} from '../../../../doctor-settings/domain/repositories/doctor-profile.repository';
 import { Office } from '../../../domain/entities/office.entity';
 import { DaySchedule } from '../../../domain/value-objects/day-schedule.vo';
 import { OfficeNotFoundError } from '../../../domain/errors/office-not-found.error';
@@ -12,9 +16,14 @@ import type { UpdateOfficeDto } from '@delta/shared-types';
 
 @Injectable()
 export class UpdateOfficeUseCase {
+  private readonly logger = new Logger(UpdateOfficeUseCase.name);
+
   constructor(
     @Inject(OFFICE_REPOSITORY)
     private readonly officeRepo: IOfficeRepository,
+    @Optional()
+    @Inject(DOCTOR_PROFILE_REPOSITORY)
+    private readonly profileRepo?: IDoctorProfileRepository,
   ) {}
 
   async execute(officeId: string, dto: UpdateOfficeDto, doctorId: string): Promise<Office> {
@@ -69,6 +78,22 @@ export class UpdateOfficeUseCase {
       updatedAt: new Date(),
     });
 
-    return this.officeRepo.save(updated);
+    const saved = await this.officeRepo.save(updated);
+
+    // Best-effort: clear the office-skipped flag so the onboarding checklist
+    // recognises that the doctor has configured a real office.
+    // profileRepo is @Optional — wired via forwardRef in production.
+    if (this.profileRepo) {
+      try {
+        await this.profileRepo.updateOnboardingState(existing.doctorId, { officeSkipped: false });
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        this.logger.warn(
+          `[update-office] failed to clear office_skipped flag for doctorId=${existing.doctorId}: ${msg}`,
+        );
+      }
+    }
+
+    return saved;
   }
 }

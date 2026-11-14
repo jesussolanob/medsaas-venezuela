@@ -1,6 +1,7 @@
 import { CreateServiceUseCase } from './create-service.use-case';
 import type { IPricingPlanRepository } from '../../../../packages/domain/repositories/pricing-plan.repository';
 import type { IOfficeRepository } from '../../../../offices/domain/repositories/office.repository';
+import type { IDoctorProfileRepository } from '../../../domain/repositories/doctor-profile.repository';
 import { PricingPlan } from '../../../../packages/domain/entities/pricing-plan.entity';
 import { Office } from '../../../../offices/domain/entities/office.entity';
 import { OfficeNotOwnedError } from '../../../domain/errors/office-not-owned.error';
@@ -50,6 +51,7 @@ describe('CreateServiceUseCase', () => {
   let useCase: CreateServiceUseCase;
   let mockPlanRepo: jest.Mocked<IPricingPlanRepository>;
   let mockOfficeRepo: jest.Mocked<IOfficeRepository>;
+  let mockProfileRepo: jest.Mocked<Pick<IDoctorProfileRepository, 'updateOnboardingState'>>;
 
   beforeEach(() => {
     mockPlanRepo = {
@@ -69,7 +71,12 @@ describe('CreateServiceUseCase', () => {
       save: jest.fn(),
       delete: jest.fn(),
     };
-    useCase = new CreateServiceUseCase(mockPlanRepo, mockOfficeRepo);
+    mockProfileRepo = { updateOnboardingState: jest.fn().mockResolvedValue(undefined) };
+    useCase = new CreateServiceUseCase(
+      mockPlanRepo,
+      mockOfficeRepo,
+      mockProfileRepo as unknown as IDoctorProfileRepository,
+    );
   });
 
   it('throws PlanRequiresOfficeError when doctor has no offices', async () => {
@@ -172,5 +179,29 @@ describe('CreateServiceUseCase', () => {
     const calledWith = mockPlanRepo.save.mock.calls[0]![0]!;
     expect(calledWith.officeId).toBeNull();
     expect(mockOfficeRepo.findByIdForDoctor).not.toHaveBeenCalled();
+  });
+
+  describe('onboarding skip flag clearing', () => {
+    it('clears the service_skipped flag after creating a service', async () => {
+      mockOfficeRepo.listByDoctor.mockResolvedValue([makeOffice()]);
+      mockPlanRepo.save.mockResolvedValue(makePricingPlan());
+
+      await useCase.execute(DOCTOR_ID, { name: 'Consulta', priceUsd: 50 });
+
+      expect(mockProfileRepo.updateOnboardingState).toHaveBeenCalledWith(DOCTOR_ID, {
+        serviceSkipped: false,
+      });
+    });
+
+    it('does not fail the main operation when flag clearing throws', async () => {
+      mockOfficeRepo.listByDoctor.mockResolvedValue([makeOffice()]);
+      mockPlanRepo.save.mockResolvedValue(makePricingPlan());
+      mockProfileRepo.updateOnboardingState.mockRejectedValue(new Error('DB timeout'));
+
+      // Should resolve without throwing despite flag-clear failure
+      const result = await useCase.execute(DOCTOR_ID, { name: 'Consulta', priceUsd: 50 });
+
+      expect(result.name).toBe('Consulta Inicial');
+    });
   });
 });

@@ -74,6 +74,7 @@ function makeSellerRepoMock(): jest.Mocked<ISellerRepository> {
     updateSellerPaymentDetails: jest.fn(),
     getSpecialistSellerAssignment: jest.fn(),
     deactivateOwnAccount: jest.fn(),
+    findByCedula: jest.fn(),
   };
 }
 
@@ -953,5 +954,133 @@ describe('CompleteRegistrationUseCase', () => {
 
     expect(mockSellerRepo.findByCode).not.toHaveBeenCalled();
     expect(mockSellerRepo.linkSoldBy).not.toHaveBeenCalled();
+  });
+
+  // ---------------------------------------------------------------------------
+  // Invited specialist — T&C acceptance preserves seller attribution
+  //
+  // The seller pre-registers the specialist, writing sold_by + sold_by_source.
+  // When the specialist first logs in and accepts T&C, they call this use case
+  // with their existing data + acceptedTerms: true but WITHOUT sellerCode.
+  // The use case must NOT touch sold_by or sold_by_source.
+  // ---------------------------------------------------------------------------
+
+  it('does not call linkSoldBy when accepting T&C without sellerCode (invited specialist)', async () => {
+    // Invited specialist: cedula already set by the seller pre-registration.
+    mockRepo.findById.mockResolvedValue(makeRegistration({ cedula: 'V-12345678' }));
+    mockRepo.updateRegistration.mockResolvedValue(makeRegistration({ cedula: 'V-12345678' }));
+    mockRepo.findAllSuperAdmins.mockResolvedValue([]);
+
+    await useCase.execute({
+      doctorId: 'doc-1',
+      phone: '584141234567',
+      fullName: 'Ana Martínez',
+      cedula: 'V-12345678',
+      acceptedTerms: true,
+      // No sellerCode — seller already wrote sold_by via createSoldSpecialist.
+    });
+
+    // linkSoldBy must NEVER be called — it uses WHERE sold_by IS NULL so it
+    // is technically safe, but calling it at all is a logic bug.
+    expect(mockSellerRepo.linkSoldBy).not.toHaveBeenCalled();
+    expect(mockSellerRepo.findByCode).not.toHaveBeenCalled();
+  });
+
+  it('notifies super_admins when invited specialist accepts T&C (re-submit with existing cedula)', async () => {
+    // Super-admins must be notified even on re-submit so they can verify
+    // the invited specialist's identity and credentials.
+    mockRepo.findById.mockResolvedValue(makeRegistration({ cedula: 'V-12345678' }));
+    mockRepo.updateRegistration.mockResolvedValue(makeRegistration());
+    mockRepo.findAllSuperAdmins.mockResolvedValue([
+      { id: 'a1', email: 'admin@deltasalud.app', fullName: 'Admin' },
+    ]);
+    mockMailer.sendTemplate.mockResolvedValue({ id: 'msg-notify' });
+
+    await useCase.execute({
+      doctorId: 'doc-1',
+      phone: '584141234567',
+      fullName: 'Ana Martínez',
+      cedula: 'V-12345678',
+      acceptedTerms: true,
+    });
+
+    await Promise.resolve();
+
+    const notifyCalls = (mockMailer.sendTemplate as jest.Mock).mock.calls.filter(
+      ([tpl]: [string]) => tpl === 'doctor_pending_verification',
+    );
+    expect(notifyCalls).toHaveLength(1);
+  });
+
+  it('persists T&C acceptance for invited specialist re-submitting with acceptedTerms: true', async () => {
+    mockRepo.findById.mockResolvedValue(makeRegistration({ cedula: 'V-12345678' }));
+    mockRepo.updateRegistration.mockResolvedValue(makeRegistration());
+    mockRepo.findAllSuperAdmins.mockResolvedValue([]);
+
+    await useCase.execute({
+      doctorId: 'doc-1',
+      phone: '584141234567',
+      fullName: 'Ana Martínez',
+      cedula: 'V-12345678',
+      acceptedTerms: true,
+    });
+
+    await new Promise(process.nextTick);
+
+    expect(mockRepo.acceptTerms).toHaveBeenCalledWith(
+      'doc-1',
+      expect.objectContaining({ version: '2026-07' }),
+    );
+  });
+
+  it('does NOT resend welcome email for invited specialist accepting T&C (prior cedula already set)', async () => {
+    // The welcome email is gated to isFirstRegistration (prior cedula null/blank).
+    // Invited specialists already have a cedula written by the seller.
+    mockRepo.findById.mockResolvedValue(makeRegistration({ cedula: 'V-12345678' }));
+    mockRepo.updateRegistration.mockResolvedValue(
+      makeRegistration({ email: 'invited@example.com' }),
+    );
+    mockRepo.findAllSuperAdmins.mockResolvedValue([]);
+
+    await useCase.execute({
+      doctorId: 'doc-1',
+      phone: '584141234567',
+      fullName: 'Ana Martínez',
+      cedula: 'V-12345678',
+      acceptedTerms: true,
+    });
+
+    await Promise.resolve();
+
+    const welcomeCalls = (mockMailer.sendTemplate as jest.Mock).mock.calls.filter(
+      ([tpl]: [string]) => tpl === 'welcome',
+    );
+    expect(welcomeCalls).toHaveLength(0);
+  });
+
+  it('updateRegistration params never include sold_by or sold_by_source (attribution columns)', async () => {
+    // Structural guard: updateRegistration must not receive sold_by or sold_by_source
+    // at all, regardless of whether a sellerCode was provided. Attribution is
+    // written exclusively via linkSoldBy.
+    mockRepo.findById.mockResolvedValue(makeRegistration({ cedula: 'V-12345678' }));
+    mockRepo.updateRegistration.mockResolvedValue(makeRegistration());
+    mockRepo.findAllSuperAdmins.mockResolvedValue([]);
+
+    await useCase.execute({
+      doctorId: 'doc-1',
+      phone: '584141234567',
+      fullName: 'Ana Martínez',
+      cedula: 'V-12345678',
+      acceptedTerms: true,
+    });
+
+    const updateParams = mockRepo.updateRegistration.mock.calls[0]![1] as unknown as Record<
+      string,
+      unknown
+    >;
+    expect(updateParams).not.toHaveProperty('soldBy');
+    expect(updateParams).not.toHaveProperty('sold_by');
+    expect(updateParams).not.toHaveProperty('soldBySource');
+    expect(updateParams).not.toHaveProperty('sold_by_source');
   });
 });

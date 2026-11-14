@@ -32,6 +32,8 @@ El portal usa los colores de Delta: blanco, turquesa y gris. El menu lateral (si
 
 La primera vez que entras al portal, el sistema verifica si completaste tu registro profesional. Si no lo has hecho, te redirige automaticamente a la pantalla **Activa tu cuenta** (ruta /doctor/onboarding). Es una pantalla a pantalla completa, sin menu lateral. No podras usar ningun modulo hasta completarla. El aviso dice: 'Este paso es obligatorio. Necesitas completar tu registro profesional para acceder al portal. Solo tarda un minuto.'
 
+**Si un vendedor te invito:** puede que al entrar por primera vez el wizard ya tenga tu nombre, cedula, especialidad y telefono precargados (el vendedor los ingreso al invitarte). En ese caso el wizard arranca directamente en el paso **Consultorio**, no en el de perfil. Solo tienes que configurar tu consultorio y tu servicio para activar la cuenta.
+
 **Campos del formulario de activacion:**
 
 - **Nombre completo** (obligatorio). Ejemplo: Maria Gonzalez Perez.

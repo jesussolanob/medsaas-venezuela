@@ -103,6 +103,9 @@ type Profile = {
   phone: string | null;
   /** Metodos de cobro activos. Vacio = aun no configuro ninguno. */
   paymentMethods: string[];
+  /** "Omitir" in onboarding created a default office/service: still pending setup. */
+  officeSkipped: boolean;
+  serviceSkipped: boolean;
 };
 
 type Appointment = {
@@ -400,6 +403,8 @@ export default function DoctorDashboard() {
             licenseNumber: prof.licenseNumber ?? null,
             phone: prof.phone ?? null,
             paymentMethods: prof.paymentMethods ?? [],
+            officeSkipped: prof.onboardingOfficeSkipped === true,
+            serviceSkipped: prof.onboardingServiceSkipped === true,
           });
           // Se muestra mientras el especialista no haya pedido ocultarlo. Solo en la
           // carga inicial: un refetch tras una mutacion no debe reabrirlo.
@@ -999,14 +1004,14 @@ export default function DoctorDashboard() {
                 label: 'Crea tu consultorio',
                 hint: 'Sin un consultorio activo no se generan horarios ni se reciben citas.',
                 href: '/doctor/offices',
-                done: hasOffices === true,
+                done: hasOffices === true && !profile.officeSkipped,
               },
               {
                 id: 'servicios',
                 label: 'Define tus servicios',
                 hint: 'Lo que ofreces y a qué precio; es lo que verá el paciente al agendar.',
                 href: '/doctor/services',
-                done: hasServices === true,
+                done: hasServices === true && !profile.serviceSkipped,
               },
               {
                 id: 'branding',

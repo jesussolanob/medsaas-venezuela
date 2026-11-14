@@ -1,9 +1,13 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import {
   IOfficeRepository,
   OFFICE_REPOSITORY,
 } from '../../../domain/repositories/office.repository';
+import {
+  DOCTOR_PROFILE_REPOSITORY,
+  type IDoctorProfileRepository,
+} from '../../../../doctor-settings/domain/repositories/doctor-profile.repository';
 import { Office } from '../../../domain/entities/office.entity';
 import { DaySchedule, type DayScheduleParams } from '../../../domain/value-objects/day-schedule.vo';
 import { OfficeInvalidScheduleError } from '../../../domain/errors/office-invalid-schedule.error';
@@ -86,9 +90,14 @@ export function assertNoScheduleConflict(
 
 @Injectable()
 export class CreateOfficeUseCase {
+  private readonly logger = new Logger(CreateOfficeUseCase.name);
+
   constructor(
     @Inject(OFFICE_REPOSITORY)
     private readonly officeRepo: IOfficeRepository,
+    @Optional()
+    @Inject(DOCTOR_PROFILE_REPOSITORY)
+    private readonly profileRepo?: IDoctorProfileRepository,
   ) {}
 
   async execute(dto: CreateOfficeDto, doctorId: string): Promise<Office> {
@@ -128,6 +137,23 @@ export class CreateOfficeUseCase {
       updatedAt: now,
     });
 
-    return this.officeRepo.create(office);
+    const created = await this.officeRepo.create(office);
+
+    // Best-effort: clear the office-skipped flag so the onboarding checklist
+    // recognises that the doctor has set up a real office.
+    // profileRepo is @Optional — wired via forwardRef in production; absent in
+    // unit tests that instantiate the use case directly without DI container.
+    if (this.profileRepo) {
+      try {
+        await this.profileRepo.updateOnboardingState(doctorId, { officeSkipped: false });
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        this.logger.warn(
+          `[create-office] failed to clear office_skipped flag for doctorId=${doctorId}: ${msg}`,
+        );
+      }
+    }
+
+    return created;
   }
 }

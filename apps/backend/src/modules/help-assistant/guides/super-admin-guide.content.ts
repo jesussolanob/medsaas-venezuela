@@ -701,6 +701,15 @@ propio. Boton **Nuevo vendedor** — despliega el formulario de alta en la misma
 **Habilitar un vendedor (pide confirmacion breve):**
 - Al habilitar, su enlace vuelve a atribuir especialistas y puede generar comisiones de nuevo.
 
+**Los vendedores pueden invitar especialistas directamente:**
+Desde el portal del vendedor existe la opcion "Invitar especialista". El vendedor llena los
+datos del especialista (nombre, apellido, cedula, telefono; correo opcional) y el sistema
+crea el perfil. Si se proporciono correo, el especialista recibe un email de invitacion con
+instrucciones para entrar y completar su consultorio. Al iniciar sesion por primera vez, el
+wizard arranca en el paso de consultorio (el paso de perfil ya lo completo el vendedor).
+La cedula y el correo deben ser unicos; si ya existen en el sistema, el sistema devuelve
+error 409. El correo de invitacion puede fallar sin bloquear el alta.
+
 ## 19. Comisiones (/admin/comisiones)
 
 Accesible desde el grupo **Vendedores** del menu lateral (solo super_admin).
