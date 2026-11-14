@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 // MIGRATED (Etapa 1): Supabase client removed. Data now fetched from NestJS backend.
 import { getReportConsultations, type ReportConsultationRecord } from './actions';
+import { REPORT_STATUS_LABEL } from './report-status';
 import Link from 'next/link';
 import { reportError } from '@/lib/report-error';
 import { useBcvRate } from '@/lib/useBcvRate';
@@ -77,14 +78,12 @@ export default function ReportsPage() {
     }
 
     // 2. Tasa de no-show
-    // Uses the approximated status field set in getReportConsultations().
+    // Over appointments that already resolved (attended or no-show). Cancelled
+    // and still-pending ones say nothing about attendance, so they are left out.
     try {
-      const total = records.length;
-      const noShow = records.filter((c) => {
-        if (c.status) return c.status === 'cancelled' || c.status === 'no_show';
-        return c.payment_status !== 'paid' && new Date(c.consultation_date) < new Date();
-      }).length;
-      const rate = total > 0 ? ((noShow / total) * 100).toFixed(1) : '0.0';
+      const noShow = records.filter((c) => c.status === 'no_show').length;
+      const resolved = noShow + records.filter((c) => c.status === 'completed').length;
+      const rate = resolved > 0 ? ((noShow / resolved) * 100).toFixed(1) : '0.0';
       setNoShowRate(rate);
     } catch (err) {
       reportError('doctor/reports', 'calculateStats:noshow', err);
@@ -212,6 +211,7 @@ export default function ReportsPage() {
       'Motivo',
       'Forma de pago',
       'Monto (USD)',
+      'Estado',
       'Fecha',
     ];
 
@@ -223,7 +223,8 @@ export default function ReportsPage() {
       c.chief_complaint,
       c.payment_method,
       c.amount.toFixed(2),
-      new Date(c.consultation_date).toLocaleDateString('es-VE'),
+      REPORT_STATUS_LABEL[c.status],
+      new Date(c.consultation_date).toLocaleDateString('es-VE', { timeZone: 'America/Caracas' }),
     ]);
 
     // Crear CSV
@@ -251,7 +252,10 @@ export default function ReportsPage() {
 
   const displayRecords = getFilteredRecords(consultations, appliedFrom, appliedTo);
   const filteredCount = displayRecords.length;
-  const totalAmount = displayRecords.reduce((sum, c) => sum + c.amount, 0);
+  // A cancelled appointment never produced income.
+  const totalAmount = displayRecords
+    .filter((c) => c.status !== 'cancelled')
+    .reduce((sum, c) => sum + c.amount, 0);
 
   return (
     <>
@@ -291,7 +295,7 @@ export default function ReportsPage() {
               <div className="flex-1">
                 <p className="text-xs font-semibold text-slate-500 uppercase">Tasa de no-show</p>
                 <p className="text-2xl font-bold text-slate-900 mt-1">{noShowRate}</p>
-                <p className="text-xs text-slate-500 mt-1">% de consultas</p>
+                <p className="text-xs text-slate-500 mt-1">% de citas atendidas o no asistidas</p>
               </div>
             </div>
           </div>
@@ -501,11 +505,22 @@ export default function ReportsPage() {
                     <td className="px-5 py-3 text-xs bg-slate-100 rounded px-2 py-1 inline-block text-slate-700 font-semibold">
                       {c.payment_method}
                     </td>
-                    <td className="px-5 py-3 text-right font-semibold text-emerald-600">
-                      {fmtMoney(c.amount)}
+                    <td
+                      className={`px-5 py-3 text-right font-semibold ${c.status === 'cancelled' ? 'text-slate-400' : 'text-emerald-600'}`}
+                    >
+                      {c.status === 'cancelled' ? (
+                        <span className="inline-flex flex-col items-end">
+                          <span className="line-through">{fmtMoney(c.amount)}</span>
+                          <span className="text-[10px] font-semibold uppercase">Cancelada</span>
+                        </span>
+                      ) : (
+                        fmtMoney(c.amount)
+                      )}
                     </td>
                     <td className="px-5 py-3 text-slate-600">
-                      {new Date(c.consultation_date).toLocaleDateString('es-VE')}
+                      {new Date(c.consultation_date).toLocaleDateString('es-VE', {
+                        timeZone: 'America/Caracas',
+                      })}
                     </td>
                   </tr>
                 ))}

@@ -382,11 +382,14 @@ export default function RescheduleModal({
           </p>
           <p className="text-sm text-slate-600">
             <span className="font-semibold">Cita actual:</span>{' '}
-            {new Date(currentScheduledAt).toLocaleDateString('es-VE', {
+            {new Date(currentScheduledAt).toLocaleString('es-VE', {
               weekday: 'long',
               day: 'numeric',
               month: 'long',
               year: 'numeric',
+              hour: '2-digit',
+              minute: '2-digit',
+              timeZone: 'America/Caracas',
             })}
           </p>
         </div>
