@@ -36,6 +36,7 @@ import 'server-only';
 
 import { backendGet } from '@/lib/api-client.server';
 import { log } from '@/lib/logger';
+import { deriveReportStatus, type ReportStatus } from './report-status';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -51,12 +52,8 @@ export interface ReportConsultationRecord {
   payment_method: string;
   amount: number;
   consultation_date: string;
-  /**
-   * Approximated status for no-show rate calculation.
-   * 'no_show' when payment_status='pending' AND date is past; otherwise 'completed'.
-   * This is an approximation — the backend does not join appointment.status here.
-   */
-  status: string;
+  /** Derived from the linked appointment status (see report-status.ts). */
+  status: ReportStatus;
   payment_status: string | undefined;
   /**
    * Duration in minutes. Always 30 — not available in the backend.
@@ -77,6 +74,8 @@ interface BackendConsultation {
   patient_id: string;
   doctor_id: string;
   appointment_id: string | null;
+  /** Status of the linked appointment (LEFT JOIN in the list query). */
+  appointment_status?: string | null;
   chief_complaint: string | null;
   diagnosis: string | null;
   treatment: string | null;
@@ -137,18 +136,12 @@ export async function getReportConsultations(): Promise<ReportConsultationRecord
   }
 
   const consultations = Array.isArray(consultationsResult.value) ? consultationsResult.value : [];
-  const now = new Date();
-
   return consultations
     .sort(
-      (a, b) =>
-        new Date(b.consultation_date).getTime() - new Date(a.consultation_date).getTime(),
+      (a, b) => new Date(b.consultation_date).getTime() - new Date(a.consultation_date).getTime(),
     )
     .map((c): ReportConsultationRecord => {
       const patient = c.patient_id ? patientMap.get(c.patient_id) : undefined;
-      const isPastAndUnpaid =
-        c.payment_status !== 'approved' && new Date(c.consultation_date) < now;
-
       return {
         id: c.id,
         consultation_code: c.consultation_code,
@@ -158,8 +151,7 @@ export async function getReportConsultations(): Promise<ReportConsultationRecord
         payment_method: c.payment_method ?? 'No especificado',
         amount: Number(c.amount) || 0,
         consultation_date: c.consultation_date,
-        // Approximate no-show: past consultation with pending payment.
-        status: isPastAndUnpaid ? 'no_show' : 'completed',
+        status: deriveReportStatus(c.appointment_status),
         payment_status: c.payment_status ?? undefined,
         // duration_minutes not available in backend — default 30 min.
         duration_minutes: 30,

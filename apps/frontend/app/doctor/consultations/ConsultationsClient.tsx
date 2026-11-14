@@ -145,7 +145,7 @@ type Consultation = {
   notes: string | null;
   diagnosis: string | null;
   treatment: string | null;
-  status: 'pending' | 'in_progress' | 'completed' | 'no_show'; // Estado de la CONSULTA (no del pago)
+  status: 'pending' | 'in_progress' | 'completed' | 'no_show' | 'cancelled'; // Estado de la CONSULTA (no del pago)
   /** Raw appointment status (scheduled/confirmed/completed/no_show) — preservado para mostrar "Por confirmar" */
   appointment_status?: string | null;
   /** Servicio contratado por el paciente. Se muestra siempre, con monto o sin él. */
@@ -198,14 +198,16 @@ type Consultation = {
   version?: number | null;
 };
 
-// Maps the linked appointment status (scheduled/confirmed/completed/no_show)
-// to the consultation status shown in this view. "Atendida" (completed) and
-// "No asistió" (no_show) persist across reloads instead of resetting to pending.
+// Maps the linked appointment status (scheduled/confirmed/completed/no_show/cancelled)
+// to the consultation status shown in this view. "Atendida" (completed),
+// "No asistió" (no_show) and "Cancelada" persist across reloads instead of
+// resetting to pending — a cancelled appointment used to show as "Pendiente".
 function mapAppointmentStatusToConsulta(
   apptStatus: string | null | undefined,
 ): Consultation['status'] {
   if (apptStatus === 'completed') return 'completed';
   if (apptStatus === 'no_show') return 'no_show';
+  if (apptStatus === 'cancelled') return 'cancelled';
   return 'pending';
 }
 
@@ -215,6 +217,7 @@ const CONSULTA_STATUS: Record<string, { label: string; color: string; dot: strin
   in_progress: { label: 'En curso', color: 'bg-blue-100 text-blue-700', dot: 'bg-blue-500' },
   completed: { label: 'Atendida', color: 'bg-emerald-100 text-emerald-700', dot: 'bg-emerald-500' },
   no_show: { label: 'No asistió', color: 'bg-red-100 text-red-700', dot: 'bg-red-500' },
+  cancelled: { label: 'Cancelada', color: 'bg-slate-100 text-slate-500', dot: 'bg-slate-300' },
 };
 
 type Patient = {
@@ -1534,7 +1537,7 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
           setRescheduleApptTarget({
             id: appointmentId,
             patientName: selected.patient_name,
-            scheduledAt: selected.consultation_date + 'T12:00:00',
+            scheduledAt: selected.consultation_date,
             infoMessage:
               j.error ??
               'Esta cita tiene un pago aprobado. El pago se mantiene en la nueva fecha — no se emiten créditos.',
@@ -3595,7 +3598,8 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                     if (
                       selected &&
                       selected.status !== 'completed' &&
-                      selected.status !== 'no_show'
+                      selected.status !== 'no_show' &&
+                      selected.status !== 'cancelled'
                     ) {
                       setShowExitConsultationModal(true);
                       return;
@@ -3723,7 +3727,9 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                         setRescheduleApptTarget({
                           id: selected.appointment_id!,
                           patientName: selected.patient_name,
-                          scheduledAt: selected.consultation_date + 'T12:00:00',
+                          // consultation_date is a full timestamptz; appending a time
+                          // produced "Invalid Date" in the modal ("Cita actual").
+                          scheduledAt: selected.consultation_date,
                         })
                       }
                       className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-amber-200 rounded-lg text-xs font-semibold text-amber-700 hover:bg-amber-50 transition-colors"
@@ -7273,10 +7279,16 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                       <div className="flex items-center gap-1 shrink-0">
                         <Calendar className="w-3 h-3" />
                         <span className="whitespace-nowrap">
-                          {cDate.toLocaleDateString('es-VE', { day: 'numeric', month: 'short' })} ·{' '}
+                          {cDate.toLocaleDateString('es-VE', {
+                            day: 'numeric',
+                            month: 'short',
+                            timeZone: 'America/Caracas',
+                          })}{' '}
+                          ·{' '}
                           {cDate.toLocaleTimeString('es-VE', {
                             hour: '2-digit',
                             minute: '2-digit',
+                            timeZone: 'America/Caracas',
                           })}
                         </span>
                       </div>
@@ -7302,20 +7314,25 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                       const isAttended = c.status === 'completed';
                       const isNoShow = c.status === 'no_show';
                       const isInProgress = c.status === 'in_progress';
+                      const isCancelled = c.status === 'cancelled';
                       const label = isAttended
                         ? 'Atendió'
                         : isNoShow
                           ? 'No atendió'
                           : isInProgress
                             ? 'En curso'
-                            : 'Por asistir';
+                            : isCancelled
+                              ? 'No aplica'
+                              : 'Por asistir';
                       const cls = isAttended
                         ? 'border-blue-300 text-blue-700 bg-transparent'
                         : isNoShow
                           ? 'border-red-300 text-red-600 bg-transparent'
                           : isInProgress
                             ? 'border-blue-200 text-blue-600 bg-transparent'
-                            : 'border-slate-300 text-slate-600 bg-transparent';
+                            : isCancelled
+                              ? 'border-slate-200 text-slate-400 bg-transparent'
+                              : 'border-slate-300 text-slate-600 bg-transparent';
                       return (
                         <span
                           className={`text-[10px] font-semibold px-2 py-0.5 rounded-full inline-flex items-center gap-1 border ${cls}`}
