@@ -383,7 +383,9 @@ describe('CompleteRegistrationUseCase', () => {
         fullName: 'Carlos M.',
         doctorEmail: 'carlos@example.com',
         cedula: 'V-12345678',
-        phone: '584141234567',
+        // Shown with the "+" and linked via tel: (owner request, 2026-11-15).
+        phone: '+58 414-1234567',
+        phoneTel: '+584141234567',
         specialty: 'Cardiología',
         mppsNumber: 'MP-001',
         colegiadoNumber: 'COL-002',
