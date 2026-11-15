@@ -1,3 +1,4 @@
+import { formatPhoneInternational, phoneTelUri } from '@delta/shared-utils';
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
@@ -273,7 +274,10 @@ export class CompleteRegistrationUseCase {
         doctorEmail: registration.email || NOT_SPECIFIED,
         cedula: registration.cedula || NOT_SPECIFIED,
         // The team calls new specialists right away (owner request, 2026-11-13).
-        phone: phone || NOT_SPECIFIED,
+        // Shown with the "+" and linked through tel: so tapping it on a phone
+        // offers to call or write (owner request, 2026-11-15).
+        phone: formatPhoneInternational(phone) || NOT_SPECIFIED,
+        phoneTel: phoneTelUri(phone),
         specialty: registration.specialty || NOT_SPECIFIED,
         mppsNumber: registration.mppsNumber || NOT_SPECIFIED,
         colegiadoNumber: registration.colegiadoNumber || NOT_SPECIFIED,
