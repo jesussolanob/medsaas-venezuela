@@ -1578,3 +1578,19 @@ status='active'` con `QueryTypes.UPDATE` (devuelve `[undefined, affectedCount]`;
   ⚠️ `ConsultationsClient` lee el MISMO endpoint con `getDay()` (0=Domingo) y **está bien** — es
   coherente con la fuente legacy. Lo que estaba mal era mezclar. Sigue usando la ventana legacy en
   vez de los consultorios: mismo desfase de datos, todavía sin arreglar.
+
+- **ADR-097 (2026-11-15):** **El entorno de Sentry sale del HOST, no de `NODE_ENV`.** Un build de Next
+  siempre tiene `NODE_ENV=production` y `cloudbuild.yaml` (compartido por prod y staging) fija
+  `NEXT_PUBLIC_SENTRY_ENABLED=true`, así que staging reportaba como producción. `lib/sentry-env.ts`
+  deduce `production | staging | development` del host (navegador) o de `APP_BASE_URL` (servidor) y
+  Sentry solo reporta en producción. Los rechazos de negocio (409/422) se envían como `warning`.
+- **ADR-098 (2026-11-15):** **`/login` con sesión viva redirige a `/post-login`.** El login fuerza
+  `prompt=login` (tras cerrar sesión hay que reingresar todo), así que la landing → "Iniciar sesión"
+  pedía credenciales aunque la sesión de 5 días siguiera viva. `proxy.ts` incluye `/login` en el
+  matcher solo para ese atajo (en modo dev sigue pública); `/post-login` vuelve con `?reauth=1` cuando
+  no puede resolver la identidad, para no entrar en bucle.
+- **ADR-099 (2026-11-14):** **Un vendedor INVITA especialistas; el especialista se salta el paso 1.**
+  `POST /api/seller/specialist-invitations` pre-registra el perfil con `sold_by_source='seller_manual'`.
+  Los términos se aceptan en la bienvenida, que llama al mismo registro del paso 1 con los datos ya
+  cargados y SIN `seller_code` (no toca la atribución). El teléfono debe ser canónico (`PhoneInput` +
+  normalización en el BFF): el registro rechaza cualquier otro formato.
