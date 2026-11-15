@@ -8,6 +8,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { backendPost } from '@/lib/api-client.server';
+import { normalizePhoneIntl } from '@/lib/phone-utils';
 
 export const dynamic = 'force-dynamic';
 
@@ -34,14 +35,19 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     first_name: trimmed(body.firstName),
     last_name: trimmed(body.lastName),
     cedula: trimmed(body.cedula).toUpperCase(),
-    phone: trimmed(body.phone),
+    // Canonical digits (58414…): registration rejects anything else, and a raw
+    // "0414-…" left the invited specialist stuck on the welcome screen.
+    phone: normalizePhoneIntl(trimmed(body.phone)),
     email: trimmed(body.email).toLowerCase(),
     specialty: trimmed(body.specialty),
   };
 
   if (Object.values(payload).some((v) => !v)) {
     return NextResponse.json(
-      { error: 'Completa todos los campos para enviar la invitación.', code: 'BAD_REQUEST' },
+      {
+        error: 'Completa todos los campos (con un teléfono válido) para enviar la invitación.',
+        code: 'BAD_REQUEST',
+      },
       { status: 400 },
     );
   }

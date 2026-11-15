@@ -35,6 +35,7 @@ import OnboardingStepOffice from './OnboardingStepOffice';
 import OnboardingStepService from './OnboardingStepService';
 import OnboardingWelcome from './OnboardingWelcome';
 import PhoneInput from '@/components/shared/PhoneInput';
+import { normalizePhoneIntl } from '@/lib/phone-utils';
 import { leerReferido, limpiarReferido, esCodigoValido } from '@/lib/seller-referral';
 import { MetaPixelEvent } from '@/components/analytics/MetaPixel';
 
@@ -482,7 +483,7 @@ export default function OnboardingForm({
   // un vendedor, el teléfono se lo cargaron al registrarlo: el formulario lo
   // ignoraba y se lo volvía a pedir en blanco, que es justo lo que el dueño
   // pidió evitar ("que no le pida datos ya registrados por el vendedor").
-  const [phone, setPhone] = useState(initialPhone);
+  const [phone, setPhone] = useState(normalizePhoneIntl(initialPhone) || initialPhone);
   const [cedulaPrefix, setCedulaPrefix] = useState<'V' | 'E' | 'P'>(initialCedulaPrefix);
   const [cedulaNumber, setCedulaNumber] = useState(initialCedulaNumber);
   const [specialty, setSpecialty] = useState<string>(() => {
@@ -739,12 +740,17 @@ export default function OnboardingForm({
             const result = await submitDoctorRegistration({
               full_name: initialFullName,
               cedula: `${initialCedulaPrefix}-${initialCedulaNumber}`,
-              phone: initialPhone,
+              // A seller may have typed "0414-…": send the canonical form.
+              phone: normalizePhoneIntl(initialPhone) || initialPhone,
               specialty: initialSpecialty || undefined,
               accepted_terms: true,
             });
             if (!result.ok) {
-              setWelcomeError(result.error ?? 'No pudimos continuar. Intenta nuevamente.');
+              // Something the seller loaded is invalid (e.g. the phone): show step 1
+              // pre-filled so the specialist can fix it instead of getting stuck here.
+              setServerError('Revisa tus datos y complétalos para continuar.');
+              setStep(1);
+              setShowWelcome(false);
               return;
             }
             setShowWelcome(false);

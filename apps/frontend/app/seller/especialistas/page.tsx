@@ -16,6 +16,7 @@ import { useMemo, useState } from 'react';
 import { Users, Loader2, UserPlus, AlertCircle, X, Share2, Search } from 'lucide-react';
 import { showToast } from '@/components/ui/Toaster';
 import { normalizePhoneIntl } from '@/lib/phone-utils';
+import PhoneInput from '@/components/shared/PhoneInput';
 import {
   useSellerData,
   estadoSeguimiento,
@@ -158,6 +159,10 @@ export default function SellerEspecialistasPage() {
     ];
     if (required.some((v) => !v.trim())) {
       setError('Completa todos los campos para enviar la invitación.');
+      return;
+    }
+    if (!normalizePhoneIntl(form.phone)) {
+      setError('Revisa el teléfono: escribe el número completo.');
       return;
     }
     setSaving(true);
@@ -578,13 +583,14 @@ export default function SellerEspecialistasPage() {
                   className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:border-teal-400 outline-none"
                 />
               </div>
-              <input
+              {/* Same input as onboarding: it emits the canonical number (58414…),
+                  the only format the specialist's registration accepts. */}
+              <PhoneInput
+                name="invite-phone"
                 value={form.phone}
-                onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                onChange={(canonical) => setForm({ ...form, phone: canonical })}
                 placeholder="Teléfono (WhatsApp)"
-                aria-label="Teléfono"
-                type="tel"
-                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:border-teal-400 outline-none"
+                required
               />
               <input
                 value={form.email}

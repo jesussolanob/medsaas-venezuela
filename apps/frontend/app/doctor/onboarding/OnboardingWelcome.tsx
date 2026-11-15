@@ -57,6 +57,8 @@ export default function OnboardingWelcome({
   // Solo el primer nombre: "Bienvenido, José Ramón Villalobos" suena a carta
   // formal; "Bienvenido, José" suena a que lo estábamos esperando.
   const firstName = fullName?.trim().split(/\s+/)[0] ?? '';
+  // Invited by a seller: personal data is already loaded, only office + service remain.
+  const steps = requireTerms ? STEPS.slice(1) : STEPS;
 
   return (
     <div
@@ -68,19 +70,20 @@ export default function OnboardingWelcome({
           className="font-bold text-2xl leading-tight"
           style={{ color: 'var(--dh-ink)', fontFamily: 'var(--dh-font-display)' }}
         >
-          {firstName ? `Bienvenido, ${firstName}` : 'Bienvenido a Delta Salud'}
+          {firstName ? `Bienvenido, ${firstName}` : 'Bienvenido, especialista'}
         </h1>
         <p
           className="text-sm mt-2 max-w-md mx-auto leading-relaxed"
           style={{ color: 'var(--dh-gray-500)' }}
         >
-          Vamos a dejar tu consulta lista para recibir pacientes. Son tres pasos y toma unos pocos
-          minutos.
+          {requireTerms
+            ? 'Ya cargamos tus datos. Solo faltan dos pasos para dejar tu consulta lista para recibir pacientes.'
+            : 'Vamos a dejar tu consulta lista para recibir pacientes. Son tres pasos y toma unos pocos minutos.'}
         </p>
       </div>
 
       <ol className="px-6 sm:px-8 pb-2 flex flex-col gap-3">
-        {STEPS.map(({ icon: Icon, title, body }, idx) => (
+        {steps.map(({ icon: Icon, title, body }, idx) => (
           <li
             key={title}
             className="flex items-start gap-3.5 rounded-xl p-3.5"
