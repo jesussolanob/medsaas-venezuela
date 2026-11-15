@@ -18,13 +18,15 @@ export async function register() {
   // No-op when DSN is absent — keeps local dev silent.
   if (!dsn) return;
 
+  const { isSentryEnabled, sentryEnvironment } = await import('./lib/sentry-env');
+
   if (process.env.NEXT_RUNTIME === 'nodejs') {
     const { init } = await import('@sentry/nextjs');
     init({
       dsn,
-      environment: process.env.NODE_ENV ?? 'development',
-      // Controlled via NEXT_PUBLIC_SENTRY_ENABLED env var (true|false).
-      enabled: process.env.NEXT_PUBLIC_SENTRY_ENABLED === 'true',
+      environment: sentryEnvironment(),
+      // NEXT_PUBLIC_SENTRY_ENABLED AND running on the production host (see lib/sentry-env).
+      enabled: isSentryEnabled(),
       sendDefaultPii: false,
       tracesSampleRate: 0.1,
       // Source maps are uploaded separately via SENTRY_AUTH_TOKEN in CI.
@@ -36,9 +38,9 @@ export async function register() {
     const { init } = await import('@sentry/nextjs');
     init({
       dsn,
-      environment: process.env.NODE_ENV ?? 'development',
-      // Controlled via NEXT_PUBLIC_SENTRY_ENABLED env var (true|false).
-      enabled: process.env.NEXT_PUBLIC_SENTRY_ENABLED === 'true',
+      environment: sentryEnvironment(),
+      // NEXT_PUBLIC_SENTRY_ENABLED AND running on the production host (see lib/sentry-env).
+      enabled: isSentryEnabled(),
       sendDefaultPii: false,
       tracesSampleRate: 0.1,
     });
