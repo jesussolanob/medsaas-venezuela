@@ -4,15 +4,16 @@
  * Only initializes when NEXT_PUBLIC_SENTRY_DSN is set.
  */
 import * as Sentry from '@sentry/nextjs';
+import { isSentryEnabled, sentryEnvironment } from '@/lib/sentry-env';
 
 const dsn = process.env.NEXT_PUBLIC_SENTRY_DSN;
 
 if (dsn) {
   Sentry.init({
     dsn,
-    environment: process.env.NODE_ENV ?? 'development',
-    // Controlled via NEXT_PUBLIC_SENTRY_ENABLED env var (true|false).
-    enabled: process.env.NEXT_PUBLIC_SENTRY_ENABLED === 'true',
+    environment: sentryEnvironment(),
+    // NEXT_PUBLIC_SENTRY_ENABLED AND running on the production host (see lib/sentry-env).
+    enabled: isSentryEnabled(),
     sendDefaultPii: false,
     tracesSampleRate: 0.1,
     // Ruido benigno (handled, 0 usuarios impactados) que no aporta señal:
@@ -35,7 +36,11 @@ if (dsn) {
       "Failed to execute 'insertBefore' on 'Node'",
       "Failed to execute 'removeChild' on 'Node'",
       'Failed to connect to MetaMask',
+      // Instagram / Facebook in-app browsers: their own injected scripts fail
+      // (app://navigation_performance_logger_android, app://browser_declutter).
+      'Java object is gone',
     ],
+    denyUrls: [/^app:\/\/(navigation_performance_logger|browser_declutter)/i],
     // Replay is opt-in. Enable in production by uncommenting:
     // replaysSessionSampleRate: 0.1,
     // replaysOnErrorSampleRate: 1.0,
