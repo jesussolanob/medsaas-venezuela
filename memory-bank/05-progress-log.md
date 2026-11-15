@@ -4,6 +4,51 @@
 > ⚠️ Orden: **la entrada más nueva va ARRIBA**. La del 2026-08-11 quedó al final
 > del archivo por error; no se movió para no ensuciar el diff.
 
+## 2026-11-13/15 — Estados de citas, invitación por vendedor, sesión, novedades y Sentry (en producción)
+
+> Las entradas del 12 y 13/11 (onboarding mínimo, CSV, píxel) quedaron al FINAL del archivo por error.
+
+Todo pasó por `feature/*` → `develop` → `staging` → `main` salvo el hotfix del login (cherry-pick a `main`).
+`main` = `7c8dc1c8`; `develop` contiene `main`.
+
+1. **Nombre = correo** (registro con correo+contraseña: Auth0 manda `name=email`): `profileNameOrEmpty` no lo
+   guarda como nombre y un login con Google lo completa. 6 perfiles de prod rellenados con el nombre de SACS.
+   **Fuentes locales** (`next/font/local`): Cloud Build fallaba al bajar Google Fonts y bloqueaba todo deploy.
+2. **Lote 3–7 + A** (grupo del 13/11): error de consultorio al volver tras "Omitir", botón de WhatsApp,
+   link de reservas en el Inicio, checklist sin teléfono y con "Revisar", sin placeholder del código de
+   vendedor, teléfono en el correo de alta (migración `20261113000001`).
+3. **B/C/D (reportes de Jesús), reproducidos en staging** con una reserva real:
+   - B: una cita cancelada se veía "Pendiente / Por asistir" en Consultas. Había **dos copias** del mapeo de
+     estados (server `page.tsx` y cliente) → una sola en `consultations/consultation-status.ts`.
+   - D: Reportería derivaba el estado del PAGO (pasada + sin pagar = no-show) y sumaba canceladas a Ingresos →
+     `reports/report-status.ts` usa el estado de la cita; columna Estado en el CSV.
+   - "Invalid Date" al reagendar desde Consultas (`consultation_date + 'T12:00:00'` sobre un timestamptz).
+   - Agenda mes/semana corría un día en navegadores al este de Caracas (celdas a medianoche local) → mediodía.
+   - **C (reagendar una cancelada) queda para la reunión** de los 4 estados.
+4. **Modificaciones 13-11:** pago "Cancelado" en citas canceladas (Consultas, panel de pago, modal de agenda) y
+   fuera de Cobros/totales; sin campo "Código de vendedor" (solo link); un botón de WhatsApp; Inicio marca
+   pendientes el consultorio/servicio omitidos (las marcas se borran al configurarlos de verdad).
+5. **Invitar especialista desde el portal del vendedor** (`POST /api/seller/specialist-invitations`): pre-registra
+   nombre, apellido, cédula, teléfono, correo y especialidad; `sold_by_source='seller_manual'`; correo de
+   invitación (migración `20261114000001`). El invitado entra, acepta términos en la bienvenida (que registra
+   sus datos SIN tocar la atribución) y arranca en el consultorio. Probado de punta a punta en staging.
+   🐞 Encontrado al probar: un teléfono "0414-…" crudo trababa al invitado (el registro exige el canónico) → el
+   modal usa `PhoneInput`, el BFF normaliza y la bienvenida cae al paso 1 si el registro falla.
+6. **Correo de alta:** teléfono "+58 414-1234567" con enlace `tel:` (`shared-utils/phone-display`, migración
+   `20261115000001`).
+7. **"La sesión de 5 días no funciona":** sí funcionaba (Auth0 ID token 432000 s, cookie de 5 días). La landing
+   manda a `/login` y `prompt=login` pedía credenciales → `/login` con sesión viva va a `/post-login`
+   (`?reauth=1` evita el bucle). Hotfix directo a `main`.
+8. **Novedades:** prod no tenía NINGUNA; se publicaron 6 por SQL (3 viejas de staging + 3 nuevas). Modal con
+   "Omitir" (izquierda) y "Siguiente" (derecha).
+9. **Sentry:** el entorno salía de `NODE_ENV` (siempre "production") y `cloudbuild.yaml` lo enciende en ambos →
+   staging reportaba como producción. `lib/sentry-env.ts` lo deduce del host y solo reporta en prod; se ignoran
+   los navegadores internos de Instagram/Facebook; 409/422 como warning. Los 10 issues abiertos se revisaron
+   (ninguno vivo) y se marcaron resueltos.
+
+Verificado en cada paso: suite backend completa (5146/5146, exit real 0), tsc frontend 0, lint sin errores
+nuevos, QA en navegador sobre staging y smoke de prod tras cada deploy.
+
 ## 2026-11-03 — Inicio: citas pasadas, Atendida/No asistió y refresco (`feature/inicio-citas`)
 
 > Sale de la reunión "Check In - Delta Salud" del 02/11 (notas de Gemini). Solo lo que quedó
