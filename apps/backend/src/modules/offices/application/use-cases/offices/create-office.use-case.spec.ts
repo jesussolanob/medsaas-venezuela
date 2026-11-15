@@ -5,6 +5,7 @@ import {
   assertNoSelfOverlap,
 } from './create-office.use-case';
 import type { IOfficeRepository } from '../../../domain/repositories/office.repository';
+import type { IDoctorProfileRepository } from '../../../../doctor-settings/domain/repositories/doctor-profile.repository';
 import { Office } from '../../../domain/entities/office.entity';
 import { OfficeInvalidScheduleError } from '../../../domain/errors/office-invalid-schedule.error';
 import { OfficeScheduleConflictError } from '../../../domain/errors/office-schedule-conflict.error';
@@ -48,6 +49,7 @@ function savedOffice(input: CreateOfficeDto): Office {
 describe('CreateOfficeUseCase', () => {
   let useCase: CreateOfficeUseCase;
   let mockRepo: jest.Mocked<IOfficeRepository>;
+  let mockProfileRepo: jest.Mocked<Pick<IDoctorProfileRepository, 'updateOnboardingState'>>;
 
   beforeEach(() => {
     mockRepo = {
@@ -59,7 +61,11 @@ describe('CreateOfficeUseCase', () => {
       save: jest.fn(),
       delete: jest.fn(),
     };
-    useCase = new CreateOfficeUseCase(mockRepo);
+    mockProfileRepo = { updateOnboardingState: jest.fn().mockResolvedValue(undefined) };
+    useCase = new CreateOfficeUseCase(
+      mockRepo,
+      mockProfileRepo as unknown as IDoctorProfileRepository,
+    );
   });
 
   it('creates an office with valid data', async () => {
@@ -268,6 +274,43 @@ describe('CreateOfficeUseCase', () => {
 
       await expect(useCase.execute(dto, DOCTOR_ID)).resolves.toBeDefined();
       expect(mockRepo.create).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('onboarding skip flag clearing', () => {
+    it('clears office_skipped flag after a successful creation', async () => {
+      const dto = makeDto();
+      mockRepo.findActiveByDoctor.mockResolvedValue([]);
+      mockRepo.create.mockResolvedValue(savedOffice(dto));
+
+      await useCase.execute(dto, DOCTOR_ID);
+
+      expect(mockProfileRepo.updateOnboardingState).toHaveBeenCalledWith(DOCTOR_ID, {
+        officeSkipped: false,
+      });
+    });
+
+    it('does not fail the main operation when flag clearing throws', async () => {
+      const dto = makeDto();
+      const saved = savedOffice(dto);
+      mockRepo.findActiveByDoctor.mockResolvedValue([]);
+      mockRepo.create.mockResolvedValue(saved);
+      mockProfileRepo.updateOnboardingState.mockRejectedValue(new Error('DB error'));
+
+      const result = await useCase.execute(dto, DOCTOR_ID);
+
+      expect(result.name).toBe(dto.name);
+    });
+
+    it('skips flag clearing when profileRepo is not injected', async () => {
+      const useCaseWithoutProfileRepo = new CreateOfficeUseCase(mockRepo);
+      const dto = makeDto();
+      mockRepo.findActiveByDoctor.mockResolvedValue([]);
+      mockRepo.create.mockResolvedValue(savedOffice(dto));
+
+      await expect(useCaseWithoutProfileRepo.execute(dto, DOCTOR_ID)).resolves.toBeDefined();
+      // profileRepo mock was never called since it wasn't injected
+      expect(mockProfileRepo.updateOnboardingState).not.toHaveBeenCalled();
     });
   });
 });

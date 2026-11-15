@@ -1,5 +1,6 @@
 import { UpdateOfficeUseCase } from './update-office.use-case';
 import type { IOfficeRepository } from '../../../domain/repositories/office.repository';
+import type { IDoctorProfileRepository } from '../../../../doctor-settings/domain/repositories/doctor-profile.repository';
 import { Office } from '../../../domain/entities/office.entity';
 import { OfficeNotFoundError } from '../../../domain/errors/office-not-found.error';
 import { OfficeInvalidScheduleError } from '../../../domain/errors/office-invalid-schedule.error';
@@ -34,6 +35,7 @@ function makeExistingOffice(overrides: Partial<Parameters<typeof Office.create>[
 describe('UpdateOfficeUseCase', () => {
   let useCase: UpdateOfficeUseCase;
   let mockRepo: jest.Mocked<IOfficeRepository>;
+  let mockProfileRepo: jest.Mocked<Pick<IDoctorProfileRepository, 'updateOnboardingState'>>;
 
   beforeEach(() => {
     mockRepo = {
@@ -45,7 +47,11 @@ describe('UpdateOfficeUseCase', () => {
       save: jest.fn(),
       delete: jest.fn(),
     };
-    useCase = new UpdateOfficeUseCase(mockRepo);
+    mockProfileRepo = { updateOnboardingState: jest.fn().mockResolvedValue(undefined) };
+    useCase = new UpdateOfficeUseCase(
+      mockRepo,
+      mockProfileRepo as unknown as IDoctorProfileRepository,
+    );
   });
 
   it('updates office name successfully', async () => {
@@ -258,6 +264,32 @@ describe('UpdateOfficeUseCase', () => {
 
       await expect(useCase.execute(OFFICE_ID, dto, DOCTOR_ID)).resolves.toBeDefined();
       expect(mockRepo.save).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('onboarding skip flag clearing', () => {
+    it('clears office_skipped flag after a successful update', async () => {
+      const existing = makeExistingOffice();
+      mockRepo.findByIdForDoctor.mockResolvedValue(existing);
+      mockRepo.save.mockResolvedValue(existing);
+
+      await useCase.execute(OFFICE_ID, { name: 'Updated' }, DOCTOR_ID);
+
+      expect(mockProfileRepo.updateOnboardingState).toHaveBeenCalledWith(DOCTOR_ID, {
+        officeSkipped: false,
+      });
+    });
+
+    it('does not fail the main operation when flag clearing throws', async () => {
+      const existing = makeExistingOffice();
+      const updated = makeExistingOffice({ name: 'Updated' });
+      mockRepo.findByIdForDoctor.mockResolvedValue(existing);
+      mockRepo.save.mockResolvedValue(updated);
+      mockProfileRepo.updateOnboardingState.mockRejectedValue(new Error('timeout'));
+
+      const result = await useCase.execute(OFFICE_ID, { name: 'Updated' }, DOCTOR_ID);
+
+      expect(result.name).toBe('Updated');
     });
   });
 });

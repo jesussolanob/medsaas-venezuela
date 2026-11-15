@@ -20,6 +20,7 @@ function makeRepoMock(): jest.Mocked<ISellerRepository> {
     updateSellerPaymentDetails: jest.fn(),
     getSpecialistSellerAssignment: jest.fn(),
     deactivateOwnAccount: jest.fn(),
+    findByCedula: jest.fn(),
   };
 }
 

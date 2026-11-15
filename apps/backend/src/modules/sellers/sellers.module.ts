@@ -27,6 +27,7 @@ import { GetAdminSellerPaymentDetailsUseCase } from './application/use-cases/get
 import { GetSpecialistSellerAssignmentUseCase } from './application/use-cases/get-specialist-seller-assignment.use-case';
 import { DeactivateSellerAccountUseCase } from './application/use-cases/deactivate-seller-account.use-case';
 import { ResendSellerWelcomeEmailUseCase } from './application/use-cases/resend-seller-welcome-email.use-case';
+import { InviteSellerSpecialistUseCase } from './application/use-cases/invite-seller-specialist.use-case';
 
 // Guards
 import { RolesGuard } from '../../presentation/guards/roles.guard';
@@ -82,6 +83,7 @@ import {
     GetSpecialistSellerAssignmentUseCase,
     DeactivateSellerAccountUseCase,
     ResendSellerWelcomeEmailUseCase,
+    InviteSellerSpecialistUseCase,
   ],
   exports: [SELLER_REPOSITORY, ValidateSellerCodeUseCase],
 })

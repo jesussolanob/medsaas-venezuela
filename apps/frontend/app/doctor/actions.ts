@@ -93,6 +93,14 @@ interface BackendProfile {
    * Optional — absent in older backend versions.
    */
   hasActiveService?: boolean;
+  /** True when the specialist pressed "Omitir" on the onboarding office step and has
+   *  not configured an office since (the default office does not count). */
+  onboardingOfficeSkipped?: boolean;
+  /** Same as above for the service step. */
+  onboardingServiceSkipped?: boolean;
+  /** False when the specialist never accepted Terms & Conditions (e.g. pre-registered
+   *  by a seller, who skips onboarding step 1 where they are accepted). */
+  termsAccepted?: boolean;
 }
 
 export type DoctorProfile = BackendProfile;

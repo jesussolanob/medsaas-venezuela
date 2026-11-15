@@ -155,6 +155,12 @@ export interface CreateSoldSpecialistParams {
   plan: 'free_trial';
   /** Profile id of the authenticated seller — from session, never from request body. */
   soldBy: string;
+  /**
+   * Onboarding step to start the new specialist at.
+   * 'profile' = profile step already done; wizard starts at office step.
+   * null/undefined = standard wizard from the first step.
+   */
+  onboardingLastStep?: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -224,9 +230,25 @@ export interface ISellerRepository {
   /**
    * Creates a specialist profile + subscription with sold_by = sellerId.
    * Plan is always 'free_trial' — sellers cannot assign paid plans.
-   * Throws DoctorEmailConflictError (409) on email collision.
+   * Throws SpecialistEmailConflictError (409) on email collision.
+   * When params.onboardingLastStep is provided, writes it to profiles.onboarding_last_step
+   * so the wizard resumes at the correct step on first login.
    */
   createSoldSpecialist(params: CreateSoldSpecialistParams): Promise<SellerSpecialistRow>;
+
+  /**
+   * Returns a minimal identifier when a specialist with the given cédula exists,
+   * or null when not found.
+   *
+   * Used by InviteSellerSpecialistUseCase to reject duplicate cédulas before
+   * attempting the INSERT (which has no unique constraint on cedula).
+   *
+   * Comparison is case-insensitive and normalises the prefix so 'v-123' and
+   * 'V-123' resolve to the same row.
+   *
+   * SECURITY: cédula is PII — never log the input or the returned id.
+   */
+  findByCedula(cedula: string): Promise<{ id: string } | null>;
 
   /**
    * Writes sold_by on a specialist profile, but ONLY when it is currently null.

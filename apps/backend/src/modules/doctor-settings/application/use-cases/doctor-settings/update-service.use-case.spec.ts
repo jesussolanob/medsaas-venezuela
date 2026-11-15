@@ -1,6 +1,7 @@
 import { UpdateServiceUseCase } from './update-service.use-case';
 import type { IPricingPlanRepository } from '../../../../packages/domain/repositories/pricing-plan.repository';
 import type { IOfficeRepository } from '../../../../offices/domain/repositories/office.repository';
+import type { IDoctorProfileRepository } from '../../../domain/repositories/doctor-profile.repository';
 import { PricingPlan } from '../../../../packages/domain/entities/pricing-plan.entity';
 import { Office } from '../../../../offices/domain/entities/office.entity';
 import { DoctorServiceNotFoundError } from '../../../domain/errors/doctor-service-not-found.error';
@@ -52,6 +53,7 @@ describe('UpdateServiceUseCase', () => {
   let useCase: UpdateServiceUseCase;
   let mockPlanRepo: jest.Mocked<IPricingPlanRepository>;
   let mockOfficeRepo: jest.Mocked<IOfficeRepository>;
+  let mockProfileRepo: jest.Mocked<Pick<IDoctorProfileRepository, 'updateOnboardingState'>>;
 
   beforeEach(() => {
     mockPlanRepo = {
@@ -71,7 +73,12 @@ describe('UpdateServiceUseCase', () => {
       save: jest.fn(),
       delete: jest.fn(),
     };
-    useCase = new UpdateServiceUseCase(mockPlanRepo, mockOfficeRepo);
+    mockProfileRepo = { updateOnboardingState: jest.fn().mockResolvedValue(undefined) };
+    useCase = new UpdateServiceUseCase(
+      mockPlanRepo,
+      mockOfficeRepo,
+      mockProfileRepo as unknown as IDoctorProfileRepository,
+    );
   });
 
   it('updates the service name and price when doctor owns it', async () => {
@@ -147,5 +154,31 @@ describe('UpdateServiceUseCase', () => {
     ).rejects.toBeInstanceOf(DoctorServiceNotOwnedError);
 
     expect(mockPlanRepo.update).not.toHaveBeenCalled();
+  });
+
+  describe('onboarding skip flag clearing', () => {
+    it('clears service_skipped flag after a successful update', async () => {
+      const existing = makePlan();
+      mockPlanRepo.findById.mockResolvedValue(existing);
+      mockPlanRepo.update.mockResolvedValue(makePlan());
+
+      await useCase.execute(DOCTOR_ID, SERVICE_ID, { name: 'Nuevo Nombre' });
+
+      expect(mockProfileRepo.updateOnboardingState).toHaveBeenCalledWith(DOCTOR_ID, {
+        serviceSkipped: false,
+      });
+    });
+
+    it('does not fail the main operation when flag clearing throws', async () => {
+      const existing = makePlan();
+      const updated = PricingPlan.create({ ...existing, name: 'Updated' });
+      mockPlanRepo.findById.mockResolvedValue(existing);
+      mockPlanRepo.update.mockResolvedValue(updated);
+      mockProfileRepo.updateOnboardingState.mockRejectedValue(new Error('connection lost'));
+
+      const result = await useCase.execute(DOCTOR_ID, SERVICE_ID, { name: 'Updated' });
+
+      expect(result.name).toBe('Updated');
+    });
   });
 });

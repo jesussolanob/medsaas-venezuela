@@ -148,6 +148,20 @@ export class SellerProfileModel extends Model {
   @Column({ type: DataType.TEXT, allowNull: true, field: 'deactivation_reason' })
   declare deactivationReason: string | null;
 
+  /**
+   * Onboarding wizard position for the invited specialist.
+   *
+   * When a seller pre-registers a specialist via the invitation flow,
+   * this column is set to 'profile' so the wizard skips the profile step
+   * and starts at the office step. NULL means the standard first-step flow.
+   *
+   * Column added by migration 20261112000001-onboarding-skip-and-price-on-request.
+   * The column was already declared in DoctorProfileModel; this model needed
+   * the same declaration to allow writes from the sellers module.
+   */
+  @Column({ type: DataType.TEXT, allowNull: true, field: 'onboarding_last_step' })
+  declare onboardingLastStep: string | null;
+
   @Column({ type: DataType.DATE, allowNull: true, field: 'created_at' })
   declare createdAt: Date;
 

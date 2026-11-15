@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import type { PricingPlan } from '../../../../packages/domain/entities/pricing-plan.entity';
 import {
   PRICING_PLAN_REPOSITORY,
@@ -11,15 +11,23 @@ import {
   OFFICE_REPOSITORY,
   type IOfficeRepository,
 } from '../../../../offices/domain/repositories/office.repository';
+import {
+  DOCTOR_PROFILE_REPOSITORY,
+  type IDoctorProfileRepository,
+} from '../../../domain/repositories/doctor-profile.repository';
 import { OfficeNotOwnedError } from '../../../domain/errors/office-not-owned.error';
 
 @Injectable()
 export class UpdateServiceUseCase {
+  private readonly logger = new Logger(UpdateServiceUseCase.name);
+
   constructor(
     @Inject(PRICING_PLAN_REPOSITORY)
     private readonly pricingPlanRepo: IPricingPlanRepository,
     @Inject(OFFICE_REPOSITORY)
     private readonly officeRepo: IOfficeRepository,
+    @Inject(DOCTOR_PROFILE_REPOSITORY)
+    private readonly profileRepo: IDoctorProfileRepository,
   ) {}
 
   async execute(
@@ -41,6 +49,20 @@ export class UpdateServiceUseCase {
     const resolvedParams: PricingPlanUpdateParams =
       params.priceOnRequest === true ? { ...params, priceUsd: 0 } : params;
 
-    return this.pricingPlanRepo.update(serviceId, resolvedParams);
+    const updated = await this.pricingPlanRepo.update(serviceId, resolvedParams);
+
+    // Best-effort: clear the service-skipped flag so the onboarding checklist
+    // recognises that the doctor has configured a real service.
+    // A failure here must NOT roll back the successful update.
+    try {
+      await this.profileRepo.updateOnboardingState(doctorId, { serviceSkipped: false });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.warn(
+        `[update-service] failed to clear service_skipped flag for doctorId=${doctorId}: ${msg}`,
+      );
+    }
+
+    return updated;
   }
 }

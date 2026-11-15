@@ -135,6 +135,7 @@ export default async function DoctorOnboardingPage() {
           initialPhone={profile?.phone ?? ''}
           specialties={specialties}
           initialStep={initialStep}
+          termsPending={initialStep > 1 && profile?.termsAccepted === false}
           initialErrorMessage={phoneRequiredMessage}
           initialOfficeId={existingOfficeId}
         />

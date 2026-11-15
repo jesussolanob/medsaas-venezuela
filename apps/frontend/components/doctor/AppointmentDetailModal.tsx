@@ -607,6 +607,10 @@ export default function AppointmentDetailModal({
                     <span className="inline-flex items-center gap-1 mt-1 text-[10px] font-semibold px-2 py-0.5 rounded-full border bg-emerald-50 text-emerald-700 border-emerald-200">
                       Pagada
                     </span>
+                  ) : appt.paymentStatus === 'pending' && appt.status === 'cancelled' ? (
+                    <span className="inline-flex items-center gap-1 mt-1 text-[10px] font-semibold px-2 py-0.5 rounded-full border bg-slate-50 text-slate-500 border-slate-200">
+                      Cancelado
+                    </span>
                   ) : appt.paymentStatus === 'pending' ? (
                     <span className="inline-flex items-center gap-1 mt-1 text-[10px] font-semibold px-2 py-0.5 rounded-full border bg-amber-50 text-amber-700 border-amber-200">
                       Por cobrar
