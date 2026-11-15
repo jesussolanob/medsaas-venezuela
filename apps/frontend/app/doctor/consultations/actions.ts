@@ -330,7 +330,7 @@ export async function updateAppointmentStatus(
       code: result.error.code,
       status: result.error.status,
     });
-    // Non-fatal: return error but do not throw — caller applies optimistic update regardless.
+    // Non-fatal: the caller reverts its optimistic update and shows this message.
     return { success: false, error: appErrorToString(result.error) };
   }
 
