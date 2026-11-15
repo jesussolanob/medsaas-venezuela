@@ -5,7 +5,7 @@
  *
  * Rules:
  * - Notes ordered newest first (up to 5).
- * - "Entendido" on last slide (or always) → POST /api/doctor/release-notes/seen → close.
+ * - "Entendido" on the last slide, or "Omitir" on any other → POST /api/doctor/release-notes/seen → close.
  * - Closing via X / Escape does NOT mark notes as seen — they reappear next visit.
  * - Plain text rendering: newlines → white-space: pre-line; "- " list lines → <ul><li>.
  * - Never dangerouslySetInnerHTML.
@@ -334,9 +334,21 @@ export default function ReleaseNotesModal({
               </div>
             )}
 
-            {/* Buttons */}
-            <div className="flex items-center gap-2">
-              {total > 1 && currentIndex > 0 && (
+            {/* Buttons: secondary action on the left, primary on the right.
+                "Omitir" marks every note as seen (same as "Entendido"), so the
+                specialist can skip the carousel without it coming back. */}
+            <div className="flex items-center justify-between gap-2">
+              {!isLast ? (
+                <button
+                  onClick={() => {
+                    void handleMarkSeen();
+                  }}
+                  disabled={marking}
+                  className="px-4 py-2 text-sm text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-60 transition-colors"
+                >
+                  Omitir
+                </button>
+              ) : total > 1 ? (
                 <button
                   onClick={() => setCurrentIndex((i) => i - 1)}
                   className="flex items-center gap-1 px-4 py-2 text-sm text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
@@ -344,25 +356,25 @@ export default function ReleaseNotesModal({
                   <ChevronLeft className="w-4 h-4" />
                   Anterior
                 </button>
+              ) : (
+                <span />
               )}
 
-              {total > 1 && !isLast && (
+              {!isLast ? (
                 <button
                   onClick={() => setCurrentIndex((i) => i + 1)}
-                  className="flex-1 flex items-center justify-center gap-1 px-4 py-2 text-sm font-medium bg-teal-500 text-white rounded-lg hover:bg-teal-600 transition-colors"
+                  className="flex items-center justify-center gap-1 px-5 py-2 text-sm font-medium bg-teal-500 text-white rounded-lg hover:bg-teal-600 transition-colors"
                 >
                   Siguiente
                   <ChevronRight className="w-4 h-4" />
                 </button>
-              )}
-
-              {(isLast || total === 1) && (
+              ) : (
                 <button
                   onClick={() => {
                     void handleMarkSeen();
                   }}
                   disabled={marking}
-                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium bg-teal-500 text-white rounded-lg hover:bg-teal-600 disabled:opacity-60 transition-colors"
+                  className="flex items-center justify-center gap-2 px-5 py-2 text-sm font-medium bg-teal-500 text-white rounded-lg hover:bg-teal-600 disabled:opacity-60 transition-colors"
                 >
                   {marking ? (
                     'Guardando...'
