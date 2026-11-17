@@ -320,7 +320,7 @@ export class CreateTeamMeetingUseCase {
         accessToken: activeIntegration.accessToken,
         summary: title,
         description:
-          'Reunión programada desde el panel de Delta Medical CRM.\n\n' +
+          'Reunión programada desde el panel de Delta Salud.\n\n' +
           (doctorEmail ? `Especialista: ${doctorEmail}` : ''),
         startISO: startsAt.toISOString(),
         endISO: endsAt.toISOString(),

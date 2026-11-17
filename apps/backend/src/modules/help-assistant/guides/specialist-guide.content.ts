@@ -332,18 +332,19 @@ Resumen financiero mensual. (Requiere plan Base o Plus.)
 Tus servicios y tarifas, que tambien aparecen en el booking publico. (Requiere plan Base o Plus.)
 
 - **Filtros:** por tipo, por consultorio (Todos los consultorios) y por estado.
-- **Crear servicio.** Campos: Nombre, Tipo (servicio individual o plan de paquete con varias sesiones), Precio en USD (o la opcion **Precio a consultar con el especialista**, si prefieres no publicar un monto), Duracion en minutos, numero de sesiones (si es paquete), Consultorio asociado (o 'General (todos los consultorios)'), Descripcion (se muestra al paciente en el booking) y **Mostrar en link de booking** (si lo activas, el servicio es 'Visible en booking').
+- **Crear servicio.** Campos: Nombre, Tipo (servicio individual o plan de paquete con varias sesiones), Precio en USD (o la opcion **Precio a consultar con el especialista**, si prefieres no publicar un monto), Duracion en minutos (lista con 15, 20, 30, 40, 45, 50, 60 y 90, o **Otro…** para escribir cualquier duracion), numero de sesiones (si es paquete), Consultorio asociado (o 'General (todos los consultorios)'), Descripcion (se muestra al paciente en el booking) y **Mostrar en link de booking** (si lo activas, el servicio es 'Visible en booking').
 - **Editar**, **Activar/Desactivar** y **Eliminar** cada servicio.
 - Si no tienes ninguno: 'No tienes servicios configurados'.
 - Solo los servicios con 'Mostrar en booking' activo aparecen en tu pagina publica /book/tu-id.
 - **Precio a consultar:** el servicio se muestra en tu pagina publica como **A consultar con el especialista** y el paciente reserva **sin pagar ni subir comprobante**. No se genera ningun cobro al reservar. Cuando atiendes al paciente, al aprobar el pago de la consulta te aparece el campo **Monto de la consulta (USD)**: escribe lo que cobraste y recien ahi el cobro aparece en Cobros y en Finanzas.
 - **Sin cuentas de pago cargadas:** si no configuraste ningun metodo de pago (Pago Movil, Zelle, etc.), tu pagina publica tampoco le pide pago al paciente al reservar; el cobro queda **Pendiente** con el precio del servicio, para que lo registres cuando te paguen.
+- **Pagar despues:** en tu pagina publica, el paciente puede pulsar **Pagar despues** en el paso de pago sin elegir un medio: la cita queda reservada con el pago **Pendiente** y tu acuerdas con el como cobrar.
 
 ### 6.9 Consultorios — /doctor/offices
 
 Gestiona tus sedes y horarios de atencion.
 
-- **Crear consultorio.** Campos: Nombre (ejemplo: Consultorio Centro), Direccion, Ciudad, Telefono, **Enlace de ubicacion (Google Maps)** (opcional), **Modalidad** (Presencial, Online o Ambas), **Duracion del slot** en minutos (por defecto 30), **Buffer** entre citas en minutos (por defecto 10), y los **Horarios por dia** (Lunes a Domingo): para cada dia activas si trabajas y defines hora de inicio y fin.
+- **Crear consultorio.** Campos: Nombre (ejemplo: Consultorio Centro), Direccion, Ciudad, Telefono, **Enlace de ubicacion (Google Maps)** (opcional), **Modalidad** (Presencial, Online o Ambas), **Duracion del slot** en minutos (por defecto 30; elige de la lista o **Otro…** para escribir entre 5 y 240), **Buffer** entre citas en minutos (por defecto 10; con **Otro…** puedes poner de 0 a 120), y los **Horarios por dia** (Lunes a Domingo): para cada dia activas si trabajas y defines hora de inicio y fin.
 - **Enlace de ubicacion (Google Maps):** es un campo opcional. Si lo completas, ese enlace se envia al paciente en el **correo de confirmacion de la cita**, para que abra la ubicacion del consultorio directamente en su mapa.
 - **Editar**, **Activar/Desactivar** y **Eliminar** cada consultorio.
 - Si no tienes ninguno: 'No tienes consultorios registrados'. Si un consultorio no tiene horario: 'Sin horarios configurados'.
@@ -359,6 +360,7 @@ Configuracion de recordatorios automaticos a pacientes. (Requiere plan Base o Pl
 
 - Activar/desactivar recordatorios, elegir canal (Email, WhatsApp o ambos), elegir los tiempos de aviso (7 dias antes, 24 horas antes, 3 horas antes), definir horas de silencio (no enviar en ese rango) y una plantilla de mensaje.
 - Un monitor muestra los ultimos recordatorios y su estado (Enviado / Fallo).
+- El correo de recordatorio que envias al paciente muestra su **codigo de consulta** (el mismo DLT-… que ve en sus documentos).
 - **Los recordatorios automaticos ya estan activos:** el sistema envia por email de forma automatica el recordatorio de **24 horas antes** y el de **1 hora antes** de cada cita, sin que tengas que hacer nada. El recordatorio de 24 horas incluye un **enlace para que el paciente confirme la cita** por si mismo (confirmacion por token); al confirmar, la cita pasa a Confirmada. Ademas puedes enviar un recordatorio manual desde la cita. Si conectas Google Calendar, este envia su propio recordatorio 30 minutos antes.
 
 ### 6.12 Configuracion / Perfil — /doctor/settings

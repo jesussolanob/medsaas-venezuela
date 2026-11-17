@@ -9,6 +9,7 @@
  * Al guardar llama `completeOnboarding()` para marcar el onboarding como terminado.
  */
 
+import DurationSelect from '@/components/shared/DurationSelect';
 import { useState, useTransition } from 'react';
 import {
   Stethoscope,
@@ -42,7 +43,7 @@ interface Props {
 }
 
 /** Opciones de duración, en minutos. Mismo set que /doctor/services. */
-const DURATION_OPTIONS = [15, 20, 30, 45, 60, 90] as const;
+const DURATION_OPTIONS = [15, 20, 30, 40, 45, 50, 60, 90] as const;
 
 interface FieldErrors {
   name?: string;
@@ -328,21 +329,18 @@ export default function OnboardingStepService({
                 className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none"
                 style={{ color: 'var(--dh-gray-400)' }}
               />
-              <select
+              <DurationSelect
                 id="os-duration"
                 value={durationMins}
-                onChange={(e) => setDurationMins(Number(e.target.value))}
+                onChange={setDurationMins}
+                options={DURATION_OPTIONS}
+                min={5}
+                // A custom duration cannot be longer than the office block either.
+                max={maxDuration ?? 480}
+                isOptionDisabled={(v) => maxDuration != null && v > maxDuration}
                 className={`${inp} pl-10`}
-              >
-                {DURATION_OPTIONS.map((v) => {
-                  const fits = maxDuration == null || v <= maxDuration;
-                  return (
-                    <option key={v} value={v} disabled={!fits}>
-                      {v} min{!fits && ' — no entra en el bloque'}
-                    </option>
-                  );
-                })}
-              </select>
+                aria-label="Duración del servicio"
+              />
             </div>
           </div>
         </div>
