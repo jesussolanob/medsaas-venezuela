@@ -48,8 +48,8 @@ export class EmailController {
   async testEmail(@Body() body: TestEmailBody): Promise<SuccessResponse<EmailSendResult>> {
     const result = await this.emailPort.send({
       to: body.to,
-      subject: body.subject ?? 'Test email — Delta Medical CRM',
-      html: body.html ?? '<p>Test email from Delta Medical CRM.</p>',
+      subject: body.subject ?? 'Test email — Delta Salud',
+      html: body.html ?? '<p>Test email from Delta Salud.</p>',
     });
 
     return { success: true, data: result };

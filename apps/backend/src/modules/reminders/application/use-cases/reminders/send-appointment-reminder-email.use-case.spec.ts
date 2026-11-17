@@ -63,6 +63,9 @@ function buildUseCase(opts: {
   doctorProfile?: ReturnType<typeof makeDoctorProfile> | null;
   mailerResult?: object;
   mailerThrows?: Error;
+  /** Consultation linked to the appointment (its code goes in the email). */
+  linkedConsultation?: { consultationCode: string } | null;
+  linkedConsultationThrows?: Error;
 }) {
   const appointmentRepo = {
     findByIdForDoctor: jest.fn().mockResolvedValue(opts.appointment ?? null),
@@ -70,6 +73,9 @@ function buildUseCase(opts: {
 
   const consultationRepo = {
     findById: jest.fn().mockResolvedValue(opts.consultation ?? null),
+    findByAppointmentId: opts.linkedConsultationThrows
+      ? jest.fn().mockRejectedValue(opts.linkedConsultationThrows)
+      : jest.fn().mockResolvedValue(opts.linkedConsultation ?? null),
   };
 
   const patientRepo = {
@@ -131,6 +137,42 @@ describe('SendAppointmentReminderEmailUseCase', () => {
           code: 'APT-0001',
         }),
         { type: 'patient', id: 'pat-1' },
+      );
+    });
+  });
+
+  describe('code shown to the patient', () => {
+    it('uses the code of the linked consultation, not the appointment code', async () => {
+      const { useCase, mailer, consultationRepo } = buildUseCase({
+        appointment: makeAppointment({ patientEmail: 'juan@example.com' }),
+        doctorProfile: makeDoctorProfile(),
+        linkedConsultation: { consultationCode: 'DLT-202611-0007' },
+      });
+
+      await useCase.execute(BASE_INPUT);
+
+      expect(consultationRepo.findByAppointmentId).toHaveBeenCalledWith('apt-1', 'doc-1');
+      expect(mailer.sendTemplate).toHaveBeenCalledWith(
+        'reminder_manual',
+        'juan@example.com',
+        expect.objectContaining({ code: 'DLT-202611-0007' }),
+        expect.anything(),
+      );
+    });
+
+    it('falls back to the appointment code when the consultation lookup fails', async () => {
+      const { useCase, mailer } = buildUseCase({
+        appointment: makeAppointment({ patientEmail: 'juan@example.com' }),
+        doctorProfile: makeDoctorProfile(),
+        linkedConsultationThrows: new Error('db down'),
+      });
+
+      await expect(useCase.execute(BASE_INPUT)).resolves.toEqual({ sent: true });
+      expect(mailer.sendTemplate).toHaveBeenCalledWith(
+        'reminder_manual',
+        'juan@example.com',
+        expect.objectContaining({ code: 'APT-0001' }),
+        expect.anything(),
       );
     });
   });

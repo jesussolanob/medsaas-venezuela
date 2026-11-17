@@ -433,6 +433,9 @@ export default function BookingClient({
   // "Pagar después": el paciente confirma la cita sin subir comprobante ahora.
   // El pago queda pendiente y paga luego con los datos del especialista mostrados.
   const [payLater, setPayLater] = useState(false);
+  // "Pagar después" without picking a method: the appointment is booked with the
+  // payment pending and no method; the specialist agrees how to collect it.
+  const [payLaterNoMethod, setPayLaterNoMethod] = useState(false);
 
   // Form — RONDA 33: ampliado con datos clinicos opcionales para zero-friction onboarding.
   // El paciente puede saltar los opcionales y completarlos despues en su perfil.
@@ -693,7 +696,13 @@ export default function BookingClient({
       return;
     }
     // skipPaymentRequired is derived at component level (above state declarations).
-    if (!usingPackage && !useInsurance && !skipPaymentRequired && !selectedPaymentMethod) {
+    if (
+      !usingPackage &&
+      !useInsurance &&
+      !skipPaymentRequired &&
+      !payLaterNoMethod &&
+      !selectedPaymentMethod
+    ) {
       setError('Selecciona un método de pago');
       submittingRef.current = false;
       return;
@@ -805,9 +814,9 @@ export default function BookingClient({
             ? 'package'
             : useInsurance
               ? 'insurance'
-              : selectedPlan?.price_on_request
+              : selectedPlan?.price_on_request || payLaterNoMethod
                 ? null
-                : selectedPaymentMethod,
+                : selectedPaymentMethod || null,
           insuranceName: useInsurance ? selectedInsurance : null,
           receiptUrl,
           appointmentMode: appointmentMode || 'presencial',
@@ -2569,12 +2578,17 @@ export default function BookingClient({
               summary={
                 useInsurance
                   ? `Seguro: ${selectedInsurance}`
-                  : selectedPaymentMethod
-                    ? PAYMENT_LABELS[selectedPaymentMethod as PaymentMethod]
-                    : undefined
+                  : payLaterNoMethod
+                    ? 'Pagar después'
+                    : selectedPaymentMethod
+                      ? PAYMENT_LABELS[selectedPaymentMethod as PaymentMethod]
+                      : undefined
               }
               completed={
-                (!!selectedPaymentMethod || (useInsurance && !!selectedInsurance)) && activeStep > 6
+                (!!selectedPaymentMethod ||
+                  payLaterNoMethod ||
+                  (useInsurance && !!selectedInsurance)) &&
+                activeStep > 6
               }
               onOpen={() => setActiveStep(6)}
             >
@@ -2634,7 +2648,10 @@ export default function BookingClient({
                       <button
                         key={method}
                         type="button"
-                        onClick={() => setSelectedPaymentMethod(method as PaymentMethod)}
+                        onClick={() => {
+                          setSelectedPaymentMethod(method as PaymentMethod);
+                          setPayLaterNoMethod(false);
+                        }}
                         className={`p-3 rounded-xl border-2 text-left text-sm font-semibold transition-all ${
                           selectedPaymentMethod === method
                             ? 'border-cyan-500 bg-cyan-50/50 shadow-sm'
@@ -2769,6 +2786,24 @@ export default function BookingClient({
                     )}
                 </div>
 
+                {/* Pagar después sin elegir medio: la cita queda con el pago pendiente y el
+                    especialista acuerda cómo cobrar. No depende de los medios de arriba. */}
+                {!useInsurance && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedPaymentMethod('');
+                      setPaymentFile(null);
+                      setPayLater(true);
+                      setPayLaterNoMethod(true);
+                      setActiveStep(7);
+                    }}
+                    className="w-full rounded-xl border-2 border-slate-200 bg-white py-3 text-sm font-semibold text-slate-600 transition-colors hover:border-amber-300 hover:text-amber-700"
+                  >
+                    Pagar después
+                  </button>
+                )}
+
                 {/* Continue button — receipt is mandatory unless "Pagar después" */}
                 {selectedPaymentMethod &&
                   (() => {
@@ -2876,6 +2911,12 @@ export default function BookingClient({
                         ? `Seguro: ${selectedInsurance}`
                         : PAYMENT_LABELS[selectedPaymentMethod as PaymentMethod]}
                     </span>
+                  </div>
+                )}
+                {!usingPackage && !selectedPlan?.price_on_request && payLaterNoMethod && (
+                  <div className="flex items-center gap-2 text-xs text-amber-700">
+                    <CreditCard className="w-3.5 h-3.5" />
+                    <span>Pagarás después: el especialista te indicará cómo pagar.</span>
                   </div>
                 )}
                 {!usingPackage && selectedPlan?.price_on_request && (

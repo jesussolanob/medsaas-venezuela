@@ -68,7 +68,7 @@ describe('buildHelpPrompt', () => {
 
   it('should include key system instruction phrases', () => {
     const prompt = buildHelpPrompt(SAMPLE_GUIDE, singleUserMessage);
-    expect(prompt).toContain('Delta Medical CRM');
+    expect(prompt).toContain('Delta Salud');
     expect(prompt).toContain('EXCLUSIVAMENTE en el MANUAL');
     expect(prompt).toContain('NUNCA inventes ni adaptes nombres');
     expect(prompt).toContain('Español neutro de Venezuela');
