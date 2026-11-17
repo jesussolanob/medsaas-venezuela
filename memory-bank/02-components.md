@@ -1194,3 +1194,16 @@ los layouts lleva `min-w-0` para que las tablas anchas no desborden la página.
 | `app/doctor/settings/page.tsx`                                                                               | Campo "N.º MPPS" (distinto de Matrícula / Licencia)                                                                      |
 | `app/doctor/consultations/ApprovePaymentModal.tsx`                                                           | Pide "Monto de la consulta" si el servicio es a consultar (`requiresBaseAmount`)                                         |
 | `app/book/[doctorId]/BookingClient.tsx`                                                                      | "A consultar con el especialista"; sin paso de pago si el plan es a consultar o el especialista no tiene cuentas de pago |
+
+### Lote 2026-11-13/15
+
+| Pieza                                                                                  | Qué hace                                                                                          |
+| -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `app/doctor/consultations/consultation-status.ts`                                      | ÚNICO mapeo estado de cita → estado de consulta (incluye `cancelled`), usado por server y cliente |
+| `app/doctor/reports/report-status.ts`                                                  | Estado de Reportería desde la cita (no del pago); canceladas fuera de Ingresos                    |
+| `app/seller/especialistas/page.tsx` + `app/api/seller/specialist-invitations/route.ts` | Modal "Invitar especialista" (PhoneInput) y BFF que normaliza el teléfono                         |
+| `sellers/.../invite-seller-specialist.use-case.ts`                                     | Pre-registro + correo `specialist_invitation` (migración `20261114000001`)                        |
+| `app/doctor/onboarding/OnboardingWelcome.tsx`                                          | Bienvenida: términos para invitados (`termsPending`), solo los pasos que faltan                   |
+| `libs/shared-utils/src/phone-display.ts`                                               | `formatPhoneInternational` ("+58 414-1234567") y `phoneTelUri` para enlaces `tel:`                |
+| `components/release-notes/ReleaseNotesModal.tsx`                                       | Pie con "Omitir" (marca todo visto) y "Siguiente"                                                 |
+| `lib/sentry-env.ts`                                                                    | Entorno de Sentry según el host; encendido solo en producción                                     |

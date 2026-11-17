@@ -1,5 +1,6 @@
 'use client';
 
+import DurationSelect from '@/components/shared/DurationSelect';
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   listOffices,
@@ -86,7 +87,7 @@ const DAYS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', '
  * Duraciones ofrecidas por bloque. La opción vacía del selector significa
  * "la del consultorio", que sigue siendo el default de todo bloque nuevo.
  */
-const DURACIONES_BLOQUE = [15, 20, 30, 40, 45, 60, 90] as const;
+const DURACIONES_BLOQUE = [15, 20, 30, 40, 45, 50, 60, 90] as const;
 const DAYS_SHORT = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
 
 /** Un bloque de horario por día de la semana (lun-vie activo por defecto). */
@@ -955,33 +956,31 @@ export default function OfficesPage() {
                   <label className="block text-xs font-medium text-slate-600 mb-1.5">
                     Duración de consulta (min)
                   </label>
-                  <select
+                  <DurationSelect
                     value={slotDuration}
-                    onChange={(e) => setSlotDuration(Number(e.target.value))}
+                    onChange={setSlotDuration}
+                    options={DURACIONES_BLOQUE}
+                    min={5}
+                    max={240}
+                    unit="minutos"
                     className={inp}
-                  >
-                    {[15, 20, 30, 40, 45, 60, 90].map((m) => (
-                      <option key={m} value={m}>
-                        {m} minutos
-                      </option>
-                    ))}
-                  </select>
+                    aria-label="Duración de consulta"
+                  />
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-slate-600 mb-1.5">
                     Tiempo entre consultas (min)
                   </label>
-                  <select
+                  <DurationSelect
                     value={bufferMinutes}
-                    onChange={(e) => setBufferMinutes(Number(e.target.value))}
+                    onChange={setBufferMinutes}
+                    options={[0, 5, 10, 15, 20, 30]}
+                    min={0}
+                    max={120}
+                    unit="minutos"
                     className={inp}
-                  >
-                    {[0, 5, 10, 15, 20, 30].map((m) => (
-                      <option key={m} value={m}>
-                        {m} minutos
-                      </option>
-                    ))}
-                  </select>
+                    aria-label="Tiempo entre consultas"
+                  />
                 </div>
               </div>
 

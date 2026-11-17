@@ -130,7 +130,11 @@ export class SendAppointmentReminderEmailUseCase {
     });
 
     const service = appointment.planName ?? 'Consulta';
-    const code = appointment.appointmentCode ?? appointment.id.slice(0, 8).toUpperCase();
+    // The patient knows the CONSULTATION code (DLT-…): it is the one in every other
+    // message and document. The appointment code is only the fallback.
+    const consultationCode = await this.findConsultationCode(appointment.id, input.doctorId);
+    const code =
+      consultationCode ?? appointment.appointmentCode ?? appointment.id.slice(0, 8).toUpperCase();
     const patientName = appointment.patientName ?? 'Paciente';
 
     // ------------------------------------------------------------------
@@ -164,6 +168,24 @@ export class SendAppointmentReminderEmailUseCase {
   // -----------------------------------------------------------------------
   // Private helpers
   // -----------------------------------------------------------------------
+
+  /** Code of the consultation linked to the appointment; null if none or on lookup failure. */
+  private async findConsultationCode(
+    appointmentId: string,
+    doctorId: string,
+  ): Promise<string | null> {
+    try {
+      const consultation = await this.consultationRepo.findByAppointmentId(appointmentId, doctorId);
+      return consultation?.consultationCode ?? null;
+    } catch (err: unknown) {
+      // A missing code must not block the reminder: fall back to the appointment code.
+      this.logger.warn(
+        `[send-reminder] consultation code lookup failed for appointment=${appointmentId}: ` +
+          (err instanceof Error ? err.message : String(err)),
+      );
+      return null;
+    }
+  }
 
   /**
    * Resolves which appointment ID to use.
