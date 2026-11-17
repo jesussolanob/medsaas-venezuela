@@ -1,5 +1,6 @@
 'use client';
 
+import DurationSelect from '@/components/shared/DurationSelect';
 import { useState, useEffect, useCallback, useMemo } from 'react';
 // MIGRATED (Etapa 1): services CRUD → NestJS /api/doctor/services
 import {
@@ -59,7 +60,7 @@ type DoctorOffice = {
 };
 
 /** Opciones de duración de un servicio, en minutos. */
-const DURATION_OPTIONS = [15, 20, 30, 45, 60, 90] as const;
+const DURATION_OPTIONS = [15, 20, 30, 40, 45, 50, 60, 90] as const;
 
 /** Duración de bloque asumida cuando el consultorio no la informa. */
 const DEFAULT_SLOT_DURATION = 30;
@@ -759,18 +760,15 @@ export default function ServicesPage() {
                     Duración
                   </span>
                 </label>
-                <select
-                  value={durationMinutes}
-                  onChange={(e) => setDurationMinutes(e.target.value)}
+                <DurationSelect
+                  value={Number(durationMinutes) || 30}
+                  onChange={(m) => setDurationMinutes(String(m))}
+                  options={DURATION_OPTIONS}
+                  min={5}
+                  max={480}
                   className={inp}
                   aria-label="Duración del servicio"
-                >
-                  {DURATION_OPTIONS.map((v) => (
-                    <option key={v} value={v}>
-                      {v} min
-                    </option>
-                  ))}
-                </select>
+                />
                 <p className="text-[10px] text-slate-400 mt-1">
                   Solo puede asociarse a consultorios cuyos bloques sean de al menos esta duración.
                 </p>

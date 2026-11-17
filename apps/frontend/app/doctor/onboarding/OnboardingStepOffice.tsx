@@ -13,6 +13,7 @@
  * Slot y buffer: selectores simples.
  */
 
+import DurationSelect from '@/components/shared/DurationSelect';
 import { useState, useTransition, useMemo } from 'react';
 import {
   Building2,
@@ -663,18 +664,16 @@ export default function OnboardingStepOffice({ onBack, onSuccess, existingOffice
             >
               Duración de cita
             </label>
-            <select
+            <DurationSelect
               id="oo-slot"
               value={slotDuration}
-              onChange={(e) => setSlotDuration(Number(e.target.value))}
+              onChange={setSlotDuration}
+              options={[15, 20, 30, 45, 50, 60, 90]}
+              min={5}
+              max={240}
               className={inp}
-            >
-              {[15, 20, 30, 45, 60, 90].map((v) => (
-                <option key={v} value={v}>
-                  {v} min
-                </option>
-              ))}
-            </select>
+              aria-label="Duración de cita"
+            />
           </div>
           <div>
             <label
@@ -684,18 +683,16 @@ export default function OnboardingStepOffice({ onBack, onSuccess, existingOffice
             >
               Tiempo entre citas
             </label>
-            <select
+            <DurationSelect
               id="oo-buffer"
               value={bufferMinutes}
-              onChange={(e) => setBufferMinutes(Number(e.target.value))}
+              onChange={setBufferMinutes}
+              options={[0, 5, 10, 15, 20, 30]}
+              min={0}
+              max={120}
               className={inp}
-            >
-              {[0, 5, 10, 15, 20, 30].map((v) => (
-                <option key={v} value={v}>
-                  {v} min
-                </option>
-              ))}
-            </select>
+              aria-label="Tiempo entre citas"
+            />
           </div>
         </div>
 
