@@ -164,7 +164,10 @@ export class SequelizePaymentRepository implements IPaymentRepository {
            -- Excluir consultas cuya cita fue cancelada: no hay cobro pendiente
            -- sobre una cita que el especialista o el paciente rechazaron.
            -- a.id IS NULL = consulta directa (sin cita) → siempre mostrar.
-           AND (a.id IS NULL OR COALESCE(a.status, '') != 'cancelled')${consultDateWhere}`
+           -- IS DISTINCT FROM, not COALESCE(a.status, ''): status is an enum and
+           -- Postgres rejects casting '' to it — the whole query failed and Cobros
+           -- showed EMPTY (prod 2026-11-15/16; the mocked-Sequelize tests can't see it).
+           AND (a.id IS NULL OR a.status IS DISTINCT FROM 'cancelled')${consultDateWhere}`
       : '';
 
     const rows = await this.sequelize.query<PaymentListRow>(
