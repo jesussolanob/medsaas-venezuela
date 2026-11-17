@@ -4,6 +4,29 @@
 > ⚠️ Orden: **la entrada más nueva va ARRIBA**. La del 2026-08-11 quedó al final
 > del archivo por error; no se movió para no ensuciar el diff.
 
+## 2026-11-16/17 — Hotfix de Cobros vacío + observaciones del 16/11 (en producción)
+
+`main` = `2e3d3a13`; `develop` contiene `main`.
+
+1. 🔴 **Cobros vacío en producción desde el 15/11** (hotfix `hotfix/cobros-vacio`). El filtro de citas
+   canceladas del lote del vendedor usaba `COALESCE(a.status, '') != 'cancelled'`: `status` es el enum
+   `appointment_status` y Postgres rechaza `''` → TODA la consulta fallaba y "Pendientes"/"Todos" salían vacíos
+   sin error en pantalla (114 cobros pendientes ocultos). Arreglo: `a.status IS DISTINCT FROM 'cancelled'`,
+   validado corriendo la SQL contra las BDs de staging y producción. Lo encontró el QA en navegador de
+   "Pagar después"; los 5.146 tests estaban verdes (Sequelize simulado). Tercera vez que un enum rompe prod.
+2. **Marca en los correos:** las plantillas creadas después del rebranding de julio volvieron a traer
+   "Delta Medical CRM" (p. ej. "Nueva cita" al especialista). Migración `20261116000001` reemplaza en todas;
+   también el asistente de ayuda, las reuniones de equipo y el correo de prueba.
+3. **Recordatorio manual:** muestra el código de la CONSULTA (DLT-…), "Tu código de consulta"; cae al código
+   de la cita si no hay consulta vinculada o falla la búsqueda.
+4. **Booking "Pagar después" sin elegir medio:** la cita queda con pago pendiente y `method_snapshot` NULL;
+   el backend ya lo aceptaba. Aparece en Cobros con medio "—".
+5. **Duraciones "Otro…"** (`components/shared/DurationSelect.tsx`) en servicios (5–480), consultorio
+   (5–240) y pausa (0–120), también en el onboarding; preset nuevo de 50 min. Verificado: un consultorio
+   de 25 + 7 genera turnos cada 32 min en el booking.
+6. **Novedades:** "Arreglo en Cobros", "Pagar después", "Duraciones a tu medida" y "Mejoras en los correos",
+   publicadas en prod y staging.
+
 ## 2026-11-13/15 — Estados de citas, invitación por vendedor, sesión, novedades y Sentry (en producción)
 
 > Las entradas del 12 y 13/11 (onboarding mínimo, CSV, píxel) quedaron al FINAL del archivo por error.
