@@ -1207,3 +1207,4 @@ los layouts lleva `min-w-0` para que las tablas anchas no desborden la página.
 | `libs/shared-utils/src/phone-display.ts`                                               | `formatPhoneInternational` ("+58 414-1234567") y `phoneTelUri` para enlaces `tel:`                |
 | `components/release-notes/ReleaseNotesModal.tsx`                                       | Pie con "Omitir" (marca todo visto) y "Siguiente"                                                 |
 | `lib/sentry-env.ts`                                                                    | Entorno de Sentry según el host; encendido solo en producción                                     |
+| `components/shared/DurationSelect.tsx`                                                 | Selector de duración con presets + "Otro…" (campo libre acotado a los límites del backend)        |
