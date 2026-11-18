@@ -18,6 +18,10 @@ import {
   type ISellerRepository,
 } from '../../../sellers/domain/repositories/seller.repository';
 import { SellerCodeNotFoundError } from '../../../sellers/domain/errors/seller-code-not-found.error';
+import {
+  DEFAULT_SELLER_PORT,
+  type IDefaultSellerPort,
+} from '../../application/ports/default-seller.port';
 
 export interface CompleteRegistrationInput {
   doctorId: string;
@@ -88,6 +92,8 @@ export class CompleteRegistrationUseCase {
     private readonly legalRepo: ILegalDocumentRepository,
     @Inject(SELLER_REPOSITORY)
     private readonly sellerRepo: ISellerRepository,
+    @Inject(DEFAULT_SELLER_PORT)
+    private readonly defaultSellerPort: IDefaultSellerPort,
   ) {}
 
   async execute(input: CompleteRegistrationInput): Promise<CompleteRegistrationOutput> {
@@ -148,6 +154,25 @@ export class CompleteRegistrationUseCase {
       }
       await this.sellerRepo.linkSoldBy(input.doctorId, seller.id);
       this.logger.log(`[registration] seller linked doctorId=${input.doctorId}`);
+    } else {
+      // 1c. Default seller assignment — organic sign-ups with no seller code.
+      //
+      //     Runs only when no seller code was provided. If the profile already has
+      //     a sold_by (e.g. invited by a seller via seller_manual), the adapter's
+      //     WHERE sold_by IS NULL guard makes this a no-op — no double-attribution.
+      //
+      //     Source is 'admin': AccrueSignupCommissionUseCase skips signup commissions
+      //     for sold_by_source='admin' (SIGNUP_ELIGIBLE_SOURCES). The default seller
+      //     earns only plan commissions when the specialist upgrades.
+      //
+      //     Fire-and-forget: a misconfigured or missing default must NEVER abort a
+      //     registration. Any unexpected error is logged as WARN.
+      this.assignDefaultSeller(input.doctorId).catch((err: unknown) => {
+        this.logger.warn(
+          `[registration] unexpected error assigning default seller doctorId=${input.doctorId}`,
+          err instanceof Error ? err.message : String(err),
+        );
+      });
     }
 
     // 2. Persist terms acceptance — fire-and-forget (never fails registration).
@@ -249,6 +274,23 @@ export class CompleteRegistrationUseCase {
       ''
     ).replace(/\/+$/, '');
     return /^https?:\/\//i.test(configured) ? configured : 'https://deltasalud.app';
+  }
+
+  /**
+   * Resolves the system-configured default seller and assigns the specialist
+   * to it. Best-effort: errors propagate so the caller can fire-and-forget
+   * with a .catch() handler.
+   */
+  private async assignDefaultSeller(doctorId: string): Promise<void> {
+    const defaultSellerId = await this.defaultSellerPort.resolveDefaultSellerId();
+
+    if (!defaultSellerId) {
+      // No default configured or the configured seller is inactive — normal state.
+      return;
+    }
+
+    await this.defaultSellerPort.assignDefaultSeller(doctorId, defaultSellerId);
+    this.logger.log(`[registration] default seller assigned doctorId=${doctorId}`);
   }
 
   private async notifySuperAdmins(

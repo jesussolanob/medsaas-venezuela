@@ -11,7 +11,15 @@ import { SettingNotAllowedError } from '../../../domain/errors/setting-not-allow
  * Secrets managed by other infrastructure (encryption_key, jwt_secret, usdt_rate_raw
  * — the last one is owned by the finances module via Redis).
  */
-const PROTECTED_KEYS = new Set(['encryption_key', 'jwt_secret', 'usdt_rate_raw']);
+// 'default_seller_id' is managed exclusively via PUT /api/admin/settings/default-seller
+// (SetDefaultSellerUseCase) which performs seller validation before persisting.
+// Blocking it here prevents the generic endpoint from bypassing that validation.
+const PROTECTED_KEYS = new Set([
+  'encryption_key',
+  'jwt_secret',
+  'usdt_rate_raw',
+  'default_seller_id',
+]);
 
 export interface UpsertSettingInput {
   key: string;

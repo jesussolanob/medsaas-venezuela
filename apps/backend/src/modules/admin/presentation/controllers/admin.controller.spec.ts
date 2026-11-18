@@ -38,6 +38,7 @@ import { ExportDoctorsUseCase } from '../../application/use-cases/admin/export-d
 import { SetDoctorAccessUseCase } from '../../application/use-cases/admin/set-doctor-access.use-case';
 import { CreateAdminDoctorUseCase } from '../../application/use-cases/admin/create-admin-doctor.use-case';
 import { GetDoctorPatientsUseCase } from '../../application/use-cases/admin/get-doctor-patients.use-case';
+import { SetDefaultSellerUseCase } from '../../application/use-cases/admin/set-default-seller.use-case';
 import { DoctorWithActivity } from '../../domain/entities/doctor-with-activity.entity';
 import type { DoctorDetail, DoctorGrowthData } from '../../domain/repositories/admin.repository';
 import { PlanConfig } from '../../domain/value-objects/plan-config.vo';
@@ -254,6 +255,10 @@ const buildModule = async (): Promise<TestingModule> => {
       {
         provide: GetDoctorPatientsUseCase,
         useValue: { execute: jest.fn().mockResolvedValue([]) },
+      },
+      {
+        provide: SetDefaultSellerUseCase,
+        useValue: { execute: jest.fn().mockResolvedValue({ sellerId: null, setting: {} }) },
       },
     ],
   })

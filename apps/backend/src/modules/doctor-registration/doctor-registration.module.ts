@@ -33,6 +33,12 @@ import { LegalModule } from '../legal/legal.module';
 // to resolve a seller_code → sold_by during the onboarding wizard.
 import { SellersModule } from '../sellers/sellers.module';
 
+// AdminModule exports AdminSettingsModule, but we need a lightweight adapter
+// that reads app_settings and writes seller attribution without circular deps.
+// The adapter is local to this module and injected via DEFAULT_SELLER_PORT.
+import { DEFAULT_SELLER_PORT } from './application/ports/default-seller.port';
+import { SequelizeDefaultSellerAdapter } from './infrastructure/adapters/sequelize-default-seller.adapter';
+
 /**
  * DoctorRegistrationModule
  *
@@ -72,6 +78,10 @@ import { SellersModule } from '../sellers/sellers.module';
     {
       provide: DOCTOR_REGISTRATION_REPOSITORY,
       useClass: SequelizeDoctorRegistrationRepository,
+    },
+    {
+      provide: DEFAULT_SELLER_PORT,
+      useClass: SequelizeDefaultSellerAdapter,
     },
     RolesGuard,
     CompleteRegistrationUseCase,
