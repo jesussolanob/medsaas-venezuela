@@ -47,6 +47,7 @@ import { GetPublicStatsUseCase } from './application/use-cases/admin/get-public-
 import { SetDoctorAccessUseCase } from './application/use-cases/admin/set-doctor-access.use-case';
 import { CreateAdminDoctorUseCase } from './application/use-cases/admin/create-admin-doctor.use-case';
 import { GetDoctorPatientsUseCase } from './application/use-cases/admin/get-doctor-patients.use-case';
+import { SetDefaultSellerUseCase } from './application/use-cases/admin/set-default-seller.use-case';
 
 // Guards
 import { RolesGuard } from '../../presentation/guards/roles.guard';
@@ -129,6 +130,7 @@ import { PublicStatsController } from './presentation/controllers/public-stats.c
     SetDoctorAccessUseCase,
     CreateAdminDoctorUseCase,
     GetDoctorPatientsUseCase,
+    SetDefaultSellerUseCase,
   ],
 })
 export class AdminModule {}

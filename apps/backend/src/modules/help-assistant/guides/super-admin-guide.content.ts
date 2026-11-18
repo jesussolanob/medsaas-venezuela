@@ -607,6 +607,26 @@ la plataforma.
 - Las claves de tasas de cambio aparecen como solo-lectura, marcadas como "Gestionado en Fuente de
   tasa", porque se manejan en el bloque de tasa.
 - Las claves sensibles (secretos del sistema, llaves de API) NO se exponen aquí.
+- La clave **default_seller_id** es de solo lectura en este editor; se gestiona desde la sección
+  de vendedores (ver más abajo).
+
+**Bloque Vendedor predeterminado (dentro de Configuración):**
+Permite asignar un vendedor que recibirá la atribución de los especialistas que se registren
+de forma orgánica, es decir, sin usar un código de vendedor ni haber sido invitados directamente.
+
+- Muestra el vendedor actualmente configurado (nombre y código) o "Sin vendedor configurado".
+- Selector para elegir un vendedor activo de la lista.
+- Botón **Guardar** para aplicar el cambio. Solo acepta vendedores con estado "Habilitado".
+- Botón **Limpiar** para remover el vendedor predeterminado (los nuevos registros orgánicos
+  quedarán sin atribución hasta que se configure otro).
+
+Comportamiento del sistema cuando hay un vendedor predeterminado activo:
+- Cada nuevo especialista que se registre sin código de referido ni invitación directa queda
+  atribuido a ese vendedor con origen 'admin'.
+- El origen 'admin' NO genera comisión de alta ($10), solo comisión de plan cuando el
+  especialista active un plan de pago.
+- Si el vendedor configurado es deshabilitado antes de que el especialista complete el registro,
+  el sistema omite la atribución y continúa el registro normalmente (el error no bloquea el alta).
 
 ### Flujo: cambiar la tasa de cambio del sistema
 
