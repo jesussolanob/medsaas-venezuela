@@ -13,7 +13,7 @@
  */
 
 import { useMemo, useState } from 'react';
-import { Users, Loader2, UserPlus, AlertCircle, X, Share2, Search } from 'lucide-react';
+import { Users, Loader2, UserPlus, AlertCircle, X, Search, MessageCircle } from 'lucide-react';
 import { showToast } from '@/components/ui/Toaster';
 import { normalizePhoneIntl } from '@/lib/phone-utils';
 import PhoneInput from '@/components/shared/PhoneInput';
@@ -395,27 +395,32 @@ export default function SellerEspecialistasPage() {
         )}
       </section>
 
-      {/* Ficha del especialista */}
+      {/* Ficha del especialista — wide two-column dialog */}
       {(ficha || fichaCargando || fichaError) && (
         <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Ficha del especialista"
           className="fixed inset-0 bg-black/50 flex items-center justify-center z-[70] p-4"
           onClick={() => {
             setFicha(null);
             setFichaError('');
           }}
         >
+          {/* Stop click propagation so clicking inside the card doesn't close it */}
           <div
-            className="bg-white rounded-2xl shadow-2xl max-w-lg w-full p-6 max-h-[90vh] overflow-y-auto"
+            className="bg-white rounded-2xl shadow-2xl max-w-5xl w-full flex flex-col max-h-[90vh]"
             onClick={(e) => e.stopPropagation()}
           >
+            {/* Loading and error states fill the entire card */}
             {fichaCargando && (
-              <div className="flex items-center gap-2 text-sm text-slate-500 py-6 justify-center">
+              <div className="flex items-center gap-2 text-sm text-slate-500 py-12 justify-center">
                 <Loader2 className="w-4 h-4 animate-spin" /> Cargando la ficha…
               </div>
             )}
 
             {fichaError && !fichaCargando && (
-              <div className="text-center py-4">
+              <div className="text-center py-8 px-6">
                 <AlertCircle className="w-6 h-6 text-red-500 mx-auto mb-2" />
                 <p className="text-sm text-red-600">{fichaError}</p>
               </div>
@@ -423,163 +428,181 @@ export default function SellerEspecialistasPage() {
 
             {ficha && !fichaCargando && (
               <>
-                <div className="flex items-start justify-between gap-3 mb-4">
+                {/* ── Header row (above both columns) ───────────────────────── */}
+                <div className="flex items-start justify-between gap-3 px-6 pt-5 pb-4 border-b border-slate-100 shrink-0">
                   <div>
                     <h2 className="text-lg font-bold text-slate-900">{ficha.fullName}</h2>
-                    <p className="text-xs text-slate-500">
+                    <p className="text-xs text-slate-500 mt-0.5">
                       {ficha.specialty || 'Sin especialidad'}
                     </p>
                   </div>
                   <button
                     onClick={() => setFicha(null)}
-                    className="text-slate-400 hover:text-slate-600"
+                    className="text-slate-400 hover:text-slate-600 transition-colors p-1 rounded-lg hover:bg-slate-100 shrink-0"
                     aria-label="Cerrar"
                   >
                     <X className="w-5 h-5" />
                   </button>
                 </div>
 
-                {!ficha.isActive && (
-                  <div className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-800 mb-4">
-                    Esta cuenta está <strong>dada de baja</strong>.
-                  </div>
-                )}
-
-                <dl className="space-y-3 text-sm">
-                  <div>
-                    <dt className="text-[11px] font-semibold text-slate-400 uppercase">Correo</dt>
-                    <dd className="text-slate-800 break-all">{ficha.email}</dd>
-                  </div>
-                  <div>
-                    <dt className="text-[11px] font-semibold text-slate-400 uppercase">Teléfono</dt>
-                    <dd className="text-slate-800">
-                      {editando ? (
-                        <input
-                          type="tel"
-                          value={editPhone}
-                          onChange={(e) => setEditPhone(e.target.value)}
-                          placeholder="04141234567"
-                          className="w-full text-sm border-2 border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:border-teal-400"
-                        />
-                      ) : ficha.phone ? (
-                        <a href={`tel:${ficha.phone}`} className="text-teal-700 hover:underline">
-                          {ficha.phone}
-                        </a>
-                      ) : (
-                        <span className="text-slate-400">No cargado</span>
-                      )}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt className="text-[11px] font-semibold text-slate-400 uppercase">Cédula</dt>
-                    <dd className="text-slate-800">{ficha.cedula || '—'}</dd>
-                  </div>
-                  <div className="grid grid-cols-2 gap-3 pt-2 border-t border-slate-100">
-                    <div>
-                      <dt className="text-[11px] font-semibold text-slate-400 uppercase">Plan</dt>
-                      <dd className="text-slate-800">{PLAN_LABELS[ficha.plan ?? ''] ?? '—'}</dd>
-                    </div>
-                    <div>
-                      <dt className="text-[11px] font-semibold text-slate-400 uppercase">Alta</dt>
-                      <dd className="text-slate-800">{fmtDate(ficha.createdAt)}</dd>
-                    </div>
-                  </div>
-                  <div>
-                    <dt className="text-[11px] font-semibold text-slate-400 uppercase">
-                      Último ingreso
-                    </dt>
-                    <dd className="text-slate-800">
-                      {ficha.lastSignInAt ? fmtDate(ficha.lastSignInAt) : 'Nunca entró'}
-                    </dd>
-                  </div>
-
-                  {/* Notas del vendedor: seguimiento comercial, no dato clínico. */}
-                  <div className="pt-2 border-t border-slate-100">
-                    <dt className="text-[11px] font-semibold text-slate-400 uppercase">
-                      Mis notas
-                    </dt>
-                    <dd className="text-slate-800 mt-1">
-                      {editando ? (
-                        <textarea
-                          value={editNotes}
-                          onChange={(e) => setEditNotes(e.target.value)}
-                          rows={4}
-                          maxLength={2000}
-                          placeholder="Cómo viene la conversación, cuándo volver a llamarlo…"
-                          className="w-full text-sm border-2 border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-teal-400 resize-y"
-                        />
-                      ) : ficha.sellerNotes ? (
-                        <p className="whitespace-pre-wrap text-sm">{ficha.sellerNotes}</p>
-                      ) : (
-                        <span className="text-slate-400 text-sm">Sin notas</span>
-                      )}
-                    </dd>
-                  </div>
-                </dl>
-
-                {fichaGuardarError && (
-                  <p className="mt-3 text-xs text-red-600">{fichaGuardarError}</p>
-                )}
-
-                {/* Editar / guardar */}
-                <div className="mt-4 flex gap-2">
-                  {editando ? (
-                    <>
-                      <button
-                        type="button"
-                        disabled={guardandoFicha}
-                        onClick={() => void guardarFicha()}
-                        className="flex-1 rounded-lg bg-teal-500 hover:bg-teal-600 disabled:bg-slate-200 disabled:text-slate-400 text-white py-2 text-sm font-semibold transition-colors"
-                      >
-                        {guardandoFicha ? 'Guardando…' : 'Guardar'}
-                      </button>
-                      <button
-                        type="button"
-                        disabled={guardandoFicha}
-                        onClick={cancelarEdicion}
-                        className="rounded-lg border-2 border-slate-200 hover:bg-slate-50 px-4 py-2 text-sm font-semibold text-slate-600 transition-colors"
-                      >
-                        Cancelar
-                      </button>
-                    </>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={empezarEdicion}
-                      className="w-full rounded-lg border-2 border-teal-500 text-teal-700 hover:bg-teal-50 py-2 text-sm font-semibold transition-colors"
-                    >
-                      Editar teléfono y notas
-                    </button>
-                  )}
-                </div>
-
-                {/*
-                  wa.me exige E.164 SIN el cero inicial: '584129998877'. El campo de
-                  arriba pide el formato local ('04141234567' es su propio placeholder),
-                  así que pasar ficha.phone crudo armaba 'wa.me/04129998877' y WhatsApp
-                  respondía "número inválido" — el botón no abría ningún chat. El resto
-                  del repo ya normaliza con este helper; esta pantalla era la única que no.
+                {/* ── Two-column body ─────────────────────────────────────────
+                    md+: LEFT = info/actions  |  RIGHT = seguimiento
+                    mobile: stacked (info first, then gestión)
                 */}
-                <a
-                  href={waPhone ? `https://wa.me/${waPhone}` : undefined}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className={`mt-5 w-full inline-flex items-center justify-center gap-2 rounded-lg py-2.5 text-sm font-semibold transition-colors ${
-                    waPhone
-                      ? 'bg-teal-500 hover:bg-teal-600 text-white'
-                      : 'bg-slate-100 text-slate-400 pointer-events-none'
-                  }`}
-                >
-                  <Share2 className="w-4 h-4" />
-                  {ficha.phone
-                    ? waPhone
-                      ? 'Escribirle por WhatsApp'
-                      : 'Teléfono con formato inválido'
-                    : 'Sin teléfono cargado'}
-                </a>
+                <div className="flex flex-col md:flex-row flex-1 min-h-0">
+                  {/* LEFT column — specialist data + edit phone/notes */}
+                  <div className="md:w-[55%] overflow-y-auto p-6 space-y-4 md:border-r border-slate-100">
+                    {!ficha.isActive && (
+                      <div className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-800">
+                        Esta cuenta está <strong>dada de baja</strong>.
+                      </div>
+                    )}
 
-                <div className="mt-6 pt-5 border-t border-slate-100">
-                  <SpecialistFollowUp specialistId={ficha.id} onChanged={() => void recargar()} />
+                    <dl className="space-y-3 text-sm">
+                      <div>
+                        <dt className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">
+                          Correo
+                        </dt>
+                        <dd className="text-slate-800 break-all mt-0.5">{ficha.email}</dd>
+                      </div>
+
+                      {/* Phone — shown as WhatsApp link when valid, plain text otherwise.
+                          wa.me requires E.164 without the leading '+':
+                          '0414…' → normalizePhoneIntl → '58414…'.
+                          Passing the raw local number produced 'wa.me/0414…', which
+                          WhatsApp rejected as invalid. */}
+                      <div>
+                        <dt className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">
+                          Teléfono
+                        </dt>
+                        <dd className="text-slate-800 mt-0.5">
+                          {editando ? (
+                            <input
+                              type="tel"
+                              value={editPhone}
+                              onChange={(e) => setEditPhone(e.target.value)}
+                              placeholder="04141234567"
+                              className="w-full text-sm border-2 border-slate-200 rounded-lg px-3 py-1.5 outline-none focus:border-teal-400"
+                            />
+                          ) : ficha.phone ? (
+                            waPhone ? (
+                              <a
+                                href={`https://wa.me/${waPhone}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1.5 text-green-700 hover:text-green-800 hover:underline font-medium transition-colors"
+                              >
+                                <MessageCircle className="w-3.5 h-3.5 shrink-0" />
+                                {ficha.phone}
+                              </a>
+                            ) : (
+                              /* Número presente pero no normalizable a E.164 */
+                              <span className="text-slate-700">{ficha.phone}</span>
+                            )
+                          ) : (
+                            <span className="text-slate-400">No cargado</span>
+                          )}
+                        </dd>
+                      </div>
+
+                      <div>
+                        <dt className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">
+                          Cédula
+                        </dt>
+                        <dd className="text-slate-800 mt-0.5">{ficha.cedula || '—'}</dd>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3 pt-2 border-t border-slate-100">
+                        <div>
+                          <dt className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">
+                            Plan
+                          </dt>
+                          <dd className="text-slate-800 mt-0.5">
+                            {PLAN_LABELS[ficha.plan ?? ''] ?? '—'}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">
+                            Alta
+                          </dt>
+                          <dd className="text-slate-800 mt-0.5">{fmtDate(ficha.createdAt)}</dd>
+                        </div>
+                      </div>
+
+                      <div>
+                        <dt className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">
+                          Último ingreso
+                        </dt>
+                        <dd className="text-slate-800 mt-0.5">
+                          {ficha.lastSignInAt ? fmtDate(ficha.lastSignInAt) : 'Nunca entró'}
+                        </dd>
+                      </div>
+
+                      {/* Notas del vendedor: seguimiento comercial, no dato clínico. */}
+                      <div className="pt-2 border-t border-slate-100">
+                        <dt className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">
+                          Mis notas
+                        </dt>
+                        <dd className="text-slate-800 mt-1">
+                          {editando ? (
+                            <textarea
+                              value={editNotes}
+                              onChange={(e) => setEditNotes(e.target.value)}
+                              rows={4}
+                              maxLength={2000}
+                              placeholder="Cómo viene la conversación, cuándo volver a llamarlo…"
+                              className="w-full text-sm border-2 border-slate-200 rounded-lg px-3 py-2 outline-none focus:border-teal-400 resize-y"
+                            />
+                          ) : ficha.sellerNotes ? (
+                            <p className="whitespace-pre-wrap text-sm">{ficha.sellerNotes}</p>
+                          ) : (
+                            <span className="text-slate-400 text-sm">Sin notas</span>
+                          )}
+                        </dd>
+                      </div>
+                    </dl>
+
+                    {fichaGuardarError && (
+                      <p className="text-xs text-red-600">{fichaGuardarError}</p>
+                    )}
+
+                    {/* Editar / guardar */}
+                    <div className="flex gap-2">
+                      {editando ? (
+                        <>
+                          <button
+                            type="button"
+                            disabled={guardandoFicha}
+                            onClick={() => void guardarFicha()}
+                            className="flex-1 rounded-lg bg-teal-500 hover:bg-teal-600 disabled:bg-slate-200 disabled:text-slate-400 text-white py-2 text-sm font-semibold transition-colors focus-visible:ring-2 focus-visible:ring-teal-500 focus-visible:ring-offset-2"
+                          >
+                            {guardandoFicha ? 'Guardando…' : 'Guardar'}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={guardandoFicha}
+                            onClick={cancelarEdicion}
+                            className="rounded-lg border-2 border-slate-200 hover:bg-slate-50 px-4 py-2 text-sm font-semibold text-slate-600 transition-colors focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2"
+                          >
+                            Cancelar
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={empezarEdicion}
+                          className="w-full rounded-lg border-2 border-teal-500 text-teal-700 hover:bg-teal-50 py-2 text-sm font-semibold transition-colors focus-visible:ring-2 focus-visible:ring-teal-500 focus-visible:ring-offset-2"
+                        >
+                          Editar teléfono y notas
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* RIGHT column — status changes + comment + history */}
+                  <div className="md:w-[45%] overflow-y-auto p-6 border-t border-slate-100 md:border-t-0 bg-slate-50/40">
+                    <SpecialistFollowUp specialistId={ficha.id} onChanged={() => void recargar()} />
+                  </div>
                 </div>
               </>
             )}

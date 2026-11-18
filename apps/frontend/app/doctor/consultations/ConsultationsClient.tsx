@@ -1232,6 +1232,9 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
             // El backend serializa el catálogo en camelCase (defaultLabel, etc.).
             // Leerlo en snake_case dejaba label=undefined → el modal "Agregar bloque"
             // mostraba filas vacías (solo el "+"). Fix: leer camelCase.
+            // FIX (2026-11-18): also apply customLabel from doctor_config so the
+            // "Agregar bloque" modal shows the same label the doctor chose, not
+            // the catalog default. doctor_config uses blockKey (camelCase).
             const catalog = (j.catalog || []) as Array<{
               key: string;
               defaultLabel: string;
@@ -1239,10 +1242,20 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
               defaultPrintable?: boolean;
               defaultSendToPatient?: boolean;
             }>;
+            const doctorCfgRaw = (j.doctor_config || []) as Array<{
+              blockKey: string;
+              customLabel?: string | null;
+            }>;
+            const customLabelMap = new Map(
+              doctorCfgRaw
+                .filter((c) => c.customLabel)
+                .map((c) => [c.blockKey, c.customLabel as string]),
+            );
             setBlockCatalog(
               catalog.map((c) => ({
                 key: c.key,
-                label: c.defaultLabel,
+                // Prefer doctor's custom label; fall back to catalog default.
+                label: customLabelMap.get(c.key) ?? c.defaultLabel,
                 content_type: c.defaultContentType,
                 printable: c.defaultPrintable ?? true,
                 send_to_patient: c.defaultSendToPatient ?? true,
