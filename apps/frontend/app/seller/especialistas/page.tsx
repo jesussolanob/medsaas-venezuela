@@ -17,6 +17,7 @@ import { Users, Loader2, UserPlus, AlertCircle, X, Share2, Search } from 'lucide
 import { showToast } from '@/components/ui/Toaster';
 import { normalizePhoneIntl } from '@/lib/phone-utils';
 import PhoneInput from '@/components/shared/PhoneInput';
+import { ONBOARDING_STEP_LABEL_ES } from '@delta/shared-types';
 import {
   useSellerData,
   estadoSeguimiento,
@@ -290,6 +291,10 @@ export default function SellerEspecialistasPage() {
                       <th className="px-5 py-3">Especialista</th>
                       <th className="px-5 py-3">Registrado</th>
                       <th className="px-5 py-3">Seguimiento</th>
+                      <th className="px-5 py-3">Onboarding</th>
+                      <th className="px-5 py-3 text-center">Consultorios</th>
+                      <th className="px-5 py-3">Consultas</th>
+                      <th className="px-5 py-3 text-center">Métodos de pago</th>
                       <th className="px-5 py-3">Plan</th>
                     </tr>
                   </thead>
@@ -317,6 +322,45 @@ export default function SellerEspecialistasPage() {
                             </span>
                             {act.detalle && (
                               <p className="text-[11px] text-slate-400 mt-1">{act.detalle}</p>
+                            )}
+                          </td>
+                          <td className="px-5 py-3">
+                            <span
+                              className={`text-[11px] font-semibold px-2 py-0.5 rounded-full whitespace-nowrap ${
+                                r.onboardingStep === 'completed'
+                                  ? 'bg-emerald-50 text-emerald-700'
+                                  : 'bg-amber-50 text-amber-700'
+                              }`}
+                            >
+                              {r.onboardingStep ? ONBOARDING_STEP_LABEL_ES[r.onboardingStep] : '—'}
+                            </span>
+                          </td>
+                          <td className="px-5 py-3 text-center font-semibold text-slate-700 tabular-nums">
+                            {r.officesCount ?? '—'}
+                          </td>
+                          <td className="px-5 py-3">
+                            <p className="font-semibold text-slate-700 tabular-nums">
+                              {r.consultationsCount ?? '—'}
+                            </p>
+                            {(r.consultationsCount ?? 0) > 0 && (
+                              <p
+                                className="text-[11px] text-slate-400 whitespace-nowrap"
+                                title="Por link: reservadas por el paciente desde el link de reservas. Por especialista: registradas por él desde su panel. Sin clasificar: pacientes antiguos sin ese dato."
+                              >
+                                {r.consultationsByBooking ?? 0} por link ·{' '}
+                                {r.consultationsByDoctor ?? 0} por especialista
+                                {(r.consultationsUnclassified ?? 0) > 0 &&
+                                  ` · ${r.consultationsUnclassified} sin clasificar`}
+                              </p>
+                            )}
+                          </td>
+                          <td className="px-5 py-3 text-center">
+                            {r.paymentMethodsConfigured === undefined ? (
+                              '—'
+                            ) : r.paymentMethodsConfigured ? (
+                              <span className="text-xs font-semibold text-emerald-700">Sí</span>
+                            ) : (
+                              <span className="text-xs font-semibold text-red-600">No</span>
                             )}
                           </td>
                           <td className="px-5 py-3">

@@ -416,7 +416,10 @@ export class CreateBookingUseCase {
     // Path B: no patient_id → find-or-create by available identifiers.
     const patient = dto.patient_id
       ? await this.loadPatientById(dto.patient_id, dto.doctor_id)
-      : await this.findOrCreatePatient(dto);
+      : await this.findOrCreatePatient(
+          dto,
+          Boolean(options?.doctorInitiated || options?.forceConfirmed),
+        );
 
     // --- Step 4b: Verify the patient does not have an overlapping appointment (cross-doctor) ---
     // A newly created patient has no prior appointments, so this returns false naturally.
@@ -472,7 +475,13 @@ export class CreateBookingUseCase {
           ? 'completed'
           : 'scheduled',
       appointmentMode: dto.appointment_mode,
-      source: 'booking',
+      // 'booking_public'  — patient booked from the public /book page.
+      // 'doctor_panel'    — specialist created the appointment from their panel
+      //                     (doctorInitiated, forceConfirmed/walk-in, or immediate).
+      // Legacy rows stay 'booking' and must NOT be used for origin classification —
+      // see listSoldSpecialistsWithStats in the sellers repository.
+      source:
+        options?.doctorInitiated || options?.forceConfirmed ? 'doctor_panel' : 'booking_public',
       // Identidad del servicio. Sin esto la cita solo guarda el NOMBRE y todo lo
       // que necesite saber de qué servicio salió tiene que unir por texto, que es
       // ambiguo con dos servicios homónimos.
@@ -683,7 +692,11 @@ export class CreateBookingUseCase {
               scheduledAt: extraAt,
               status: 'scheduled',
               appointmentMode: extra.appointment_mode ?? dto.appointment_mode,
-              source: 'booking',
+              // Extra sessions inherit the same source as the primary appointment.
+              source:
+                options?.doctorInitiated || options?.forceConfirmed
+                  ? 'doctor_panel'
+                  : 'booking_public',
               planId: dto.plan_id ?? null,
               planName: dto.plan_name,
               planPrice: 0, // Price is paid upfront on the first session; extras cost 0.
@@ -920,7 +933,15 @@ export class CreateBookingUseCase {
    * Deliberately does NOT match on name alone to prevent false duplicates.
    * PII encryption is handled by the patient repository layer.
    */
-  private async findOrCreatePatient(dto: CreateBookingDto): Promise<Patient> {
+  /**
+   * @param createdBySpecialist true when the specialist books from the panel: a
+   *   patient created that way is 'manual', not 'booking' (public link). The seller
+   *   metrics classify consultation origin with this when the appointment is legacy.
+   */
+  private async findOrCreatePatient(
+    dto: CreateBookingDto,
+    createdBySpecialist = false,
+  ): Promise<Patient> {
     // 1. Try cedula hash lookup first — cédula is the stable identifier for Venezuelan
     //    patients and must be the primary deduplication key. Email may change; cedula does not.
     if (dto.patient_cedula) {
@@ -967,7 +988,7 @@ export class CreateBookingUseCase {
       cedula: dto.patient_cedula ?? null,
       phone: dto.patient_phone ?? null,
       identityId,
-      source: 'booking',
+      source: createdBySpecialist ? 'manual' : 'booking',
       createdAt: now,
       updatedAt: now,
     });

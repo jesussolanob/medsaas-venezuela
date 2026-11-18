@@ -41,6 +41,7 @@ import type {
   SellerProfile,
   SellerAdminRow,
   SellerSpecialistRow,
+  SellerSpecialistWithStats,
   SellerPaymentDetails,
 } from '../../domain/repositories/seller.repository';
 
@@ -203,6 +204,31 @@ function toSpecialistDto(row: SellerSpecialistRow) {
     lastSignInAt: row.lastSignInAt,
     // Distingue "alta incompleta" de "cuenta activa" en el portal del vendedor.
     onboardingCompleted: row.onboardingCompleted,
+  };
+}
+
+/**
+ * Specialist row for GET /api/seller/specialists — includes aggregate counts.
+ *
+ * New fields (counts only, never patient PII):
+ *   officesCount              — active offices
+ *   consultationsCount        — total consultations (non-cancelled)
+ *   onboardingStep            — machine key (see OnboardingStepKey)
+ *   paymentMethodsConfigured  — boolean
+ *   consultationsByBooking    — from public booking page
+ *   consultationsByDoctor     — created by the specialist
+ *   consultationsUnclassified — origin unknown
+ */
+function toSpecialistWithStatsDto(row: SellerSpecialistWithStats) {
+  return {
+    ...toSpecialistDto(row),
+    officesCount: row.officesCount,
+    consultationsCount: row.consultationsCount,
+    onboardingStep: row.onboardingStep,
+    paymentMethodsConfigured: row.paymentMethodsConfigured,
+    consultationsByBooking: row.consultationsByBooking,
+    consultationsByDoctor: row.consultationsByDoctor,
+    consultationsUnclassified: row.consultationsUnclassified,
   };
 }
 
@@ -450,9 +476,9 @@ export class SellersController {
   @Roles('seller')
   async listSpecialistsEndpoint(
     @CurrentUser() user: CurrentUserPayload,
-  ): Promise<SuccessResponse<ReturnType<typeof toSpecialistDto>[]>> {
+  ): Promise<SuccessResponse<ReturnType<typeof toSpecialistWithStatsDto>[]>> {
     const specialists = await this.listSpecialists.execute(user.sub);
-    return ok(specialists.map(toSpecialistDto));
+    return ok(specialists.map(toSpecialistWithStatsDto));
   }
 
   // ---------------------------------------------------------------------------
