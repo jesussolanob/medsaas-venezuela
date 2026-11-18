@@ -119,6 +119,13 @@ interface BackendAppointment {
   patientEmail: string | null;
   patientCedula: string | null;
   scheduledAt: string; // ISO string
+  /**
+   * Stored duration of this appointment in minutes.
+   * Serialized by the backend mapper (toPlainAppointment). Null for legacy rows
+   * created before this column existed. When present and positive, used to
+   * compute endTime instead of the global slotDuration fallback.
+   */
+  durationMinutes?: number | null;
   status: string;
   appointmentMode: string | null;
   planName: string | null;
@@ -180,6 +187,14 @@ function appErrorMsg(error: AppError): string {
 
 function toAgendaAppointment(raw: BackendAppointment, slotDuration: number): AgendaAppointment {
   const time = isoToCaracasHHMM(raw.scheduledAt);
+  // Use the appointment's own stored duration when it is a positive number.
+  // This ensures appointments in an office with 45-min slots show a 45-min
+  // block even when the first active office defaults to 60 min (or vice-versa).
+  // Fall back to the caller-supplied slotDuration for legacy rows (null/undefined).
+  const effectiveDuration =
+    typeof raw.durationMinutes === 'number' && raw.durationMinutes > 0
+      ? raw.durationMinutes
+      : slotDuration;
   return {
     id: raw.id,
     appointment_id: raw.id, // en citas puras el appointment_id ES el id
@@ -188,7 +203,7 @@ function toAgendaAppointment(raw: BackendAppointment, slotDuration: number): Age
     date: isoToCaracasYMD(raw.scheduledAt),
     isoDate: raw.scheduledAt,
     time,
-    endTime: addMinutes(time, slotDuration),
+    endTime: addMinutes(time, effectiveDuration),
     chief_complaint: raw.chiefComplaint ?? undefined,
     status: raw.status as AgendaAppointment['status'],
     source: 'appointment' as const,
