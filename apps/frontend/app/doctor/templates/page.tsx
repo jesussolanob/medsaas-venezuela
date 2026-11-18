@@ -259,69 +259,51 @@ export default function TemplatesPage() {
 
     // ── 2) Cargar bloques del doctor vía API para resolver la cascada
     //     doctor_consultation_blocks → specialty_default_blocks → catalog
+    //
+    // FIX (2026-11-18): the previous code read the response in snake_case
+    // (default_label, block_key, custom_label, sort_order) but the backend
+    // serializes in camelCase (defaultLabel, blockKey, customLabel, sortOrder).
+    // Result: doctor customLabel was never applied and tabs showed catalog
+    // defaults. Fix: consume the already-resolved `resolved` array which
+    // has the full cascade (doctor > specialty > catalog) already applied and
+    // uses camelCase throughout — matching consultation-blocks/page.tsx.
     let dynamicTabs: TemplateTab[] = FALLBACK_TABS;
     try {
       const r = await fetch('/api/doctor/consultation-blocks', { cache: 'no-store' });
       const j = await r.json();
 
-      // The API returns loosely typed JSON; narrow inline with type guards below.
-      type RawBlock = {
+      // `resolved` contains only enabled blocks with the final label after the
+      // cascade (customLabel > specialty default > catalog default). Backend
+      // shape mirrors ConsultationBlock entity (all camelCase).
+      type ResolvedBlock = {
         key: string;
-        default_label?: string;
-        default_printable?: boolean;
-        description?: string;
+        label: string;
+        printable: boolean;
+        sortOrder: number;
+        description: string | null;
       };
-      type RawDoctorCfg = {
-        block_key: string;
-        enabled?: boolean;
-        printable?: boolean;
-        custom_label?: string;
-        sort_order?: number;
-      };
-      type RawSpecialtyDef = { block_key: string; enabled?: boolean; sort_order?: number };
 
-      const catalog: RawBlock[] = Array.isArray(j.catalog) ? (j.catalog as RawBlock[]) : [];
-      const doctorCfg: RawDoctorCfg[] = Array.isArray(j.doctor_config)
-        ? (j.doctor_config as RawDoctorCfg[])
+      const resolved: ResolvedBlock[] = Array.isArray(j.resolved)
+        ? (j.resolved as ResolvedBlock[])
         : [];
-      const specialtyDef: RawSpecialtyDef[] = Array.isArray(j.specialty_defaults)
-        ? (j.specialty_defaults as RawSpecialtyDef[])
-        : [];
-      const doctorMap = new Map(doctorCfg.map((c) => [c.block_key, c]));
-      const specialtyMap = new Map(specialtyDef.map((s) => [s.block_key, s]));
 
-      // Un bloque aparece como tab de plantilla PDF si:
-      //   - Está enabled (en doctor_config o specialty_default)
-      //   - Es printable (default true según catalog o override doctor)
-      //   - NO es un bloque de texto interno (internal_notes)
-      const result: TemplateSortableTab[] = [];
-      for (const cat of catalog) {
-        const doctorEntry = doctorMap.get(cat.key);
-        const specialtyEntry = specialtyMap.get(cat.key);
-        const enabled = doctorEntry
-          ? doctorEntry.enabled
-          : specialtyEntry
-            ? specialtyEntry.enabled
-            : false;
-        if (!enabled) continue;
+      // A block becomes a template PDF tab when:
+      //   - It is enabled (resolved only contains enabled blocks)
+      //   - It is printable
+      //   - It is not internal_notes (no PDF export) or indications
+      //     (its content is merged into the second sheet of the récipe)
+      const SKIP_KEYS = new Set(['internal_notes', 'indications']);
 
-        const printable = doctorEntry?.printable ?? cat.default_printable;
-        if (printable === false) continue;
-        if (cat.key === 'internal_notes') continue;
-        // 'indications' ya no es un tipo de documento PDF separado:
-        // su contenido de medicamentos va en la hoja 2 del récipe.
-        if (cat.key === 'indications') continue;
+      const result: TemplateSortableTab[] = resolved
+        .filter((b) => b.printable && !SKIP_KEYS.has(b.key))
+        .map((b) => ({
+          key: b.key,
+          label: b.label,
+          icon: ICON_MAP[b.key] ?? FileText,
+          description: b.description ?? `Plantilla PDF: ${b.label}`,
+          order: b.sortOrder,
+        }));
 
-        const label = doctorEntry?.custom_label || cat.default_label || cat.key;
-        const order = doctorEntry?.sort_order ?? specialtyEntry?.sort_order ?? 99;
-        result.push({
-          key: cat.key,
-          label,
-          icon: ICON_MAP[cat.key] ?? FileText,
-          description: cat.description ?? `Plantilla PDF: ${label}`,
-          order,
-        });
-      }
       // Si el doctor no tiene ningún bloque configurado, usamos FALLBACK
       if (result.length > 0) {
         result.sort((a, b) => a.order - b.order);
