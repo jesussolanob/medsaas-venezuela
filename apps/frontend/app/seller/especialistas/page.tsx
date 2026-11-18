@@ -15,7 +15,7 @@
 import { useMemo, useState } from 'react';
 import { Users, Loader2, UserPlus, AlertCircle, X, Search, MessageCircle } from 'lucide-react';
 import { showToast } from '@/components/ui/Toaster';
-import { normalizePhoneIntl } from '@/lib/phone-utils';
+import { formatPhoneVE, normalizePhoneIntl } from '@/lib/phone-utils';
 import PhoneInput from '@/components/shared/PhoneInput';
 import { FOLLOW_UP_STATUS_LABELS, ONBOARDING_STEP_LABEL_ES } from '@delta/shared-types';
 import SpecialistFollowUp, { FOLLOW_UP_PILL, formatCaracasDateTime } from './SpecialistFollowUp';
@@ -493,7 +493,7 @@ export default function SellerEspecialistasPage() {
                                 className="inline-flex items-center gap-1.5 text-green-700 hover:text-green-800 hover:underline font-medium transition-colors"
                               >
                                 <MessageCircle className="w-3.5 h-3.5 shrink-0" />
-                                {ficha.phone}
+                                {formatPhoneVE(waPhone)}
                               </a>
                             ) : (
                               /* Número presente pero no normalizable a E.164 */
