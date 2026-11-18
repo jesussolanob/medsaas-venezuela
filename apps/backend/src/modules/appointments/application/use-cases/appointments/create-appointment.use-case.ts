@@ -172,7 +172,9 @@ export class CreateAppointmentUseCase {
       scheduledAt,
       status: initialStatus,
       appointmentMode: dto.appointment_mode,
-      source: null,
+      // This use case is only called from the doctor panel (create-appointment
+      // endpoint). The public booking page always goes through CreateBookingUseCase.
+      source: 'doctor_panel',
       planName: dto.plan_name,
       planPrice: dto.plan_price,
       paymentMethod: dto.payment_method ?? null,

@@ -12,6 +12,7 @@
  */
 
 import { useCallback, useEffect, useState } from 'react';
+import type { OnboardingStepKey } from '@delta/shared-types';
 
 export type SpecialistRow = {
   id: string;
@@ -24,6 +25,19 @@ export type SpecialistRow = {
   /** Terminó el alta (consultorio + servicio). El vendedor necesita ver a quién
    *  llamar porque quedó a mitad de camino. */
   onboardingCompleted?: boolean;
+  /** Active offices. */
+  officesCount?: number;
+  /** Consultations, excluding cancelled appointments. */
+  consultationsCount?: number;
+  /** How far onboarding went (same derivation as the admin CSV). */
+  onboardingStep?: OnboardingStepKey;
+  /** At least one payment method configured (Pago Móvil, Zelle…). */
+  paymentMethodsConfigured?: boolean;
+  /** Origin of those consultations: public booking link, created by the specialist,
+   *  or unknown (old patients without that data). */
+  consultationsByBooking?: number;
+  consultationsByDoctor?: number;
+  consultationsUnclassified?: number;
 };
 
 export type SpecialistDetail = SpecialistRow & {

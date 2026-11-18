@@ -10,6 +10,8 @@
  * fullName, email, cedula, phone, or any patient-level field.
  */
 
+import type { OnboardingStepKey } from '@delta/shared-types';
+
 export const SELLER_REPOSITORY = Symbol('ISellerRepository');
 
 // ---------------------------------------------------------------------------
@@ -132,6 +134,57 @@ export interface SellerSpecialistRow {
   onboardingCompleted: boolean;
 }
 
+/**
+ * Specialist row enriched with aggregate counts for the seller portal list.
+ *
+ * All counts are computed server-side in a single SQL query — no N+1.
+ * No patient PII is included; counts only.
+ */
+export interface SellerSpecialistWithStats extends SellerSpecialistRow {
+  /** Number of active offices (doctor_offices.is_active = true). */
+  officesCount: number;
+  /**
+   * Total consultations for this specialist, excluding those whose linked
+   * appointment is cancelled. Consultations without an appointment are counted.
+   */
+  consultationsCount: number;
+  /**
+   * Machine key representing the specialist's farthest onboarding step.
+   * See OnboardingStepKey in @delta/shared-types for the full mapping.
+   * Label mapping (es-VE): completed→Completado, service→Servicio,
+   * office→Consultorio, profile→Perfil, no_data→Sin completar datos,
+   * never_signed_in→Nunca ingresó.
+   */
+  onboardingStep: OnboardingStepKey;
+  /**
+   * true when profiles.payment_methods has at least one entry.
+   * The seller uses this to know if the specialist already configured
+   * how to receive payments.
+   */
+  paymentMethodsConfigured: boolean;
+  /**
+   * Consultations whose origin is the public booking page.
+   * Classification: appointment.source = 'booking_public', OR
+   * (no reliable appointment source AND patients.source = 'booking').
+   * Legacy appointments with source = 'booking' are NOT classified here
+   * — they fall back to patients.source for disambiguation.
+   * Excludes cancelled appointments.
+   */
+  consultationsByBooking: number;
+  /**
+   * Consultations created by the specialist from their own panel.
+   * Classification: appointment.source = 'doctor_panel', OR
+   * (no reliable appointment source AND patients.source = 'manual').
+   * Excludes cancelled appointments.
+   */
+  consultationsByDoctor: number;
+  /**
+   * Consultations that cannot be attributed to either origin.
+   * Excludes cancelled appointments.
+   */
+  consultationsUnclassified: number;
+}
+
 // ---------------------------------------------------------------------------
 // Input shapes
 // ---------------------------------------------------------------------------
@@ -203,6 +256,18 @@ export interface ISellerRepository {
    * Empty array when the seller has not yet onboarded any specialist.
    */
   listSoldSpecialists(sellerId: string): Promise<SellerSpecialistRow[]>;
+
+  /**
+   * Returns all specialist profiles where sold_by = sellerId, enriched
+   * with aggregate counts (offices, consultations, origin breakdown).
+   *
+   * All counts are computed in ONE SQL query — no N+1 per specialist.
+   * The returned rows never include patient PII; counts only.
+   *
+   * SECURITY: sellerId must come from the authenticated session, never from
+   * the request body — the WHERE clause enforces the anti-IDOR scoping.
+   */
+  listSoldSpecialistsWithStats(sellerId: string): Promise<SellerSpecialistWithStats[]>;
 
   /**
    * Returns a single specialist profile by id, only when that specialist was
