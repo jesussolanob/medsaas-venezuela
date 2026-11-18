@@ -179,6 +179,27 @@ function subscriptionPillStatus(
 type ActiveFilter = 'all' | 'active' | 'inactive_7d' | 'new_month';
 
 /** Email sign-ups may have no real name (empty or the email itself). */
+/**
+ * Signed in once (the first Auth0 login creates the profile) but never finished
+ * onboarding step 1: no phone, cédula or specialty. The portal is blocked for them
+ * until they do, so they are not real specialists yet — the admin flags them.
+ */
+function isIncompleteRegistration(d: Pick<Doctor, 'phone' | 'cedula' | 'specialty'>): boolean {
+  return !d.phone?.trim() && !d.cedula?.trim() && !d.specialty?.trim();
+}
+
+function IncompleteBadge() {
+  return (
+    <span
+      className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold"
+      style={{ background: 'var(--dh-gray-100, #f1f5f9)', color: 'var(--dh-gray-600, #475569)' }}
+      title="Inició sesión pero no completó el primer paso del registro (nombre, cédula y teléfono). No puede usar el portal hasta completarlo."
+    >
+      Registro incompleto
+    </span>
+  );
+}
+
 function displayNameOf(fullName: string | null | undefined): string {
   const name = fullName?.trim() ?? '';
   return name && !name.includes('@') && name !== 'Pendiente' ? name : 'Sin nombre registrado';
@@ -517,10 +538,11 @@ export default function UsersPanel() {
                           </div>
                           <div className="min-w-0">
                             <div
-                              className="font-semibold truncate"
+                              className="font-semibold truncate flex items-center gap-2"
                               style={{ color: 'var(--dh-ink)' }}
                             >
-                              {displayNameOf(d.full_name)}
+                              <span className="truncate">{displayNameOf(d.full_name)}</span>
+                              {isIncompleteRegistration(d) && <IncompleteBadge />}
                             </div>
                             <div
                               className="text-[11px] truncate"
@@ -702,10 +724,11 @@ export default function UsersPanel() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <div
-                      className="font-semibold truncate text-sm"
+                      className="font-semibold truncate text-sm flex items-center gap-2"
                       style={{ color: 'var(--dh-ink)' }}
                     >
-                      {displayNameOf(d.full_name)}
+                      <span className="truncate">{displayNameOf(d.full_name)}</span>
+                      {isIncompleteRegistration(d) && <IncompleteBadge />}
                     </div>
                     <div className="text-[11px] truncate" style={{ color: 'var(--dh-gray-400)' }}>
                       {d.specialty ?? d.email}
