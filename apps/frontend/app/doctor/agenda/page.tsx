@@ -265,6 +265,24 @@ function timeToMinutes(time: string): number {
 }
 
 /**
+ * Duration and buffer shared by every given availability block, for the agenda
+ * labels. `null` means the blocks disagree (offices or blocks with different values).
+ * No blocks → the schedule config.
+ */
+function summarizeSlots(
+  slots: AvailabilitySlot[],
+  config: ScheduleConfig,
+): { duration: number | null; buffer: number | null } {
+  if (slots.length === 0) return { duration: config.slot_duration, buffer: config.buffer_minutes };
+  const durations = new Set(slots.map((s) => s.slotDuration ?? config.slot_duration));
+  const buffers = new Set(slots.map((s) => s.bufferMinutes ?? config.buffer_minutes));
+  return {
+    duration: durations.size === 1 ? [...durations][0] : null,
+    buffer: buffers.size === 1 ? [...buffers][0] : null,
+  };
+}
+
+/**
  * Returns the effective consultation duration (minutes) for a time slot on a
  * given day, using the block-level override when present and falling back to
  * the global ScheduleConfig.slot_duration.
@@ -1213,17 +1231,15 @@ export default function AgendaPage() {
                   With multiple offices each having a different duration, a single number
                   would be misleading — show "Según consultorio" instead. */}
               {(() => {
-                const activeSlots = availSlots.filter((s) => s.is_enabled);
-                const uniqDur = new Set(
-                  activeSlots.map((s) => s.slotDuration ?? config.slot_duration),
+                // With offices of different duration/buffer a single number would lie.
+                const { duration, buffer } = summarizeSlots(
+                  availSlots.filter((s) => s.is_enabled),
+                  config,
                 );
-                return uniqDur.size === 1
-                  ? `Citas cada ${[...uniqDur][0]} min`
-                  : activeSlots.length === 0
-                    ? `Citas cada ${config.slot_duration} min`
-                    : 'Según consultorio';
+                const dur = duration === null ? 'Según consultorio' : `Citas cada ${duration} min`;
+                const buf = buffer === null ? '' : buffer > 0 ? ` · ${buffer} min entre citas` : '';
+                return dur + buf;
               })()}
-              {config.buffer_minutes > 0 && ` · ${config.buffer_minutes} min entre citas`}
               {' · '}
               {allAppointments.length} consultas
             </p>
@@ -1656,19 +1672,14 @@ export default function AgendaPage() {
                   <p className="text-xs text-slate-400">
                     {(() => {
                       const dow = (selectedDate.getDay() + 6) % 7;
-                      const daySlots = availSlots.filter(
-                        (s) => s.day_of_week === dow && s.is_enabled,
+                      const { duration, buffer } = summarizeSlots(
+                        availSlots.filter((s) => s.day_of_week === dow && s.is_enabled),
+                        config,
                       );
-                      const uniqDur = new Set(
-                        daySlots.map((s) => s.slotDuration ?? config.slot_duration),
-                      );
-                      return uniqDur.size === 1
-                        ? `Citas de ${[...uniqDur][0]} min`
-                        : daySlots.length === 0
-                          ? `Citas de ${config.slot_duration} min`
-                          : 'Según bloque';
+                      const dur = duration === null ? 'Según bloque' : `Citas de ${duration} min`;
+                      const buf = buffer && buffer > 0 ? ` + ${buffer} min descanso` : '';
+                      return dur + buf;
                     })()}
-                    {config.buffer_minutes > 0 && ` + ${config.buffer_minutes} min descanso`}
                   </p>
                 </div>
                 <div className="divide-y divide-slate-100">
