@@ -90,6 +90,10 @@ import {
     AccrueSignupCommissionUseCase,
     AccruePlanCommissionUseCase,
     GetSellerPendingSummaryUseCase,
+    // SELLER_COMMISSION_REPOSITORY is exported so AdminModule's SetDefaultSellerUseCase
+    // can call findSellerById() to validate the default seller UUID without duplicating
+    // the sellers table queries in the admin repository.
+    SELLER_COMMISSION_REPOSITORY,
   ],
 })
 export class SellerCommissionsModule {}

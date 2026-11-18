@@ -37,6 +37,7 @@ import {
   SetPlanPricesBodySchema,
   SetDoctorAccessBodySchema,
   CreateAdminDoctorBodySchema,
+  SetDefaultSellerBodySchema,
   VALID_ACTIVITY_STATUSES,
   VALID_SUBSCRIPTION_STATUSES,
   VALID_SUBSCRIPTION_PLANS,
@@ -54,6 +55,7 @@ import {
   type SetPlanPricesBody,
   type SetDoctorAccessBody,
   type CreateAdminDoctorBody,
+  type SetDefaultSellerBody,
 } from '../../application/dtos/admin.dtos';
 import { GetAdminDashboardUseCase } from '../../application/use-cases/admin/get-admin-dashboard.use-case';
 import { GetDashboardOverviewUseCase } from '../../application/use-cases/admin/get-dashboard-overview.use-case';
@@ -84,6 +86,7 @@ import { ExportDoctorsUseCase } from '../../application/use-cases/admin/export-d
 import { SetDoctorAccessUseCase } from '../../application/use-cases/admin/set-doctor-access.use-case';
 import { CreateAdminDoctorUseCase } from '../../application/use-cases/admin/create-admin-doctor.use-case';
 import { GetDoctorPatientsUseCase } from '../../application/use-cases/admin/get-doctor-patients.use-case';
+import { SetDefaultSellerUseCase } from '../../application/use-cases/admin/set-default-seller.use-case';
 import type { SubscriptionPlan, SubscriptionStatus } from '@delta/shared-types';
 import type { ActivityStatus } from '../../domain/repositories/admin.repository';
 
@@ -154,6 +157,7 @@ export class AdminController {
     private readonly setDoctorAccessOp: SetDoctorAccessUseCase,
     private readonly createAdminDoctorOp: CreateAdminDoctorUseCase,
     private readonly getDoctorPatientsOp: GetDoctorPatientsUseCase,
+    private readonly setDefaultSellerOp: SetDefaultSellerUseCase,
   ) {}
 
   /**
@@ -817,6 +821,27 @@ export class AdminController {
 
     const saved = await this.upsertSettingOp.execute({ key: body.key, value: valueStr });
     return { success: true, data: saved };
+  }
+
+  /**
+   * PUT /api/admin/settings/default-seller — set or clear the default seller for organic sign-ups.
+   *
+   * Body: { sellerId: string (UUID) | null }
+   *   - sellerId: UUID of an active seller profile → assigned to future organic sign-ups.
+   *   - sellerId: null → clears the current default (organic sign-ups get no attribution).
+   *
+   * Returns 422 when the UUID does not match any active seller profile.
+   *
+   * Organic sign-ups attributed to the default seller use sold_by_source = 'admin',
+   * which excludes them from the $10 signup commission
+   * (AccrueSignupCommissionUseCase.SIGNUP_ELIGIBLE_SOURCES).
+   */
+  @Put('settings/default-seller')
+  async setDefaultSeller(
+    @Body(new ZodValidationPipe(SetDefaultSellerBodySchema)) body: SetDefaultSellerBody,
+  ): Promise<SuccessResponse<unknown>> {
+    const result = await this.setDefaultSellerOp.execute({ sellerId: body.sellerId });
+    return { success: true, data: result };
   }
 
   /**

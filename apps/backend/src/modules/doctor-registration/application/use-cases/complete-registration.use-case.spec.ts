@@ -11,6 +11,7 @@ import type {
   SellerProfile,
 } from '../../../sellers/domain/repositories/seller.repository';
 import { SellerCodeNotFoundError } from '../../../sellers/domain/errors/seller-code-not-found.error';
+import type { IDefaultSellerPort } from '../../application/ports/default-seller.port';
 
 const makeRegistration = (
   overrides: Partial<Parameters<typeof DoctorRegistration.create>[0]> = {},
@@ -86,6 +87,7 @@ describe('CompleteRegistrationUseCase', () => {
   let mockConfig: jest.Mocked<Pick<ConfigService, 'get'>>;
   let mockLegalRepo: jest.Mocked<ILegalDocumentRepository>;
   let mockSellerRepo: jest.Mocked<ISellerRepository>;
+  let mockDefaultSellerPort: jest.Mocked<IDefaultSellerPort>;
 
   beforeEach(() => {
     mockRepo = {
@@ -120,6 +122,11 @@ describe('CompleteRegistrationUseCase', () => {
 
     mockSellerRepo = makeSellerRepoMock();
 
+    mockDefaultSellerPort = {
+      resolveDefaultSellerId: jest.fn().mockResolvedValue(null),
+      assignDefaultSeller: jest.fn().mockResolvedValue(undefined),
+    };
+
     useCase = new CompleteRegistrationUseCase(
       mockRepo,
       mockMailer,
@@ -127,6 +134,7 @@ describe('CompleteRegistrationUseCase', () => {
       mockConfig as unknown as ConfigService,
       mockLegalRepo,
       mockSellerRepo,
+      mockDefaultSellerPort,
     );
   });
 
@@ -1084,5 +1092,149 @@ describe('CompleteRegistrationUseCase', () => {
     expect(updateParams).not.toHaveProperty('sold_by');
     expect(updateParams).not.toHaveProperty('soldBySource');
     expect(updateParams).not.toHaveProperty('sold_by_source');
+  });
+
+  // ---------------------------------------------------------------------------
+  // Default seller attribution — organic sign-ups without a seller code
+  // ---------------------------------------------------------------------------
+
+  it('assigns the default seller for an organic sign-up (no sellerCode)', async () => {
+    const DEFAULT_SELLER_ID = 'def-seller-uuid-0001-00000000';
+    mockRepo.findById.mockResolvedValue(makeEmptyRegistration());
+    mockRepo.updateRegistration.mockResolvedValue(makeRegistration());
+    mockRepo.findAllSuperAdmins.mockResolvedValue([]);
+    mockDefaultSellerPort.resolveDefaultSellerId.mockResolvedValue(DEFAULT_SELLER_ID);
+
+    await useCase.execute({
+      doctorId: 'doc-1',
+      phone: '584141234567',
+      fullName: 'Dr. Orgánico',
+      cedula: 'V-55555',
+      // No sellerCode — organic sign-up.
+    });
+
+    // Flush the fire-and-forget async chain.
+    await new Promise(process.nextTick);
+
+    expect(mockDefaultSellerPort.resolveDefaultSellerId).toHaveBeenCalled();
+    expect(mockDefaultSellerPort.assignDefaultSeller).toHaveBeenCalledWith(
+      'doc-1',
+      DEFAULT_SELLER_ID,
+    );
+  });
+
+  it('does NOT call default seller port when a sellerCode is provided (code attribution wins)', async () => {
+    mockRepo.findById.mockResolvedValue(makeEmptyRegistration());
+    mockRepo.updateRegistration.mockResolvedValue(makeRegistration());
+    mockRepo.findAllSuperAdmins.mockResolvedValue([]);
+    mockSellerRepo.findByCode.mockResolvedValue(makeSellerProfile({ id: 'seller-uuid-001' }));
+    mockSellerRepo.linkSoldBy.mockResolvedValue(undefined);
+
+    await useCase.execute({
+      doctorId: 'doc-1',
+      phone: '584141234567',
+      fullName: 'Dr. Code',
+      cedula: 'V-66666',
+      sellerCode: 'ABCDEF',
+    });
+
+    await new Promise(process.nextTick);
+
+    // The 'if (input.sellerCode)' branch was taken — the else block is skipped.
+    expect(mockDefaultSellerPort.resolveDefaultSellerId).not.toHaveBeenCalled();
+    expect(mockDefaultSellerPort.assignDefaultSeller).not.toHaveBeenCalled();
+    // Existing code-based attribution is unaffected.
+    expect(mockSellerRepo.linkSoldBy).toHaveBeenCalledWith('doc-1', 'seller-uuid-001');
+  });
+
+  it('does NOT call assignDefaultSeller when no default is configured (resolveDefaultSellerId returns null)', async () => {
+    // Default from beforeEach: mockDefaultSellerPort.resolveDefaultSellerId → null.
+    mockRepo.findById.mockResolvedValue(makeEmptyRegistration());
+    mockRepo.updateRegistration.mockResolvedValue(makeRegistration());
+    mockRepo.findAllSuperAdmins.mockResolvedValue([]);
+
+    await useCase.execute({
+      doctorId: 'doc-1',
+      phone: '584141234567',
+      fullName: 'Dr. NoDefault',
+      cedula: 'V-77777',
+    });
+
+    await new Promise(process.nextTick);
+
+    expect(mockDefaultSellerPort.resolveDefaultSellerId).toHaveBeenCalled();
+    expect(mockDefaultSellerPort.assignDefaultSeller).not.toHaveBeenCalled();
+  });
+
+  it('does NOT call assignDefaultSeller when the default seller is inactive (port returns null)', async () => {
+    // The port validates active status and returns null for inactive sellers.
+    // From the use case perspective the behaviour is identical to "no default configured".
+    mockRepo.findById.mockResolvedValue(makeEmptyRegistration());
+    mockRepo.updateRegistration.mockResolvedValue(makeRegistration());
+    mockRepo.findAllSuperAdmins.mockResolvedValue([]);
+    mockDefaultSellerPort.resolveDefaultSellerId.mockResolvedValue(null); // inactive → null
+
+    await useCase.execute({
+      doctorId: 'doc-1',
+      phone: '584141234567',
+      fullName: 'Dr. Inactivo',
+      cedula: 'V-88888',
+    });
+
+    await new Promise(process.nextTick);
+
+    expect(mockDefaultSellerPort.resolveDefaultSellerId).toHaveBeenCalled();
+    expect(mockDefaultSellerPort.assignDefaultSeller).not.toHaveBeenCalled();
+  });
+
+  it('calls assignDefaultSeller for invited specialists (write-once guard lives in SQL, not use case)', async () => {
+    // An invited specialist has sold_by already set by the seller.
+    // The use case still calls the port for the else-branch (no sellerCode).
+    // The port's UPDATE uses WHERE sold_by IS NULL so the existing attribution
+    // is never overwritten — this is enforced at the SQL layer, not here.
+    const DEFAULT_SELLER_ID = 'def-seller-uuid-0001-00000000';
+    mockRepo.findById.mockResolvedValue(makeRegistration({ cedula: 'V-12345678' }));
+    mockRepo.updateRegistration.mockResolvedValue(makeRegistration({ cedula: 'V-12345678' }));
+    mockRepo.findAllSuperAdmins.mockResolvedValue([]);
+    mockDefaultSellerPort.resolveDefaultSellerId.mockResolvedValue(DEFAULT_SELLER_ID);
+
+    await useCase.execute({
+      doctorId: 'doc-1',
+      phone: '584141234567',
+      fullName: 'Ana Invitada',
+      cedula: 'V-12345678',
+      acceptedTerms: true,
+      // No sellerCode — invited specialists never provide one.
+    });
+
+    await new Promise(process.nextTick);
+
+    // Port IS invoked; SQL-level idempotency protects the existing attribution.
+    expect(mockDefaultSellerPort.assignDefaultSeller).toHaveBeenCalledWith(
+      'doc-1',
+      DEFAULT_SELLER_ID,
+    );
+    // Existing seller attribution is never touched via the seller repo.
+    expect(mockSellerRepo.linkSoldBy).not.toHaveBeenCalled();
+  });
+
+  it('registration completes normally even if the default seller port throws an error', async () => {
+    mockRepo.findById.mockResolvedValue(makeEmptyRegistration());
+    mockRepo.updateRegistration.mockResolvedValue(makeRegistration());
+    mockRepo.findAllSuperAdmins.mockResolvedValue([]);
+    mockDefaultSellerPort.resolveDefaultSellerId.mockRejectedValue(new Error('DB connection lost'));
+
+    // The main execute() must NOT throw — fire-and-forget catches the error.
+    await expect(
+      useCase.execute({
+        doctorId: 'doc-1',
+        phone: '584141234567',
+        fullName: 'Dr. Error',
+        cedula: 'V-99999',
+      }),
+    ).resolves.not.toThrow();
+
+    // Allow the .catch() handler to run.
+    await new Promise(process.nextTick);
   });
 });
