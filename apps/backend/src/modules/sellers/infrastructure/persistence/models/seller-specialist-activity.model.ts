@@ -45,6 +45,14 @@ export class SellerSpecialistActivityModel extends Model {
   @Column({ type: DataType.TEXT, allowNull: true })
   declare comment: string | null;
 
-  @Column({ type: DataType.DATE, allowNull: false, field: 'created_at' })
+  // The server stamps the date (owner rule). Without a model default Sequelize
+  // rejected the insert as notNull before reaching the DB's DEFAULT now() —
+  // invisible to the mocked-Sequelize tests, a 500 in staging.
+  @Column({
+    type: DataType.DATE,
+    allowNull: false,
+    defaultValue: DataType.NOW,
+    field: 'created_at',
+  })
   declare createdAt: Date;
 }
