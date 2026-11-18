@@ -2,11 +2,13 @@ import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/sequelize';
 import { Op, QueryTypes, UniqueConstraintError } from 'sequelize';
 import { Sequelize } from 'sequelize-typescript';
+import { deriveOnboardingStep } from '@delta/shared-types';
 import type {
   ISellerRepository,
   SellerProfile,
   SellerAdminRow,
   SellerSpecialistRow,
+  SellerSpecialistWithStats,
   SellerPaymentDetails,
   SpecialistSellerAssignment,
   CreateSellerParams,
@@ -151,6 +153,203 @@ export class SequelizeSellerRepository implements ISellerRepository {
     });
 
     return rows.map(toSpecialistRow);
+  }
+
+  /**
+   * Returns all specialists attributed to `sellerId`, enriched with aggregate
+   * counts computed in ONE SQL query (no N+1).
+   *
+   * Consultation origin classification precedence (per consultation):
+   *   1. appointment.source = 'booking_public'  → booking
+   *   2. appointment.source = 'doctor_panel'    → doctor
+   *   3. Otherwise (legacy 'booking', null, etc.) fall back to patients.source:
+   *        patients.source = 'booking'           → booking
+   *        patients.source = 'manual'            → doctor
+   *        anything else / NULL                  → unclassified
+   *
+   * "Cancelled" means appointment.status IS DISTINCT FROM 'cancelled'.
+   * Consultations with no linked appointment always count (appointment_id IS NULL).
+   *
+   * Raw SQL used instead of ORM:
+   *   - Avoids column-mapping bugs with GROUP BY / COUNT (see listSellers comment).
+   *   - Correlated subqueries keep the row count at exactly 1 per specialist.
+   *   - Uses IN (:ids) syntax (never = ANY(:ids)) per project rules.
+   *   - No COALESCE(enum_col, '') — uses IS DISTINCT FROM for enum comparisons.
+   */
+  async listSoldSpecialistsWithStats(sellerId: string): Promise<SellerSpecialistWithStats[]> {
+    type RawRow = {
+      id: string;
+      full_name: string;
+      email: string;
+      phone: string | null;
+      cedula: string | null;
+      seller_notes: string | null;
+      is_active: boolean | null;
+      specialty: string | null;
+      plan: string | null;
+      subscription_status: string | null;
+      created_at: Date;
+      last_sign_in_at: Date | null;
+      onboarding_completed: boolean | null;
+      onboarding_last_step: string | null;
+      onboarding_office_skipped: boolean | null;
+      onboarding_service_skipped: boolean | null;
+      payment_methods_configured: boolean;
+      offices_count: string; // Postgres returns bigint as string
+      service_count: string;
+      consultations_count: string;
+      consultations_by_booking: string;
+      consultations_by_doctor: string;
+      consultations_unclassified: string;
+    };
+
+    const rows = await this.sequelize.query<RawRow>(
+      `SELECT
+         p.id,
+         p.full_name,
+         p.email,
+         p.phone,
+         p.cedula,
+         p.seller_notes,
+         COALESCE(p.is_active, true)                                       AS is_active,
+         p.specialty,
+         p.plan,
+         p.subscription_status,
+         p.created_at,
+         p.last_sign_in_at,
+         COALESCE(p.onboarding_completed, false)                           AS onboarding_completed,
+         p.onboarding_last_step,
+         COALESCE(p.onboarding_office_skipped, false)                      AS onboarding_office_skipped,
+         COALESCE(p.onboarding_service_skipped, false)                     AS onboarding_service_skipped,
+         -- payment_methods is TEXT[]; NULL or empty array → false.
+         CASE
+           WHEN p.payment_methods IS NOT NULL
+            AND array_length(p.payment_methods, 1) > 0
+           THEN true
+           ELSE false
+         END                                                               AS payment_methods_configured,
+         -- Active offices
+         (SELECT COUNT(*)
+            FROM doctor_offices
+           WHERE doctor_id = p.id
+             AND is_active = true)                                         AS offices_count,
+         -- Active services (needed for onboarding-step derivation)
+         (SELECT COUNT(*)
+            FROM pricing_plans
+           WHERE doctor_id = p.id
+             AND is_active = true)                                         AS service_count,
+         -- Total consultations, excluding those with a cancelled appointment.
+         -- Consultations without an appointment (appointment_id IS NULL) always count.
+         (SELECT COUNT(*)
+            FROM consultations c
+           WHERE c.doctor_id = p.id
+             AND (
+               c.appointment_id IS NULL
+               OR EXISTS (
+                 SELECT 1 FROM appointments a
+                  WHERE a.id = c.appointment_id
+                    AND a.status IS DISTINCT FROM 'cancelled'
+               )
+             ))                                                            AS consultations_count,
+         -- Origin: booking (public page).
+         -- Trusts appointment.source = 'booking_public' first;
+         -- falls back to patients.source = 'booking' when no reliable source.
+         -- Legacy appointment.source = 'booking' is NOT trusted (see Task B ADR note).
+         (SELECT COUNT(*)
+            FROM consultations c
+            LEFT JOIN appointments a  ON a.id  = c.appointment_id
+            LEFT JOIN patients     pt ON pt.id = c.patient_id
+           WHERE c.doctor_id = p.id
+             AND (a.id IS NULL OR a.status IS DISTINCT FROM 'cancelled')
+             AND (
+               a.source = 'booking_public'
+               OR (
+                 a.source IS DISTINCT FROM 'booking_public'
+                 AND a.source IS DISTINCT FROM 'doctor_panel'
+                 AND pt.source = 'booking'
+               )
+             ))                                                            AS consultations_by_booking,
+         -- Origin: doctor panel.
+         (SELECT COUNT(*)
+            FROM consultations c
+            LEFT JOIN appointments a  ON a.id  = c.appointment_id
+            LEFT JOIN patients     pt ON pt.id = c.patient_id
+           WHERE c.doctor_id = p.id
+             AND (a.id IS NULL OR a.status IS DISTINCT FROM 'cancelled')
+             AND (
+               a.source = 'doctor_panel'
+               OR (
+                 a.source IS DISTINCT FROM 'booking_public'
+                 AND a.source IS DISTINCT FROM 'doctor_panel'
+                 AND pt.source = 'manual'
+               )
+             ))                                                            AS consultations_by_doctor,
+         -- Origin: unclassified.
+         (SELECT COUNT(*)
+            FROM consultations c
+            LEFT JOIN appointments a  ON a.id  = c.appointment_id
+            LEFT JOIN patients     pt ON pt.id = c.patient_id
+           WHERE c.doctor_id = p.id
+             AND (a.id IS NULL OR a.status IS DISTINCT FROM 'cancelled')
+             AND a.source IS DISTINCT FROM 'booking_public'
+             AND a.source IS DISTINCT FROM 'doctor_panel'
+             AND (
+               pt.source IS NULL
+               OR (
+                 pt.source IS DISTINCT FROM 'booking'
+                 AND pt.source IS DISTINCT FROM 'manual'
+               )
+             ))                                                            AS consultations_unclassified
+       FROM profiles p
+       WHERE p.sold_by = :sellerId
+       ORDER BY p.created_at DESC`,
+      {
+        replacements: { sellerId },
+        type: QueryTypes.SELECT,
+      },
+    );
+
+    return rows.map((r): SellerSpecialistWithStats => {
+      const officesCount = parseInt(r.offices_count, 10);
+      const serviceCount = parseInt(r.service_count, 10);
+
+      const onboardingStep = deriveOnboardingStep({
+        onboardingLastStep: r.onboarding_last_step,
+        onboardingCompleted: r.onboarding_completed ?? false,
+        onboardingOfficeSkipped: r.onboarding_office_skipped ?? false,
+        onboardingServiceSkipped: r.onboarding_service_skipped ?? false,
+        serviceCount,
+        officeCount: officesCount,
+        cedula: r.cedula,
+        specialty: r.specialty,
+        lastSignInAt: r.last_sign_in_at,
+      });
+
+      return {
+        // SellerSpecialistRow fields
+        id: r.id,
+        fullName: r.full_name,
+        email: r.email,
+        phone: r.phone,
+        cedula: r.cedula,
+        sellerNotes: r.seller_notes,
+        isActive: r.is_active ?? true,
+        specialty: r.specialty,
+        plan: r.plan,
+        subscriptionStatus: r.subscription_status,
+        createdAt: r.created_at,
+        lastSignInAt: r.last_sign_in_at,
+        onboardingCompleted: r.onboarding_completed ?? false,
+        // Enriched stats
+        officesCount,
+        consultationsCount: parseInt(r.consultations_count, 10),
+        onboardingStep,
+        paymentMethodsConfigured: r.payment_methods_configured,
+        consultationsByBooking: parseInt(r.consultations_by_booking, 10),
+        consultationsByDoctor: parseInt(r.consultations_by_doctor, 10),
+        consultationsUnclassified: parseInt(r.consultations_unclassified, 10),
+      };
+    });
   }
 
   async findSoldSpecialist(
