@@ -1208,3 +1208,36 @@ los layouts lleva `min-w-0` para que las tablas anchas no desborden la página.
 | `components/release-notes/ReleaseNotesModal.tsx`                                       | Pie con "Omitir" (marca todo visto) y "Siguiente"                                                 |
 | `lib/sentry-env.ts`                                                                    | Entorno de Sentry según el host; encendido solo en producción                                     |
 | `components/shared/DurationSelect.tsx`                                                 | Selector de duración con presets + "Otro…" (campo libre acotado a los límites del backend)        |
+
+### Seguimiento comercial por especialista (2026-11-18)
+
+Módulo `sellers`. Extiende la cartera del vendedor con un log de actividad de seguimiento comercial
+por especialista. Append-only. Nueva tabla `seller_specialist_activities`.
+
+**Nuevos archivos:**
+
+| Capa         | Archivo                                                                              | Descripción                                                                                                            |
+| ------------ | ------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------- |
+| shared-types | `libs/shared-types/src/dtos/seller-specialist-activity.dto.ts`                       | `FOLLOW_UP_STATUS_VALUES`, `FOLLOW_UP_STATUS_LABELS`, `STORABLE_FOLLOW_UP_STATUSES`, `AddSpecialistActivityBodySchema` |
+| Domain error | `sellers/domain/errors/specialist-already-same-status.error.ts`                      | `SpecialistAlreadySameStatusError` (code `SPECIALIST_ALREADY_SAME_STATUS`, 422)                                        |
+| Infra model  | `sellers/infrastructure/persistence/models/seller-specialist-activity.model.ts`      | Sequelize model de `seller_specialist_activities`                                                                      |
+| Use case     | `sellers/application/use-cases/list-specialist-activities.use-case.ts`               | Anti-IDOR + `Promise.all` para estado actual + listado                                                                 |
+| Use case     | `sellers/application/use-cases/add-specialist-activity.use-case.ts`                  | Reglas de negocio: status_change / comment / degradación cuando mismo estado + comment                                 |
+| Migration    | `infrastructure/database/migrations/20261118000010-seller-specialist-activities.cjs` | TEXT+CHECK, índice (specialist_id, created_at DESC), idempotente                                                       |
+
+**Archivos modificados:**
+
+| Archivo                                                                          | Cambio                                                                                                                              |
+| -------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `sellers/domain/repositories/seller.repository.ts`                               | Nuevas interfaces `SpecialistActivityRow`, `CreateSpecialistActivityParams` y 3 métodos al puerto `ISellerRepository`               |
+| `sellers/infrastructure/persistence/repositories/sequelize-seller.repository.ts` | Implementa los 3 métodos; extiende la query de lista con 2 LEFT JOIN LATERAL                                                        |
+| `sellers/presentation/controllers/sellers.controller.ts`                         | 2 endpoints nuevos (`GET/:id/activities`, `POST/:id/activities`); `toSpecialistWithStatsDto` suma `followUpStatus`/`lastActivityAt` |
+| `sellers/sellers.module.ts`                                                      | Registra `SellerSpecialistActivityModel` y los dos use cases nuevos                                                                 |
+| `libs/shared-types/src/index.ts`                                                 | Re-exporta el nuevo DTO                                                                                                             |
+
+**Convenciones del módulo:**
+
+- `sin_contactar` = estado implícito, **nunca almacenado**; `getSpecialistCurrentStatus` retorna `'sin_contactar'` por defecto.
+- Transición desde `sin_contactar` → `fromStatus = null` (la cadena `'sin_contactar'` no se escribe).
+- `comment` es texto libre — **NUNCA loguear** (posible PII).
+- `authorName` resuelve con `isPlaceholderName()` → `null` si es placeholder.
