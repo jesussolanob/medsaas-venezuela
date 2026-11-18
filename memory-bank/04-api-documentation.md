@@ -1498,3 +1498,113 @@ Cambios de contrato:
 - `PUT /api/doctor/profile` acepta `mpps_number`; si cambia, re-verifica en SACS (máx. 1 vez cada 15 min).
 - `GET /api/admin/doctors/export` (CSV): + Teléfono, Fecha de registro, Pacientes, Consultorios (activos),
   Servicios (activos), Consultas y Último paso del onboarding. Celdas que empiezan con `= + - @` llevan `'`.
+
+## Seguimiento comercial por especialista — activities (2026-11-18)
+
+Módulo `sellers`. Rol requerido: `seller`. Anti-IDOR: `profiles.sold_by = authenticated seller`; un
+especialista ajeno y uno inexistente devuelven el **mismo** `SpecialistNotInPortfolioError` (404).
+
+### Nuevos endpoints
+
+| Método | Ruta                                     | Respuesta                                                     |
+| ------ | ---------------------------------------- | ------------------------------------------------------------- |
+| GET    | `/api/seller/specialists/:id/activities` | `{ currentStatus, activities: [...] }` — más reciente primero |
+| POST   | `/api/seller/specialists/:id/activities` | `{ activity: {...}, currentStatus }` — 201                    |
+
+**Cambio en endpoint existente:**
+
+| Método | Ruta                      | Cambio                                                                              |
+| ------ | ------------------------- | ----------------------------------------------------------------------------------- |
+| GET    | `/api/seller/specialists` | Cada fila suma `followUpStatus` y `lastActivityAt` (via LEFT JOIN LATERAL, sin N+1) |
+
+### Estados de seguimiento (`FollowUpStatus`)
+
+| Valor                  | Etiqueta             | Se almacena en BD      |
+| ---------------------- | -------------------- | ---------------------- |
+| `sin_contactar`        | Sin contactar        | No (default implícito) |
+| `primer_contacto`      | Primer contacto      | Sí                     |
+| `no_atendio`           | No atendió           | Sí                     |
+| `completar_onboarding` | Completar onboarding | Sí                     |
+| `induccion`            | En inducción         | Sí                     |
+| `reactivar`            | Reactivar            | Sí                     |
+| `desistido`            | Desistido            | Sí                     |
+
+`sin_contactar` **nunca se guarda** — es el estado por defecto cuando no existe ninguna fila
+`status_change` para ese especialista.
+
+### `GET /api/seller/specialists/:id/activities`
+
+Respuesta (dentro del envelope `{success, data}`):
+
+```json
+{
+  "currentStatus": "primer_contacto",
+  "activities": [
+    {
+      "id": "uuid",
+      "type": "status_change",
+      "fromStatus": null,
+      "toStatus": "primer_contacto",
+      "comment": null,
+      "createdAt": "2026-11-18T10:00:00.000Z",
+      "authorName": "Juan Pérez"
+    }
+  ]
+}
+```
+
+`authorName` es `null` cuando el perfil tiene un nombre placeholder (email o genérico).
+
+### `POST /api/seller/specialists/:id/activities`
+
+Cuerpo (al menos uno de `status` o `comment`):
+
+```json
+{ "status": "induccion", "comment": "Texto libre opcional, máx 2000 chars" }
+```
+
+Reglas de negocio:
+
+- `status` igual al actual **sin** `comment` → 422 `SpecialistAlreadySameStatusError` (`SPECIALIST_ALREADY_SAME_STATUS`)
+- Solo `comment` → `type='comment'`, sin cambio de estado
+- `status` distinto al actual (con o sin `comment`) → `type='status_change'`; `fromStatus=null` si venía de `sin_contactar`
+- `status` igual al actual **con** `comment` → se degrada a `type='comment'` (no crea fila redundante de estado)
+
+Respuesta 201 (dentro del envelope `{success, data}`):
+
+```json
+{
+  "activity": {
+    "id": "uuid",
+    "type": "status_change",
+    "fromStatus": null,
+    "toStatus": "induccion",
+    "comment": "...",
+    "createdAt": "2026-11-18T10:05:00.000Z",
+    "authorName": "Juan Pérez"
+  },
+  "currentStatus": "induccion"
+}
+```
+
+### Tabla `seller_specialist_activities`
+
+Migración `20261118000010-seller-specialist-activities.cjs`. Columnas TEXT+CHECK (nunca ENUM):
+
+```sql
+id            UUID PK DEFAULT gen_random_uuid()
+specialist_id UUID NOT NULL → profiles
+seller_id     UUID NOT NULL → profiles
+type          TEXT CHECK IN ('status_change', 'comment')
+from_status   TEXT NULL     CHECK IN (storable values) OR NULL
+to_status     TEXT NULL     CHECK IN (storable values) OR NULL
+comment       TEXT NULL     CHECK length(trim(comment)) > 0 OR NULL
+created_at    TIMESTAMPTZ   DEFAULT now()
+-- row-level: status_change → to_status NOT NULL; comment → comment NOT NULL+non-empty
+```
+
+Índice en `(specialist_id, created_at DESC)`. Append-only: sin UPDATE ni DELETE.
+
+⚠️ `sellerId` sale **siempre** de `CurrentUser().sub` — nunca del cuerpo.
+⚠️ `comment` es texto libre — **NUNCA loguear** (puede contener PII).
+⚠️ `authorName` es PII — **NUNCA loguear**.

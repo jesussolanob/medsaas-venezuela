@@ -28,6 +28,8 @@ function makeStats(overrides: Partial<SellerSpecialistWithStats> = {}): SellerSp
     consultationsByBooking: 6,
     consultationsByDoctor: 3,
     consultationsUnclassified: 1,
+    followUpStatus: 'sin_contactar',
+    lastActivityAt: null,
     ...overrides,
   };
 }
@@ -95,5 +97,29 @@ describe('ListSellerSpecialistsUseCase', () => {
     expect(result).toHaveLength(2);
     expect(result[0]!.id).toBe('spec-1');
     expect(result[1]!.id).toBe('spec-2');
+  });
+
+  it('propagates followUpStatus and lastActivityAt from repository', async () => {
+    const lastAct = new Date('2026-11-18T10:00:00Z');
+    const row = makeStats({
+      followUpStatus: 'induccion',
+      lastActivityAt: lastAct,
+    });
+    const useCase = new ListSellerSpecialistsUseCase(makeRepo([row]));
+
+    const result = await useCase.execute(SELLER_ID);
+
+    expect(result[0]!.followUpStatus).toBe('induccion');
+    expect(result[0]!.lastActivityAt).toEqual(lastAct);
+  });
+
+  it('defaults followUpStatus to sin_contactar when no activity recorded', async () => {
+    const row = makeStats({ followUpStatus: 'sin_contactar', lastActivityAt: null });
+    const useCase = new ListSellerSpecialistsUseCase(makeRepo([row]));
+
+    const result = await useCase.execute(SELLER_ID);
+
+    expect(result[0]!.followUpStatus).toBe('sin_contactar');
+    expect(result[0]!.lastActivityAt).toBeNull();
   });
 });

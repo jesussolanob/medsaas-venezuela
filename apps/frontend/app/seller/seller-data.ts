@@ -12,7 +12,7 @@
  */
 
 import { useCallback, useEffect, useState } from 'react';
-import type { OnboardingStepKey } from '@delta/shared-types';
+import type { FollowUpStatus, OnboardingStepKey } from '@delta/shared-types';
 
 export type SpecialistRow = {
   id: string;
@@ -38,6 +38,10 @@ export type SpecialistRow = {
   consultationsByBooking?: number;
   consultationsByDoctor?: number;
   consultationsUnclassified?: number;
+  /** Commercial follow-up status set by the seller ("Gestión"). */
+  followUpStatus?: FollowUpStatus;
+  /** Latest follow-up activity (status change or comment), ISO. */
+  lastActivityAt?: string | null;
 };
 
 export type SpecialistDetail = SpecialistRow & {
