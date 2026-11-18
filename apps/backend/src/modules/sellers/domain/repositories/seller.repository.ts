@@ -183,6 +183,55 @@ export interface SellerSpecialistWithStats extends SellerSpecialistRow {
    * Excludes cancelled appointments.
    */
   consultationsUnclassified: number;
+  /**
+   * Current follow-up status for this specialist.
+   * 'sin_contactar' when no status_change activity row exists.
+   * Computed via LEFT JOIN LATERAL in the same query — no N+1.
+   */
+  followUpStatus: string;
+  /**
+   * Timestamp of the latest activity of any type (status_change or comment),
+   * or null when no activity has been recorded.
+   * Computed via LEFT JOIN LATERAL in the same query — no N+1.
+   */
+  lastActivityAt: Date | null;
+}
+
+// ---------------------------------------------------------------------------
+// Specialist activity types
+// ---------------------------------------------------------------------------
+
+/**
+ * A single follow-up activity entry for the seller commercial tracking log.
+ *
+ * SECURITY: `authorName` may be PII — do NOT log.
+ */
+export interface SpecialistActivityRow {
+  id: string;
+  type: 'status_change' | 'comment';
+  fromStatus: string | null;
+  toStatus: string | null;
+  comment: string | null;
+  createdAt: Date;
+  /**
+   * Full name of the seller who created this activity.
+   * null when the author's name looks like an email or is empty
+   * (see isPlaceholderName in auth/domain/profile-name.ts).
+   * SECURITY: PII — do NOT log.
+   */
+  authorName: string | null;
+}
+
+export interface CreateSpecialistActivityParams {
+  specialistId: string;
+  sellerId: string;
+  type: 'status_change' | 'comment';
+  /** Previous status before this change. null for comment-only entries. */
+  fromStatus: string | null;
+  /** New status. Required for status_change; null for comment entries. */
+  toStatus: string | null;
+  /** Free text. Required for comment entries; optional for status_change. */
+  comment: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -370,4 +419,36 @@ export interface ISellerRepository {
    * patient PII. Do not log the reason.
    */
   deactivateOwnAccount(sellerId: string, reason: string | null): Promise<void>;
+
+  // ---------------------------------------------------------------------------
+  // Specialist follow-up activity log
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Returns the current follow-up status for the given specialist.
+   *
+   * The current status is the `to_status` of the most recent status_change row,
+   * or 'sin_contactar' when no status_change row exists.
+   *
+   * Does NOT perform an anti-IDOR check — the caller (use case) must verify
+   * ownership via findSoldSpecialist before calling this method.
+   */
+  getSpecialistCurrentStatus(specialistId: string): Promise<string>;
+
+  /**
+   * Returns all activity rows for the given specialist, newest first,
+   * with the author's full_name resolved (null for placeholder names).
+   *
+   * Does NOT perform an anti-IDOR check — the caller must verify ownership.
+   * SECURITY: authorName is PII — do NOT log.
+   */
+  listSpecialistActivitiesRaw(specialistId: string): Promise<SpecialistActivityRow[]>;
+
+  /**
+   * Inserts a new activity row and returns the created row.
+   *
+   * Does NOT perform an anti-IDOR check — the caller must verify ownership.
+   * SECURITY: comment is free text — do NOT log.
+   */
+  createSpecialistActivity(params: CreateSpecialistActivityParams): Promise<SpecialistActivityRow>;
 }

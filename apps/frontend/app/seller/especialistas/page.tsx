@@ -17,7 +17,8 @@ import { Users, Loader2, UserPlus, AlertCircle, X, Share2, Search } from 'lucide
 import { showToast } from '@/components/ui/Toaster';
 import { normalizePhoneIntl } from '@/lib/phone-utils';
 import PhoneInput from '@/components/shared/PhoneInput';
-import { ONBOARDING_STEP_LABEL_ES } from '@delta/shared-types';
+import { FOLLOW_UP_STATUS_LABELS, ONBOARDING_STEP_LABEL_ES } from '@delta/shared-types';
+import SpecialistFollowUp, { FOLLOW_UP_PILL, formatCaracasDateTime } from './SpecialistFollowUp';
 import {
   useSellerData,
   estadoSeguimiento,
@@ -291,6 +292,7 @@ export default function SellerEspecialistasPage() {
                       <th className="px-5 py-3">Especialista</th>
                       <th className="px-5 py-3">Registrado</th>
                       <th className="px-5 py-3">Seguimiento</th>
+                      <th className="px-5 py-3">Gestión</th>
                       <th className="px-5 py-3">Onboarding</th>
                       <th className="px-5 py-3 text-center">Consultorios</th>
                       <th className="px-5 py-3">Consultas</th>
@@ -322,6 +324,20 @@ export default function SellerEspecialistasPage() {
                             </span>
                             {act.detalle && (
                               <p className="text-[11px] text-slate-400 mt-1">{act.detalle}</p>
+                            )}
+                          </td>
+                          <td className="px-5 py-3">
+                            <span
+                              className={`text-[11px] font-semibold px-2 py-0.5 rounded-full whitespace-nowrap ${
+                                FOLLOW_UP_PILL[r.followUpStatus ?? 'sin_contactar']
+                              }`}
+                            >
+                              {FOLLOW_UP_STATUS_LABELS[r.followUpStatus ?? 'sin_contactar']}
+                            </span>
+                            {r.lastActivityAt && (
+                              <p className="text-[11px] text-slate-400 mt-1 whitespace-nowrap">
+                                {formatCaracasDateTime(r.lastActivityAt)}
+                              </p>
                             )}
                           </td>
                           <td className="px-5 py-3">
@@ -389,7 +405,7 @@ export default function SellerEspecialistasPage() {
           }}
         >
           <div
-            className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 max-h-[90vh] overflow-y-auto"
+            className="bg-white rounded-2xl shadow-2xl max-w-lg w-full p-6 max-h-[90vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
             {fichaCargando && (
@@ -561,6 +577,10 @@ export default function SellerEspecialistasPage() {
                       : 'Teléfono con formato inválido'
                     : 'Sin teléfono cargado'}
                 </a>
+
+                <div className="mt-6 pt-5 border-t border-slate-100">
+                  <SpecialistFollowUp specialistId={ficha.id} onChanged={() => void recargar()} />
+                </div>
               </>
             )}
           </div>

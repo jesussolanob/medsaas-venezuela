@@ -11,12 +11,16 @@ import type {
   SellerSpecialistWithStats,
   SellerPaymentDetails,
   SpecialistSellerAssignment,
+  SpecialistActivityRow,
+  CreateSpecialistActivityParams,
   CreateSellerParams,
   CreateSoldSpecialistParams,
 } from '../../../domain/repositories/seller.repository';
 import { SellerProfileModel } from '../models/seller-profile.model';
+import { SellerSpecialistActivityModel } from '../models/seller-specialist-activity.model';
 import { SpecialistEmailConflictError } from '../../../domain/errors/specialist-email-conflict.error';
 import { SellerNotFoundError } from '../../../domain/errors/seller-not-found.error';
+import { isPlaceholderName } from '../../../../auth/domain/profile-name';
 
 /** Trial duration in days — matches the value used throughout the platform. */
 const TRIAL_DURATION_DAYS = 30;
@@ -26,6 +30,8 @@ export class SequelizeSellerRepository implements ISellerRepository {
   constructor(
     @InjectModel(SellerProfileModel)
     private readonly profileModel: typeof SellerProfileModel,
+    @InjectModel(SellerSpecialistActivityModel)
+    private readonly activityModel: typeof SellerSpecialistActivityModel,
     private readonly sequelize: Sequelize,
   ) {}
 
@@ -201,6 +207,8 @@ export class SequelizeSellerRepository implements ISellerRepository {
       consultations_by_booking: string;
       consultations_by_doctor: string;
       consultations_unclassified: string;
+      follow_up_status: string | null;
+      last_activity_at: Date | null;
     };
 
     const rows = await this.sequelize.query<RawRow>(
@@ -299,8 +307,28 @@ export class SequelizeSellerRepository implements ISellerRepository {
                  pt.source IS DISTINCT FROM 'booking'
                  AND pt.source IS DISTINCT FROM 'manual'
                )
-             ))                                                            AS consultations_unclassified
+             ))                                                            AS consultations_unclassified,
+         -- Follow-up status: to_status of the latest status_change row, or null.
+         -- Application maps null → 'sin_contactar'.
+         latest_status.to_status                                           AS follow_up_status,
+         -- Timestamp of the latest activity of any type.
+         latest_activity.created_at                                        AS last_activity_at
        FROM profiles p
+       LEFT JOIN LATERAL (
+         SELECT to_status
+           FROM seller_specialist_activities
+          WHERE specialist_id = p.id
+            AND type = 'status_change'
+          ORDER BY created_at DESC
+          LIMIT 1
+       ) latest_status ON true
+       LEFT JOIN LATERAL (
+         SELECT created_at
+           FROM seller_specialist_activities
+          WHERE specialist_id = p.id
+          ORDER BY created_at DESC
+          LIMIT 1
+       ) latest_activity ON true
        WHERE p.sold_by = :sellerId
        ORDER BY p.created_at DESC`,
       {
@@ -348,6 +376,9 @@ export class SequelizeSellerRepository implements ISellerRepository {
         consultationsByBooking: parseInt(r.consultations_by_booking, 10),
         consultationsByDoctor: parseInt(r.consultations_by_doctor, 10),
         consultationsUnclassified: parseInt(r.consultations_unclassified, 10),
+        // Follow-up tracking fields
+        followUpStatus: r.follow_up_status ?? 'sin_contactar',
+        lastActivityAt: r.last_activity_at ?? null,
       };
     });
   }
@@ -586,6 +617,93 @@ export class SequelizeSellerRepository implements ISellerRepository {
       } as Record<string, unknown>,
       { where: { id: sellerId, role: 'seller' } },
     );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Specialist follow-up activity log
+  // ---------------------------------------------------------------------------
+
+  async getSpecialistCurrentStatus(specialistId: string): Promise<string> {
+    type Row = { to_status: string | null };
+    const rows = await this.sequelize.query<Row>(
+      `SELECT to_status
+         FROM seller_specialist_activities
+        WHERE specialist_id = :specialistId
+          AND type = 'status_change'
+        ORDER BY created_at DESC
+        LIMIT 1`,
+      { replacements: { specialistId }, type: QueryTypes.SELECT },
+    );
+    return rows[0]?.to_status ?? 'sin_contactar';
+  }
+
+  async listSpecialistActivitiesRaw(specialistId: string): Promise<SpecialistActivityRow[]> {
+    type Row = {
+      id: string;
+      type: string;
+      from_status: string | null;
+      to_status: string | null;
+      comment: string | null;
+      created_at: Date;
+      author_full_name: string | null;
+    };
+    const rows = await this.sequelize.query<Row>(
+      `SELECT
+         saa.id,
+         saa.type,
+         saa.from_status,
+         saa.to_status,
+         saa.comment,
+         saa.created_at,
+         p.full_name AS author_full_name
+       FROM seller_specialist_activities saa
+       JOIN profiles p ON p.id = saa.seller_id
+       WHERE saa.specialist_id = :specialistId
+       ORDER BY saa.created_at DESC`,
+      { replacements: { specialistId }, type: QueryTypes.SELECT },
+    );
+
+    return rows.map(
+      (r): SpecialistActivityRow => ({
+        id: r.id,
+        type: r.type as 'status_change' | 'comment',
+        fromStatus: r.from_status,
+        toStatus: r.to_status,
+        comment: r.comment,
+        createdAt: r.created_at,
+        authorName: isPlaceholderName(r.author_full_name) ? null : (r.author_full_name ?? null),
+      }),
+    );
+  }
+
+  async createSpecialistActivity(
+    params: CreateSpecialistActivityParams,
+  ): Promise<SpecialistActivityRow> {
+    const row = await this.activityModel.create({
+      specialistId: params.specialistId,
+      sellerId: params.sellerId,
+      type: params.type,
+      fromStatus: params.fromStatus,
+      toStatus: params.toStatus,
+      comment: params.comment,
+    } as Parameters<typeof SellerSpecialistActivityModel.create>[0]);
+
+    // Resolve the author name from the seller profile.
+    const author = await this.profileModel.findOne({
+      where: { id: params.sellerId },
+      attributes: ['fullName'],
+    });
+    const rawName = author?.fullName ?? null;
+
+    return {
+      id: row.id,
+      type: row.type as 'status_change' | 'comment',
+      fromStatus: row.fromStatus,
+      toStatus: row.toStatus,
+      comment: row.comment,
+      createdAt: row.createdAt,
+      authorName: isPlaceholderName(rawName) ? null : rawName,
+    };
   }
 }
 
