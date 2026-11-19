@@ -126,7 +126,9 @@ export class SequelizeReleaseNoteRepository implements IReleaseNoteRepository {
         createdAt: r.created_at,
         updatedAt: r.updated_at,
       });
-      return { ...note, createdByName: r.created_by_name };
+      // Object.assign keeps the entity's methods (isPublished/isDraft); a spread
+      // would copy only the data fields and silently drop them.
+      return Object.assign(note, { createdByName: r.created_by_name });
     });
 
     return { items, total };
