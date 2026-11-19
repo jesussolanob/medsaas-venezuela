@@ -45,7 +45,10 @@ interface VerifiedSession {
   };
   doctorName: string;
   patientNameMasked: string;
+  /** 15-min session token expiry — used internally. */
   expiresAt: string;
+  /** 48h access-code expiry — displayed as "Enlace válido hasta". */
+  codeExpiresAt: string;
 }
 
 interface AttachmentItem {
@@ -483,7 +486,7 @@ export default function DocumentDownloadPage() {
                 <div className="space-y-2">
                   <InfoRow label="Especialista" value={session.doctorName} />
                   <InfoRow label="Paciente" value={session.patientNameMasked} />
-                  <InfoRow label="Enlace válido hasta" value={formatDate(session.expiresAt)} />
+                  <InfoRow label="Enlace válido hasta" value={formatDate(session.codeExpiresAt)} />
                 </div>
 
                 {/* Sections included */}
@@ -566,7 +569,7 @@ export default function DocumentDownloadPage() {
                             <AttachmentIcon mimeType={att.mimeType} className="w-4 h-4" />
                           </div>
                           <div className="flex-1 min-w-0">
-                            <p className="text-sm font-semibold text-slate-800 truncate">
+                            <p className="text-sm font-semibold text-slate-800 line-clamp-2 break-words">
                               {att.name}
                             </p>
                             <p className="text-xs text-slate-400">

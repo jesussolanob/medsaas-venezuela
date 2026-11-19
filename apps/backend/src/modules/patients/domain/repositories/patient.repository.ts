@@ -23,6 +23,8 @@ export interface AuditLogEntry {
   fieldRevealed: string;
   ipAddress: string | null;
   userAgent: string | null;
+  /** Optional free-text detail stored in the reason column (no PII). */
+  reason?: string | null;
 }
 
 export interface IPatientRepository {

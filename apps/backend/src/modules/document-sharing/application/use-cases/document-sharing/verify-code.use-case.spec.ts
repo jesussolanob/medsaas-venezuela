@@ -3,6 +3,8 @@ import { VerifyCodeUseCase, normalizeCedula, cedulasMatch } from './verify-code.
 import type { ISharedDocumentLinkRepository } from '../../../domain/repositories/shared-document-link.repository';
 import type { IDocumentAccessCodeRepository } from '../../../domain/repositories/document-access-code.repository';
 import type { IPatientRepository } from '../../../../patients/domain/repositories/patient.repository';
+import type { IDoctorProfileRepository } from '../../../../doctor-settings/domain/repositories/doctor-profile.repository';
+import type { DoctorProfile } from '../../../../doctor-settings/domain/entities/doctor-profile.entity';
 import { SharedDocumentLink } from '../../../domain/entities/shared-document-link.entity';
 import { DocumentAccessCode } from '../../../domain/entities/document-access-code.entity';
 import { Patient } from '../../../../patients/domain/entities/patient.entity';
@@ -36,6 +38,10 @@ const mockPatientRepo: jest.Mocked<IPatientRepository> = {
   update: jest.fn(),
   softDelete: jest.fn(),
   logReveal: jest.fn(),
+};
+
+const mockDoctorProfileRepo: jest.Mocked<Pick<IDoctorProfileRepository, 'findByDoctorId'>> = {
+  findByDoctorId: jest.fn(),
 };
 
 /** Helper — builds a minimal Patient with the given cédula. */
@@ -93,7 +99,13 @@ describe('VerifyCodeUseCase', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    useCase = new VerifyCodeUseCase(mockLinkRepo, mockCodeRepo, mockPatientRepo, mockConfig);
+    useCase = new VerifyCodeUseCase(
+      mockLinkRepo,
+      mockCodeRepo,
+      mockPatientRepo,
+      mockDoctorProfileRepo as unknown as IDoctorProfileRepository,
+      mockConfig,
+    );
 
     mockLinkRepo.findByToken.mockResolvedValue(makeActiveLink());
     mockLinkRepo.incrementLinkFailedAttempts.mockResolvedValue();
@@ -102,6 +114,13 @@ describe('VerifyCodeUseCase', () => {
     mockCodeRepo.incrementFailedAttempts.mockResolvedValue();
     // Default: patient exists and has a matching cédula
     mockPatientRepo.findById.mockResolvedValue(makePatient('V-12.345.678'));
+    // Default: doctor profile with display name
+    mockDoctorProfileRepo.findByDoctorId.mockResolvedValue({
+      id: 'doctor-1',
+      fullName: 'María García',
+      professionalTitle: 'Dra.',
+      email: 'dra.garcia@clinic.com',
+    } as unknown as DoctorProfile);
   });
 
   it('returns sessionToken, sections, expiresAt on correct code and correct cédula', async () => {
@@ -115,6 +134,81 @@ describe('VerifyCodeUseCase', () => {
     expect(result.sections).toEqual({ report: true, prescriptions: true, ehr: false });
     expect(result.expiresAt).toBeInstanceOf(Date);
     expect(mockCodeRepo.markUsed).toHaveBeenCalledWith('code-1', expect.any(Date));
+  });
+
+  it('returns doctorName built from profile professionalTitle + fullName', async () => {
+    const result = await useCase.execute({
+      token: 'valid-token-abc123',
+      code: '654321',
+      cedula: 'V-12.345.678',
+    });
+
+    expect(result.doctorName).toBe('Dra. María García');
+  });
+
+  it('returns doctorName falling back to email when fullName is absent', async () => {
+    mockDoctorProfileRepo.findByDoctorId.mockResolvedValue({
+      id: 'doctor-1',
+      fullName: '',
+      professionalTitle: null,
+      email: 'doctor@clinic.com',
+    } as unknown as DoctorProfile);
+
+    const result = await useCase.execute({
+      token: 'valid-token-abc123',
+      code: '654321',
+      cedula: 'V-12.345.678',
+    });
+
+    expect(result.doctorName).toBe('doctor@clinic.com');
+  });
+
+  it('returns doctorName as "Su especialista" when profile is null', async () => {
+    mockDoctorProfileRepo.findByDoctorId.mockResolvedValue(null);
+
+    const result = await useCase.execute({
+      token: 'valid-token-abc123',
+      code: '654321',
+      cedula: 'V-12.345.678',
+    });
+
+    expect(result.doctorName).toBe('Su especialista');
+  });
+
+  it('returns patientNameMasked as first name + last initial', async () => {
+    // makePatient sets fullName = 'Test Patient'
+    const result = await useCase.execute({
+      token: 'valid-token-abc123',
+      code: '654321',
+      cedula: 'V-12.345.678',
+    });
+
+    expect(result.patientNameMasked).toBe('Test P.');
+  });
+
+  it('returns codeExpiresAt equal to the access code expiresAt (48h window)', async () => {
+    const codeExpiry = new Date(Date.now() + 48 * 60 * 60 * 1000);
+    mockCodeRepo.findLatestByLinkId.mockResolvedValue(
+      DocumentAccessCode.create({
+        id: 'code-1',
+        linkId: 'link-1',
+        code: '654321',
+        expiresAt: codeExpiry,
+        usedAt: null,
+        failedAttempts: 0,
+        createdAt: new Date(),
+      }),
+    );
+
+    const result = await useCase.execute({
+      token: 'valid-token-abc123',
+      code: '654321',
+      cedula: 'V-12.345.678',
+    });
+
+    expect(result.codeExpiresAt).toEqual(codeExpiry);
+    // expiresAt (session) must be much shorter than codeExpiresAt
+    expect(result.expiresAt.getTime()).toBeLessThan(result.codeExpiresAt.getTime());
   });
 
   it('throws DocumentLinkNotFoundError when link does not exist', async () => {
@@ -320,6 +414,7 @@ describe('VerifyCodeUseCase', () => {
       mockLinkRepo,
       mockCodeRepo,
       mockPatientRepo,
+      mockDoctorProfileRepo as unknown as IDoctorProfileRepository,
       mockConfigNoSecret,
     );
     const exp = new Date(Date.now() + 15 * 60 * 1000);

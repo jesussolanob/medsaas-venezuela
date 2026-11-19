@@ -69,6 +69,9 @@ const signToken = (linkId: string, token: string, exp: Date): string => {
       softDelete: jest.fn(),
       logReveal: jest.fn(),
     } as jest.Mocked<IPatientRepository>,
+    { findByDoctorId: jest.fn() } as unknown as import(
+      '../../../../doctor-settings/domain/repositories/doctor-profile.repository'
+    ).IDoctorProfileRepository,
     mockConfig,
   );
   return uc.signSessionToken(linkId, token, exp);
@@ -398,7 +401,8 @@ describe('GetDocumentRenderDataUseCase — standalone document branch', () => {
         actorId: 'doctor-1',
         actorRole: 'doctor',
         patientId: 'patient-1',
-        fieldRevealed: expect.stringContaining('shared_document_render'),
+        fieldRevealed: 'shared_document_render',
+        reason: expect.any(String),
       }),
     );
   });
@@ -581,7 +585,8 @@ describe('GetDocumentRenderDataUseCase — standalone document branch', () => {
     await Promise.resolve(); // flush microtasks
     expect(mockPatientRepo.logReveal).toHaveBeenCalledWith(
       expect.objectContaining({
-        fieldRevealed: 'shared_document_render:standalone_recipe',
+        fieldRevealed: 'shared_document_render',
+        reason: 'standalone_recipe',
       }),
     );
   });
