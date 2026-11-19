@@ -573,7 +573,7 @@ Abre el documento y pulsa **Anular documento**. Puedes escribir un motivo opcion
 
 ### 6.21 Documentos frecuentes — biblioteca de archivos para adjuntar al compartir
 
-Disponible para todos los especialistas. Acceso desde el menu lateral **Documentos frecuentes** (o desde el modal de compartir, en la pestana de adjuntos).
+Disponible para todos los especialistas. Acceso desde **Plantillas** (/doctor/templates) → pestana **Documentos frecuentes** (o desde el modal de compartir → seccion Adjuntos).
 
 Permite subir archivos (PDF, imagen JPEG/PNG/WEBP) una sola vez y tenerlos disponibles para adjuntarlos a cualquier enlace de compartir sin necesidad de volver a subirlos. Util para indicaciones generales, tablas de alimentacion, instrucciones de preoperatorio, consentimientos, etc.
 
