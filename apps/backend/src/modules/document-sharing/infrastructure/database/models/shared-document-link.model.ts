@@ -89,6 +89,16 @@ export class SharedDocumentLinkModel extends Model {
   @Column({ type: DataType.JSONB, field: 'doc_selection' })
   declare docSelection: Record<string, unknown> | null;
 
+  /**
+   * File attachments frozen at share time.
+   * Null for links created before this feature.
+   *
+   * Shape: AttachmentSnapshot[] — see shared-document-link.entity.ts.
+   */
+  @AllowNull(true)
+  @Column({ type: DataType.JSONB, field: 'attachments' })
+  declare attachments: unknown[] | null;
+
   @CreatedAt
   @Column({ field: 'created_at' })
   declare createdAt: Date;

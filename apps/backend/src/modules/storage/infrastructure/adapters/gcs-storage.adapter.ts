@@ -2,6 +2,7 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Storage } from '@google-cloud/storage';
 import type {
+  GetSignedUrlOptions,
   IStoragePort,
   StorageUploadInput,
   StorageUploadResult,
@@ -78,8 +79,16 @@ export class GcsStorageAdapter implements IStoragePort, OnModuleInit {
    * Returns a v4 signed URL. Default TTL 1 hour; callers may request longer
    * (up to the V4 maximum of 7 days) for public assets.
    * Used for private objects and for the GET /api/storage/signed-url endpoint.
+   *
+   * When `options.responseDisposition` is provided, the signed URL will include
+   * a `response-content-disposition` query parameter so the browser treats the
+   * response as a file download with the specified filename.
    */
-  async getSignedUrl(path: string, ttlMs = 60 * 60 * 1000): Promise<string> {
+  async getSignedUrl(
+    path: string,
+    ttlMs = 60 * 60 * 1000,
+    options?: GetSignedUrlOptions,
+  ): Promise<string> {
     const [url] = await this.storage
       .bucket(this.bucket)
       .file(path)
@@ -87,6 +96,9 @@ export class GcsStorageAdapter implements IStoragePort, OnModuleInit {
         version: 'v4',
         action: 'read',
         expires: Date.now() + ttlMs,
+        ...(options?.responseDisposition
+          ? { responseDisposition: options.responseDisposition }
+          : {}),
       });
     return url;
   }

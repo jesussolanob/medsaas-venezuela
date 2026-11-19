@@ -571,6 +571,32 @@ Cada documento emitido recibe un codigo con formato TIPO-AAAAMM-NNNN (ej. REC-20
 **Anular un documento emitido:**
 Abre el documento y pulsa **Anular documento**. Puedes escribir un motivo opcional. La anulacion es definitiva y no se puede deshacer.
 
+### 6.21 Documentos frecuentes — biblioteca de archivos para adjuntar al compartir
+
+Disponible para todos los especialistas. Acceso desde **Plantillas** (/doctor/templates) → pestana **Documentos frecuentes** (o desde el modal de compartir → seccion Adjuntos).
+
+Permite subir archivos (PDF, imagen JPEG/PNG/WEBP) una sola vez y tenerlos disponibles para adjuntarlos a cualquier enlace de compartir sin necesidad de volver a subirlos. Util para indicaciones generales, tablas de alimentacion, instrucciones de preoperatorio, consentimientos, etc.
+
+**Cargar un documento a la biblioteca:**
+1. Pulsa **Subir documento** (o el boton equivalente en la interfaz).
+2. Elige el archivo desde tu dispositivo (PDF o imagen; maximo el tamano permitido).
+3. Escribe un nombre para el documento (hasta 120 caracteres).
+4. Pulsa **Guardar**. El archivo queda disponible en tu biblioteca.
+
+**Limites:**
+- Maximo **50 archivos activos** en la biblioteca por especialista.
+- Tipos permitidos: PDF (application/pdf), JPEG, PNG, WEBP.
+
+**Renombrar o eliminar:**
+En la lista de la biblioteca, usa el icono de edicion para cambiar el nombre o el icono de papelera para eliminar el archivo. La eliminacion es definitiva para la biblioteca, aunque no afecta los enlaces ya compartidos que incluian ese archivo.
+
+**Adjuntar a un enlace de compartir:**
+Al compartir documentos desde una consulta (boton **Compartir**), en el modal encontraras una seccion para adjuntar archivos. Puedes:
+- **Elegir de la biblioteca** — selecciona los archivos que ya subiste a Documentos frecuentes.
+- **Adjuntar archivo nuevo** — sube un archivo puntual sin guardarlo en la biblioteca.
+
+Puedes compartir un enlace con **solo adjuntos** (sin seleccionar tipos de documento clinico) o combinar documentos clinicos con adjuntos. El paciente descarga cada adjunto por separado como archivo individual (no se mezclan en el PDF). Limite: 10 adjuntos por enlace.
+
 ---
 
 ## 7. Flujos completos paso a paso
@@ -622,13 +648,19 @@ Si ves estos botones desactivados o ausentes, es porque tu plan no es Plus: mejo
    - **Paraclinicos** (examenes/estudios).
    - **Reposo** (solo si tiene dias > 0).
    - **Historia clinica / EHR** (historial clinico electronico del paciente).
-   - Debes seleccionar al menos una seccion. El PDF que descarga el paciente es el MISMO documento branded (con tu logo y firma) que generas tu.
+   - Debes seleccionar al menos una seccion **o agregar al menos un adjunto** (ver mas abajo). El PDF que descarga el paciente es el MISMO documento branded (con tu logo y firma) que generas tu.
 3. Pulsa **Generar enlace y enviar**. Mientras procesa muestra 'Generando enlace...'.
 4. El sistema:
    - Genera un **enlace de descarga** y un **codigo de acceso de 6 digitos**, ambos copiables (boton **Copiar**).
    - Envia automaticamente un email al paciente con el enlace y el codigo: 'Se envio un email al paciente con el enlace y el codigo.'
    - Muestra la fecha de vencimiento: el enlace vence en **48 horas**. Pasada esa fecha el paciente debe solicitar uno nuevo.
 5. El paciente abre el enlace y, para descargar el PDF, debe ingresar el **codigo de 6 digitos** y su **cedula**. La cedula es tolerante al formato (V-12345678 equivale a 12345678 o E-12345678).
+
+**Adjuntos al compartir (Documentos frecuentes):**
+Dentro del mismo modal de compartir encontraras una seccion de adjuntos. Puedes:
+- **Elegir de tu biblioteca** (Documentos frecuentes): selecciona los archivos que ya guardaste en tu biblioteca.
+- **Adjuntar un archivo nuevo**: sube un archivo puntual para este envio en particular.
+Los adjuntos NO se mezclan en el PDF — el paciente los descarga como archivos individuales desde el enlace. Limite: 10 adjuntos por enlace. Si solo quieres compartir adjuntos (sin documentos clinicos), deja las secciones sin marcar y agrega al menos un adjunto.
 
 **Requisito:** el paciente DEBE tener cedula registrada. Si no la tiene, al compartir veras un error accionable indicando que la cedula del paciente es requerida para compartir; agrega la cedula en Pacientes y vuelve a intentar. Por seguridad, el codigo tiene un limite de 5 intentos.
 

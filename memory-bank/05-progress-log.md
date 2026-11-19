@@ -5892,3 +5892,50 @@ Pedido de Jesús: medir el embudo de la campaña (visita → clic en registrarse
   automática, los eventos automáticos y el seguimiento sin código.
 - Verificado: staging PageView → Lead → PageView /login (200); producción PageView (200). CompleteRegistration sin
   probar en navegador (requiere un registro nuevo).
+
+## 2026-11-19 — Módulo doctor-document-files + adjuntos en Document Sharing
+
+**Rama:** `feature/documentos-frecuentes`. **Commit:** `811be75a`.
+
+### Parte 1 — Biblioteca de documentos frecuentes (`doctor-document-files`)
+
+Módulo DDD completo (4 capas) para que el especialista gestione una biblioteca de archivos
+(PDF / imagen) que puede adjuntar a enlaces de compartir sin tener que subirlos de nuevo.
+
+- Tabla `doctor_document_files` (migración `20261119000001`): soft delete (`deleted_at`),
+  MIME TEXT+CHECK (nunca ENUM Postgres), partial index `WHERE deleted_at IS NULL`.
+- 5 use cases: list, create, rename, delete, get-url. 5 specs con 100% de cobertura.
+- Validación de path server-side: prefijo `document/<doctorId>/` + sin `..` (anti path-traversal).
+- 50 archivos activos por doctor (`DoctorDocumentFileLimitExceededError`).
+- Anti-IDOR en todos los endpoints: `doctorId` siempre de `user.sub`.
+
+### Parte 2 — Adjuntos en Document Sharing
+
+- `shared_document_links` recibe columna JSONB `attachments` (migración `20261119000002`).
+- `ShareConsultationUseCase` acepta `attachments?`: verifica IDs de biblioteca en BD (storagePath
+  NUNCA del cliente); valida paths de uploads (prefijo); límite 10 adjuntos / 25 MB por enlace.
+- `NoShareContentError` reemplaza `NoSectionsSelectedError`: un enlace es válido si tiene ≥1 tipo
+  de documento OR ≥1 adjunto (ya no requiere tipos obligatorios).
+- `GetDocumentRenderDataUseCase`: resuelve `attachments[]` con signed URLs de 10 min que fuerzan
+  descarga vía `Content-Disposition: attachment; filename*=UTF-8''<RFC5987>` — acentos soportados.
+- Storage port extendido: `getSignedUrl(path, ttlMs?, options?)` con `responseDisposition` opcional.
+  GCS usa `responseDisposition`; MinIO usa `response-content-disposition` query param.
+- Audit log registra solo el conteo de adjuntos (nunca nombres — PII risk).
+
+### Parte 3 — BFF frontend (proxies delgados)
+
+3 nuevas rutas: `app/api/doctor/document-files/route.ts`, `/[id]/route.ts`, `/[id]/url/route.ts`.
+Share consultation BFF actualizado para reenviar `attachments` al backend.
+
+### Parte 4 — Shared types
+
+`libs/shared-types/src/dtos/doctor-document-files.dto.ts`:
+`DOCTOR_DOCUMENT_FILE_ALLOWED_MIME_TYPES`, request/response DTOs, `RenderDataAttachmentDto`.
+
+### Verificación
+
+- `pnpm nx build shared-types` → OK
+- `pnpm nx build backend` → OK (OOM fork-ts-checker es conocido y no fatal)
+- `pnpm nx test backend --maxWorkers=2` → 5252 tests, 0 fallos
+- `pnpm exec tsc -p apps/frontend/tsconfig.json --noEmit` → limpio
+- ESLint → 0 errores, 0 advertencias

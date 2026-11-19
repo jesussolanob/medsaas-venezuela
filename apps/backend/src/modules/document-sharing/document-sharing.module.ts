@@ -31,6 +31,7 @@ import { DoctorTemplatesModule } from '../doctor-templates/doctor-templates.modu
 import { StorageModule } from '../storage/storage.module';
 import { ConsultationBlocksModule } from '../consultation-blocks/consultation-blocks.module';
 import { StandaloneDocumentsModule } from '../standalone-documents/standalone-documents.module';
+import { DoctorDocumentFilesModule } from '../doctor-document-files/doctor-document-files.module';
 
 /**
  * DocumentSharingModule — allows doctors to share consultation documents
@@ -48,7 +49,8 @@ import { StandaloneDocumentsModule } from '../standalone-documents/standalone-do
  *   - EmailModule           → MailerService (send email with code)
  *   - DoctorSettingsModule  → DOCTOR_PROFILE_REPOSITORY (doctor name in PDF header)
  *   - DoctorTemplatesModule → DOCTOR_TEMPLATE_REPOSITORY (informe template for render-data)
- *   - StorageModule         → STORAGE_PORT (signed URL resolution for logo/signature images)
+ *   - StorageModule              → STORAGE_PORT (signed URL resolution for logo/signature images)
+ *   - DoctorDocumentFilesModule  → DOCTOR_DOCUMENT_FILE_REPOSITORY (validate library IDs in share)
  */
 @Module({
   imports: [
@@ -65,6 +67,9 @@ import { StandaloneDocumentsModule } from '../standalone-documents/standalone-do
     // Provides STANDALONE_DOCUMENT_REPOSITORY for GetDocumentRenderDataUseCase
     // (standalone document render path) and ShareStandaloneDocumentUseCase.
     StandaloneDocumentsModule,
+    // Provides DOCTOR_DOCUMENT_FILE_REPOSITORY for ShareConsultationUseCase
+    // (validates library file IDs when building share attachments).
+    DoctorDocumentFilesModule,
   ],
   controllers: [DocumentSharingController],
   providers: [

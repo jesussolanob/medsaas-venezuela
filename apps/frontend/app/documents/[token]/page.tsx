@@ -7,9 +7,15 @@
  * El token identifica el lote de documentos compartidos.
  *
  * Flujo:
- *   1. Paciente ingresa código de 6 dígitos → POST /api/documents/:token/verify-code
- *   2. Si OK: muestra información + botón de descarga PDF
- *   3. Si error: mensaje claro + botón "Solicitar nuevo código"
+ *   1. Paciente ingresa código de 6 dígitos + cédula → POST /api/documents/:token/verify-code
+ *   2. Si OK: busca adjuntos + hasDocumentTypes → GET /api/documents/:token/attachments
+ *   3. Muestra:
+ *      - Botón "Descargar documentos de la consulta" solo si hasDocumentTypes
+ *      - Sección "Archivos adjuntos" si hay adjuntos (descarga individual)
+ *   4. Si error: mensaje claro + botón "Solicitar nuevo código"
+ *
+ * Signed URLs de adjuntos tienen TTL 10 min — si se detecta expiración se
+ * vuelve a llamar a /attachments para obtener URLs frescas.
  */
 
 import { useState, useRef } from 'react';
@@ -24,6 +30,8 @@ import {
   Pill,
   ClipboardList,
   Stethoscope,
+  Paperclip,
+  Image as ImageIcon,
 } from 'lucide-react';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -40,6 +48,19 @@ interface VerifiedSession {
   expiresAt: string;
 }
 
+interface AttachmentItem {
+  id: string;
+  name: string;
+  mimeType: string;
+  sizeBytes: number;
+  url: string;
+}
+
+interface AttachmentsData {
+  attachments: AttachmentItem[];
+  hasDocumentTypes: boolean;
+}
+
 type PageState = 'input' | 'verified' | 'blocked';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -49,6 +70,11 @@ function formatDate(iso: string): string {
     dateStyle: 'long',
     timeStyle: 'short',
   }).format(new Date(iso));
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 const SECTION_LABELS: Record<string, { label: string; icon: React.ReactNode }> = {
@@ -66,6 +92,20 @@ const SECTION_LABELS: Record<string, { label: string; icon: React.ReactNode }> =
   },
 };
 
+/** Returns whether a file type icon should use the PDF or image variant. */
+function AttachmentIcon({
+  mimeType,
+  className = 'w-4 h-4',
+}: {
+  mimeType: string;
+  className?: string;
+}) {
+  if (mimeType === 'application/pdf') {
+    return <FileText className={`${className} text-red-500`} />;
+  }
+  return <ImageIcon className={`${className} text-sky-500`} />;
+}
+
 // ─── Component ───────────────────────────────────────────────────────────────
 
 export default function DocumentDownloadPage() {
@@ -82,7 +122,48 @@ export default function DocumentDownloadPage() {
   const [requestError, setRequestError] = useState<string | null>(null);
   const [requestSuccess, setRequestSuccess] = useState(false);
   const [session, setSession] = useState<VerifiedSession | null>(null);
+
+  // Attachments state
+  const [attachmentsData, setAttachmentsData] = useState<AttachmentsData | null>(null);
+  // attachmentsLoading: true only on the FIRST fetch (hides the list until ready).
+  // attachmentsRefreshing: true on subsequent silent re-fetches (keeps list visible).
+  const [attachmentsLoading, setAttachmentsLoading] = useState(false);
+  const [attachmentsRefreshing, setAttachmentsRefreshing] = useState(false);
+  const [downloadingAttachId, setDownloadingAttachId] = useState<string | null>(null);
+
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // ── Attachments fetch ─────────────────────────────────────────────────────
+
+  async function fetchAttachments(
+    sessionToken: string,
+    options?: { silent?: boolean },
+  ): Promise<AttachmentsData | null> {
+    // Use the refreshing state for background re-fetches so the list stays visible.
+    if (options?.silent) {
+      setAttachmentsRefreshing(true);
+    } else {
+      setAttachmentsLoading(true);
+    }
+    try {
+      const res = await fetch(
+        `/api/documents/${token}/attachments?sessionToken=${encodeURIComponent(sessionToken)}`,
+      );
+      const json = (await res.json()) as
+        | { success: true; data: AttachmentsData }
+        | { error: string };
+      if (!res.ok || !('success' in json)) return null;
+      return json.data;
+    } catch {
+      return null;
+    } finally {
+      if (options?.silent) {
+        setAttachmentsRefreshing(false);
+      } else {
+        setAttachmentsLoading(false);
+      }
+    }
+  }
 
   // ── Verification ──────────────────────────────────────────────────────────
 
@@ -108,7 +189,6 @@ export default function DocumentDownloadPage() {
       if (!res.ok || !('success' in json)) {
         const msg = 'error' in json ? json.error : 'Código incorrecto o vencido.';
 
-        // 429 = bloqueo por intentos
         if (res.status === 429 || res.status === 403) {
           setPageState('blocked');
           return;
@@ -120,8 +200,15 @@ export default function DocumentDownloadPage() {
         return;
       }
 
-      setSession(json.data);
+      const verifiedSession = json.data;
+      setSession(verifiedSession);
       setPageState('verified');
+
+      // Load attachments + hasDocumentTypes in background
+      const attachData = await fetchAttachments(verifiedSession.sessionToken);
+      if (attachData) {
+        setAttachmentsData(attachData);
+      }
     } catch {
       setVerifyError(
         'No se pudo conectar con el servidor. Verifica tu conexión e intenta de nuevo.',
@@ -131,7 +218,7 @@ export default function DocumentDownloadPage() {
     }
   }
 
-  // ── Download ──────────────────────────────────────────────────────────────
+  // ── Download PDF ──────────────────────────────────────────────────────────
 
   async function handleDownload() {
     if (!session || downloading) return;
@@ -153,7 +240,6 @@ export default function DocumentDownloadPage() {
         return;
       }
 
-      // Trigger browser download
       const blob = await res.blob();
       const objectUrl = URL.createObjectURL(blob);
       const anchor = document.createElement('a');
@@ -168,6 +254,34 @@ export default function DocumentDownloadPage() {
     } finally {
       setDownloading(false);
     }
+  }
+
+  // ── Download attachment ───────────────────────────────────────────────────
+
+  async function handleDownloadAttachment(att: AttachmentItem) {
+    if (!session) return;
+    if (downloadingAttachId !== null) return;
+
+    setDownloadingAttachId(att.id);
+
+    // Always re-fetch to get fresh signed URLs (10-min TTL from backend).
+    // Use silent=true so attachmentsLoading stays false and the list remains visible.
+    // The row-level spinner is driven by downloadingAttachId.
+    const fresh = await fetchAttachments(session.sessionToken, { silent: true });
+    if (fresh) {
+      setAttachmentsData(fresh);
+    }
+
+    const currentAttachments = fresh?.attachments ?? attachmentsData?.attachments ?? [];
+    const target = currentAttachments.find((a) => a.id === att.id);
+
+    if (target) {
+      // Open the signed URL — the backend sets Content-Disposition: attachment
+      // so the browser will download it with the correct filename.
+      window.open(target.url, '_blank', 'noopener,noreferrer');
+    }
+
+    setDownloadingAttachId(null);
   }
 
   // ── Request new code ──────────────────────────────────────────────────────
@@ -194,7 +308,6 @@ export default function DocumentDownloadPage() {
       }
 
       setRequestSuccess(true);
-      // Reset to input state after a short delay so they can enter the new code
       setTimeout(() => {
         setPageState('input');
         setCode('');
@@ -210,6 +323,9 @@ export default function DocumentDownloadPage() {
   }
 
   // ─── Render ───────────────────────────────────────────────────────────────
+
+  const hasDocumentTypes = attachmentsData?.hasDocumentTypes ?? true; // default true for backward-compat
+  const attachments = attachmentsData?.attachments ?? [];
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
@@ -371,28 +487,30 @@ export default function DocumentDownloadPage() {
                 </div>
 
                 {/* Sections included */}
-                <div className="space-y-1.5">
-                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                    Secciones incluidas
-                  </p>
+                {Object.values(session.sections).some(Boolean) && (
                   <div className="space-y-1.5">
-                    {(Object.entries(session.sections) as [string, boolean][])
-                      .filter(([, enabled]) => enabled)
-                      .map(([key]) => {
-                        const info = SECTION_LABELS[key];
-                        if (!info) return null;
-                        return (
-                          <div
-                            key={key}
-                            className="flex items-center gap-2.5 text-sm text-slate-700"
-                          >
-                            {info.icon}
-                            {info.label}
-                          </div>
-                        );
-                      })}
+                    <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                      Secciones incluidas
+                    </p>
+                    <div className="space-y-1.5">
+                      {(Object.entries(session.sections) as [string, boolean][])
+                        .filter(([, enabled]) => enabled)
+                        .map(([key]) => {
+                          const info = SECTION_LABELS[key];
+                          if (!info) return null;
+                          return (
+                            <div
+                              key={key}
+                              className="flex items-center gap-2.5 text-sm text-slate-700"
+                            >
+                              {info.icon}
+                              {info.label}
+                            </div>
+                          );
+                        })}
+                    </div>
                   </div>
-                </div>
+                )}
 
                 {verifyError && (
                   <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-lg px-3 py-2.5">
@@ -401,27 +519,84 @@ export default function DocumentDownloadPage() {
                   </div>
                 )}
 
-                <button
-                  onClick={handleDownload}
-                  disabled={downloading}
-                  className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-bold bg-teal-500 hover:bg-teal-600 text-white transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
-                >
-                  {downloading ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      Descargando...
-                    </>
-                  ) : (
-                    <>
-                      <FileDown className="w-4 h-4" />
-                      Descargar PDF
-                    </>
-                  )}
-                </button>
+                {/* PDF download — shown only when share includes ≥1 document type */}
+                {!attachmentsLoading && hasDocumentTypes && (
+                  <button
+                    onClick={handleDownload}
+                    disabled={downloading}
+                    className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-bold bg-teal-500 hover:bg-teal-600 text-white transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                  >
+                    {downloading ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Descargando...
+                      </>
+                    ) : (
+                      <>
+                        <FileDown className="w-4 h-4" />
+                        Descargar documentos de la consulta
+                      </>
+                    )}
+                  </button>
+                )}
 
-                <p className="text-xs text-slate-400 text-center">
-                  El archivo se guardará en tu dispositivo como PDF.
-                </p>
+                {attachmentsLoading && (
+                  <div className="flex items-center justify-center gap-2 py-2 text-sm text-slate-400">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Cargando archivos adjuntos…
+                  </div>
+                )}
+
+                {/* Attachments section — visible even while silently refreshing URLs */}
+                {!attachmentsLoading && attachments.length > 0 && (
+                  <div className="space-y-2" aria-busy={attachmentsRefreshing}>
+                    <div className="flex items-center gap-1.5">
+                      <Paperclip className="w-3.5 h-3.5 text-slate-500" />
+                      <p className="text-xs font-bold text-slate-600 uppercase tracking-wider">
+                        Archivos adjuntos ({attachments.length})
+                      </p>
+                    </div>
+                    <div className="space-y-2">
+                      {attachments.map((att) => (
+                        <div
+                          key={att.id}
+                          className="flex items-center gap-3 p-3 rounded-xl border border-slate-200 bg-slate-50"
+                        >
+                          <div className="shrink-0 w-8 h-8 rounded-lg bg-white border border-slate-200 flex items-center justify-center">
+                            <AttachmentIcon mimeType={att.mimeType} className="w-4 h-4" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-semibold text-slate-800 truncate">
+                              {att.name}
+                            </p>
+                            <p className="text-xs text-slate-400">
+                              {att.mimeType === 'application/pdf' ? 'PDF' : 'Imagen'} ·{' '}
+                              {formatBytes(att.sizeBytes)}
+                            </p>
+                          </div>
+                          <button
+                            onClick={() => handleDownloadAttachment(att)}
+                            disabled={downloadingAttachId !== null}
+                            className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-teal-500 hover:bg-teal-600 text-white text-xs font-bold transition-colors disabled:opacity-60"
+                          >
+                            {downloadingAttachId === att.id ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            ) : (
+                              <FileDown className="w-3.5 h-3.5" />
+                            )}
+                            Descargar
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {hasDocumentTypes && (
+                  <p className="text-xs text-slate-400 text-center">
+                    El PDF se guardará en tu dispositivo.
+                  </p>
+                )}
               </div>
             </div>
           )}
