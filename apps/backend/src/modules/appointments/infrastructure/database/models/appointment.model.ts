@@ -162,6 +162,16 @@ export class AppointmentModel extends Model {
   @Column({ type: DataType.INTEGER, allowNull: true, field: 'duration_minutes' })
   declare durationMinutes: number | null;
 
+  /**
+   * Optional health note submitted by the patient during public booking.
+   * "¿Algo que tu especialista deba saber? (alergias, condiciones, medicamentos)".
+   * Displayed as a yellow alert in the specialist's appointment view.
+   * Null for appointments created from the doctor panel or legacy rows.
+   * Added by migration 20261120000001-appointment-patient-alert.
+   */
+  @Column({ type: DataType.TEXT, allowNull: true, field: 'patient_alert' })
+  declare patientAlert: string | null;
+
   @CreatedAt
   @Column({ field: 'created_at' })
   declare createdAt: Date;

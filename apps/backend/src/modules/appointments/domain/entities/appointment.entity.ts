@@ -90,10 +90,18 @@ export class Appointment {
      *
      * `planName`/`planPrice` son el snapshot de lo que se cobró y no cambian nunca;
      * esto dice de qué servicio del catálogo salieron. Null en las citas viejas cuyo
-     * nombre era ambiguo al migrar. Va último y con default para no reordenar los 30
-     * argumentos posicionales de este constructor.
+     * nombre era ambiguo al migrar.
      */
     public readonly planId: string | null = null,
+    /**
+     * Optional health note submitted by the patient during public booking.
+     * "¿Algo que tu especialista deba saber? (alergias, condiciones, medicamentos)".
+     * Displayed as a yellow alert in the specialist's appointment view.
+     * Also merged into patients.allergies by the booking use case.
+     * Null for appointments created from the doctor panel or legacy rows.
+     * Added by migration 20261120000001-appointment-patient-alert.
+     */
+    public readonly patientAlert: string | null = null,
   ) {}
 
   /**
@@ -167,6 +175,7 @@ export class Appointment {
       params.consultationCode ?? null,
       params.officeName ?? null,
       params.planId ?? null,
+      params.patientAlert ?? null,
     );
   }
 }
@@ -246,4 +255,11 @@ export interface AppointmentCreateParams {
    * Read-side enrichment only — not persisted on the appointments table.
    */
   officeName?: string | null;
+  /**
+   * Optional health note submitted by the patient during public booking.
+   * Stored on the appointment for display as a yellow alert in the specialist view.
+   * Also merged into patients.allergies by the booking use case.
+   * Null for appointments created from the doctor panel or legacy rows.
+   */
+  patientAlert?: string | null;
 }

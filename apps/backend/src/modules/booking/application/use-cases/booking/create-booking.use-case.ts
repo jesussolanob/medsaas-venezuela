@@ -502,6 +502,12 @@ export class CreateBookingUseCase {
       // cita nace NULL y rompe el panel `covered_by` y la subconsulta de precio.
       sessionNumber: options?.sessionNumber ?? null,
       chiefComplaint: dto.chief_complaint ?? null,
+      /**
+       * Patient-submitted health note (allergies, conditions, medications).
+       * Stored directly on the appointment so the specialist sees it as an alert.
+       * Also merged into patients.allergies after the booking transaction (best-effort).
+       */
+      patientAlert: dto.patient_alert ?? null,
       appointmentCode,
       durationMinutes: officeDuration,
       // Link the appointment to the selected office. Previously dropped here, so
@@ -762,6 +768,28 @@ export class CreateBookingUseCase {
 
       return saved;
     });
+
+    // --- Step 6b: Merge patient_alert into patients.allergies (best-effort, post-commit) ---
+    // The transaction is already committed at this point, so a failure here CANNOT
+    // roll back the booking. We prefer post-commit over in-transaction to avoid the
+    // PostgreSQL "current transaction is aborted" cascade: if appendAllergyNote threw
+    // inside the transaction callback, subsequent statements would fail and the booking
+    // itself would roll back. Post-commit is the safe choice; the allergy note is
+    // enrichment data, not a booking invariant.
+    // SECURITY: patient_alert is health data — never log its content.
+    if (dto.patient_alert && patient.id) {
+      try {
+        await this.patientRepo.appendAllergyNote(
+          patient.id,
+          dto.doctor_id,
+          dto.patient_alert,
+          savedAppointment.scheduledAt,
+        );
+      } catch {
+        // Non-fatal. Log at warn level without exposing the allergy text (health PII).
+        this.logger.warn('[booking] appendAllergyNote failed (non-fatal)');
+      }
+    }
 
     // --- Step 7: Send notifications (best-effort — must not break booking) ---
     let meetLink: string | null = null;
