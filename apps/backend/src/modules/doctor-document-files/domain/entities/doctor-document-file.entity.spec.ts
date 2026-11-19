@@ -1,4 +1,5 @@
 import { DoctorDocumentFile } from './doctor-document-file.entity';
+import { DoctorDocumentFileDataInvalidError } from '../errors/doctor-document-file-data-invalid.error';
 
 const makeFile = (overrides: Partial<ConstructorParameters<typeof DoctorDocumentFile>[0]> = {}) =>
   new DoctorDocumentFile({
@@ -40,7 +41,7 @@ describe('DoctorDocumentFile', () => {
   });
 
   describe('static create()', () => {
-    it('constructs a DoctorDocumentFile from params', () => {
+    it('constructs a DoctorDocumentFile from valid params', () => {
       const file = DoctorDocumentFile.create({
         id: 'file-2',
         doctorId: 'doctor-2',
@@ -57,6 +58,73 @@ describe('DoctorDocumentFile', () => {
       expect(file.doctorId).toBe('doctor-2');
       expect(file.name).toBe('Lab results');
       expect(file.isDeleted()).toBe(false);
+    });
+
+    it('throws DoctorDocumentFileDataInvalidError when name is empty', () => {
+      expect(() =>
+        DoctorDocumentFile.create({
+          id: 'x',
+          doctorId: 'doctor-1',
+          name: '   ',
+          storagePath: 'document/doctor-1/x.pdf',
+          mimeType: 'application/pdf',
+          sizeBytes: 100,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          deletedAt: null,
+        }),
+      ).toThrow(DoctorDocumentFileDataInvalidError);
+    });
+
+    it('throws DoctorDocumentFileDataInvalidError when name exceeds MAX_NAME_LENGTH', () => {
+      const longName = 'a'.repeat(DoctorDocumentFile.MAX_NAME_LENGTH + 1);
+      expect(() =>
+        DoctorDocumentFile.create({
+          id: 'x',
+          doctorId: 'doctor-1',
+          name: longName,
+          storagePath: 'document/doctor-1/x.pdf',
+          mimeType: 'application/pdf',
+          sizeBytes: 100,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          deletedAt: null,
+        }),
+      ).toThrow(DoctorDocumentFileDataInvalidError);
+    });
+
+    it('throws DoctorDocumentFileDataInvalidError when mimeType is not in allowed set', () => {
+      expect(() =>
+        DoctorDocumentFile.create({
+          id: 'x',
+          doctorId: 'doctor-1',
+          name: 'Video',
+          storagePath: 'document/doctor-1/video.mp4',
+          mimeType: 'video/mp4',
+          sizeBytes: 100,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          deletedAt: null,
+        }),
+      ).toThrow(DoctorDocumentFileDataInvalidError);
+    });
+
+    it('accepts all allowed MIME types without throwing', () => {
+      for (const mime of DoctorDocumentFile.ALLOWED_MIME_TYPES) {
+        expect(() =>
+          DoctorDocumentFile.create({
+            id: 'x',
+            doctorId: 'doctor-1',
+            name: 'File',
+            storagePath: `document/doctor-1/file.${mime.split('/')[1]}`,
+            mimeType: mime,
+            sizeBytes: 100,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+            deletedAt: null,
+          }),
+        ).not.toThrow();
+      }
     });
   });
 

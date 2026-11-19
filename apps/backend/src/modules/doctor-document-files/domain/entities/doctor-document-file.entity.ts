@@ -1,3 +1,5 @@
+import { DoctorDocumentFileDataInvalidError } from '../errors/doctor-document-file-data-invalid.error';
+
 /**
  * DoctorDocumentFile domain entity.
  *
@@ -5,10 +7,10 @@
  * "Documentos frecuentes" library. Doctors upload a file once and can
  * attach it to any consultation share without re-uploading.
  *
- * Business invariants:
- * - name must be 1–120 non-whitespace characters.
- * - mimeType must be one of the ALLOWED_MIME_TYPES.
- * - sizeBytes must be positive.
+ * Business invariants (enforced by create()):
+ * - name: 1–120 non-whitespace characters (trimmed).
+ * - mimeType: must be one of the ALLOWED_MIME_TYPES.
+ * - sizeBytes: must be a positive integer.
  * - Soft-deleted files (deletedAt !== null) must not be returned in lists.
  * - isOwnedBy() enforces anti-IDOR in use cases.
  * - Limit: a doctor may have at most MAX_FILES_PER_DOCTOR active (non-deleted) files.
@@ -68,6 +70,22 @@ export class DoctorDocumentFile {
   }
 
   static create(params: DoctorDocumentFileCreateParams): DoctorDocumentFile {
+    // Invariant: name must be 1–120 non-whitespace characters.
+    const trimmedName = params.name.trim();
+    if (trimmedName.length === 0 || trimmedName.length > DoctorDocumentFile.MAX_NAME_LENGTH) {
+      throw new DoctorDocumentFileDataInvalidError(
+        `El nombre del archivo debe tener entre 1 y ${DoctorDocumentFile.MAX_NAME_LENGTH} caracteres.`,
+      );
+    }
+
+    // Invariant: mimeType must be in the allowed set.
+    const allowedMimes: readonly string[] = DoctorDocumentFile.ALLOWED_MIME_TYPES;
+    if (!allowedMimes.includes(params.mimeType)) {
+      throw new DoctorDocumentFileDataInvalidError(
+        'El tipo de archivo no está permitido (solo PDF, JPG, PNG o WEBP).',
+      );
+    }
+
     return new DoctorDocumentFile(params);
   }
 }

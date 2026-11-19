@@ -15,7 +15,7 @@ import 'server-only';
  *   Returns: { success: true, data: { id, name, mimeType, sizeBytes, createdAt } }
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { type NextRequest, NextResponse } from 'next/server';
 import { backendGet, backendPost } from '@/lib/api-client.server';
 import { log } from '@/lib/logger';
 
@@ -25,8 +25,11 @@ export const dynamic = 'force-dynamic';
 // GET — list doctor's document files
 // ---------------------------------------------------------------------------
 
-export async function GET(_req: NextRequest): Promise<NextResponse> {
-  const result = await backendGet<{ files: unknown[] }>('/api/doctor/document-files');
+export async function GET(): Promise<NextResponse> {
+  // Backend returns { success: true, data: DoctorDocumentFileListItem[] } —
+  // the array is directly in `data`. We wrap it as `{ files: [...] }` so the
+  // UI can read json.data.files consistently.
+  const result = await backendGet<unknown[]>('/api/doctor/document-files');
 
   if (!result.ok) {
     log.error('[document-files GET] backend error', {
@@ -39,7 +42,7 @@ export async function GET(_req: NextRequest): Promise<NextResponse> {
     );
   }
 
-  return NextResponse.json({ success: true, data: result.value });
+  return NextResponse.json({ success: true, data: { files: result.value } });
 }
 
 // ---------------------------------------------------------------------------

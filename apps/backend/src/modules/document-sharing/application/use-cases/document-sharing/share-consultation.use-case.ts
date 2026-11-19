@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as crypto from 'crypto';
 import { randomUUID } from 'crypto';
@@ -14,7 +14,10 @@ import { SharedDocumentLink } from '../../../domain/entities/shared-document-lin
 import type { AttachmentSnapshot } from '../../../domain/entities/shared-document-link.entity';
 import { DocumentAccessCode } from '../../../domain/entities/document-access-code.entity';
 import { NoShareContentError } from '../../../domain/errors/no-share-content.error';
-import { DocumentLinkNotFoundError } from '../../../domain/errors/document-link-not-found.error';
+import { TooManyAttachmentsError } from '../../../domain/errors/too-many-attachments.error';
+import { AttachmentTotalSizeExceededError } from '../../../domain/errors/attachment-total-size-exceeded.error';
+import { InvalidAttachmentMimeTypeError } from '../../../domain/errors/invalid-attachment-mime-type.error';
+import { LibraryFileNotAvailableError } from '../../../domain/errors/library-file-not-available.error';
 import { ConsultationNotOwnedError } from '../../../domain/errors/consultation-not-owned.error';
 import { PatientCedulaRequiredForSharingError } from '../../../domain/errors/patient-cedula-required.error';
 import type { ShareConsultationDto } from '../../dtos/share-consultation.dto';
@@ -39,18 +42,19 @@ import {
 } from '../../../../doctor-document-files/domain/repositories/doctor-document-file.repository';
 import { DoctorDocumentFileInvalidPathError } from '../../../../doctor-document-files/domain/errors/doctor-document-file-invalid-path.error';
 
-/** Max attachments per link. */
-const MAX_ATTACHMENTS = 10;
-/** Max total attachment size per link (25 MB). */
-const MAX_TOTAL_ATTACHMENT_BYTES = 25 * 1024 * 1024;
-
-/** MIME types allowed for upload-only attachments. */
-const ATTACHMENT_ALLOWED_MIME_TYPES = new Set([
+// MIME types allowed for upload-only attachments (must stay in sync with
+// DoctorDocumentFile.ALLOWED_MIME_TYPES in the library domain).
+const ATTACHMENT_ALLOWED_MIME_SET = new Set([
   'application/pdf',
   'image/jpeg',
   'image/png',
   'image/webp',
 ]);
+
+/** Max attachments per link. */
+const MAX_ATTACHMENTS = 10;
+/** Max total attachment size per link (25 MB). */
+const MAX_TOTAL_ATTACHMENT_BYTES = 25 * 1024 * 1024;
 
 export interface ShareConsultationInput {
   consultationId: string;
@@ -106,9 +110,8 @@ export class ShareConsultationUseCase {
     private readonly doctorProfileRepo: IDoctorProfileRepository,
     private readonly mailer: MailerService,
     private readonly config: ConfigService,
-    @Optional()
     @Inject(DOCTOR_DOCUMENT_FILE_REPOSITORY)
-    private readonly docFileRepo?: IDoctorDocumentFileRepository,
+    private readonly docFileRepo: IDoctorDocumentFileRepository,
   ) {}
 
   async execute(input: ShareConsultationInput): Promise<ShareConsultationOutput> {
@@ -232,31 +235,28 @@ export class ShareConsultationUseCase {
 
     // Resolve library files from DB (ownership verified by the query scope)
     if (libraryIds.length > 0) {
-      if (!this.docFileRepo) {
-        this.logger.warn('[share] docFileRepo not injected but library IDs provided — skipping');
-      } else {
-        const libFiles = await this.docFileRepo.findByIdsAndDoctor(libraryIds, doctorId);
-        // Reject if any requested ID was not found (deleted or not owned) — anti-IDOR
-        if (libFiles.length !== libraryIds.length) {
-          throw new DocumentLinkNotFoundError();
-        }
-        for (const f of libFiles) {
-          snapshots.push({
-            name: f.name,
-            storagePath: f.storagePath,
-            mimeType: f.mimeType,
-            sizeBytes: f.sizeBytes,
-            source: 'library',
-            libraryFileId: f.id,
-          });
-        }
+      const libFiles = await this.docFileRepo.findByIdsAndDoctor(libraryIds, doctorId);
+      // Anti-IDOR: if any requested ID was not found, deleted, or owned by another
+      // doctor, throw LibraryFileNotAvailableError (not 404 — avoids information leak).
+      if (libFiles.length !== libraryIds.length) {
+        throw new LibraryFileNotAvailableError();
+      }
+      for (const f of libFiles) {
+        snapshots.push({
+          name: f.name,
+          storagePath: f.storagePath,
+          mimeType: f.mimeType,
+          sizeBytes: f.sizeBytes,
+          source: 'library',
+          libraryFileId: f.id,
+        });
       }
     }
 
     // Validate and add upload-only files
     for (const up of uploads) {
-      if (!ATTACHMENT_ALLOWED_MIME_TYPES.has(up.mimeType)) {
-        throw new DoctorDocumentFileInvalidPathError();
+      if (!ATTACHMENT_ALLOWED_MIME_SET.has(up.mimeType)) {
+        throw new InvalidAttachmentMimeTypeError();
       }
       this.assertValidUploadPath(up.filePath, doctorId);
       snapshots.push({
@@ -268,25 +268,36 @@ export class ShareConsultationUseCase {
       });
     }
 
-    // Enforce limits
+    // Enforce attachment count limit
     if (snapshots.length > MAX_ATTACHMENTS) {
-      throw new NoShareContentError(); // reused — 10-attachment limit
+      throw new TooManyAttachmentsError();
     }
+    // Enforce total size limit
     const totalBytes = snapshots.reduce((sum, s) => sum + s.sizeBytes, 0);
     if (totalBytes > MAX_TOTAL_ATTACHMENT_BYTES) {
-      throw new NoShareContentError(); // reused — 25 MB limit
+      throw new AttachmentTotalSizeExceededError();
     }
 
     return snapshots.length > 0 ? snapshots : null;
   }
 
   /**
-   * Validates that an upload filePath starts with `document/<doctorId>/`
-   * and contains no path traversal.
+   * Validates that an upload filePath:
+   * - starts with exactly `document/<doctorId>/`
+   * - has no leading or trailing whitespace
+   * - contains no `..` (path traversal)
+   * - contains no `%`, `\`, or NUL characters (defense in depth)
    */
   private assertValidUploadPath(filePath: string, doctorId: string): void {
     const requiredPrefix = `document/${doctorId}/`;
-    if (!filePath.startsWith(requiredPrefix) || filePath.includes('..')) {
+    if (
+      filePath !== filePath.trim() ||
+      !filePath.startsWith(requiredPrefix) ||
+      filePath.includes('..') ||
+      filePath.includes('%') ||
+      filePath.includes('\\') ||
+      filePath.includes('\0')
+    ) {
       throw new DoctorDocumentFileInvalidPathError();
     }
   }

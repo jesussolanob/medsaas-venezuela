@@ -71,15 +71,21 @@ export class CreateDoctorDocumentFileUseCase {
 
   /**
    * Guards against path traversal and IDOR.
-   * Accepts paths that start with exactly `document/<doctorId>/` and
-   * contain no `..` segments.
+   * Accepts paths that:
+   * - start with exactly `document/<doctorId>/`
+   * - have no leading or trailing whitespace
+   * - contain no `..` (directory traversal)
+   * - contain no `%`, `\`, or NUL characters (defense in depth)
    */
   private assertValidPath(filePath: string, doctorId: string): void {
     const requiredPrefix = `document/${doctorId}/`;
     if (
+      filePath !== filePath.trim() ||
       !filePath.startsWith(requiredPrefix) ||
       filePath.includes('..') ||
-      filePath !== filePath.trim()
+      filePath.includes('%') ||
+      filePath.includes('\\') ||
+      filePath.includes('\0')
     ) {
       throw new DoctorDocumentFileInvalidPathError();
     }

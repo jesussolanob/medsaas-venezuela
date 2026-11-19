@@ -17,6 +17,9 @@ export type DoctorDocumentFileMimeType = (typeof DOCTOR_DOCUMENT_FILE_ALLOWED_MI
 // Request DTOs
 // ---------------------------------------------------------------------------
 
+/** Max bytes per file (10 MB). Applied to both library uploads and share attachments. */
+export const DOCTOR_DOCUMENT_FILE_MAX_BYTES = 10 * 1024 * 1024;
+
 export const CreateDoctorDocumentFileDtoSchema = z.object({
   /** Display name shown in the doctor's library. Trimmed. Max 120 chars. */
   name: z.string().trim().min(1).max(120),
@@ -27,8 +30,8 @@ export const CreateDoctorDocumentFileDtoSchema = z.object({
   filePath: z.string().min(1),
   /** MIME type of the file. */
   mimeType: z.enum(DOCTOR_DOCUMENT_FILE_ALLOWED_MIME_TYPES),
-  /** File size in bytes. Must be a positive integer. */
-  sizeBytes: z.number().int().positive(),
+  /** File size in bytes. Must be a positive integer. Max 10 MB. */
+  sizeBytes: z.number().int().positive().max(DOCTOR_DOCUMENT_FILE_MAX_BYTES),
 });
 
 export type CreateDoctorDocumentFileDto = z.infer<typeof CreateDoctorDocumentFileDtoSchema>;
@@ -79,8 +82,10 @@ export interface DoctorDocumentFileUrlResponse {
 export const ShareAttachmentUploadDtoSchema = z.object({
   name: z.string().trim().min(1).max(255),
   filePath: z.string().min(1),
-  mimeType: z.string().min(1),
-  sizeBytes: z.number().int().positive(),
+  /** Must be one of the allowed MIME types. */
+  mimeType: z.enum(DOCTOR_DOCUMENT_FILE_ALLOWED_MIME_TYPES),
+  /** Declared file size; capped at 10 MB per file. */
+  sizeBytes: z.number().int().positive().max(DOCTOR_DOCUMENT_FILE_MAX_BYTES),
 });
 
 export type ShareAttachmentUploadDto = z.infer<typeof ShareAttachmentUploadDtoSchema>;

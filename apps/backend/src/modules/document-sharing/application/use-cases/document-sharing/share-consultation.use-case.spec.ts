@@ -11,10 +11,13 @@ import { SharedDocumentLink } from '../../../domain/entities/shared-document-lin
 import { DocumentAccessCode } from '../../../domain/entities/document-access-code.entity';
 import { Consultation } from '../../../../consultations/domain/entities/consultation.entity';
 import { NoShareContentError } from '../../../domain/errors/no-share-content.error';
+import { TooManyAttachmentsError } from '../../../domain/errors/too-many-attachments.error';
+import { AttachmentTotalSizeExceededError } from '../../../domain/errors/attachment-total-size-exceeded.error';
+import { InvalidAttachmentMimeTypeError } from '../../../domain/errors/invalid-attachment-mime-type.error';
+import { LibraryFileNotAvailableError } from '../../../domain/errors/library-file-not-available.error';
 import { ConsultationNotOwnedError } from '../../../domain/errors/consultation-not-owned.error';
 import { PatientCedulaRequiredForSharingError } from '../../../domain/errors/patient-cedula-required.error';
 import { DoctorDocumentFileInvalidPathError } from '../../../../doctor-document-files/domain/errors/doctor-document-file-invalid-path.error';
-import { DocumentLinkNotFoundError } from '../../../domain/errors/document-link-not-found.error';
 
 const mockLinkRepo: jest.Mocked<ISharedDocumentLinkRepository> = {
   save: jest.fn(),
@@ -535,7 +538,7 @@ describe('ShareConsultationUseCase', () => {
     ).rejects.toBeInstanceOf(DoctorDocumentFileInvalidPathError);
   });
 
-  it('throws DocumentLinkNotFoundError when library file IDs are not found (anti-IDOR)', async () => {
+  it('throws LibraryFileNotAvailableError when library file IDs are not found (anti-IDOR)', async () => {
     // Repo returns fewer files than requested — some were deleted or belong to another doctor
     mockDocFileRepo.findByIdsAndDoctor.mockResolvedValue([]);
 
@@ -548,7 +551,95 @@ describe('ShareConsultationUseCase', () => {
           attachments: { libraryFileIds: ['file-1', 'file-2'], uploads: [] },
         },
       }),
-    ).rejects.toBeInstanceOf(DocumentLinkNotFoundError);
+    ).rejects.toBeInstanceOf(LibraryFileNotAvailableError);
+  });
+
+  it('throws InvalidAttachmentMimeTypeError for disallowed MIME in upload', async () => {
+    await expect(
+      useCase.execute({
+        consultationId: 'consult-1',
+        doctorId: 'doctor-1',
+        dto: {
+          sections: { report: false, prescriptions: false, ehr: false },
+          attachments: {
+            libraryFileIds: [],
+            uploads: [
+              {
+                name: 'Video.mp4',
+                filePath: 'document/doctor-1/video.mp4',
+                mimeType: 'video/mp4',
+                sizeBytes: 50_000,
+              },
+            ],
+          },
+        },
+      }),
+    ).rejects.toBeInstanceOf(InvalidAttachmentMimeTypeError);
+  });
+
+  it('throws TooManyAttachmentsError when more than 10 attachments provided', async () => {
+    // 11 upload attachments (above the limit of 10)
+    const uploads = Array.from({ length: 11 }, (_, i) => ({
+      name: `File${i}.pdf`,
+      filePath: `document/doctor-1/file${i}.pdf`,
+      mimeType: 'application/pdf' as const,
+      sizeBytes: 100,
+    }));
+
+    await expect(
+      useCase.execute({
+        consultationId: 'consult-1',
+        doctorId: 'doctor-1',
+        dto: {
+          sections: { report: false, prescriptions: false, ehr: false },
+          attachments: { libraryFileIds: [], uploads },
+        },
+      }),
+    ).rejects.toBeInstanceOf(TooManyAttachmentsError);
+  });
+
+  it('throws AttachmentTotalSizeExceededError when total declared size exceeds 25 MB', async () => {
+    // 5 files × 6 MB each = 30 MB > 25 MB limit
+    const uploads = Array.from({ length: 5 }, (_, i) => ({
+      name: `BigFile${i}.pdf`,
+      filePath: `document/doctor-1/big${i}.pdf`,
+      mimeType: 'application/pdf' as const,
+      sizeBytes: 6 * 1024 * 1024, // 6 MB each
+    }));
+
+    await expect(
+      useCase.execute({
+        consultationId: 'consult-1',
+        doctorId: 'doctor-1',
+        dto: {
+          sections: { report: false, prescriptions: false, ehr: false },
+          attachments: { libraryFileIds: [], uploads },
+        },
+      }),
+    ).rejects.toBeInstanceOf(AttachmentTotalSizeExceededError);
+  });
+
+  it('throws DoctorDocumentFileInvalidPathError for path containing %', async () => {
+    await expect(
+      useCase.execute({
+        consultationId: 'consult-1',
+        doctorId: 'doctor-1',
+        dto: {
+          sections: { report: false, prescriptions: false, ehr: false },
+          attachments: {
+            libraryFileIds: [],
+            uploads: [
+              {
+                name: 'Encoded.pdf',
+                filePath: 'document/doctor-1/%2e%2e/secret.pdf',
+                mimeType: 'application/pdf',
+                sizeBytes: 1000,
+              },
+            ],
+          },
+        },
+      }),
+    ).rejects.toBeInstanceOf(DoctorDocumentFileInvalidPathError);
   });
 
   it('persists null attachments when no attachments provided', async () => {

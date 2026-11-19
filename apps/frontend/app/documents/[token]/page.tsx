@@ -125,15 +125,26 @@ export default function DocumentDownloadPage() {
 
   // Attachments state
   const [attachmentsData, setAttachmentsData] = useState<AttachmentsData | null>(null);
+  // attachmentsLoading: true only on the FIRST fetch (hides the list until ready).
+  // attachmentsRefreshing: true on subsequent silent re-fetches (keeps list visible).
   const [attachmentsLoading, setAttachmentsLoading] = useState(false);
+  const [attachmentsRefreshing, setAttachmentsRefreshing] = useState(false);
   const [downloadingAttachId, setDownloadingAttachId] = useState<string | null>(null);
 
   const inputRef = useRef<HTMLInputElement>(null);
 
   // ── Attachments fetch ─────────────────────────────────────────────────────
 
-  async function fetchAttachments(sessionToken: string): Promise<AttachmentsData | null> {
-    setAttachmentsLoading(true);
+  async function fetchAttachments(
+    sessionToken: string,
+    options?: { silent?: boolean },
+  ): Promise<AttachmentsData | null> {
+    // Use the refreshing state for background re-fetches so the list stays visible.
+    if (options?.silent) {
+      setAttachmentsRefreshing(true);
+    } else {
+      setAttachmentsLoading(true);
+    }
     try {
       const res = await fetch(
         `/api/documents/${token}/attachments?sessionToken=${encodeURIComponent(sessionToken)}`,
@@ -146,7 +157,11 @@ export default function DocumentDownloadPage() {
     } catch {
       return null;
     } finally {
-      setAttachmentsLoading(false);
+      if (options?.silent) {
+        setAttachmentsRefreshing(false);
+      } else {
+        setAttachmentsLoading(false);
+      }
     }
   }
 
@@ -250,8 +265,9 @@ export default function DocumentDownloadPage() {
     setDownloadingAttachId(att.id);
 
     // Always re-fetch to get fresh signed URLs (10-min TTL from backend).
-    // The BFF call is lightweight so the latency is acceptable.
-    const fresh = await fetchAttachments(session.sessionToken);
+    // Use silent=true so attachmentsLoading stays false and the list remains visible.
+    // The row-level spinner is driven by downloadingAttachId.
+    const fresh = await fetchAttachments(session.sessionToken, { silent: true });
     if (fresh) {
       setAttachmentsData(fresh);
     }
@@ -531,9 +547,9 @@ export default function DocumentDownloadPage() {
                   </div>
                 )}
 
-                {/* Attachments section */}
+                {/* Attachments section — visible even while silently refreshing URLs */}
                 {!attachmentsLoading && attachments.length > 0 && (
-                  <div className="space-y-2">
+                  <div className="space-y-2" aria-busy={attachmentsRefreshing}>
                     <div className="flex items-center gap-1.5">
                       <Paperclip className="w-3.5 h-3.5 text-slate-500" />
                       <p className="text-xs font-bold text-slate-600 uppercase tracking-wider">

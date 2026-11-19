@@ -22,11 +22,12 @@ export const CreateDoctorDocumentFileDtoSchema = z.object({
   filePath: z.string().min(1, 'La ruta del archivo es requerida'),
   /** MIME type of the uploaded file. */
   mimeType: z.enum(ALLOWED_MIME_TYPES as [string, ...string[]]),
-  /** File size in bytes (from the upload response). */
+  /** File size in bytes (from the upload response). Capped at 10 MB. */
   sizeBytes: z
     .number()
     .int('El tamaño debe ser un número entero')
-    .positive('El tamaño debe ser mayor que cero'),
+    .positive('El tamaño debe ser mayor que cero')
+    .max(10 * 1024 * 1024, 'El archivo no puede superar los 10 MB'),
 });
 
 export type CreateDoctorDocumentFileDto = z.infer<typeof CreateDoctorDocumentFileDtoSchema>;

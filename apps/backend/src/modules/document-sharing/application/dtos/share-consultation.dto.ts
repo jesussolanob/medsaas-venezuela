@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { DoctorDocumentFile } from '../../../doctor-document-files/domain/entities/doctor-document-file.entity';
 
 /** Valid document type keys for the new unified sharing selection. */
 export const DOC_TYPE_VALUES = ['recipe', 'paraclinical', 'history', 'rest', 'informe'] as const;
@@ -32,11 +33,21 @@ export type DocSelectionDto = z.infer<typeof DocSelectionSchema>;
  * `mimeType`  — MIME type of the file.
  * `sizeBytes` — file size in bytes.
  */
+const ATTACHMENT_MIME_TYPES = DoctorDocumentFile.ALLOWED_MIME_TYPES as unknown as [
+  string,
+  ...string[],
+];
+
+/** Max bytes per upload attachment (10 MB). */
+const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
+
 export const ShareAttachmentUploadSchema = z.object({
   name: z.string().trim().min(1).max(255),
   filePath: z.string().min(1),
-  mimeType: z.string().min(1),
-  sizeBytes: z.number().int().positive(),
+  /** Must be one of the allowed MIME types. */
+  mimeType: z.enum(ATTACHMENT_MIME_TYPES),
+  /** Declared file size; capped at 10 MB per file. */
+  sizeBytes: z.number().int().positive().max(MAX_UPLOAD_BYTES),
 });
 
 export type ShareAttachmentUploadDto = z.infer<typeof ShareAttachmentUploadSchema>;

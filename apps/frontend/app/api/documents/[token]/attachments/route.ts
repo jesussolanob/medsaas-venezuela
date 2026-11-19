@@ -1,3 +1,5 @@
+import 'server-only';
+
 /**
  * GET /api/documents/[token]/attachments?sessionToken=...
  *
