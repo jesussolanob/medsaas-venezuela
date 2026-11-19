@@ -15,6 +15,7 @@ function makeRepo(): jest.Mocked<IConsultationBlockRepository> {
     resolveBlocks: jest.fn(),
     getDoctorLayout: jest.fn().mockResolvedValue('tabs'),
     setDoctorLayout: jest.fn().mockResolvedValue(undefined),
+    upsertBlockLabel: jest.fn().mockResolvedValue(undefined),
   };
 }
 
