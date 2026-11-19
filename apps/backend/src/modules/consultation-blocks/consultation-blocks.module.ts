@@ -11,6 +11,7 @@ import { SequelizeConsultationBlockRepository } from './infrastructure/persisten
 
 import { GetConsultationBlocksUseCase } from './application/use-cases/consultation-blocks/get-consultation-blocks.use-case';
 import { SaveConsultationBlocksUseCase } from './application/use-cases/consultation-blocks/save-consultation-blocks.use-case';
+import { RenameBlockLabelUseCase } from './application/use-cases/consultation-blocks/rename-block-label.use-case';
 
 import { ConsultationBlocksController } from './presentation/controllers/consultation-blocks.controller';
 
@@ -18,8 +19,9 @@ import { ConsultationBlocksController } from './presentation/controllers/consult
  * ConsultationBlocksModule
  *
  * Manages consultation block configuration per doctor:
- *   GET  /api/doctor/consultation-blocks — full state (catalog + config + resolved)
- *   PUT  /api/doctor/consultation-blocks — replace config atomically
+ *   GET   /api/doctor/consultation-blocks              — full state (catalog + config + resolved)
+ *   PUT   /api/doctor/consultation-blocks              — replace config atomically
+ *   PATCH /api/doctor/consultation-blocks/:key/label  — rename a single block label
  *
  * Models registered here:
  *   - ConsultationBlockCatalogModel   → consultation_block_catalog
@@ -48,6 +50,7 @@ import { ConsultationBlocksController } from './presentation/controllers/consult
     },
     GetConsultationBlocksUseCase,
     SaveConsultationBlocksUseCase,
+    RenameBlockLabelUseCase,
   ],
   // Export GetConsultationBlocksUseCase so DocumentSharingModule can call
   // resolveBlocks for a doctorId without duplicating the repository setup.

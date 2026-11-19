@@ -10,6 +10,7 @@ import type {
   IConsultationBlockRepository,
   SaveDoctorBlocksParams,
   SpecialtyDefaultRow,
+  UpsertBlockLabelParams,
 } from '../../../domain/repositories/consultation-block.repository';
 import { ConsultationBlockCatalogModel } from '../models/consultation-block-catalog.model';
 import { DoctorConsultationBlockModel } from '../models/doctor-consultation-block.model';
@@ -165,6 +166,45 @@ export class SequelizeConsultationBlockRepository implements IConsultationBlockR
     });
 
     return blocks.length;
+  }
+
+  // ── upsertBlockLabel ──────────────────────────────────────────────────────
+
+  /**
+   * Upserts only the custom_label for a single (doctorId, blockKey) row.
+   *
+   * - Existing row: updates custom_label only (all other columns unchanged).
+   * - No row: inserts a new row using the provided fallback enabled/sort_order
+   *   so that the rename does NOT accidentally enable, disable, or reorder the
+   *   block in the doctor's global configuration.
+   *
+   * We use a find-then-update-or-create pattern (ORM-idiomatic) rather than
+   * raw SQL to stay consistent with the rest of the repository and avoid the
+   * IN (:ids) vs = ANY(:ids) pitfall from the mocked-Sequelize test suite.
+   */
+  async upsertBlockLabel(params: UpsertBlockLabelParams): Promise<void> {
+    const { doctorId, blockKey, customLabel, fallbackEnabled, fallbackSortOrder } = params;
+
+    const existing = await this.doctorBlockModel.findOne({
+      where: { doctorId, blockKey },
+    });
+
+    if (existing) {
+      await existing.update({ customLabel });
+    } else {
+      await this.doctorBlockModel.create({
+        doctorId,
+        blockKey,
+        customLabel,
+        enabled: fallbackEnabled,
+        sortOrder: fallbackSortOrder,
+        // All other nullable columns default to null (use catalog defaults via cascade).
+        customContentType: null,
+        customDescription: null,
+        printable: null,
+        sendToPatient: null,
+      });
+    }
   }
 
   // ── resolveBlocks ─────────────────────────────────────────────────────────
