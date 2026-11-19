@@ -20,6 +20,25 @@ export interface DocumentSections {
 }
 
 /**
+ * A single attachment snapshot stored alongside the shared link.
+ *
+ * The snapshot is frozen at share time — later changes to the library file
+ * or its storage path do not affect already-issued links.
+ *
+ * `source`: 'library' — file from the doctor's document library.
+ *           'upload'  — file uploaded specifically for this share.
+ * `libraryFileId`: only present for library-sourced attachments.
+ */
+export interface AttachmentSnapshot {
+  name: string;
+  storagePath: string;
+  mimeType: string;
+  sizeBytes: number;
+  source: 'library' | 'upload';
+  libraryFileId?: string;
+}
+
+/**
  * New unified doc selection — stores which document types the doctor chose when
  * sharing, so the frontend can render the exact same component as the download.
  *
@@ -66,6 +85,12 @@ export interface SharedDocumentLinkCreateParams {
    * Optional for backward-compatibility with existing call sites that omit it (defaults to null).
    */
   standaloneDocumentId?: string | null;
+  /**
+   * Optional file attachments frozen at share time.
+   * Null for links created before this feature (backward-compatible).
+   * Max 10 items, total size ≤ 25 MB — enforced at application layer.
+   */
+  attachments?: AttachmentSnapshot[] | null;
 }
 
 export class SharedDocumentLink {
@@ -91,6 +116,10 @@ export class SharedDocumentLink {
    * Null when the link points to a consultation.
    */
   readonly standaloneDocumentId: string | null;
+  /**
+   * File attachments frozen at share time (snapshot). Null for older links.
+   */
+  readonly attachments: AttachmentSnapshot[] | null;
 
   /**
    * Maximum total failed attempts allowed across all codes for this link.
@@ -115,6 +144,7 @@ export class SharedDocumentLink {
     this.lastCodeRequestedAt = params.lastCodeRequestedAt;
     this.createdAt = params.createdAt;
     this.standaloneDocumentId = params.standaloneDocumentId ?? null;
+    this.attachments = params.attachments ?? null;
   }
 
   /** Returns true when the given doctor owns this link. Anti-IDOR guard. */

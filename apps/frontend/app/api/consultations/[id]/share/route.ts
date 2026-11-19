@@ -27,6 +27,18 @@ interface DocSelection {
   restContent?: string | null;
 }
 
+interface ShareAttachmentUpload {
+  name: string;
+  filePath: string;
+  mimeType: string;
+  sizeBytes: number;
+}
+
+interface ShareAttachmentsInput {
+  libraryFileIds?: string[];
+  uploads?: ShareAttachmentUpload[];
+}
+
 interface ShareResult {
   url: string;
   code: string;
@@ -39,7 +51,11 @@ export async function POST(
 ): Promise<NextResponse> {
   const { id } = await params;
 
-  let body: { sections?: ShareSections; doc_selection?: DocSelection };
+  let body: {
+    sections?: ShareSections;
+    doc_selection?: DocSelection;
+    attachments?: ShareAttachmentsInput;
+  };
   try {
     body = await req.json();
   } catch {
@@ -49,18 +65,28 @@ export async function POST(
   const sections = body?.sections ?? {};
   const hasAtLeastOne = sections.report || sections.prescriptions || sections.ehr;
 
-  // También aceptar doc_selection sin sections (tipos que no mapean a las 3 secciones viejas)
+  // Accept doc_selection without sections (new types that don't map to legacy sections)
   const hasDocSelection = (body?.doc_selection?.types?.length ?? 0) > 0;
 
-  if (!hasAtLeastOne && !hasDocSelection) {
+  // Accept attachments without doc types
+  const hasAttachments =
+    (body?.attachments?.libraryFileIds?.length ?? 0) > 0 ||
+    (body?.attachments?.uploads?.length ?? 0) > 0;
+
+  if (!hasAtLeastOne && !hasDocSelection && !hasAttachments) {
     return NextResponse.json(
-      { error: 'Debes seleccionar al menos una sección para compartir' },
+      { error: 'Debes seleccionar al menos una sección o archivo adjunto para compartir' },
       { status: 400 },
     );
   }
 
-  const backendBody: { sections: ShareSections; doc_selection?: DocSelection } = { sections };
+  const backendBody: {
+    sections: ShareSections;
+    doc_selection?: DocSelection;
+    attachments?: ShareAttachmentsInput;
+  } = { sections };
   if (body?.doc_selection) backendBody.doc_selection = body.doc_selection;
+  if (body?.attachments) backendBody.attachments = body.attachments;
 
   const result = await backendPost<ShareResult>(`/api/consultations/${id}/share`, backendBody);
 

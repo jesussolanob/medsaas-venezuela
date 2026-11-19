@@ -2,6 +2,7 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as Minio from 'minio';
 import type {
+  GetSignedUrlOptions,
   IStoragePort,
   StorageUploadInput,
   StorageUploadResult,
@@ -96,14 +97,20 @@ export class MinioStorageAdapter implements IStoragePort, OnModuleInit {
   }
 
   /**
-   * Returns a pre-signed GET URL valid for 1 hour (3 600 seconds).
+   * Returns a pre-signed GET URL valid for the given TTL (default 1 hour / 3600 s).
    * Used for private objects (receipt, document, signature).
    *
-   * The optional `ttlMs` parameter is accepted to satisfy the IStoragePort
-   * interface but MinIO always uses a fixed 1-hour TTL in this implementation.
+   * When `options.responseDisposition` is provided, it is forwarded as the
+   * `response-content-disposition` S3 query parameter so the browser treats
+   * the response as a file download with the specified filename.
    */
-  async getSignedUrl(path: string, _ttlMs?: number): Promise<string> {
-    return this.client.presignedGetObject(this.bucket, path, 3600);
+  async getSignedUrl(path: string, ttlMs?: number, options?: GetSignedUrlOptions): Promise<string> {
+    const ttlSeconds = ttlMs !== undefined ? Math.ceil(ttlMs / 1000) : 3600;
+    const reqParams: Record<string, string> = {};
+    if (options?.responseDisposition) {
+      reqParams['response-content-disposition'] = options.responseDisposition;
+    }
+    return this.client.presignedGetObject(this.bucket, path, ttlSeconds, reqParams);
   }
 
   /**

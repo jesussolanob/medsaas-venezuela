@@ -328,6 +328,26 @@ services, **booking**. Base/Plus = todo; IA solo en Plus. Planes legacy
 > **Convención (lección QA 2026-06-12):** el BFF/api-client devuelve `envelope.data` en **camelCase**; los componentes
 > frontend deben leer camelCase (varios bugs por asumir snake_case: NewAppointmentFlow, consultation-blocks config).
 
+### `doctor-document-files` — ✅ DDD implementado (2026-11-19)
+
+Módulo `modules/doctor-document-files/`. Biblioteca de documentos frecuentes del doctor: archivos PDF/imagen
+que el especialista sube una vez y puede adjuntar a cualquier enlace de compartir sin subirlos de nuevo.
+
+Tabla `doctor_document_files` (migración `20261119000001`): soft delete (`deleted_at`, paranoid Sequelize),
+MIME TEXT+CHECK (nunca ENUM Postgres), límite 50 activos por doctor. Rutas físicas bajo `document/<doctorId>/`.
+
+5 endpoints (`GET /list`, `POST /create`, `PATCH /:id` rename, `DELETE /:id` soft-delete, `GET /:id/url` preview).
+Anti-IDOR: `doctorId` siempre de `user.sub`. Upload path validado server-side (prefijo + sin `..`).
+
+BFF: `app/api/doctor/document-files/route.ts`, `/[id]/route.ts`, `/[id]/url/route.ts`.
+Shared types en `libs/shared-types/src/dtos/doctor-document-files.dto.ts`.
+
+**Adjuntos en Document Sharing (2026-11-19):** `ShareConsultationUseCase` acepta `attachments?`
+(`{ libraryFileIds?, uploads? }`). IDs de biblioteca verificados en BD (storagePath NUNCA del cliente).
+Upload paths validados (prefijo). Snap congelado en JSONB `attachments` de `shared_document_links`
+(migración `20261119000002`). Renderizados en `render-data` como signed URLs de descarga individual
+(RFC 5987 `Content-Disposition`, TTL 10 min). Audit log registra solo conteo (nunca nombres).
+
 ### `document-sharing` — ✅ DDD implementado + frontend cableado (2026-06-18)
 
 Módulo `modules/document-sharing/`. Doctor comparte documentos de consulta (informe/recetas/EHR) vía enlace
@@ -335,6 +355,8 @@ público + código 6 dígitos 48h; paciente descarga PDF consolidado (`pdf-lib`)
 (doctor) + 3 públicos (verify-code, download, request-code). Session token HMAC-SHA256 15min sin JWT.
 Anti-bruteforce (5 intentos). Fire-and-forget email (`MailerService.sendTemplate('shared_documents_code', ...)`).
 Tablas: `shared_document_links` + `document_access_codes` (migraciones `20260618000001` + `20260618000002`).
+**(2026-11-19) Ampliado:** columna JSONB `attachments` en `shared_document_links`; adjuntos en render-data.
+`NoShareContentError` reemplaza `NoSectionsSelectedError` (válido si ≥1 tipo doc OR ≥1 adjunto).
 
 **Doble factor (fix 2026-06-18):** la verificación exige **cédula + código** (`POST .../verify-code` body
 `{code, cedula}`); ambos deben matchear al paciente del enlace, mismatch → mismo 422 genérico (anti-oracle).

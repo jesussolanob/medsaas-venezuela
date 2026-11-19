@@ -26,6 +26,7 @@ import {
   Calculator,
   BookMarked,
   Plus,
+  FolderOpen,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { reportError } from '@/lib/report-error';
@@ -34,6 +35,7 @@ import { useDoctorFeatures } from '@/hooks/useDoctorFeatures';
 import type { ContentTemplateType } from './content-actions';
 import ContentTemplatesTab from './ContentTemplatesTab';
 import ContentTemplateModal from './ContentTemplateModal';
+import FrequentDocumentsTab from './FrequentDocumentsTab';
 
 /** Maps a branding template tab key to its content template type, if any. */
 const BRANDING_TAB_TO_CONTENT_TYPE: Record<string, ContentTemplateType | undefined> = {
@@ -232,6 +234,8 @@ export default function TemplatesPage() {
   const { features: planFeatures, loading: planLoading } = useDoctorFeatures();
   /** True when the "Mis plantillas" tab is shown instead of the branding UI. */
   const [showContentTab, setShowContentTab] = useState(false);
+  /** True when the "Documentos frecuentes" tab is shown. Not gated by plan. */
+  const [showFrequentDocsTab, setShowFrequentDocsTab] = useState(false);
   /**
    * When set, opens the create modal directly from a branding tab "Crear plantilla" button.
    * Cleared after the modal closes (created or cancelled).
@@ -567,13 +571,14 @@ export default function TemplatesPage() {
         <div className="flex gap-2 overflow-x-auto pb-1">
           {templateTabs.map((tab) => {
             const Icon = tab.icon;
-            const isActive = !showContentTab && activeTab === tab.key;
+            const isActive = !showContentTab && !showFrequentDocsTab && activeTab === tab.key;
             return (
               <button
                 key={tab.key}
                 onClick={() => {
                   setActiveTab(tab.key);
                   setShowContentTab(false);
+                  setShowFrequentDocsTab(false);
                 }}
                 className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold whitespace-nowrap transition-all ${
                   isActive
@@ -589,7 +594,10 @@ export default function TemplatesPage() {
           {/* "Mis plantillas" tab — gated by plan feature content_templates */}
           {!planLoading && planFeatures.content_templates && (
             <button
-              onClick={() => setShowContentTab(true)}
+              onClick={() => {
+                setShowContentTab(true);
+                setShowFrequentDocsTab(false);
+              }}
               className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold whitespace-nowrap transition-all ${
                 showContentTab
                   ? 'bg-teal-500 text-white shadow-md'
@@ -600,13 +608,31 @@ export default function TemplatesPage() {
               Mis plantillas
             </button>
           )}
+          {/* "Documentos frecuentes" tab — not gated by plan */}
+          <button
+            onClick={() => {
+              setShowFrequentDocsTab(true);
+              setShowContentTab(false);
+            }}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold whitespace-nowrap transition-all ${
+              showFrequentDocsTab
+                ? 'bg-teal-500 text-white shadow-md'
+                : 'bg-white border border-teal-200 text-teal-600 hover:bg-teal-50'
+            }`}
+          >
+            <FolderOpen className="w-4 h-4" />
+            Documentos frecuentes
+          </button>
         </div>
 
         {/* ── "Mis plantillas" content tab UI ─────────────────────────────── */}
         {showContentTab && <ContentTemplatesTab />}
 
-        {/* ── Branding tabs UI (hidden when content tab is active) ─────────── */}
-        {!showContentTab && (
+        {/* ── "Documentos frecuentes" tab UI ──────────────────────────────── */}
+        {showFrequentDocsTab && <FrequentDocumentsTab />}
+
+        {/* ── Branding tabs UI (hidden when content or frequent-docs tab is active) ─── */}
+        {!showContentTab && !showFrequentDocsTab && (
           <>
             {/* Template description */}
             <div className="bg-white border border-slate-200 rounded-xl p-4 flex items-start gap-3">
@@ -968,7 +994,7 @@ export default function TemplatesPage() {
                 )}
               </div>
             </div>
-          </> /* end !showContentTab */
+          </> /* end !showContentTab && !showFrequentDocsTab */
         )}
 
         {/* Modal: "Crear plantilla" triggered directly from a branding tab button */}
