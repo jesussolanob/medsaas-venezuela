@@ -35,6 +35,7 @@ const mockPatientRepo: jest.Mocked<IPatientRepository> = {
   update: jest.fn(),
   softDelete: jest.fn(),
   logReveal: jest.fn(),
+  appendAllergyNote: jest.fn().mockResolvedValue(false),
 };
 
 const mockStorage: jest.Mocked<IStoragePort> = {

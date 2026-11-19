@@ -128,13 +128,13 @@ Módulo `pending-consultations`. Envelope `{success,data}`. Doctor scoped por `u
 
 ### Booking público (módulo ✅ — SIN auth)
 
-| Endpoint                                 | Método | Notas                                                                                                                                                                                                                                 |
-| ---------------------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/api/booking/:doctorId/info`            | GET    | Datos públicos del doctor + **`bookingEnabled`** (feature `booking` del plan efectivo — 2026-06-18). 404 si no existe/inactivo (anti-enumeración).                                                                                    |
-| `/api/booking/:doctorId/plans`           | GET    | Pricing plans con `show_in_booking=true`.                                                                                                                                                                                             |
-| `/api/booking/:doctorId/packages?email=` | GET    | Saldo de paquetes del paciente por email (Zod email; no filtra PII).                                                                                                                                                                  |
-| `/api/booking`                           | POST   | Crea cita pública: find-or-create paciente (PII cifrada) + cita + consumo de paquete en **transacción atómica**. Respuesta sin `patientId`. **403 `BookingNotEnabledError`** si el plan del doctor no incluye `booking` (2026-06-18). |
-| _(diferidos Etapa 2)_                    |        | `/slots` (req. doctor_schedule); **Turnstile real + rate limiting** (hoy stub — go-live blocker).                                                                                                                                     |
+| Endpoint                                 | Método | Notas                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| ---------------------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/api/booking/:doctorId/info`            | GET    | Datos públicos del doctor + **`bookingEnabled`** (feature `booking` del plan efectivo — 2026-06-18). 404 si no existe/inactivo (anti-enumeración).                                                                                                                                                                                                                                                                                                                                                                  |
+| `/api/booking/:doctorId/plans`           | GET    | Pricing plans con `show_in_booking=true`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `/api/booking/:doctorId/packages?email=` | GET    | Saldo de paquetes del paciente por email (Zod email; no filtra PII).                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `/api/booking`                           | POST   | Crea cita pública: find-or-create paciente (PII cifrada) + cita + consumo de paquete en **transacción atómica**. Respuesta sin `patientId`. **403 `BookingNotEnabledError`** si el plan del doctor no incluye `booking` (2026-06-18). **Campo opcional `patient_alert` (string, max 500 chars):** nota de salud del paciente. Se guarda en `appointments.patient_alert` y se merge en `patients.allergies` (post-commit, best-effort, no falla la reserva). Nunca se loguea (PII de salud). Ver `2026-11-19` abajo. |
+| _(diferidos Etapa 2)_                    |        | `/slots` (req. doctor_schedule); **Turnstile real + rate limiting** (hoy stub — go-live blocker).                                                                                                                                                                                                                                                                                                                                                                                                                   |
 
 ### Finances (módulo ✅)
 
@@ -1638,3 +1638,30 @@ created_at    TIMESTAMPTZ   DEFAULT now()
 ⚠️ `sellerId` sale **siempre** de `CurrentUser().sub` — nunca del cuerpo.
 ⚠️ `comment` es texto libre — **NUNCA loguear** (puede contener PII).
 ⚠️ `authorName` es PII — **NUNCA loguear**.
+
+---
+
+### 2026-11-19 — Alerta de salud del paciente en reserva (`patient_alert`)
+
+**Migración:** `20261120000001-appointment-patient-alert.cjs` — agrega `patient_alert TEXT NULL` a `appointments`.
+
+**Campo:** `patient_alert` (string, máx 500 chars, opcional) en `POST /api/booking` y en `POST /api/doctor/appointments` (via `CreateBookingDto`).
+
+**Comportamiento:**
+
+1. Se guarda en `appointments.patient_alert` tal cual (tras trim).
+2. Post-commit (best-effort, no falla la reserva): `IPatientRepository.appendAllergyNote(patientId, doctorId, text, at)` lo merguea en `patients.allergies` con 3 reglas:
+   - Vacío/null → set directo.
+   - Ya contiene el texto (case-insensitive) → no-op (idempotente).
+   - Tiene contenido diferente → append `\n{text} (indicado por el paciente al reservar el DD/MM/AAAA)` (zona Caracas UTC-4).
+3. Fallo de `appendAllergyNote` → warn sin PII, booking NO revierte.
+
+**Campos expuestos (frontend):**
+
+- `BackendAppointment.patientAlert?: string | null` (camelCase, viene del backend mapper).
+- `AgendaAppointment.patient_alert?: string | null` (snake_case, exposición a componentes de agenda).
+- BFF `/api/book` acepta `patientAlert?: string | null` del cliente y lo reenvía como `patient_alert` al backend.
+
+**Seguridad:** `patient_alert` es dato de salud (PII). **Nunca loguear su contenido.** Scoped por `doctorId` (anti-IDOR en `appendAllergyNote`).
+
+**Tests:** 93 tests en `create-booking.use-case.spec.ts` + 10 tests de merge rules en `sequelize-patient.repository.append-allergy.spec.ts`.
