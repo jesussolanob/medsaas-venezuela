@@ -74,6 +74,8 @@ interface RawAppointmentRow {
   office_id: string | null;
   google_calendar_event_id: string | null;
   duration_minutes: number | null;
+  /** Patient health note (allergies, conditions, medications). Added by 20261120000001. */
+  patient_alert: string | null;
   created_at: string;
   updated_at: string;
   // Present only in the enriched paginated list query (LEFT JOIN consultations)
@@ -145,7 +147,8 @@ export class SequelizeAppointmentRepository implements IAppointmentRepository {
          a.payment_receipt_url,
          a.insurance_name, a.bcv_rate, a.amount_bs, a.package_id, a.session_number,
          a.chief_complaint, a.appointment_code, a.payment_id, a.meet_link, a.office_id,
-         a.google_calendar_event_id, a.duration_minutes, a.created_at, a.updated_at,
+         a.google_calendar_event_id, a.duration_minutes, a.patient_alert,
+         a.created_at, a.updated_at,
          c.payment_status AS consultation_payment_status,
          c.consultation_code AS consultation_code
        FROM appointments a
@@ -201,6 +204,7 @@ export class SequelizeAppointmentRepository implements IAppointmentRepository {
         officeId: appointment.officeId ?? null,
         googleCalendarEventId: appointment.googleCalendarEventId ?? null,
         durationMinutes: appointment.durationMinutes ?? null,
+        patientAlert: appointment.patientAlert ?? null,
       },
       { transaction },
     );
@@ -613,7 +617,8 @@ export class SequelizeAppointmentRepository implements IAppointmentRepository {
          a.payment_receipt_url,
          a.insurance_name, a.bcv_rate, a.amount_bs, a.package_id, a.session_number,
          a.chief_complaint, a.appointment_code, a.payment_id, a.meet_link, a.office_id,
-         a.google_calendar_event_id, a.duration_minutes, a.created_at, a.updated_at,
+         a.google_calendar_event_id, a.duration_minutes, a.patient_alert,
+         a.created_at, a.updated_at,
          c.payment_status   AS consultation_payment_status,
          c.consultation_code AS consultation_code,
          o.name             AS office_name
@@ -659,7 +664,8 @@ export class SequelizeAppointmentRepository implements IAppointmentRepository {
          plan_name, plan_price, payment_method, payment_reference, payment_receipt_url,
          insurance_name, bcv_rate, amount_bs, package_id, session_number,
          chief_complaint, appointment_code, payment_id, meet_link, office_id,
-         google_calendar_event_id, duration_minutes, created_at, updated_at
+         google_calendar_event_id, duration_minutes, patient_alert,
+         created_at, updated_at
        FROM appointments
        WHERE doctor_id = :doctorId
          AND google_calendar_event_id IS NULL
@@ -710,6 +716,7 @@ export class SequelizeAppointmentRepository implements IAppointmentRepository {
       officeId: r.office_id,
       googleCalendarEventId: r.google_calendar_event_id,
       durationMinutes: r.duration_minutes,
+      patientAlert: r.patient_alert ?? null,
       createdAt: new Date(r.created_at),
       updatedAt: new Date(r.updated_at),
       paymentStatus: r.consultation_payment_status ?? null,
@@ -751,6 +758,7 @@ export class SequelizeAppointmentRepository implements IAppointmentRepository {
       officeId: row.officeId ?? null,
       googleCalendarEventId: row.googleCalendarEventId ?? null,
       durationMinutes: row.durationMinutes ?? null,
+      patientAlert: row.patientAlert ?? null,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
     });

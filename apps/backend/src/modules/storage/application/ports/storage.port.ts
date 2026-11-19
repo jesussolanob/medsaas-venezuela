@@ -25,6 +25,21 @@ export interface StorageUploadResult {
   path: string;
 }
 
+/** Optional parameters for getSignedUrl. */
+export interface GetSignedUrlOptions {
+  /**
+   * When set, the generated URL will include a `response-content-disposition`
+   * query parameter (or equivalent), instructing the browser to treat the
+   * response as a file download with the given Content-Disposition header value.
+   *
+   * Example: `'attachment; filename="report.pdf"; filename*=UTF-8\'\'report.pdf'`
+   *
+   * GCS v4 supports this via the `responseDisposition` signed-URL option.
+   * MinIO/S3 supports this via the `response-content-disposition` reqParam.
+   */
+  responseDisposition?: string;
+}
+
 export interface IStoragePort {
   upload(input: StorageUploadInput): Promise<StorageUploadResult>;
   /**
@@ -34,8 +49,9 @@ export interface IStoragePort {
    * @param ttlMs   Optional TTL in milliseconds. Defaults to 1 hour (3 600 000 ms).
    *                GCS v4 signed URLs support a maximum of 7 days.
    *                MinIO adapters may ignore this parameter and always use 1 hour.
+   * @param options Optional parameters (e.g. responseDisposition for file downloads).
    */
-  getSignedUrl(path: string, ttlMs?: number): Promise<string>;
+  getSignedUrl(path: string, ttlMs?: number, options?: GetSignedUrlOptions): Promise<string>;
 }
 
 export const STORAGE_PORT = 'STORAGE_PORT' as const;

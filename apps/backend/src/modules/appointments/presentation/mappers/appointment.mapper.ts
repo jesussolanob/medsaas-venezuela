@@ -57,6 +57,12 @@ export function toPlainAppointment(appt: Appointment): Record<string, unknown> {
     sessionNumber: appt.sessionNumber,
     /** Chief complaint / reason for visit. */
     chiefComplaint: appt.chiefComplaint,
+    /**
+     * Optional health note from the patient (allergies, conditions, medications).
+     * Displayed as a yellow alert in the specialist's appointment and consultation views.
+     * Null for appointments created from the doctor panel or legacy rows.
+     */
+    patientAlert: appt.patientAlert,
     appointmentCode: appt.appointmentCode,
     paymentId: appt.paymentId,
     meetLink: appt.meetLink,

@@ -128,13 +128,13 @@ Módulo `pending-consultations`. Envelope `{success,data}`. Doctor scoped por `u
 
 ### Booking público (módulo ✅ — SIN auth)
 
-| Endpoint                                 | Método | Notas                                                                                                                                                                                                                                 |
-| ---------------------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/api/booking/:doctorId/info`            | GET    | Datos públicos del doctor + **`bookingEnabled`** (feature `booking` del plan efectivo — 2026-06-18). 404 si no existe/inactivo (anti-enumeración).                                                                                    |
-| `/api/booking/:doctorId/plans`           | GET    | Pricing plans con `show_in_booking=true`.                                                                                                                                                                                             |
-| `/api/booking/:doctorId/packages?email=` | GET    | Saldo de paquetes del paciente por email (Zod email; no filtra PII).                                                                                                                                                                  |
-| `/api/booking`                           | POST   | Crea cita pública: find-or-create paciente (PII cifrada) + cita + consumo de paquete en **transacción atómica**. Respuesta sin `patientId`. **403 `BookingNotEnabledError`** si el plan del doctor no incluye `booking` (2026-06-18). |
-| _(diferidos Etapa 2)_                    |        | `/slots` (req. doctor_schedule); **Turnstile real + rate limiting** (hoy stub — go-live blocker).                                                                                                                                     |
+| Endpoint                                 | Método | Notas                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| ---------------------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/api/booking/:doctorId/info`            | GET    | Datos públicos del doctor + **`bookingEnabled`** (feature `booking` del plan efectivo — 2026-06-18). 404 si no existe/inactivo (anti-enumeración).                                                                                                                                                                                                                                                                                                                                                                  |
+| `/api/booking/:doctorId/plans`           | GET    | Pricing plans con `show_in_booking=true`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `/api/booking/:doctorId/packages?email=` | GET    | Saldo de paquetes del paciente por email (Zod email; no filtra PII).                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `/api/booking`                           | POST   | Crea cita pública: find-or-create paciente (PII cifrada) + cita + consumo de paquete en **transacción atómica**. Respuesta sin `patientId`. **403 `BookingNotEnabledError`** si el plan del doctor no incluye `booking` (2026-06-18). **Campo opcional `patient_alert` (string, max 500 chars):** nota de salud del paciente. Se guarda en `appointments.patient_alert` y se merge en `patients.allergies` (post-commit, best-effort, no falla la reserva). Nunca se loguea (PII de salud). Ver `2026-11-19` abajo. |
+| _(diferidos Etapa 2)_                    |        | `/slots` (req. doctor_schedule); **Turnstile real + rate limiting** (hoy stub — go-live blocker).                                                                                                                                                                                                                                                                                                                                                                                                                   |
 
 ### Finances (módulo ✅)
 
@@ -299,13 +299,13 @@ Aplica sin re-login — el token solo lleva el rol; el mapa de permisos se resue
 
 ### Document Sharing (módulo ✅ 2026-06-18 — enlace público + código 6 dígitos + cédula)
 
-| Endpoint                                             | Método | Auth                   | Notas                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| ---------------------------------------------------- | ------ | ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/api/consultations/:id/share`                       | POST   | AppAuthGuard (doctor)  | Body: `{ sections: { report, prescriptions, ehr } }` (al menos 1 true) **+ (2026-07-10) `doc_selection: { types[], informeBlockKeys[], restContent? }`** (los 5 tipos de documento del modal rediseñado). **Guard: si el paciente no tiene cédula → 422 `PATIENT_CEDULA_REQUIRED_FOR_SHARING`**. Respuesta `{ success, data:{ url, code, expiresAt } }`. Email fire-and-forget.                                                                                                                                                           |
-| `/api/documents/:token/render-data?sessionToken=...` | GET    | Pública (sessionToken) | **(2026-07-10, #29)** Valida sessionToken (mismo HMAC que download, vía `SessionTokenValidatorService`). Devuelve `{ success, data: DocumentRenderData }` con datos EN VIVO: consulta (blocksSnapshot), `consultationBlocks` (key/label/printable/sortOrder), patient (fullName/cedula), doctor (fullName/specialty/license/logoUrl/signatureUrl firmadas), `prescriptions[]`, **`ehrRecords[]` del PACIENTE** (`findByPatient`), `templateConfig` informe, `docSelection`, `sections`. Audit log. NO genera PDF — lo renderiza el front. |
-| `/api/documents/:token/verify-code`                  | POST   | Pública                | Body: **`{ code: string, cedula: string }`** — código 6 dígitos **Y** cédula deben matchear al paciente del enlace. Cédula normalizada (sin espacios/guiones/puntos, uppercase → tolerante a V/E/P). Anti-bruteforce (5 intentos, incrementa ambos contadores). Respuesta: `{ sessionToken, sections, expiresAt }`. Cualquier mismatch → mismo 422 genérico (anti-oracle).                                                                                                                                                                |
-| `/api/documents/:token/download?sessionToken=...`    | GET    | Pública (sessionToken) | Query param **`sessionToken`** (NO `session`). Valida HMAC-SHA256 (15min TTL, sin DB). Genera PDF (pdf-lib, A4). Content-Type: application/pdf, Cache-Control: no-store. sessionToken ausente → 400.                                                                                                                                                                                                                                                                                                                                      |
-| `/api/documents/:token/request-code`                 | POST   | Pública                | Genera nuevo código 6 dígitos (invalida el anterior), re-envía email fire-and-forget. Cooldown 60s → 429. Respuesta: `{ expiresAt }`.                                                                                                                                                                                                                                                                                                                                                                                                     |
+| Endpoint                                             | Método | Auth                   | Notas                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| ---------------------------------------------------- | ------ | ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/api/consultations/:id/share`                       | POST   | AppAuthGuard (doctor)  | Body: `{ sections: { report, prescriptions, ehr } }` (al menos 1 true) **+ (2026-07-10) `doc_selection: { types[], informeBlockKeys[], restContent? }`** + **(2026-11-19) `attachments?: { libraryFileIds?: uuid[], uploads?: [{ name, filePath, mimeType, sizeBytes }] }`**. Válido si ≥1 tipo de doc OR ≥1 adjunto. Máx. 10 adjuntos / 25 MB total. `libraryFileIds` verificados contra BD (anti-IDOR); `filePath` debe empezar `document/<doctorId>/` y NO contener `..`. `PATIENT_CEDULA_REQUIRED_FOR_SHARING` si no tiene cédula. Respuesta `{ success, data:{ url, code, expiresAt } }`. |
+| `/api/documents/:token/render-data?sessionToken=...` | GET    | Pública (sessionToken) | **(2026-07-10, #29)** Valida sessionToken. Devuelve `DocumentRenderData` con datos EN VIVO: consulta, patient, doctor, prescriptions, ehrRecords, consultationBlocks, templateConfig, docSelection, sections. **(2026-11-19) + `attachments: [{ id, name, mimeType, sizeBytes, url }]`** — URLs firmadas 10 min con `Content-Disposition: attachment; filename*=UTF-8''<RFC5987>`. Audit log registra conteo de adjuntos (nunca nombres — PII). NO genera PDF.                                                                                                                                 |
+| `/api/documents/:token/verify-code`                  | POST   | Pública                | Body: **`{ code: string, cedula: string }`** — código 6 dígitos **Y** cédula deben matchear al paciente del enlace. Cédula normalizada (sin espacios/guiones/puntos, uppercase → tolerante a V/E/P). Anti-bruteforce (5 intentos, incrementa ambos contadores). Respuesta: `{ sessionToken, sections, expiresAt }`. Cualquier mismatch → mismo 422 genérico (anti-oracle).                                                                                                                                                                                                                     |
+| `/api/documents/:token/download?sessionToken=...`    | GET    | Pública (sessionToken) | Query param **`sessionToken`** (NO `session`). Valida HMAC-SHA256 (15min TTL, sin DB). Genera PDF (pdf-lib, A4). Content-Type: application/pdf, Cache-Control: no-store. sessionToken ausente → 400.                                                                                                                                                                                                                                                                                                                                                                                           |
+| `/api/documents/:token/request-code`                 | POST   | Pública                | Genera nuevo código 6 dígitos (invalida el anterior), re-envía email fire-and-forget. Cooldown 60s → 429. Respuesta: `{ expiresAt }`.                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 
 > Session token format: `base64url(JSON({linkId, token, exp})).<hex_HMAC_SHA256>`. Firmado con `AUTH_RESOLVE_SECRET`.
 > Todos los errores en superficies públicas son genéricos (404 anti-enumeración). Nunca loguear PHI/code/token.
@@ -315,6 +315,36 @@ Aplica sin re-login — el token solo lleva el rol; el mapa de permisos se resue
 > backend `/download`): pide `render-data` al backend, arma el contenido con `consultation-documents.ts` y **renderiza
 > `MedicalDocumentPdf` server-side con `@react-pdf/renderer` `renderToBuffer`** (runtime nodejs). Idéntico a la descarga
 > del doctor + refleja ediciones posteriores. La ruta backend `/download` (pdf-lib) queda como legacy.
+
+### Doctor Document Files — Biblioteca de documentos frecuentes (módulo ✅ 2026-11-19)
+
+Módulo `doctor-document-files`. Tabla `doctor_document_files` (soft delete via `deleted_at`; MIME TEXT+CHECK, no ENUM).
+`doctor_id` siempre de `user.sub` (anti-IDOR). Límite: 50 archivos activos por doctor. MIMEs permitidos:
+`application/pdf`, `image/jpeg`, `image/png`, `image/webp`. Rutas físicas bajo `document/<doctorId>/`.
+
+| Endpoint                             | Método | Auth   | Notas                                                                                                                                                                         |
+| ------------------------------------ | ------ | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/api/doctor/document-files`         | GET    | doctor | Lista de archivos activos del doctor (no eliminados). Respuesta: `[{ id, name, mimeType, sizeBytes, createdAt, updatedAt }]`.                                                 |
+| `/api/doctor/document-files`         | POST   | doctor | Registra un archivo ya subido al storage. Body: `{ name (1-120), filePath, mimeType, sizeBytes }`. `filePath` validado server-side: prefijo `document/<doctorId>/`, sin `..`. |
+| `/api/doctor/document-files/:id`     | PATCH  | doctor | Renombra el archivo. Body: `{ name (1-120) }`. Ownership check (404 si no es del doctor o está eliminado).                                                                    |
+| `/api/doctor/document-files/:id`     | DELETE | doctor | Soft delete (setea `deleted_at`; el objeto en storage no se elimina). 204.                                                                                                    |
+| `/api/doctor/document-files/:id/url` | GET    | doctor | Devuelve una signed URL temporal (`{ url, expiresIn }`) para previsualizar el archivo. TTL por defecto: 1 hora. Ownership check.                                              |
+
+**Errores de dominio:**
+
+| Código                                | HTTP | Cuándo                                                        |
+| ------------------------------------- | ---- | ------------------------------------------------------------- |
+| `DOCTOR_DOCUMENT_FILE_NOT_FOUND`      | 404  | Archivo no existe, ya eliminado, o no es del doctor           |
+| `DOCTOR_DOCUMENT_FILE_LIMIT_EXCEEDED` | 422  | Supera el límite de 50 archivos activos                       |
+| `DOCTOR_DOCUMENT_FILE_INVALID_PATH`   | 422  | `filePath` no empieza con `document/<doctorId>/` o tiene `..` |
+
+> **BFF (Next.js):** `GET/POST /api/doctor/document-files` → `app/api/doctor/document-files/route.ts`;
+> `PATCH/DELETE /api/doctor/document-files/[id]` → `app/api/doctor/document-files/[id]/route.ts`;
+> `GET /api/doctor/document-files/[id]/url` → `app/api/doctor/document-files/[id]/url/route.ts`.
+
+> **Storage port:** `IStoragePort.getSignedUrl(path, ttlMs?, options?)` extendido con `options.responseDisposition`
+> para forzar descarga con nombre de archivo. GCS: `responseDisposition`. MinIO: `response-content-disposition`
+> query param. RFC 5987 encoding para nombres con acentos (`filename*=UTF-8''<percent-encoded>`).
 
 ## Referencia: rutas API legacy (Next.js) a migrar
 
@@ -1608,3 +1638,30 @@ created_at    TIMESTAMPTZ   DEFAULT now()
 ⚠️ `sellerId` sale **siempre** de `CurrentUser().sub` — nunca del cuerpo.
 ⚠️ `comment` es texto libre — **NUNCA loguear** (puede contener PII).
 ⚠️ `authorName` es PII — **NUNCA loguear**.
+
+---
+
+### 2026-11-19 — Alerta de salud del paciente en reserva (`patient_alert`)
+
+**Migración:** `20261120000001-appointment-patient-alert.cjs` — agrega `patient_alert TEXT NULL` a `appointments`.
+
+**Campo:** `patient_alert` (string, máx 500 chars, opcional) en `POST /api/booking` y en `POST /api/doctor/appointments` (via `CreateBookingDto`).
+
+**Comportamiento:**
+
+1. Se guarda en `appointments.patient_alert` tal cual (tras trim).
+2. Post-commit (best-effort, no falla la reserva): `IPatientRepository.appendAllergyNote(patientId, doctorId, text, at)` lo merguea en `patients.allergies` con 3 reglas:
+   - Vacío/null → set directo.
+   - Ya contiene el texto (case-insensitive) → no-op (idempotente).
+   - Tiene contenido diferente → append `\n{text} (indicado por el paciente al reservar el DD/MM/AAAA)` (zona Caracas UTC-4).
+3. Fallo de `appendAllergyNote` → warn sin PII, booking NO revierte.
+
+**Campos expuestos (frontend):**
+
+- `BackendAppointment.patientAlert?: string | null` (camelCase, viene del backend mapper).
+- `AgendaAppointment.patient_alert?: string | null` (snake_case, exposición a componentes de agenda).
+- BFF `/api/book` acepta `patientAlert?: string | null` del cliente y lo reenvía como `patient_alert` al backend.
+
+**Seguridad:** `patient_alert` es dato de salud (PII). **Nunca loguear su contenido.** Scoped por `doctorId` (anti-IDOR en `appendAllergyNote`).
+
+**Tests:** 93 tests en `create-booking.use-case.spec.ts` + 10 tests de merge rules en `sequelize-patient.repository.append-allergy.spec.ts`.

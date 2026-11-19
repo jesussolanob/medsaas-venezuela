@@ -164,13 +164,14 @@ export class DownloadDocumentUseCase {
         actorId: doctorId,
         actorRole: 'doctor',
         patientId,
-        fieldRevealed: `shared_document_download:${sectionsLabel}`,
+        fieldRevealed: 'shared_document_download',
         ipAddress: null,
         userAgent: null,
+        reason: sectionsLabel,
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      this.logger.warn(`[download] audit log failed: ${message}`);
+      this.logger.error(`[download] audit log failed: ${message}`);
     }
   }
 }

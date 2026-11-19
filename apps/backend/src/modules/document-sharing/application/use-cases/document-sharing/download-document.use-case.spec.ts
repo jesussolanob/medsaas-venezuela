@@ -84,6 +84,7 @@ const mockPatientRepo = {
   update: jest.fn(),
   softDelete: jest.fn(),
   logReveal: jest.fn(),
+  appendAllergyNote: jest.fn().mockResolvedValue(false),
 } as jest.Mocked<IPatientRepository>;
 
 const mockDoctorProfileRepo = {
@@ -168,7 +169,11 @@ const signToken = (linkId: string, token: string, exp: Date): string => {
       update: jest.fn(),
       softDelete: jest.fn(),
       logReveal: jest.fn(),
+      appendAllergyNote: jest.fn().mockResolvedValue(false),
     } as jest.Mocked<IPatientRepository>,
+    {
+      findByDoctorId: jest.fn(),
+    } as unknown as import('../../../../doctor-settings/domain/repositories/doctor-profile.repository').IDoctorProfileRepository,
     mockConfig,
   );
   return verifyUseCase.signSessionToken(linkId, token, exp);
@@ -223,7 +228,8 @@ describe('DownloadDocumentUseCase', () => {
         actorId: 'doctor-1',
         actorRole: 'doctor',
         patientId: 'patient-1',
-        fieldRevealed: expect.stringContaining('shared_document_download'),
+        fieldRevealed: 'shared_document_download',
+        reason: expect.stringContaining('report'),
       }),
     );
   });

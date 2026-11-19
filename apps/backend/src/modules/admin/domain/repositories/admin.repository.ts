@@ -379,6 +379,22 @@ export interface DoctorGrowthData {
 }
 
 // ---------------------------------------------------------------------------
+// Audit types
+// ---------------------------------------------------------------------------
+
+/** One entry for a bulk audit log insert (one row per patient revealed). */
+export interface BulkAuditEntry {
+  actorId: string;
+  actorRole: string;
+  /** The real patient UUID — NOT a proxy id. */
+  patientId: string;
+  fieldRevealed: string;
+  ipAddress: string | null;
+  userAgent: string | null;
+  reason: string | null;
+}
+
+// ---------------------------------------------------------------------------
 // Repository interface — implemented by infrastructure layer
 // ---------------------------------------------------------------------------
 
@@ -507,6 +523,14 @@ export interface IAdminRepository {
     userAgent: string | null;
     reason?: string | null;
   }): Promise<void>;
+
+  /**
+   * Inserts one audit row per entry in a single bulkCreate statement.
+   * Used by get-doctor-patients to record one row per patient revealed.
+   * No-op when entries is empty.
+   * Fire-and-forget semantics — errors must NOT propagate to the caller.
+   */
+  logAdminRevealBulk(entries: BulkAuditEntry[]): Promise<void>;
 }
 
 // ---------------------------------------------------------------------------

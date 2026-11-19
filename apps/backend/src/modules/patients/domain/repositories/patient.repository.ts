@@ -23,6 +23,8 @@ export interface AuditLogEntry {
   fieldRevealed: string;
   ipAddress: string | null;
   userAgent: string | null;
+  /** Optional free-text detail stored in the reason column (no PII). */
+  reason?: string | null;
 }
 
 export interface IPatientRepository {
@@ -66,4 +68,24 @@ export interface IPatientRepository {
 
   /** Insert a row into access_audit_log. Fire-and-forget in terms of errors. */
   logReveal(entry: AuditLogEntry): Promise<void>;
+
+  /**
+   * Merge a patient-submitted health note into the allergies field.
+   *
+   * Rules (all comparisons are case/whitespace-insensitive):
+   *   1. If allergies is null/blank  → set it to `text`.
+   *   2. If allergies already contains `text` → leave it unchanged (idempotent).
+   *   3. Otherwise → append on a new line:
+   *        `<text> (indicado por el paciente al reservar el DD/MM/AAAA)`
+   *        where the date is in America/Caracas time.
+   *
+   * Ownership-scoped (doctorId): a patient owned by a different doctor
+   * is treated as not found — no cross-doctor mutation.
+   *
+   * Returns true when the field was updated; false when the text was
+   * already present or the patient was not found.
+   *
+   * SECURITY: `text` is health data — never log its value.
+   */
+  appendAllergyNote(patientId: string, doctorId: string, text: string, at: Date): Promise<boolean>;
 }

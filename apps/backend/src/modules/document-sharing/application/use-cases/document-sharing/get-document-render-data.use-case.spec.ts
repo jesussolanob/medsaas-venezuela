@@ -70,7 +70,11 @@ const signToken = (linkId: string, token: string, exp: Date): string => {
       update: jest.fn(),
       softDelete: jest.fn(),
       logReveal: jest.fn(),
+      appendAllergyNote: jest.fn().mockResolvedValue(false),
     } as jest.Mocked<IPatientRepository>,
+    {
+      findByDoctorId: jest.fn(),
+    } as unknown as import('../../../../doctor-settings/domain/repositories/doctor-profile.repository').IDoctorProfileRepository,
     mockConfig,
   );
   return uc.signSessionToken(linkId, token, exp);
@@ -132,6 +136,7 @@ const mockPatientRepo: jest.Mocked<IPatientRepository> = {
   update: jest.fn(),
   softDelete: jest.fn(),
   logReveal: jest.fn(),
+  appendAllergyNote: jest.fn().mockResolvedValue(false),
 };
 
 const mockDoctorProfileRepo: jest.Mocked<IDoctorProfileRepository> = {
@@ -460,7 +465,8 @@ describe('GetDocumentRenderDataUseCase', () => {
         actorId: 'doctor-1',
         actorRole: 'doctor',
         patientId: 'patient-1',
-        fieldRevealed: expect.stringContaining('shared_document_render'),
+        fieldRevealed: 'shared_document_render',
+        reason: expect.any(String),
       }),
     );
   });

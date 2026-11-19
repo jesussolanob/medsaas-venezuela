@@ -79,6 +79,12 @@ export type AgendaAppointment = {
   payment_status: 'pending' | 'approved' | null;
   /** Código de la consulta vinculada (DLT-YYYYMM-NNNN). Null cuando no hay consulta. */
   consultation_code: string | null;
+  /**
+   * Optional health note submitted by the patient during public booking.
+   * Rendered as a yellow alert badge in the appointment detail modal.
+   * Null for appointments created from the doctor panel or legacy rows.
+   */
+  patient_alert?: string | null;
 };
 
 /**
@@ -93,6 +99,8 @@ export type PendingAgendaAppointment = {
   patient_cedula: string | null;
   scheduled_at: string;
   chief_complaint: string | null;
+  /** Health note from the public booking — shown as an alert. */
+  patient_alert: string | null;
   plan_name: string | null;
   plan_price: number | null;
   status: string;
@@ -135,6 +143,12 @@ interface BackendAppointment {
   packageId: string | null;
   sessionNumber: number | null;
   chiefComplaint: string | null;
+  /**
+   * Optional health note submitted by the patient during public booking.
+   * Displayed as a yellow alert in the specialist's appointment view.
+   * Null for appointments created from the doctor panel or legacy rows.
+   */
+  patientAlert?: string | null;
   appointmentCode: string | null;
   paymentId: string | null;
   /** Estado de pago de la consulta vinculada (expuesto desde el backend en el listado). */
@@ -216,6 +230,7 @@ function toAgendaAppointment(raw: BackendAppointment, slotDuration: number): Age
     meet_link: null, // meet_link no está en entity v1 — FASE 5
     payment_status: (raw.paymentStatus as AgendaAppointment['payment_status']) ?? null,
     consultation_code: raw.consultationCode ?? null,
+    patient_alert: raw.patientAlert ?? null,
   };
 }
 
@@ -228,6 +243,7 @@ function toPendingAppointment(raw: BackendAppointment): PendingAgendaAppointment
     patient_cedula: raw.patientCedula ?? null,
     scheduled_at: raw.scheduledAt,
     chief_complaint: raw.chiefComplaint ?? null,
+    patient_alert: raw.patientAlert ?? null,
     plan_name: raw.planName ?? null,
     plan_price: raw.planPrice ?? null,
     status: raw.status,

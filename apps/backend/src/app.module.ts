@@ -62,6 +62,7 @@ import { ReleaseNotesModule } from './modules/release-notes/release-notes.module
 import { DoctorPromptsModule } from './modules/doctor-prompts/doctor-prompts.module';
 import { TeamMeetingsModule } from './modules/team-meetings/team-meetings.module';
 import { RetentionInvitesModule } from './modules/retention-invites/retention-invites.module';
+import { DoctorDocumentFilesModule } from './modules/doctor-document-files/doctor-document-files.module';
 
 @Module({
   imports: [
@@ -132,6 +133,7 @@ import { RetentionInvitesModule } from './modules/retention-invites/retention-in
     DoctorPromptsModule,
     TeamMeetingsModule,
     RetentionInvitesModule,
+    DoctorDocumentFilesModule,
   ],
   controllers: [HealthController],
   providers: [

@@ -18,6 +18,12 @@ import {
   PATIENT_REPOSITORY,
   type IPatientRepository,
 } from '../../../../patients/domain/repositories/patient.repository';
+import {
+  DOCTOR_PROFILE_REPOSITORY,
+  type IDoctorProfileRepository,
+} from '../../../../doctor-settings/domain/repositories/doctor-profile.repository';
+import { buildDoctorDisplayName } from '../../utils/build-doctor-display-name';
+import { maskPatientName } from '../../utils/mask-patient-name';
 
 export interface VerifyCodeInput {
   token: string;
@@ -29,7 +35,14 @@ export interface VerifyCodeInput {
 export interface VerifyCodeOutput {
   sessionToken: string;
   sections: DocumentSections;
+  /** 15-min session token expiry — used internally to gate download/render. */
   expiresAt: Date;
+  /** 48h access-code expiry — displayed as "Enlace válido hasta" on the patient page. */
+  codeExpiresAt: Date;
+  /** Doctor's display name ("Dr./Dra. Nombre" or "Su especialista"). NEVER the email. */
+  doctorName: string;
+  /** Patient's first name + last initial, e.g. "María R.". Safe to show back to the patient. */
+  patientNameMasked: string;
 }
 
 /**
@@ -74,6 +87,8 @@ export class VerifyCodeUseCase {
     private readonly codeRepo: IDocumentAccessCodeRepository,
     @Inject(PATIENT_REPOSITORY)
     private readonly patientRepo: IPatientRepository,
+    @Inject(DOCTOR_PROFILE_REPOSITORY)
+    private readonly doctorProfileRepo: IDoctorProfileRepository,
     private readonly config: ConfigService,
   ) {}
 
@@ -104,14 +119,17 @@ export class VerifyCodeUseCase {
     // 4. Evaluate code match (do not throw yet — must evaluate cedula first)
     const codeOk = accessCode.matches(input.code);
 
-    // 5. Fetch patient (decrypted) and evaluate cédula match.
+    // 5. Fetch patient (decrypted) and doctor profile in parallel.
     //    Never log the cédula value.
     //    If the patient record is not found or has no cedula, cedulaOk = false.
     //    Match is lenient on the V/E/P prefix: a patient stored as "V12345678"
     //    also matches an input of "12345678" (and vice-versa). The prefix letter
     //    adds negligible security — the 6-digit code + 48h expiry + brute-force
     //    cap is the real gate — and patients commonly omit it.
-    const patient = await this.patientRepo.findById(link.patientId, link.doctorId);
+    const [patient, doctorProfile] = await Promise.all([
+      this.patientRepo.findById(link.patientId, link.doctorId),
+      this.doctorProfileRepo.findByDoctorId(link.doctorId),
+    ]);
     const cedulaOk = patient?.cedula != null && cedulasMatch(patient.cedula, input.cedula);
 
     // 6. If EITHER factor fails → increment BOTH counters and throw the same
@@ -131,10 +149,19 @@ export class VerifyCodeUseCase {
     const exp = new Date(now.getTime() + VerifyCodeUseCase.SESSION_TTL_MS);
     const sessionToken = this.signSessionToken(link.id, link.token, exp);
 
+    // 9. Build patient-facing display fields.
+    //    patient is guaranteed non-null here: cedulaOk === true implies
+    //    patient?.cedula != null, so the patient record exists.
+    const doctorName = buildDoctorDisplayName(doctorProfile);
+    const patientNameMasked = maskPatientName(patient?.fullName ?? '');
+
     return {
       sessionToken,
       sections: link.sections,
       expiresAt: exp,
+      codeExpiresAt: accessCode.expiresAt,
+      doctorName,
+      patientNameMasked,
     };
   }
 
@@ -178,7 +205,7 @@ export class VerifyCodeUseCase {
  * Exported for use in tests.
  */
 export function normalizeCedula(raw: string): string {
-  return raw.replace(/[\s\-\.]/g, '').toUpperCase();
+  return raw.replace(/[\s.-]/g, '').toUpperCase();
 }
 
 /**

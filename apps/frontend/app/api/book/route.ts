@@ -56,6 +56,7 @@ export async function POST(req: NextRequest) {
       patientPhone,
       scheduledAt,
       chiefComplaint,
+      patientAlert,
       planName,
       planPrice,
       paymentMethod,
@@ -75,6 +76,8 @@ export async function POST(req: NextRequest) {
       patientPhone?: string;
       scheduledAt?: string;
       chiefComplaint?: string;
+      /** Optional health note: allergies, conditions, medications. Max 500 chars. */
+      patientAlert?: string | null;
       planName?: string;
       planPrice?: number;
       paymentMethod?: string;
@@ -149,6 +152,8 @@ export async function POST(req: NextRequest) {
       plan_name: planName || 'Consulta General',
       plan_price: typeof planPrice === 'number' ? planPrice : 20,
       chief_complaint: chiefComplaint || null,
+      // Forward patient_alert when present (trimmed, max 500 chars enforced by backend Zod schema).
+      ...(patientAlert?.trim() ? { patient_alert: patientAlert.trim() } : {}),
       payment_method: paymentMethod || null,
       payment_reference: paymentReference || null,
       bcv_rate: bcvRate,

@@ -137,8 +137,8 @@ export class SequelizeStandaloneDocumentRepository implements IStandaloneDocumen
       { replacements: { id, doctorId }, type: QueryTypes.SELECT },
     );
 
-    if (rows.length === 0) return null;
     const r = rows[0];
+    if (!r) return null;
 
     // SECURITY: decrypt PHI — never log these values
     return {

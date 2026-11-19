@@ -258,6 +258,50 @@ export class SequelizePatientRepository implements IPatientRepository {
     await this.patientModel.destroy({ where: { id, doctorId } as WhereOptions });
   }
 
+  async appendAllergyNote(
+    patientId: string,
+    doctorId: string,
+    text: string,
+    at: Date,
+    transaction?: import('sequelize').Transaction,
+  ): Promise<boolean> {
+    // Ownership-scoped load: same guard as findById
+    const row = await this.patientModel.findOne({
+      where: { id: patientId, doctorId } as import('sequelize').WhereOptions,
+      transaction,
+    });
+    if (!row) return false;
+
+    const existing = row.allergies ?? '';
+    const normalise = (s: string) => s.trim().toLowerCase();
+
+    // Rule 2: already contains the text — skip (idempotent)
+    if (existing.trim() !== '' && normalise(existing).includes(normalise(text))) {
+      return false;
+    }
+
+    // Format the booking date in America/Caracas (UTC-4, no DST)
+    const caracasDate = new Date(at.getTime() - 4 * 60 * 60 * 1000);
+    const dd = String(caracasDate.getUTCDate()).padStart(2, '0');
+    const mm = String(caracasDate.getUTCMonth() + 1).padStart(2, '0');
+    const yyyy = String(caracasDate.getUTCFullYear());
+
+    let newAllergies: string;
+    if (existing.trim() === '') {
+      // Rule 1: set
+      newAllergies = text;
+    } else {
+      // Rule 3: append with attribution
+      newAllergies = `${existing}\n${text} (indicado por el paciente al reservar el ${dd}/${mm}/${yyyy})`;
+    }
+
+    await this.patientModel.update(
+      { allergies: newAllergies },
+      { where: { id: patientId, doctorId } as import('sequelize').WhereOptions, transaction },
+    );
+    return true;
+  }
+
   async logReveal(entry: AuditLogEntry): Promise<void> {
     await this.auditLogModel.create({
       actorId: entry.actorId,
@@ -266,6 +310,7 @@ export class SequelizePatientRepository implements IPatientRepository {
       fieldRevealed: entry.fieldRevealed,
       ipAddress: entry.ipAddress,
       userAgent: entry.userAgent,
+      reason: entry.reason ?? null,
     });
   }
 

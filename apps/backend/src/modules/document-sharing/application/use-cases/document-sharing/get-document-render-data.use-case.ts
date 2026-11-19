@@ -4,6 +4,7 @@ import {
   type ISharedDocumentLinkRepository,
 } from '../../../domain/repositories/shared-document-link.repository';
 import type {
+  AttachmentSnapshot,
   DocSelection,
   DocumentSections,
 } from '../../../domain/entities/shared-document-link.entity';
@@ -129,6 +130,27 @@ export interface RenderConsultationBlock {
   sortOrder: number;
 }
 
+/**
+ * A single attachment available for the patient to download individually.
+ *
+ * Attachments are NOT merged into the PDF — the patient downloads each file
+ * as its own standalone download via the signed URL (which forces a download
+ * via Content-Disposition: attachment).
+ *
+ * `id`       — stable key for UI rendering (array index as string).
+ * `name`     — display name shown to the patient.
+ * `mimeType` — MIME type (application/pdf, image/jpeg, image/png, image/webp).
+ * `sizeBytes` — file size for display (e.g. "1.2 MB").
+ * `url`      — fresh signed URL with responseDisposition, TTL 10 min.
+ */
+export interface RenderDataAttachment {
+  id: string;
+  name: string;
+  mimeType: string;
+  sizeBytes: number;
+  url: string;
+}
+
 /** Full render-data payload returned to the frontend. */
 export interface DocumentRenderData {
   /** Link-level section flags (legacy backward-compat). */
@@ -166,6 +188,15 @@ export interface DocumentRenderData {
    * is null or empty the field is returned as null.
    */
   templateConfig: RenderTemplateConfig | null;
+  /**
+   * File attachments frozen at share time — each is downloaded individually by the
+   * patient (NOT merged into the PDF). Signed URLs include Content-Disposition: attachment
+   * so the browser downloads the file with the original name.
+   *
+   * Empty array when no attachments were included in the share.
+   * TTL: 10 minutes (600_000 ms).
+   */
+  attachments: RenderDataAttachment[];
 }
 
 /**
@@ -283,8 +314,18 @@ export class GetDocumentRenderDataUseCase {
       this.resolveSignedUrl(informeTemplate?.signatureUrl ?? null, 'template.signatureUrl'),
     ]);
 
-    // 5. Audit log — fire-and-forget
-    void this.logRenderAccess(link.doctorId, link.patientId, link.sections);
+    // 5. Resolve attachment signed URLs (10 min TTL, download disposition)
+    const attachments = await this.resolveAttachmentUrls(link.attachments ?? []);
+
+    // 5b. Audit log — fire-and-forget
+    const attachmentCount = link.attachments?.length ?? 0;
+    void this.logRenderAccess(
+      link.doctorId,
+      link.patientId,
+      link.sections,
+      undefined,
+      attachmentCount,
+    );
 
     // 6. Build and return the render payload
     const doctor: RenderDoctorProfile = {
@@ -350,6 +391,7 @@ export class GetDocumentRenderDataUseCase {
         sortOrder: b.sortOrder,
       })),
       templateConfig,
+      attachments,
     };
   }
 
@@ -397,8 +439,8 @@ export class GetDocumentRenderDataUseCase {
    * VoidStandaloneDocumentUseCase also revokes active links on void, so under normal
    * conditions this guard is reached only if revocation was delayed.
    *
-   * Access audit: logs with a label that includes the document type,
-   * e.g. 'shared_document_render:standalone_recipe'.
+   * Access audit: logs fieldRevealed='shared_document_render' with reason
+   * set to 'standalone_<type>' (e.g. 'standalone_recipe').
    */
   private async buildRenderDataFromStandaloneDocument(
     link: import('../../../domain/entities/shared-document-link.entity').SharedDocumentLink,
@@ -438,12 +480,15 @@ export class GetDocumentRenderDataUseCase {
       this.resolveSignedUrl(informeTemplate?.signatureUrl ?? null, 'template.signatureUrl'),
     ]);
 
-    // Audit log — fire-and-forget; label includes the document type for traceability
+    // Resolve attachment signed URLs — standalone docs can also have attachments
+    const attachments = await this.resolveAttachmentUrls(link.attachments ?? []);
+
+    // Audit log — fire-and-forget; reason includes the document type for traceability
     void this.logRenderAccess(
       link.doctorId,
       link.patientId,
       link.sections,
-      `shared_document_render:standalone_${doc.type}`,
+      `standalone_${doc.type}`,
     );
 
     // Build type-specific render fields
@@ -502,6 +547,7 @@ export class GetDocumentRenderDataUseCase {
       ehrRecords: [],
       consultationBlocks,
       templateConfig,
+      attachments,
     };
   }
 
@@ -668,21 +714,28 @@ export class GetDocumentRenderDataUseCase {
   /**
    * Logs a render access audit entry.
    *
-   * @param labelOverride - When provided, used as the fieldRevealed value directly.
+   * fieldRevealed is always the fixed categorical value 'shared_document_render'
+   * (required by access_audit_log_field_check). Variable detail is stored in the
+   * reason column instead.
+   *
+   * @param reasonOverride - When provided, used as the reason value directly.
    *   Used by the standalone branch to record the document type, e.g.
-   *   'shared_document_render:standalone_recipe'. When absent, the label is
-   *   built from the sections flags (consultation path).
+   *   'standalone_recipe'. When absent, the reason is built from sections flags
+   *   (consultation path).
+   * @param attachmentCount - Number of attachments included. Appended to reason
+   *   as '+Nattachments' when non-zero (count only — no file names, no PII).
    */
   private async logRenderAccess(
     doctorId: string,
     patientId: string,
     sections: { report: boolean; prescriptions: boolean; ehr: boolean },
-    labelOverride?: string,
+    reasonOverride?: string,
+    attachmentCount?: number,
   ): Promise<void> {
     try {
-      let fieldRevealed: string;
-      if (labelOverride !== undefined) {
-        fieldRevealed = labelOverride;
+      let reason: string;
+      if (reasonOverride !== undefined) {
+        reason = reasonOverride;
       } else {
         const sectionsLabel = [
           sections.report ? 'report' : null,
@@ -691,20 +744,109 @@ export class GetDocumentRenderDataUseCase {
         ]
           .filter(Boolean)
           .join(',');
-        fieldRevealed = `shared_document_render:${sectionsLabel}`;
+        reason = sectionsLabel;
+      }
+
+      // Append attachment count (count only — file names could contain PII)
+      if (attachmentCount && attachmentCount > 0) {
+        reason += `+${attachmentCount}attachments`;
       }
 
       await this.patientRepo.logReveal({
         actorId: doctorId,
         actorRole: 'doctor',
         patientId,
-        fieldRevealed,
+        fieldRevealed: 'shared_document_render',
         ipAddress: null,
         userAgent: null,
+        reason,
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      this.logger.warn(`[render-data] audit log failed: ${message}`);
+      this.logger.error(`[render-data] audit log failed: ${message}`);
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Attachment URL resolution
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Signs each attachment's storagePath with a 10-minute TTL and forces a
+   * download via Content-Disposition: attachment with the original filename.
+   *
+   * The filename is RFC 5987-encoded to handle accented chars (e.g. "análisis.pdf").
+   * Errors on individual attachments are caught: the attachment is omitted from
+   * the result rather than failing the entire render-data request.
+   */
+  private async resolveAttachmentUrls(
+    snapshots: AttachmentSnapshot[],
+  ): Promise<RenderDataAttachment[]> {
+    if (snapshots.length === 0) return [];
+
+    const results: RenderDataAttachment[] = [];
+    for (const [i, snap] of snapshots.entries()) {
+      try {
+        const disposition = this.buildContentDisposition(snap.name, snap.mimeType);
+        const url = await this.storage.getSignedUrl(
+          snap.storagePath,
+          600_000, // 10 min TTL
+          { responseDisposition: disposition },
+        );
+        results.push({
+          id: String(i),
+          name: snap.name,
+          mimeType: snap.mimeType,
+          sizeBytes: snap.sizeBytes,
+          url,
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        this.logger.warn(`[render-data] failed to sign attachment URL at index ${i}: ${message}`);
+        // Omit this attachment rather than failing the whole response
+      }
+    }
+    return results;
+  }
+
+  /**
+   * Builds an RFC 5987-compliant Content-Disposition header value for a file download.
+   *
+   * Example output:
+   *   `attachment; filename="analisis.pdf"; filename*=UTF-8''an%C3%A1lisis.pdf`
+   *
+   * The ASCII fallback strips non-ASCII chars; the RFC 5987 value percent-encodes
+   * the full filename. The file extension is appended when absent.
+   */
+  private buildContentDisposition(name: string, mimeType: string): string {
+    // Sanitize: strip path separators and null bytes; limit length
+    const sanitized = name.replace(/[/\\]/g, '_').replace(/\0/g, '').trim().slice(0, 200);
+
+    const ext = this.mimeToExtension(mimeType);
+    const hasExt = sanitized.toLowerCase().endsWith(`.${ext}`);
+    const filename = hasExt ? sanitized : `${sanitized}.${ext}`;
+
+    // ASCII fallback for the unquoted filename= parameter (strips non-ASCII)
+    const ascii = filename.replace(/[^\x20-\x7E]/g, '').replace(/"/g, '_') || `download.${ext}`;
+
+    // RFC 5987 percent-encoding (UTF-8)
+    const encoded = encodeURIComponent(filename)
+      .replace(/'/g, '%27')
+      .replace(/\(/g, '%28')
+      .replace(/\)/g, '%29')
+      .replace(/\*/g, '%2A');
+
+    return `attachment; filename="${ascii}"; filename*=UTF-8''${encoded}`;
+  }
+
+  /** Maps MIME type to file extension for Content-Disposition filename. */
+  private mimeToExtension(mime: string): string {
+    const map: Record<string, string> = {
+      'application/pdf': 'pdf',
+      'image/jpeg': 'jpg',
+      'image/png': 'png',
+      'image/webp': 'webp',
+    };
+    return map[mime] ?? 'bin';
   }
 }

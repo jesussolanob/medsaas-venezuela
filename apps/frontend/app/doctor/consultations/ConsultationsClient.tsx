@@ -172,6 +172,8 @@ type Consultation = {
   patient_phone: string | null;
   /** Bug 6: populado en openConsultation tras fetch a /api/doctor/patients/:id */
   patient_email?: string | null;
+  /** Allergies from the patient record (ficha). Populated post-fetch in openConsultation. */
+  patient_allergies?: string | null;
   started_at: string | null;
   ended_at: string | null;
   duration_minutes: number | null;
@@ -2039,6 +2041,7 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
         const fullName = (pd.fullName ?? pd.full_name) as string | undefined;
         const phone = pd.phone as string | null | undefined;
         const email = pd.email as string | null | undefined;
+        const allergies = pd.allergies as string | null | undefined;
         setSelected((prev) =>
           prev && prev.id === c.id
             ? {
@@ -2046,6 +2049,7 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                 patient_name: fullName ?? prev.patient_name,
                 patient_phone: phone ?? prev.patient_phone,
                 patient_email: email ?? null,
+                patient_allergies: allergies ?? null,
               }
             : prev,
         );
@@ -3935,6 +3939,28 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
               </div>
             )}
 
+            {/* Allergy/alert banner — shown when the patient's record has allergies.
+                Rendered before the editor tabs so the specialist sees it on every block. */}
+            {selected.patient_allergies && (
+              <div
+                role="alert"
+                className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 flex items-start gap-3"
+              >
+                <AlertTriangle
+                  className="w-4 h-4 text-amber-600 shrink-0 mt-0.5"
+                  aria-hidden="true"
+                />
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-bold text-amber-800 uppercase tracking-wide mb-0.5">
+                    Alergias y alertas del paciente
+                  </p>
+                  <p className="text-sm text-amber-900 whitespace-pre-wrap leading-snug">
+                    {selected.patient_allergies}
+                  </p>
+                </div>
+              </div>
+            )}
+
             {/* Medical Report Form — tabs (horizontal) or vertical sidebar layout.
                 WP-E (2026-08): toggleable via the layout button; default comes from
                 the doctor's consultation-blocks config; override stored in localStorage. */}
@@ -4483,6 +4509,27 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                   {/* Récipe Tab — block:prescription */}
                   {consultationTab === 'block:prescription' && (
                     <div className="space-y-4">
+                      {/* Allergy reminder — visible while prescribing so the specialist
+                          doesn't miss it when selecting medications. */}
+                      {selected.patient_allergies && (
+                        <div
+                          role="note"
+                          className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 flex items-start gap-3"
+                        >
+                          <AlertTriangle
+                            className="w-4 h-4 text-amber-600 shrink-0 mt-0.5"
+                            aria-hidden="true"
+                          />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-bold text-amber-800 uppercase tracking-wide mb-0.5">
+                              Alergias y alertas del paciente
+                            </p>
+                            <p className="text-sm text-amber-900 whitespace-pre-wrap leading-snug">
+                              {selected.patient_allergies}
+                            </p>
+                          </div>
+                        </div>
+                      )}
                       <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                         <div className="flex items-center gap-2">
                           <Pill className="w-4 h-4 text-slate-400" />

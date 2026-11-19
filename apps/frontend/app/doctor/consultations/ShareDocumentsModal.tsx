@@ -1,18 +1,20 @@
 'use client';
 
 /**
- * ShareDocumentsModal — v2 (2026-07)
+ * ShareDocumentsModal — v3 (2026-11)
  *
- * Reemplaza la selección de 3 secciones (report/prescriptions/ehr) por los
- * mismos 5 tipos que usa GenerateDocumentModal:
- *   recipe · paraclinical · history · rest · informe
- *
- * Al enviar, construye:
- *   - doc_selection: { types, informeBlockKeys, restContent }  (nuevo — para PDF branded)
- *   - sections: { report, prescriptions, ehr }                 (backward-compat)
+ * Cambios respecto a v2:
+ *  - Sección "Adjuntos" debajo de los tipos de documento:
+ *    (a) Checklist de documentos frecuentes del doctor (cargados al abrir el modal).
+ *    (b) "Subir desde tu computador" — archivos puntuales, no se guardan en biblioteca.
+ *  - Límite: 10 adjuntos en total, 25 MB entre todos.
+ *  - Se permite compartir solo con adjuntos (sin seleccionar tipos de documento).
+ *  - `attachments` se incluye en el POST solo cuando hay algo.
+ *  - La pantalla de éxito menciona cuántos adjuntos se incluyeron.
+ *  - El selector de adjuntos se oculta cuando standaloneDocumentId está presente.
  */
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import {
   Share2,
   X,
@@ -22,9 +24,15 @@ import {
   Loader2,
   MessageCircle,
   ChevronDown,
+  Paperclip,
+  FileText,
+  Image as ImageIcon,
+  Upload,
+  ExternalLink,
 } from 'lucide-react';
 import { showToast } from '@/components/ui/Toaster';
 import { normalizePhoneVE } from '@/lib/phone-utils';
+import { reportError } from '@/lib/report-error';
 import type { ContentBlock } from '@/components/pdf/MedicalDocumentPdf';
 import {
   type DocumentTypeKey,
@@ -33,6 +41,14 @@ import {
   INFORME_EXCLUDED_KEYS,
   INFORME_CHECKED_BY_DEFAULT,
 } from './consultation-documents';
+import type { DoctorDocumentFileListItem } from '@delta/shared-types';
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+
+const MAX_ATTACHMENTS = 10;
+const MAX_TOTAL_BYTES = 25 * 1024 * 1024; // 25 MB
+const MAX_SINGLE_FILE_BYTES = 10 * 1024 * 1024; // 10 MB
+const ALLOWED_ATTACH_MIME = new Set(['application/pdf', 'image/jpeg', 'image/png', 'image/webp']);
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -42,36 +58,28 @@ interface ShareResult {
   expiresAt: string;
 }
 
+/** A one-off upload that the doctor attached for this share only. */
+interface PendingUpload {
+  /** Local key for the UI list. */
+  localId: string;
+  file: File;
+  /** Set after a successful /api/storage/upload call. */
+  filePath: string | null;
+  uploading: boolean;
+  error: string | null;
+}
+
 interface Props {
   consultationId: string;
-  /**
-   * ADDITIVE (2026-10): cuando se pasa, el botón de compartir llama a
-   * POST /api/standalone-documents/:id/share en vez de la ruta de consulta.
-   * El tipo de documento está fijo (no se muestra el selector de tipos).
-   * El comportamiento de consulta es IDÉNTICO cuando este prop está ausente.
-   */
   standaloneDocumentId?: string;
-  /** Teléfono del paciente para ofrecer envío por WhatsApp (opcional). */
   patientPhone?: string | null;
-  /** Nombre del paciente para personalizar el mensaje de WhatsApp (opcional). */
   patientName?: string | null;
-  /** Nombre del doctor para firmar el mensaje de WhatsApp (opcional). */
   doctorName?: string | null;
-  /** Bloques de contenido de la consulta (necesario para computar tipos disponibles). */
   informeContent: ContentBlock[];
-  /** Recetas guardadas de la consulta. */
   savedPrescriptions: SavedPrescription[];
-  /** Total de consultas del paciente (contexto). */
   patientConsultationCount: number;
-  /** Cantidad de registros EHR del paciente (habilita Historia clínica si > 0). */
   patientEhrCount: number;
-  /** Texto del reposo médico de la consulta; null si no hay reposo. */
   restContent: string | null;
-  /**
-   * Persiste (y espera) los bloques de la consulta en la BD ANTES de generar el enlace.
-   * El PDF compartido se arma server-side desde datos persistidos; sin este guardado
-   * previo, compartir con ediciones sin guardar producía "No hay contenido disponible".
-   */
   onBeforeShare?: () => Promise<void>;
 }
 
@@ -82,6 +90,26 @@ function formatDate(iso: string): string {
     dateStyle: 'long',
     timeStyle: 'short',
   }).format(new Date(iso));
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function fileTypeIcon(mimeType: string) {
+  if (mimeType === 'application/pdf') return <FileText className="w-3.5 h-3.5 text-red-500" />;
+  return <ImageIcon className="w-3.5 h-3.5 text-sky-500" />;
+}
+
+function validateAttachFile(file: File): string | null {
+  if (!ALLOWED_ATTACH_MIME.has(file.type)) {
+    return `Tipo no permitido (${file.type || 'desconocido'}). Usa PDF, JPEG, PNG o WEBP.`;
+  }
+  if (file.size > MAX_SINGLE_FILE_BYTES) {
+    return `El archivo pesa ${formatBytes(file.size)}. Máximo por archivo: 10 MB.`;
+  }
+  return null;
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
@@ -183,6 +211,187 @@ function BlockSubSelector({ informeContent, checkedKeys, onToggle }: BlockSubSel
   );
 }
 
+// ─── Attachments section ──────────────────────────────────────────────────────
+
+interface AttachmentsSectionProps {
+  libraryFiles: DoctorDocumentFileListItem[];
+  libraryLoading: boolean;
+  selectedLibraryIds: Set<string>;
+  onToggleLibrary: (id: string) => void;
+  pendingUploads: PendingUpload[];
+  onAddFile: (file: File) => void;
+  onRemoveUpload: (localId: string) => void;
+  totalCount: number;
+  totalBytes: number;
+  limitError: string | null;
+}
+
+function AttachmentsSection({
+  libraryFiles,
+  libraryLoading,
+  selectedLibraryIds,
+  onToggleLibrary,
+  pendingUploads,
+  onAddFile,
+  onRemoveUpload,
+  totalCount,
+  totalBytes,
+  limitError,
+}: AttachmentsSectionProps) {
+  const uploadInputRef = useRef<HTMLInputElement>(null);
+
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? []);
+    files.forEach((f) => onAddFile(f));
+    e.target.value = '';
+  }
+
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
+      {/* Header */}
+      <div className="flex items-center justify-between px-3.5 py-2.5 border-b border-slate-100 bg-slate-50">
+        <div className="flex items-center gap-2">
+          <Paperclip className="w-3.5 h-3.5 text-slate-500" />
+          <p className="text-xs font-bold text-slate-700 uppercase tracking-wide">Adjuntos</p>
+        </div>
+        <span className="text-xs text-slate-400">
+          {totalCount}/{MAX_ATTACHMENTS} · {formatBytes(totalBytes)} / 25 MB
+        </span>
+      </div>
+
+      <div className="p-3.5 space-y-3">
+        {/* Library list */}
+        {libraryLoading ? (
+          <div className="flex items-center gap-2 py-2 text-xs text-slate-400">
+            <Loader2 className="w-3.5 h-3.5 animate-spin" /> Cargando biblioteca…
+          </div>
+        ) : libraryFiles.length === 0 ? (
+          <p className="text-xs text-slate-400">
+            Tu biblioteca está vacía.{' '}
+            <a
+              href="/doctor/templates"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-teal-600 font-semibold hover:underline inline-flex items-center gap-0.5"
+            >
+              Gestionar en Plantillas <ExternalLink className="w-3 h-3" />
+            </a>
+          </p>
+        ) : (
+          <div className="space-y-1">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-semibold text-slate-600">Tu biblioteca</p>
+              <a
+                href="/doctor/templates"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs text-teal-600 font-semibold hover:underline inline-flex items-center gap-0.5"
+              >
+                Gestionar <ExternalLink className="w-3 h-3" />
+              </a>
+            </div>
+            <div className="max-h-36 overflow-y-auto space-y-1 pr-0.5">
+              {libraryFiles.map((f) => {
+                const checked = selectedLibraryIds.has(f.id);
+                const disabled = !checked && totalCount >= MAX_ATTACHMENTS;
+                return (
+                  <label
+                    key={f.id}
+                    className={`flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg border text-xs transition-colors ${
+                      disabled
+                        ? 'opacity-50 cursor-not-allowed border-slate-100 bg-slate-50'
+                        : checked
+                          ? 'bg-teal-50 border-teal-200 cursor-pointer'
+                          : 'bg-white border-slate-200 hover:border-slate-300 cursor-pointer'
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => onToggleLibrary(f.id)}
+                      disabled={disabled}
+                      className="w-3 h-3 accent-teal-500 shrink-0"
+                    />
+                    {fileTypeIcon(f.mimeType)}
+                    <span className="flex-1 truncate font-medium text-slate-700">{f.name}</span>
+                    <span className="text-slate-400 shrink-0">{formatBytes(f.sizeBytes)}</span>
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* One-off upload */}
+        <div className="space-y-1.5">
+          <p className="text-xs font-semibold text-slate-600">Subir desde tu computador</p>
+          {pendingUploads.length > 0 && (
+            <div className="space-y-1">
+              {pendingUploads.map((u) => (
+                <div
+                  key={u.localId}
+                  className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg border text-xs ${
+                    u.error
+                      ? 'border-red-200 bg-red-50'
+                      : u.filePath
+                        ? 'border-teal-200 bg-teal-50'
+                        : 'border-slate-200 bg-white'
+                  }`}
+                >
+                  {u.uploading ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-teal-500 shrink-0" />
+                  ) : u.error ? (
+                    <AlertCircle className="w-3.5 h-3.5 text-red-500 shrink-0" />
+                  ) : (
+                    fileTypeIcon(u.file.type)
+                  )}
+                  <span className="flex-1 truncate text-slate-700">
+                    {u.file.name}
+                    {u.error && <span className="text-red-600 ml-1">— {u.error}</span>}
+                  </span>
+                  <span className="text-slate-400 shrink-0">{formatBytes(u.file.size)}</span>
+                  <button
+                    onClick={() => onRemoveUpload(u.localId)}
+                    disabled={u.uploading}
+                    className="shrink-0 text-slate-400 hover:text-red-500 transition-colors disabled:opacity-40"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+          <button
+            type="button"
+            onClick={() => uploadInputRef.current?.click()}
+            disabled={totalCount >= MAX_ATTACHMENTS}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-dashed border-slate-300 hover:border-teal-400 hover:bg-teal-50 text-xs font-semibold text-slate-600 hover:text-teal-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <Upload className="w-3.5 h-3.5" />
+            Adjuntar archivo
+          </button>
+          <input
+            ref={uploadInputRef}
+            type="file"
+            multiple
+            accept="application/pdf,image/jpeg,image/png,image/webp"
+            onChange={handleFileChange}
+            className="hidden"
+          />
+        </div>
+
+        {/* Limit error */}
+        {limitError && (
+          <div className="flex items-start gap-1.5 text-xs text-amber-700">
+            <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+            <span>{limitError}</span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function ShareDocumentsModal({
@@ -207,6 +416,14 @@ export default function ShareDocumentsModal({
   const [copiedUrl, setCopiedUrl] = useState(false);
   const [copiedCode, setCopiedCode] = useState(false);
 
+  // Attachments state
+  const [libraryFiles, setLibraryFiles] = useState<DoctorDocumentFileListItem[]>([]);
+  const [libraryLoading, setLibraryLoading] = useState(false);
+  const [selectedLibraryIds, setSelectedLibraryIds] = useState<Set<string>>(new Set());
+  const [pendingUploads, setPendingUploads] = useState<PendingUpload[]>([]);
+  const [attachLimitError, setAttachLimitError] = useState<string | null>(null);
+  const [attachTotalSuccessCount, setAttachTotalSuccessCount] = useState(0);
+
   const availableTypes = computeAvailableDocTypes({
     informeContent,
     savedPrescriptions,
@@ -215,22 +432,54 @@ export default function ShareDocumentsModal({
     restContent,
   });
 
+  // Counts for attachment limits
+  const uploadedCount = pendingUploads.filter((u) => u.filePath !== null).length;
+  const uploadingCount = pendingUploads.filter((u) => u.uploading).length;
+  const totalAttachCount = selectedLibraryIds.size + uploadedCount;
+  const totalAttachBytes =
+    libraryFiles.filter((f) => selectedLibraryIds.has(f.id)).reduce((s, f) => s + f.sizeBytes, 0) +
+    pendingUploads.filter((u) => u.filePath !== null).reduce((s, u) => s + u.file.size, 0);
+
+  async function fetchLibrary() {
+    setLibraryLoading(true);
+    try {
+      const res = await fetch('/api/doctor/document-files');
+      const json = (await res.json()) as
+        | { success: true; data: { files: DoctorDocumentFileListItem[] } }
+        | { error: string };
+      if (res.ok && 'success' in json) {
+        setLibraryFiles(json.data.files ?? []);
+      }
+    } catch {
+      /* non-fatal: library just shows empty */
+    } finally {
+      setLibraryLoading(false);
+    }
+  }
+
   function handleOpen() {
     setOpen(true);
     setError(null);
     setResult(null);
     setCopiedUrl(false);
     setCopiedCode(false);
+    setAttachLimitError(null);
+    setAttachTotalSuccessCount(0);
+    setSelectedLibraryIds(new Set());
+    setPendingUploads([]);
 
-    // Pre-seleccionar el primer tipo habilitado por defecto
     const firstEnabled = availableTypes.find((t) => t.enabled);
     setSelectedTypes(firstEnabled ? new Set([firstEnabled.key]) : new Set());
 
-    // Inicializar sub-selector de bloques con los defaults
     const defaults = informeContent
       .filter((b) => !INFORME_EXCLUDED_KEYS.has(b.key) && INFORME_CHECKED_BY_DEFAULT.has(b.key))
       .map((b) => b.key);
     setInformeCheckedKeys(new Set(defaults));
+
+    // Load library when opening (not for standalone docs — no attachments shown there)
+    if (!standaloneDocumentId) {
+      void fetchLibrary();
+    }
   }
 
   function handleClose() {
@@ -256,45 +505,146 @@ export default function ShareDocumentsModal({
     });
   }
 
-  const hasSelection = selectedTypes.size > 0;
+  function toggleLibraryFile(id: string) {
+    setAttachLimitError(null);
+    setSelectedLibraryIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+        return next;
+      }
+      const newCount = next.size + uploadedCount;
+      if (newCount >= MAX_ATTACHMENTS) {
+        setAttachLimitError(`Máximo ${MAX_ATTACHMENTS} adjuntos por enlace.`);
+        return prev;
+      }
+      next.add(id);
+      return next;
+    });
+  }
+
+  async function addUploadFile(file: File) {
+    setAttachLimitError(null);
+
+    const validErr = validateAttachFile(file);
+    if (validErr) {
+      setAttachLimitError(validErr);
+      return;
+    }
+
+    const currentCount =
+      selectedLibraryIds.size + pendingUploads.filter((u) => u.filePath !== null).length;
+    if (currentCount >= MAX_ATTACHMENTS) {
+      setAttachLimitError(`Máximo ${MAX_ATTACHMENTS} adjuntos por enlace.`);
+      return;
+    }
+
+    const totalBytes = totalAttachBytes + file.size;
+    if (totalBytes > MAX_TOTAL_BYTES) {
+      setAttachLimitError(`El total de adjuntos supera 25 MB.`);
+      return;
+    }
+
+    const localId = `${Date.now()}-${Math.random()}`;
+    const pending: PendingUpload = { localId, file, filePath: null, uploading: true, error: null };
+    setPendingUploads((prev) => [...prev, pending]);
+
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      fd.append('kind', 'document');
+      const res = await fetch('/api/storage/upload', { method: 'POST', body: fd });
+      const json = (await res.json()) as
+        | { success: true; data: { url: string; path: string } }
+        | { success: false; error: { message: string } };
+
+      if (!res.ok || !('success' in json) || !json.success) {
+        const msg =
+          'error' in json ? (json.error?.message ?? 'Error al subir') : 'Error al subir el archivo';
+        setPendingUploads((prev) =>
+          prev.map((u) => (u.localId === localId ? { ...u, uploading: false, error: msg } : u)),
+        );
+        return;
+      }
+
+      setPendingUploads((prev) =>
+        prev.map((u) =>
+          u.localId === localId ? { ...u, uploading: false, filePath: json.data.path } : u,
+        ),
+      );
+    } catch (err: unknown) {
+      reportError('doctor/consultations', 'ShareDocumentsModal:addUploadFile', err);
+      setPendingUploads((prev) =>
+        prev.map((u) =>
+          u.localId === localId
+            ? { ...u, uploading: false, error: 'No se pudo conectar con el servidor.' }
+            : u,
+        ),
+      );
+    }
+  }
+
+  function removeUpload(localId: string) {
+    setPendingUploads((prev) => prev.filter((u) => u.localId !== localId));
+  }
+
+  // A submission is valid if: ≥1 doc type selected, OR ≥1 attachment (library or uploaded).
+  // No pending uploads in progress.
+  const hasDocSelection = selectedTypes.size > 0;
+  const hasAttachments = selectedLibraryIds.size > 0 || uploadedCount > 0;
+  const hasSelection = hasDocSelection || hasAttachments;
+  const isBlocked = uploadingCount > 0;
 
   async function handleSubmit() {
-    if (!hasSelection || loading) return;
+    if (!hasSelection || loading || isBlocked) return;
 
     setLoading(true);
     setError(null);
 
-    // Persistir los bloques de la consulta ANTES de generar el enlace: el PDF se
-    // arma server-side desde la BD, así que sin esto el paciente veía "No hay
-    // contenido" si el doctor compartía con ediciones sin guardar.
     if (onBeforeShare) {
       try {
         await onBeforeShare();
       } catch {
-        /* best-effort: seguimos con lo que haya en BD */
+        /* best-effort */
       }
     }
 
     const types = Array.from(selectedTypes);
     const informeBlockKeys = Array.from(informeCheckedKeys);
 
-    // doc_selection — para PDF branded (nuevo)
     const doc_selection = {
       types,
       informeBlockKeys,
       restContent: restContent ?? null,
     };
 
-    // sections — backward-compat con el backend viejo
     const sections = {
       report: types.includes('informe'),
       prescriptions: types.includes('recipe'),
       ehr: types.includes('history'),
     };
 
+    // Build attachments payload — only when non-empty
+    const uploadedSucceeded = pendingUploads.filter((u) => u.filePath !== null);
+    const attachmentsPayload =
+      selectedLibraryIds.size > 0 || uploadedSucceeded.length > 0
+        ? {
+            libraryFileIds: Array.from(selectedLibraryIds),
+            uploads: uploadedSucceeded.map((u) => ({
+              name: u.file.name,
+              filePath: u.filePath as string,
+              mimeType: u.file.type,
+              sizeBytes: u.file.size,
+            })),
+          }
+        : undefined;
+
+    // Track total attachments for success screen
+    const totalAttach =
+      (attachmentsPayload?.libraryFileIds?.length ?? 0) +
+      (attachmentsPayload?.uploads?.length ?? 0);
+
     try {
-      // ADDITIVE (2026-10): when standaloneDocumentId is provided, route to the
-      // standalone share endpoint. Consultation path is byte-identical to before.
       const shareUrl = standaloneDocumentId
         ? `/api/standalone-documents/${standaloneDocumentId}/share`
         : `/api/consultations/${consultationId}/share`;
@@ -302,7 +652,11 @@ export default function ShareDocumentsModal({
       const res = await fetch(shareUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sections, doc_selection }),
+        body: JSON.stringify({
+          sections,
+          doc_selection,
+          ...(attachmentsPayload ? { attachments: attachmentsPayload } : {}),
+        }),
       });
 
       const json = (await res.json()) as { success: true; data: ShareResult } | { error: string };
@@ -314,6 +668,7 @@ export default function ShareDocumentsModal({
         return;
       }
 
+      setAttachTotalSuccessCount(totalAttach);
       setResult(json.data);
       showToast({ type: 'success', message: 'Enlace de documentos generado' });
     } catch {
@@ -363,10 +718,10 @@ export default function ShareDocumentsModal({
         Compartir documentos
       </button>
 
-      {/* Modal backdrop — no se cierra al hacer clic en el backdrop (solo con X o Cerrar) */}
+      {/* Modal backdrop */}
       {open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden max-h-[90vh] flex flex-col">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden max-h-[92vh] flex flex-col">
             {/* Header */}
             <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 shrink-0">
               <div className="flex items-center gap-2.5">
@@ -384,13 +739,13 @@ export default function ShareDocumentsModal({
               </button>
             </div>
 
-            {/* Body */}
+            {/* Body — scrollable */}
             <div className="px-5 py-5 space-y-5 overflow-y-auto">
               {!result ? (
                 <>
                   <p className="text-sm text-slate-500">
-                    Selecciona qué documentos quieres compartir. El paciente recibirá un PDF branded
-                    con un enlace y código de acceso de 6 dígitos.
+                    Selecciona qué documentos y/o adjuntos quieres compartir. El paciente recibe un
+                    enlace con código de acceso de 6 dígitos.
                   </p>
 
                   {/* Doc type cards */}
@@ -407,7 +762,6 @@ export default function ShareDocumentsModal({
                           toggleType(dt.key);
                         }}
                       >
-                        {/* Sub-selector de bloques para el tipo informe */}
                         {dt.key === 'informe' && selectedTypes.has('informe') && dt.enabled ? (
                           <BlockSubSelector
                             informeContent={informeContent}
@@ -419,11 +773,34 @@ export default function ShareDocumentsModal({
                     ))}
                   </div>
 
+                  {/* Attachments section — hidden for standalone docs */}
+                  {!standaloneDocumentId && (
+                    <AttachmentsSection
+                      libraryFiles={libraryFiles}
+                      libraryLoading={libraryLoading}
+                      selectedLibraryIds={selectedLibraryIds}
+                      onToggleLibrary={toggleLibraryFile}
+                      pendingUploads={pendingUploads}
+                      onAddFile={addUploadFile}
+                      onRemoveUpload={removeUpload}
+                      totalCount={totalAttachCount}
+                      totalBytes={totalAttachBytes}
+                      limitError={attachLimitError}
+                    />
+                  )}
+
                   {/* Validation hint */}
                   {!hasSelection && (
                     <p className="text-xs text-amber-600 flex items-center gap-1.5">
                       <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                      Selecciona al menos un tipo de documento
+                      Selecciona al menos un tipo de documento o agrega un adjunto
+                    </p>
+                  )}
+
+                  {isBlocked && (
+                    <p className="text-xs text-teal-600 flex items-center gap-1.5">
+                      <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
+                      Subiendo archivos adjuntos…
                     </p>
                   )}
 
@@ -438,7 +815,7 @@ export default function ShareDocumentsModal({
                   {/* Submit */}
                   <button
                     onClick={handleSubmit}
-                    disabled={!hasSelection || loading}
+                    disabled={!hasSelection || loading || isBlocked}
                     className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-bold bg-teal-500 hover:bg-teal-600 text-white transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                   >
                     {loading ? (
@@ -461,6 +838,17 @@ export default function ShareDocumentsModal({
                     <CheckCircle2 className="w-4 h-4 shrink-0" />
                     <p className="text-sm font-medium">
                       Se envió un email al paciente con el enlace y el código.
+                      {attachTotalSuccessCount > 0 && (
+                        <>
+                          {' '}
+                          Incluye{' '}
+                          <strong>
+                            {attachTotalSuccessCount}{' '}
+                            {attachTotalSuccessCount === 1 ? 'adjunto' : 'adjuntos'}
+                          </strong>{' '}
+                          para descarga individual.
+                        </>
+                      )}
                     </p>
                   </div>
 
