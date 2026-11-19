@@ -14,6 +14,7 @@ import {
   Check,
   Trash2,
   AlertCircle,
+  AlertTriangle,
   CheckCircle,
   ClipboardList,
   Search,
@@ -155,6 +156,8 @@ type CalendarAppointment = {
   // cuando hay consultation linkeada — se usa para los filtros "Pago aprobado"
   // y "Pago pendiente" del calendario.
   payment_status?: 'pending' | 'approved' | null;
+  /** Health note submitted by the patient during public booking. Shown as amber badge. */
+  patient_alert?: string | null;
 };
 
 type PendingAppointment = {
@@ -698,6 +701,7 @@ export default function AgendaPage() {
         patient_cedula: a.patient_cedula,
         meet_link: a.meet_link,
         payment_status: a.payment_status,
+        patient_alert: a.patient_alert ?? null,
       }));
     setAllAppointments(uniqueAppts);
 
@@ -1576,7 +1580,17 @@ export default function AgendaPage() {
                             <Clock className="w-4 h-4 text-white" />
                           </div>
                           <div className="flex-1 min-w-0">
-                            <p className="text-sm font-semibold text-slate-800">{a.patient_name}</p>
+                            <div className="flex items-center gap-1.5">
+                              <p className="text-sm font-semibold text-slate-800">
+                                {a.patient_name}
+                              </p>
+                              {a.patient_alert && (
+                                <AlertTriangle
+                                  className="w-3.5 h-3.5 text-amber-500 shrink-0"
+                                  aria-label="Alerta del paciente"
+                                />
+                              )}
+                            </div>
                             <p className="text-xs text-slate-400 truncate">
                               {new Date(a.isoDate).toLocaleDateString('es-VE', {
                                 weekday: 'short',
@@ -1738,6 +1752,12 @@ export default function AgendaPage() {
                                     <p className={`text-sm flex items-center gap-1.5 ${sty.title}`}>
                                       <Icon className="w-3.5 h-3.5" />
                                       {a.patient_name}
+                                      {a.patient_alert && (
+                                        <AlertTriangle
+                                          className="w-3 h-3 text-amber-500 shrink-0"
+                                          aria-label="Alerta del paciente"
+                                        />
+                                      )}
                                     </p>
                                     {a.appointment_code && (
                                       <span className="text-[10px] font-mono text-slate-400">
@@ -1854,6 +1874,12 @@ export default function AgendaPage() {
                                             >
                                               <Icon className="w-3.5 h-3.5" />
                                               {slotAppt.patient_name}
+                                              {slotAppt.patient_alert && (
+                                                <AlertTriangle
+                                                  className="w-3 h-3 text-amber-500 shrink-0"
+                                                  aria-label="Alerta del paciente"
+                                                />
+                                              )}
                                             </p>
                                             {slotAppt.consultation_code && (
                                               <span className="text-[10px] font-mono text-slate-400">
@@ -1953,6 +1979,12 @@ export default function AgendaPage() {
                                         >
                                           <Icon className="w-3.5 h-3.5" />
                                           {a.patient_name}
+                                          {a.patient_alert && (
+                                            <AlertTriangle
+                                              className="w-3 h-3 text-amber-500 shrink-0"
+                                              aria-label="Alerta del paciente"
+                                            />
+                                          )}
                                         </p>
                                         {a.appointment_code && (
                                           <span className="text-[10px] font-mono text-slate-400">

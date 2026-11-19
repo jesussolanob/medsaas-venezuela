@@ -134,6 +134,7 @@ describe('RecordIncomeUseCase', () => {
       update: jest.fn(),
       softDelete: jest.fn(),
       logReveal: jest.fn(),
+      appendAllergyNote: jest.fn().mockResolvedValue(false),
     };
     useCase = new RecordIncomeUseCase(
       mockRepo,

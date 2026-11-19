@@ -32,6 +32,7 @@ const mockPatientRepo: jest.Mocked<IPatientRepository> = {
   update: jest.fn(),
   softDelete: jest.fn(),
   logReveal: jest.fn(),
+  appendAllergyNote: jest.fn().mockResolvedValue(false),
 };
 
 const makeRequest = (id: string, status: 'pending' | 'fulfilled' = 'pending'): PatientRequest =>

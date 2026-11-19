@@ -64,6 +64,7 @@ function makeMockRepo(): jest.Mocked<IPatientRepository> {
     update: jest.fn(),
     softDelete: jest.fn(),
     logReveal: jest.fn(),
+    appendAllergyNote: jest.fn().mockResolvedValue(false),
   };
 }
 

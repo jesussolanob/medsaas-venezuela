@@ -749,8 +749,10 @@ Es la pagina donde tus pacientes reservan cita, sin necesidad de iniciar sesion 
 2. **Consultorio:** si tienes varios, el paciente elige sede; si tienes uno solo, se selecciona automaticamente; si solo atiendes online, se indica 'Solo disponible por videoconsulta'.
 3. **Fecha de la cita:** elige dia y hora entre los horarios disponibles. Los horarios bloqueados aparecen deshabilitados ('Horario bloqueado por el especialista').
 4. **Modalidad:** Presencial o Videoconsulta (online).
-5. **Datos del paciente y metodo de pago:** el paciente ingresa Nombre, email, telefono y **cedula** (obligatorios). Si paga por un metodo que requiere comprobante, lo adjunta; con paquete prepagado se salta el pago.
+5. **Datos del paciente y metodo de pago:** el paciente ingresa Nombre, email, telefono y **cedula** (obligatorios). Tambien hay un campo opcional **'¿Algo que tu especialista deba saber? (alergias, condiciones, medicamentos)'** donde el paciente puede escribir una nota de salud de hasta 500 caracteres. Si paga por un metodo que requiere comprobante, lo adjunta; con paquete prepagado se salta el pago.
 6. **Confirmacion:** muestra un resumen y, al confirmar, un **Codigo de cita**, la fecha, el plan, la modalidad y, si es online, el link de videoconsulta. El paciente puede anadir la cita a su calendario.
+
+Cuando el paciente completa el campo de salud opcional, esa nota se guarda en la cita y tambien se agrega automaticamente al campo **Alergias** de su ficha de paciente (con la indicacion 'indicado por el paciente al reservar el DD/MM/AAAA'). Si el campo ya contenia esa misma nota, no se duplica.
 
 El mensaje final indica: 'El especialista confirmara tu cita y se pondra en contacto contigo.' Si tu mismo (como doctor) o un administrador abren su propia pagina, se muestra un banner de modo previsualizacion y no se generan citas reales.
 
@@ -851,6 +853,9 @@ No. Aceptar es solo confirmar el interes. El pago se gestiona por separado, igua
 
 **Como doy de baja mi cuenta?**
 En **Configuracion** (/doctor/settings), baja hasta el final y usa la tarjeta 'Dar de baja mi cuenta'. Debes escribir 'DAR DE BAJA' para confirmar. No es un borrado: tu informacion queda guardada y un administrador de Delta puede reactivarla. Si tienes citas futuras el sistema no te deja hasta que las canceles o completes. Si tu plan esta vigente, la baja se programa para el final del periodo.
+
+**Que es la alerta de salud que aparece en algunas citas?**
+Cuando un paciente reserva por tu pagina publica y completa el campo opcional '¿Algo que tu especialista deba saber?', esa nota queda visible en cuatro lugares: (1) en las tarjetas de la **Agenda** (icono triangulo amarillo junto al nombre del paciente en las vistas de dia, semana y mes), (2) en el **modal de detalle de la cita** como un recuadro amarillo titulado 'Alerta del paciente' debajo del estado de pago, (3) en el **editor de consulta** como una banda amarilla 'Alergias y alertas del paciente' encima del formulario medico, y (4) dentro de la **pestana Recete** del editor de consulta para que la veas mientras prescribes medicamentos. La nota tambien se agrega automaticamente al campo **Alergias** de la ficha del paciente con la fecha en que reservo. Si la ficha ya contenia esa informacion, no se duplica. El campo es voluntario: las citas sin esa nota no muestran ninguna alerta.
 
 **Que son las 'Consultas por agendar'?**
 Son las sesiones 2..N de un paquete de varias sesiones que el paciente ya compro pero que aun no tienen fecha. Las ves en /doctor/pending-consultations. Desde ahi las agendas eligiendo fecha, consultorio y modalidad. Esas sesiones NO se generan solas si algo fallo al crearlas — si no las ves y deberias verlas, avisale al soporte de Delta.

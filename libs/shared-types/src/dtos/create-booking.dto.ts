@@ -54,6 +54,32 @@ export const CreateBookingDtoSchema = z
     plan_price: z.number().nonnegative(),
     chief_complaint: z.string().max(1000).nullable().optional(),
 
+    /**
+     * Optional health note submitted by the patient during public booking.
+     * "¿Algo que tu especialista deba saber? (alergias, condiciones, medicamentos)".
+     * Trimmed; empty string is normalised to null.
+     * Stored on the appointment (patient_alert column) and merged into patients.allergies.
+     * Also accepted when createdBySpecialist — but never required.
+     */
+    patient_alert: z
+      .string()
+      .max(500, 'El campo no puede superar 500 caracteres')
+      .nullable()
+      .optional()
+      .transform((v) => {
+        // Transform the value: null/undefined → null, empty/whitespace → null, else trim.
+        if (v === undefined || v === null) return null;
+        const trimmed = v.trim();
+        return trimmed === '' ? null : trimmed;
+      })
+      // A second .optional() AFTER .transform() is required so that the inferred
+      // OUTPUT type is `string | null | undefined` with the `?` optional marker.
+      // ZodEffects (from .transform()) does not propagate the inner .optional(),
+      // making the field required in z.infer output unless we re-wrap it here.
+      // When the field is omitted, this outer .optional() short-circuits and returns
+      // undefined WITHOUT calling the transform; use ?? null in callers as needed.
+      .optional(),
+
     // Payment fields (skipped if using package)
     // Vocabulario cerrado: ver libs/shared-types/src/payment-method.ts
     payment_method: PaymentMethodSchema.nullable().optional(),
