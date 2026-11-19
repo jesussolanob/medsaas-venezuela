@@ -3,8 +3,8 @@ import {
   ADMIN_REPOSITORY,
   type IAdminRepository,
   type DoctorPatientRow,
+  type BulkAuditEntry,
 } from '../../../domain/repositories/admin.repository';
-import { DoctorNotFoundError } from '../../../domain/errors/doctor-not-found.error';
 
 export interface GetDoctorPatientsInput {
   /** UUID of the doctor whose patients are being requested. */
@@ -28,8 +28,10 @@ export interface GetDoctorPatientsInput {
  *
  * Security invariants:
  *   - Validates the doctor exists before any PII is revealed (DoctorNotFoundError → 404).
- *   - Inserts ONE audit row per request in access_audit_log with
- *     fieldRevealed='admin_patient_identity' and reason=doctorId being queried.
+ *   - Inserts ONE audit row per patient returned in access_audit_log with
+ *     fieldRevealed='admin_patient_identity' and the real patient UUID as patientId.
+ *     All rows are written in a single bulk insert statement.
+ *   - Zero patients → zero audit rows (no-op).
  *   - Audit failure is fire-and-forget: a log error must not block the response.
  */
 @Injectable()
@@ -45,26 +47,29 @@ export class GetDoctorPatientsUseCase {
     // listDoctorPatients throws DoctorNotFoundError if doctorId does not exist.
     const patients = await this.adminRepo.listDoctorPatients(input.doctorId);
 
-    // Record one audit row summarising this admin access (reveals PII of N patients).
-    // We log with a synthetic patient_id representing the doctor being queried,
-    // which is the most meaningful identifier available for this bulk-reveal action.
-    // The reason field records which doctor's patients were exposed.
-    try {
-      await this.adminRepo.logAdminReveal({
+    if (patients.length > 0) {
+      // Build one audit entry per patient — each entry uses the real patient UUID
+      // so the FK constraint on access_audit_log.patient_id is satisfied.
+      // The reason column identifies which doctor's patient list was accessed
+      // (no patient names or PII in the reason string).
+      const reason = `listado de pacientes del especialista ${input.doctorId}`;
+      const entries: BulkAuditEntry[] = patients.map((p) => ({
         actorId: input.actorId,
         actorRole: input.actorRole,
-        // patient_id column is NOT NULL — use doctorId as a proxy identifier for
-        // this bulk-identity-reveal action (no single patient_id applies).
-        patientId: input.doctorId,
+        patientId: p.id,
         fieldRevealed: 'admin_patient_identity',
         ipAddress: input.ipAddress,
         userAgent: input.userAgent,
-        reason: `admin listed patients for doctor ${input.doctorId}`,
+        reason,
+      }));
+
+      // Fire-and-forget: audit failure must not block the admin response.
+      this.adminRepo.logAdminRevealBulk(entries).catch((err: unknown) => {
+        this.logger.error(
+          'bulk audit log insert failed for admin doctor-patients listing',
+          err instanceof Error ? err.message : String(err),
+        );
       });
-    } catch {
-      // Intentionally swallowed — audit failure must not prevent the admin from
-      // accessing data. The warning is logged at WARN level (no PII in message).
-      this.logger.warn('audit log insert failed for admin doctor-patients listing');
     }
 
     return patients;

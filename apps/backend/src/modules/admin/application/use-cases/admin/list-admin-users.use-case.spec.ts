@@ -57,6 +57,7 @@ const makeRepo = (): jest.Mocked<IAdminRepository> =>
     createAdminDoctor: jest.fn(),
     listDoctorPatients: jest.fn(),
     logAdminReveal: jest.fn(),
+    logAdminRevealBulk: jest.fn(),
   }) as jest.Mocked<IAdminRepository>;
 
 describe('ListAdminUsersUseCase', () => {

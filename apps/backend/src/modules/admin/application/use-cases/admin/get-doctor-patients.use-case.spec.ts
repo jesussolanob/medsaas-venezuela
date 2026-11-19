@@ -3,6 +3,7 @@ import { DoctorNotFoundError } from '../../../domain/errors/doctor-not-found.err
 import type {
   IAdminRepository,
   DoctorPatientRow,
+  BulkAuditEntry,
 } from '../../../domain/repositories/admin.repository';
 
 // ---------------------------------------------------------------------------
@@ -75,6 +76,7 @@ function makeRepo(
     createAdminDoctor: jest.fn(),
     listDoctorPatients: jest.fn().mockResolvedValue(PATIENT_ROWS),
     logAdminReveal: jest.fn().mockResolvedValue(undefined),
+    logAdminRevealBulk: jest.fn().mockResolvedValue(undefined),
     ...overrides,
   } as jest.Mocked<IAdminRepository>;
 }
@@ -156,59 +158,107 @@ describe('GetDoctorPatientsUseCase', () => {
   });
 
   describe('audit logging', () => {
-    it('inserts one audit row per request', async () => {
+    it('calls logAdminRevealBulk once per request (not logAdminReveal)', async () => {
       const repo = makeRepo();
       const useCase = new GetDoctorPatientsUseCase(repo);
 
       await useCase.execute(BASE_INPUT);
 
-      expect(repo.logAdminReveal).toHaveBeenCalledTimes(1);
+      expect(repo.logAdminRevealBulk).toHaveBeenCalledTimes(1);
+      expect(repo.logAdminReveal).not.toHaveBeenCalled();
     });
 
-    it('logs with fieldRevealed=admin_patient_identity', async () => {
+    it('writes one audit entry per patient returned', async () => {
       const repo = makeRepo();
       const useCase = new GetDoctorPatientsUseCase(repo);
 
       await useCase.execute(BASE_INPUT);
 
-      expect(repo.logAdminReveal).toHaveBeenCalledWith(
-        expect.objectContaining({
-          fieldRevealed: 'admin_patient_identity',
-        }),
-      );
+      const [entries] = repo.logAdminRevealBulk.mock.calls[0] as [BulkAuditEntry[]];
+      expect(entries).toHaveLength(PATIENT_ROWS.length);
     });
 
-    it('logs the actorId and actorRole from the input', async () => {
+    it('each entry uses the real patient UUID as patientId', async () => {
       const repo = makeRepo();
       const useCase = new GetDoctorPatientsUseCase(repo);
 
       await useCase.execute(BASE_INPUT);
 
-      expect(repo.logAdminReveal).toHaveBeenCalledWith(
-        expect.objectContaining({
-          actorId: ACTOR_ID,
-          actorRole: ACTOR_ROLE,
-        }),
-      );
+      const [entries] = repo.logAdminRevealBulk.mock.calls[0] as [BulkAuditEntry[]];
+      const patientIds = entries.map((e) => e.patientId);
+      expect(patientIds).toContain('pat-uuid-1');
+      expect(patientIds).toContain('pat-uuid-2');
+      // Must NOT use doctorId as a proxy patient_id
+      expect(patientIds).not.toContain(DOCTOR_ID);
     });
 
-    it('logs the ipAddress and userAgent from the request', async () => {
+    it('each entry has fieldRevealed=admin_patient_identity', async () => {
       const repo = makeRepo();
       const useCase = new GetDoctorPatientsUseCase(repo);
 
       await useCase.execute(BASE_INPUT);
 
-      expect(repo.logAdminReveal).toHaveBeenCalledWith(
-        expect.objectContaining({
-          ipAddress: '10.0.0.1',
-          userAgent: 'Mozilla/5.0',
-        }),
-      );
+      const [entries] = repo.logAdminRevealBulk.mock.calls[0] as [BulkAuditEntry[]];
+      for (const entry of entries) {
+        expect(entry.fieldRevealed).toBe('admin_patient_identity');
+      }
     });
 
-    it('still returns patients even when audit log insert fails (fire-and-forget)', async () => {
+    it('each entry carries the actorId and actorRole from input', async () => {
+      const repo = makeRepo();
+      const useCase = new GetDoctorPatientsUseCase(repo);
+
+      await useCase.execute(BASE_INPUT);
+
+      const [entries] = repo.logAdminRevealBulk.mock.calls[0] as [BulkAuditEntry[]];
+      for (const entry of entries) {
+        expect(entry.actorId).toBe(ACTOR_ID);
+        expect(entry.actorRole).toBe(ACTOR_ROLE);
+      }
+    });
+
+    it('each entry carries the ipAddress and userAgent from input', async () => {
+      const repo = makeRepo();
+      const useCase = new GetDoctorPatientsUseCase(repo);
+
+      await useCase.execute(BASE_INPUT);
+
+      const [entries] = repo.logAdminRevealBulk.mock.calls[0] as [BulkAuditEntry[]];
+      for (const entry of entries) {
+        expect(entry.ipAddress).toBe('10.0.0.1');
+        expect(entry.userAgent).toBe('Mozilla/5.0');
+      }
+    });
+
+    it('reason contains the doctorId without patient names', async () => {
+      const repo = makeRepo();
+      const useCase = new GetDoctorPatientsUseCase(repo);
+
+      await useCase.execute(BASE_INPUT);
+
+      const [entries] = repo.logAdminRevealBulk.mock.calls[0] as [BulkAuditEntry[]];
+      for (const entry of entries) {
+        expect(entry.reason).toContain(DOCTOR_ID);
+        // Reason must not include patient names (no PII)
+        expect(entry.reason).not.toContain('María');
+        expect(entry.reason).not.toContain('Carlos');
+      }
+    });
+
+    it('writes zero audit rows when the doctor has no patients', async () => {
       const repo = makeRepo({
-        logAdminReveal: jest.fn().mockRejectedValue(new Error('DB connection lost')),
+        listDoctorPatients: jest.fn().mockResolvedValue([]),
+      });
+      const useCase = new GetDoctorPatientsUseCase(repo);
+
+      await useCase.execute(BASE_INPUT);
+
+      expect(repo.logAdminRevealBulk).not.toHaveBeenCalled();
+    });
+
+    it('still returns patients even when logAdminRevealBulk rejects (fire-and-forget)', async () => {
+      const repo = makeRepo({
+        logAdminRevealBulk: jest.fn().mockRejectedValue(new Error('DB connection lost')),
       });
       const useCase = new GetDoctorPatientsUseCase(repo);
 
@@ -231,7 +281,7 @@ describe('GetDoctorPatientsUseCase', () => {
       );
     });
 
-    it('does NOT call logAdminReveal when listDoctorPatients throws', async () => {
+    it('does NOT call logAdminRevealBulk when listDoctorPatients throws', async () => {
       const repo = makeRepo({
         listDoctorPatients: jest.fn().mockRejectedValue(new DoctorNotFoundError('x')),
       });
@@ -239,8 +289,8 @@ describe('GetDoctorPatientsUseCase', () => {
 
       await expect(useCase.execute(BASE_INPUT)).rejects.toThrow(DoctorNotFoundError);
 
-      // Audit row must not be written for failed lookups
-      expect(repo.logAdminReveal).not.toHaveBeenCalled();
+      // Audit rows must not be written for failed lookups
+      expect(repo.logAdminRevealBulk).not.toHaveBeenCalled();
     });
   });
 });
