@@ -439,8 +439,8 @@ export class GetDocumentRenderDataUseCase {
    * VoidStandaloneDocumentUseCase also revokes active links on void, so under normal
    * conditions this guard is reached only if revocation was delayed.
    *
-   * Access audit: logs with a label that includes the document type,
-   * e.g. 'shared_document_render:standalone_recipe'.
+   * Access audit: logs fieldRevealed='shared_document_render' with reason
+   * set to 'standalone_<type>' (e.g. 'standalone_recipe').
    */
   private async buildRenderDataFromStandaloneDocument(
     link: import('../../../domain/entities/shared-document-link.entity').SharedDocumentLink,
@@ -483,12 +483,12 @@ export class GetDocumentRenderDataUseCase {
     // Resolve attachment signed URLs — standalone docs can also have attachments
     const attachments = await this.resolveAttachmentUrls(link.attachments ?? []);
 
-    // Audit log — fire-and-forget; label includes the document type for traceability
+    // Audit log — fire-and-forget; reason includes the document type for traceability
     void this.logRenderAccess(
       link.doctorId,
       link.patientId,
       link.sections,
-      `shared_document_render:standalone_${doc.type}`,
+      `standalone_${doc.type}`,
     );
 
     // Build type-specific render fields
@@ -714,24 +714,28 @@ export class GetDocumentRenderDataUseCase {
   /**
    * Logs a render access audit entry.
    *
-   * @param labelOverride - When provided, used as the fieldRevealed value directly.
+   * fieldRevealed is always the fixed categorical value 'shared_document_render'
+   * (required by access_audit_log_field_check). Variable detail is stored in the
+   * reason column instead.
+   *
+   * @param reasonOverride - When provided, used as the reason value directly.
    *   Used by the standalone branch to record the document type, e.g.
-   *   'shared_document_render:standalone_recipe'. When absent, the label is
-   *   built from the sections flags (consultation path).
-   * @param attachmentCount - Number of attachments included. Appended to audit
-   *   label as '+Nattachments' when non-zero (count only — no file names, no PII).
+   *   'standalone_recipe'. When absent, the reason is built from sections flags
+   *   (consultation path).
+   * @param attachmentCount - Number of attachments included. Appended to reason
+   *   as '+Nattachments' when non-zero (count only — no file names, no PII).
    */
   private async logRenderAccess(
     doctorId: string,
     patientId: string,
     sections: { report: boolean; prescriptions: boolean; ehr: boolean },
-    labelOverride?: string,
+    reasonOverride?: string,
     attachmentCount?: number,
   ): Promise<void> {
     try {
-      let fieldRevealed: string;
-      if (labelOverride !== undefined) {
-        fieldRevealed = labelOverride;
+      let reason: string;
+      if (reasonOverride !== undefined) {
+        reason = reasonOverride;
       } else {
         const sectionsLabel = [
           sections.report ? 'report' : null,
@@ -740,25 +744,26 @@ export class GetDocumentRenderDataUseCase {
         ]
           .filter(Boolean)
           .join(',');
-        fieldRevealed = `shared_document_render:${sectionsLabel}`;
+        reason = sectionsLabel;
       }
 
       // Append attachment count (count only — file names could contain PII)
       if (attachmentCount && attachmentCount > 0) {
-        fieldRevealed += `+${attachmentCount}attachments`;
+        reason += `+${attachmentCount}attachments`;
       }
 
       await this.patientRepo.logReveal({
         actorId: doctorId,
         actorRole: 'doctor',
         patientId,
-        fieldRevealed,
+        fieldRevealed: 'shared_document_render',
         ipAddress: null,
         userAgent: null,
+        reason,
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      this.logger.warn(`[render-data] audit log failed: ${message}`);
+      this.logger.error(`[render-data] audit log failed: ${message}`);
     }
   }
 

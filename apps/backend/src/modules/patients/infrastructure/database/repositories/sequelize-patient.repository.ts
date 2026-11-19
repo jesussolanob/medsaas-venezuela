@@ -266,6 +266,7 @@ export class SequelizePatientRepository implements IPatientRepository {
       fieldRevealed: entry.fieldRevealed,
       ipAddress: entry.ipAddress,
       userAgent: entry.userAgent,
+      reason: entry.reason ?? null,
     });
   }
 
