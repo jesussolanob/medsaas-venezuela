@@ -171,6 +171,9 @@ export class DocumentSharingController {
       sessionToken: string;
       sections: { report: boolean; prescriptions: boolean; ehr: boolean };
       expiresAt: string;
+      codeExpiresAt: string;
+      doctorName: string;
+      patientNameMasked: string;
     }>
   > {
     const result = await this.verifyCode.execute({ token, code: dto.code, cedula: dto.cedula });
@@ -180,6 +183,9 @@ export class DocumentSharingController {
         sessionToken: result.sessionToken,
         sections: result.sections,
         expiresAt: result.expiresAt.toISOString(),
+        codeExpiresAt: result.codeExpiresAt.toISOString(),
+        doctorName: result.doctorName,
+        patientNameMasked: result.patientNameMasked,
       },
     };
   }

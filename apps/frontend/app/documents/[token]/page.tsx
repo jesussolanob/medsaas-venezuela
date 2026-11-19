@@ -68,11 +68,16 @@ type PageState = 'input' | 'verified' | 'blocked';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function formatDate(iso: string): string {
+function formatDate(iso: string | undefined): string {
+  // An invalid date makes Intl throw a RangeError, which would take down the
+  // whole page right after the patient verified the code.
+  const date = iso ? new Date(iso) : null;
+  if (!date || Number.isNaN(date.getTime())) return '—';
   return new Intl.DateTimeFormat('es-VE', {
     dateStyle: 'long',
     timeStyle: 'short',
-  }).format(new Date(iso));
+    timeZone: 'America/Caracas',
+  }).format(date);
 }
 
 function formatBytes(bytes: number): string {
