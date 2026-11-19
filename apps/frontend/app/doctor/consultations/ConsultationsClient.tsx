@@ -1232,6 +1232,9 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
             // El backend serializa el catálogo en camelCase (defaultLabel, etc.).
             // Leerlo en snake_case dejaba label=undefined → el modal "Agregar bloque"
             // mostraba filas vacías (solo el "+"). Fix: leer camelCase.
+            // FIX (2026-11-18): also apply customLabel from doctor_config so the
+            // "Agregar bloque" modal shows the same label the doctor chose, not
+            // the catalog default. doctor_config uses blockKey (camelCase).
             const catalog = (j.catalog || []) as Array<{
               key: string;
               defaultLabel: string;
@@ -1239,10 +1242,20 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
               defaultPrintable?: boolean;
               defaultSendToPatient?: boolean;
             }>;
+            const doctorCfgRaw = (j.doctor_config || []) as Array<{
+              blockKey: string;
+              customLabel?: string | null;
+            }>;
+            const customLabelMap = new Map(
+              doctorCfgRaw
+                .filter((c) => c.customLabel)
+                .map((c) => [c.blockKey, c.customLabel as string]),
+            );
             setBlockCatalog(
               catalog.map((c) => ({
                 key: c.key,
-                label: c.defaultLabel,
+                // Prefer doctor's custom label; fall back to catalog default.
+                label: customLabelMap.get(c.key) ?? c.defaultLabel,
                 content_type: c.defaultContentType,
                 printable: c.defaultPrintable ?? true,
                 send_to_patient: c.defaultSendToPatient ?? true,
@@ -4335,6 +4348,101 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                             }, 1500);
                           }}
                           lockedKeys={LOCKED_BLOCK_KEYS}
+                          onLabelChange={async (key, newLabel) => {
+                            // Persist the custom label to the doctor's global block config
+                            // (doctor_consultation_blocks.custom_label) so it shows in all
+                            // consultations, Plantillas, etc. — same as renaming in
+                            // Configuración → Bloques de consulta.
+                            //
+                            // Optimistic update strategy:
+                            //   1. Update doctorActiveBlocks (live config — applies to consultations
+                            //      without a frozen blocks_structure).
+                            //   2. If the current consultation has a frozen blocks_structure, patch
+                            //      that too so this consultation reflects the new name immediately.
+                            //   3. PATCH the backend label endpoint.
+                            //   4. Roll back on failure.
+
+                            // Snapshot for rollback
+                            const prevActiveBlocks = doctorActiveBlocks;
+                            const prevSelected = selected as Consultation;
+
+                            // 1. Optimistic: live config
+                            setDoctorActiveBlocks((prev) =>
+                              prev.map((b) => (b.key === key ? { ...b, label: newLabel } : b)),
+                            );
+
+                            // 2. Optimistic: frozen blocks_structure for this consultation
+                            const currentStruct = (selected as Consultation).blocks_structure;
+                            if (Array.isArray(currentStruct) && currentStruct.length > 0) {
+                              const updatedStruct = (
+                                currentStruct as Array<{
+                                  key: string;
+                                  label: string;
+                                  content_type: string;
+                                  sort_order: number;
+                                  printable?: boolean;
+                                  send_to_patient?: boolean;
+                                }>
+                              ).map((b) => (b.key === key ? { ...b, label: newLabel } : b));
+                              setSelected((prev) =>
+                                prev ? { ...prev, blocks_structure: updatedStruct } : prev,
+                              );
+                              setConsultations((prev) =>
+                                prev.map((x) =>
+                                  x.id === prevSelected.id
+                                    ? { ...x, blocks_structure: updatedStruct }
+                                    : x,
+                                ),
+                              );
+                              // Persist structure update (best-effort)
+                              fetch('/api/doctor/consultations', {
+                                method: 'PATCH',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                  id: prevSelected.id,
+                                  blocks_structure: updatedStruct,
+                                }),
+                              }).catch(() => {
+                                /* structure update failure — not critical */
+                              });
+                            }
+
+                            // 3. Persist label globally
+                            try {
+                              const res = await fetch(
+                                `/api/doctor/consultation-blocks/${encodeURIComponent(key)}/label`,
+                                {
+                                  method: 'PATCH',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ custom_label: newLabel }),
+                                },
+                              );
+                              if (!res.ok) {
+                                const e = (await res.json().catch(() => ({}))) as {
+                                  error?: string;
+                                };
+                                throw new Error(
+                                  e.error || 'No se pudo guardar el nombre del bloque',
+                                );
+                              }
+                              showToast({
+                                type: 'success',
+                                message: 'Nombre del bloque actualizado',
+                              });
+                            } catch (err) {
+                              // 4. Roll back
+                              setDoctorActiveBlocks(prevActiveBlocks);
+                              setSelected(prevSelected);
+                              setConsultations((prev) =>
+                                prev.map((x) => (x.id === prevSelected.id ? prevSelected : x)),
+                              );
+                              const msg =
+                                err instanceof Error
+                                  ? err.message
+                                  : 'No se pudo guardar el nombre del bloque';
+                              showToast({ type: 'error', message: msg });
+                            }
+                          }}
                           onSave={async () => {
                             // Guardado manual inmediato — usa selectedRef para datos frescos
                             if (!selectedRef.current) return;

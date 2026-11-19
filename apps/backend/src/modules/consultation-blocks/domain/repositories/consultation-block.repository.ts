@@ -59,6 +59,26 @@ export interface SaveDoctorBlocksParams {
   }>;
 }
 
+// ── Params for a label-only upsert ───────────────────────────────────────
+
+/**
+ * Used by RenameBlockLabelUseCase to persist a custom_label change without
+ * touching any other column.
+ *
+ * When no doctor row exists for (doctorId, blockKey), a new row is created
+ * using `fallbackEnabled` and `fallbackSortOrder` so that the rename does NOT
+ * accidentally enable, disable, or reorder the block.
+ */
+export interface UpsertBlockLabelParams {
+  doctorId: string;
+  blockKey: string;
+  customLabel: string | null;
+  /** Effective enabled value from cascade; used only when inserting a new row. */
+  fallbackEnabled: boolean;
+  /** Effective sort_order from cascade; used only when inserting a new row. */
+  fallbackSortOrder: number;
+}
+
 // ── Contract ──────────────────────────────────────────────────────────────
 
 /**
@@ -126,4 +146,15 @@ export interface IConsultationBlockRepository {
     doctorId: string,
     specialty: string | null | undefined,
   ): Promise<ConsultationBlock[]>;
+
+  /**
+   * Upserts only the custom_label for a single (doctorId, blockKey) row.
+   *
+   * - If a doctor row already exists: updates only custom_label (all other
+   *   columns remain unchanged).
+   * - If no row exists: inserts a new row using the provided fallback values
+   *   for enabled and sort_order so that the rename does NOT change the block's
+   *   visibility or position in the doctor's configuration.
+   */
+  upsertBlockLabel(params: UpsertBlockLabelParams): Promise<void>;
 }

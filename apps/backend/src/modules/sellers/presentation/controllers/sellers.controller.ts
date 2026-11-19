@@ -35,12 +35,19 @@ import { GetSpecialistSellerAssignmentUseCase } from '../../application/use-case
 import { DeactivateSellerAccountUseCase } from '../../application/use-cases/deactivate-seller-account.use-case';
 import { ResendSellerWelcomeEmailUseCase } from '../../application/use-cases/resend-seller-welcome-email.use-case';
 import { InviteSellerSpecialistUseCase } from '../../application/use-cases/invite-seller-specialist.use-case';
-import { InviteSellerSpecialistBodySchema } from '@delta/shared-types';
-import type { InviteSellerSpecialistBody } from '@delta/shared-types';
+import {
+  InviteSellerSpecialistBodySchema,
+  AddSpecialistActivityBodySchema,
+} from '@delta/shared-types';
+import type { InviteSellerSpecialistBody, AddSpecialistActivityBody } from '@delta/shared-types';
+import { ListSpecialistActivitiesUseCase } from '../../application/use-cases/list-specialist-activities.use-case';
+import { AddSpecialistActivityUseCase } from '../../application/use-cases/add-specialist-activity.use-case';
+import type { SpecialistActivityRow } from '../../domain/repositories/seller.repository';
 import type {
   SellerProfile,
   SellerAdminRow,
   SellerSpecialistRow,
+  SellerSpecialistWithStats,
   SellerPaymentDetails,
 } from '../../domain/repositories/seller.repository';
 
@@ -206,6 +213,53 @@ function toSpecialistDto(row: SellerSpecialistRow) {
   };
 }
 
+/**
+ * Specialist row for GET /api/seller/specialists — includes aggregate counts
+ * and follow-up tracking fields.
+ *
+ * New fields (counts only, never patient PII):
+ *   officesCount              — active offices
+ *   consultationsCount        — total consultations (non-cancelled)
+ *   onboardingStep            — machine key (see OnboardingStepKey)
+ *   paymentMethodsConfigured  — boolean
+ *   consultationsByBooking    — from public booking page
+ *   consultationsByDoctor     — created by the specialist
+ *   consultationsUnclassified — origin unknown
+ *   followUpStatus            — current commercial follow-up status
+ *   lastActivityAt            — latest activity timestamp or null
+ */
+function toSpecialistWithStatsDto(row: SellerSpecialistWithStats) {
+  return {
+    ...toSpecialistDto(row),
+    officesCount: row.officesCount,
+    consultationsCount: row.consultationsCount,
+    onboardingStep: row.onboardingStep,
+    paymentMethodsConfigured: row.paymentMethodsConfigured,
+    consultationsByBooking: row.consultationsByBooking,
+    consultationsByDoctor: row.consultationsByDoctor,
+    consultationsUnclassified: row.consultationsUnclassified,
+    followUpStatus: row.followUpStatus,
+    lastActivityAt: row.lastActivityAt,
+  };
+}
+
+/**
+ * Maps a SpecialistActivityRow to the API response shape.
+ * authorName is included as-is (null for placeholder names).
+ * SECURITY: comment is free text — do NOT log.
+ */
+function toActivityDto(row: SpecialistActivityRow) {
+  return {
+    id: row.id,
+    type: row.type,
+    fromStatus: row.fromStatus,
+    toStatus: row.toStatus,
+    comment: row.comment,
+    createdAt: row.createdAt,
+    authorName: row.authorName,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Controllers
 // ---------------------------------------------------------------------------
@@ -258,6 +312,8 @@ export class SellersController {
     private readonly deactivateAccount: DeactivateSellerAccountUseCase,
     private readonly resendWelcomeEmail: ResendSellerWelcomeEmailUseCase,
     private readonly inviteSpecialist: InviteSellerSpecialistUseCase,
+    private readonly listActivities: ListSpecialistActivitiesUseCase,
+    private readonly addActivity: AddSpecialistActivityUseCase,
   ) {}
 
   // ---------------------------------------------------------------------------
@@ -450,9 +506,9 @@ export class SellersController {
   @Roles('seller')
   async listSpecialistsEndpoint(
     @CurrentUser() user: CurrentUserPayload,
-  ): Promise<SuccessResponse<ReturnType<typeof toSpecialistDto>[]>> {
+  ): Promise<SuccessResponse<ReturnType<typeof toSpecialistWithStatsDto>[]>> {
     const specialists = await this.listSpecialists.execute(user.sub);
-    return ok(specialists.map(toSpecialistDto));
+    return ok(specialists.map(toSpecialistWithStatsDto));
   }
 
   // ---------------------------------------------------------------------------
@@ -558,6 +614,91 @@ export class SellersController {
     });
 
     return ok({ ...toSpecialistDto(specialist), invitationEmailSent });
+  }
+
+  // ---------------------------------------------------------------------------
+  // GET /api/seller/specialists/:id/activities
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Returns the follow-up activity history for a specialist, including the
+   * current follow-up status.
+   *
+   * Anti-IDOR: the specialist must belong to the authenticated seller.
+   * Returns 422 (SpecialistNotInPortfolioError) for both "not found" and
+   * "belongs to another seller" to prevent portfolio enumeration.
+   *
+   * SECURITY: @Roles('seller'). sellerId from session, never from body.
+   * authorName and comment are PII — do NOT log the response.
+   *
+   * Response shape:
+   *   { success: true, data: { currentStatus: string, activities: [...] } }
+   */
+  @Get('seller/specialists/:id/activities')
+  @UseGuards(RolesGuard)
+  @Roles('seller')
+  async listSpecialistActivitiesEndpoint(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('id', ParseUUIDPipe) specialistId: string,
+  ): Promise<
+    SuccessResponse<{
+      currentStatus: string;
+      activities: ReturnType<typeof toActivityDto>[];
+    }>
+  > {
+    const result = await this.listActivities.execute(user.sub, specialistId);
+    return ok({
+      currentStatus: result.currentStatus,
+      activities: result.activities.map(toActivityDto),
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // POST /api/seller/specialists/:id/activities
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Records a follow-up action against a specialist.
+   *
+   * Business rules (enforced by use case):
+   *   - At least one of `status` or `comment` must be provided.
+   *   - If status equals the current status and no comment → 422.
+   *   - If status differs → type='status_change' (comment optional).
+   *   - If only comment → type='comment'.
+   *
+   * Anti-IDOR: the specialist must belong to the authenticated seller.
+   *
+   * SECURITY: @Roles('seller'). sellerId from session, never from body.
+   * Comment is free text — do NOT log the request body.
+   *
+   * Response shape:
+   *   { success: true, data: { activity: {...}, currentStatus: string } }
+   */
+  @Post('seller/specialists/:id/activities')
+  @HttpCode(HttpStatus.CREATED)
+  @UseGuards(RolesGuard)
+  @Roles('seller')
+  async addSpecialistActivityEndpoint(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('id', ParseUUIDPipe) specialistId: string,
+    @Body(new ZodValidationPipe(AddSpecialistActivityBodySchema))
+    body: AddSpecialistActivityBody,
+  ): Promise<
+    SuccessResponse<{
+      activity: ReturnType<typeof toActivityDto>;
+      currentStatus: string;
+    }>
+  > {
+    const result = await this.addActivity.execute({
+      sellerId: user.sub,
+      specialistId,
+      status: body.status,
+      comment: body.comment,
+    });
+    return ok({
+      activity: toActivityDto(result.activity),
+      currentStatus: result.currentStatus,
+    });
   }
 
   // ---------------------------------------------------------------------------

@@ -34,6 +34,10 @@ function makeRepoMock(): jest.Mocked<ISellerRepository> {
     getSpecialistSellerAssignment: jest.fn(),
     deactivateOwnAccount: jest.fn().mockResolvedValue(undefined),
     findByCedula: jest.fn(),
+    listSoldSpecialistsWithStats: jest.fn().mockResolvedValue([]),
+    getSpecialistCurrentStatus: jest.fn(),
+    listSpecialistActivitiesRaw: jest.fn(),
+    createSpecialistActivity: jest.fn(),
   };
 }
 

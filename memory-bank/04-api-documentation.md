@@ -175,18 +175,19 @@ Módulo `pending-consultations`. Envelope `{success,data}`. Doctor scoped por `u
 
 ### Admin (módulo ✅ — TODOS super_admin, RolesGuard a nivel de clase)
 
-| Endpoint                                                                    | Método  | Notas                                                                                                                                                                                       |
-| --------------------------------------------------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/api/admin/dashboard`                                                      | GET     | KPIs (médicos por actividad, citas 30d, pacientes, suscripciones por vencer). Redis cache 300.                                                                                              |
-| `/api/admin/doctors`, `/api/admin/doctors/:id`                              | GET     | Lista (filtros activity_status/subscription_status → 400 si inválido) + detalle.                                                                                                            |
-| `/api/admin/doctors/:id/subscription`                                       | PUT     | Actualiza suscripción (Zod) + invalida cache.                                                                                                                                               |
-| `/api/admin/doctors/:id/access`                                             | PUT     | **Bloquear/desbloquear acceso** (ban duro). Body `{ is_active, reason? }`. Setea `profiles.is_active`. No bloquea super_admin ni self (422 `CANNOT_BLOCK_SUPER_ADMIN`/`CANNOT_BLOCK_SELF`). |
-| `/api/admin/subscriptions`                                                  | GET     | Todas con filtros.                                                                                                                                                                          |
-| `/api/admin/plans`, `/api/admin/plans/:planKey`                             | GET/PUT | Planes (toggle is_active, Zod).                                                                                                                                                             |
-| `/api/admin/plan-features`, `/api/admin/plan-features/:planKey/:featureKey` | GET/PUT | Toggle feature (upsert + invalida features:{plan}).                                                                                                                                         |
-| `/api/admin/patients`                                                       | GET     | Stats globales (solo counts, sin PII).                                                                                                                                                      |
-| `/api/admin/settings`                                                       | GET/PUT | Config general clave/valor (no expone secretos). PUT upsert de cualquier key (editor genérico).                                                                                             |
-| `/api/admin/email-templates`, `/api/admin/email-templates/:name`            | GET/PUT | **Editor de plantillas de email**. GET lista (resumen) / GET :name (subject+html+text) / PUT :name (parcial). Solo edita existentes (no crea/borra). 404 `EMAIL_TEMPLATE_NOT_FOUND`.        |
+| Endpoint                                                                    | Método  | Notas                                                                                                                                                                                                                                                                                                                                                       |
+| --------------------------------------------------------------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/api/admin/dashboard`                                                      | GET     | KPIs (médicos por actividad, citas 30d, pacientes, suscripciones por vencer). Redis cache 300.                                                                                                                                                                                                                                                              |
+| `/api/admin/doctors`, `/api/admin/doctors/:id`                              | GET     | Lista (filtros activity_status/subscription_status → 400 si inválido) + detalle.                                                                                                                                                                                                                                                                            |
+| `/api/admin/doctors/:id/subscription`                                       | PUT     | Actualiza suscripción (Zod) + invalida cache.                                                                                                                                                                                                                                                                                                               |
+| `/api/admin/doctors/:id/access`                                             | PUT     | **Bloquear/desbloquear acceso** (ban duro). Body `{ is_active, reason? }`. Setea `profiles.is_active`. No bloquea super_admin ni self (422 `CANNOT_BLOCK_SUPER_ADMIN`/`CANNOT_BLOCK_SELF`).                                                                                                                                                                 |
+| `/api/admin/subscriptions`                                                  | GET     | Todas con filtros.                                                                                                                                                                                                                                                                                                                                          |
+| `/api/admin/plans`, `/api/admin/plans/:planKey`                             | GET/PUT | Planes (toggle is_active, Zod).                                                                                                                                                                                                                                                                                                                             |
+| `/api/admin/plan-features`, `/api/admin/plan-features/:planKey/:featureKey` | GET/PUT | Toggle feature (upsert + invalida features:{plan}).                                                                                                                                                                                                                                                                                                         |
+| `/api/admin/patients`                                                       | GET     | Stats globales (solo counts, sin PII).                                                                                                                                                                                                                                                                                                                      |
+| `/api/admin/settings`                                                       | GET/PUT | Config general clave/valor (no expone secretos). PUT upsert de cualquier key (editor genérico). `default_seller_id` está protegido — usar el endpoint dedicado de abajo.                                                                                                                                                                                    |
+| `/api/admin/settings/default-seller`                                        | PUT     | Configura el vendedor predeterminado para altas orgánicas. Body `{ sellerId: UUID \| null }`. UUID debe pertenecer a un perfil activo con `role='seller'`; `null` limpia el valor. 422 `INVALID_DEFAULT_SELLER` si el UUID no existe o está inactivo. Altas orgánicas asignadas con `sold_by_source='admin'` (sin comisión de alta, solo comisión de plan). |
+| `/api/admin/email-templates`, `/api/admin/email-templates/:name`            | GET/PUT | **Editor de plantillas de email**. GET lista (resumen) / GET :name (subject+html+text) / PUT :name (parcial). Solo edita existentes (no crea/borra). 404 `EMAIL_TEMPLATE_NOT_FOUND`.                                                                                                                                                                        |
 
 ### Diagnóstico y auditoría
 
@@ -920,17 +921,17 @@ y otro monto en bolívares que el especialista para el mismo servicio. Ver ADR-0
 
 Todos en **camelCase** (convención de estos controllers — verificada, no asumida).
 
-| Endpoint                                    | Rol           | Devuelve                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| ------------------------------------------- | ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET /api/admin/sellers`                    | `super_admin` | `{ id, fullName, email, sellerCode, specialistsCount, createdAt, lastSignInAt }[]`                                                                                                                                                                                                                                                                                                                                                                                           |
-| `POST /api/admin/sellers`                   | `super_admin` | `{ id, sellerCode, createdAt, welcomeEmailSent: boolean }` — `welcomeEmailSent: false` indica que el envío inicial falló y hay que usar el resend                                                                                                                                                                                                                                                                                                                            |
-| `POST /api/admin/sellers/:id/welcome-email` | `super_admin` | `{ sent: boolean }` — reenvía `seller_welcome` al vendedor. 404 si el id no corresponde a un vendedor. Email failure → `sent: false` (nunca 5xx)                                                                                                                                                                                                                                                                                                                             |
-| `GET /api/seller/me`                        | `seller`      | `{ sellerCode, fullName }`                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| `GET /api/seller/specialists`               | `seller`      | `{ id, fullName, specialty, plan, subscriptionStatus, createdAt, lastSignInAt }[]`                                                                                                                                                                                                                                                                                                                                                                                           |
-| `GET /api/seller/specialists/:id`           | `seller`      | Igual, una fila. **422 si no es suyo** (anti-IDOR)                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| `POST /api/seller/specialists`              | `seller`      | Alta. `sold_by` y plan los fija el backend                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| `POST /api/seller/specialist-invitations`   | `seller`      | Pre-registro de especialista por vendedor. Body: `{ first_name, last_name, cedula, phone, email, specialty? }` (email OBLIGATORIO: es el de inicio de sesión; `phone` canónico, el BFF `/api/seller/specialist-invitations` lo normaliza). Responde `{ ...specialist, invitationEmailSent: boolean }`. 409 en cédula o email duplicado. Atribución `sold_by_source='seller_manual'`. `onboarding_last_step='profile'` para que el wizard arranque en el paso de consultorio. |
-| `GET /api/public/seller-code/:code`         | público       | `{ valid, sellerName }` — **nada más**                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| Endpoint                                    | Rol           | Devuelve                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| ------------------------------------------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `GET /api/admin/sellers`                    | `super_admin` | `{ id, fullName, email, sellerCode, specialistsCount, createdAt, lastSignInAt }[]`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `POST /api/admin/sellers`                   | `super_admin` | `{ id, sellerCode, createdAt, welcomeEmailSent: boolean }` — `welcomeEmailSent: false` indica que el envío inicial falló y hay que usar el resend                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| `POST /api/admin/sellers/:id/welcome-email` | `super_admin` | `{ sent: boolean }` — reenvía `seller_welcome` al vendedor. 404 si el id no corresponde a un vendedor. Email failure → `sent: false` (nunca 5xx)                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `GET /api/seller/me`                        | `seller`      | `{ sellerCode, fullName }`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `GET /api/seller/specialists`               | `seller`      | `{ id, fullName, specialty, plan, subscriptionStatus, createdAt, lastSignInAt, onboardingCompleted, officesCount, consultationsCount, onboardingStep, paymentMethodsConfigured, consultationsByBooking, consultationsByDoctor, consultationsUnclassified }[]` — ampliado 2026-11-18. `onboardingStep`: `'completed'\|'service'\|'office'\|'profile'\|'no_data'\|'never_signed_in'`. Counts excluyen citas canceladas. Origin: `booking_public` trustado en `appointment.source`; legacy rows usan `patients.source`. Anti-IDOR: `sold_by = sellerId`. Un solo query (sin N+1). |
+| `GET /api/seller/specialists/:id`           | `seller`      | Igual, una fila. **422 si no es suyo** (anti-IDOR)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `POST /api/seller/specialists`              | `seller`      | Alta. `sold_by` y plan los fija el backend                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `POST /api/seller/specialist-invitations`   | `seller`      | Pre-registro de especialista por vendedor. Body: `{ first_name, last_name, cedula, phone, email, specialty? }` (email OBLIGATORIO: es el de inicio de sesión; `phone` canónico, el BFF `/api/seller/specialist-invitations` lo normaliza). Responde `{ ...specialist, invitationEmailSent: boolean }`. 409 en cédula o email duplicado. Atribución `sold_by_source='seller_manual'`. `onboarding_last_step='profile'` para que el wizard arranque en el paso de consultorio.                                                                                                   |
+| `GET /api/public/seller-code/:code`         | público       | `{ valid, sellerName }` — **nada más**                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 
 > ⚠️ **Corregido 2026-08-17:** los endpoints de admin decían `@Roles('super_admin', 'admin')`,
 > pero **`'admin'` no existe** en `CurrentUserPayload['role']` — ninguna sesión puede tener ese
@@ -1497,3 +1498,113 @@ Cambios de contrato:
 - `PUT /api/doctor/profile` acepta `mpps_number`; si cambia, re-verifica en SACS (máx. 1 vez cada 15 min).
 - `GET /api/admin/doctors/export` (CSV): + Teléfono, Fecha de registro, Pacientes, Consultorios (activos),
   Servicios (activos), Consultas y Último paso del onboarding. Celdas que empiezan con `= + - @` llevan `'`.
+
+## Seguimiento comercial por especialista — activities (2026-11-18)
+
+Módulo `sellers`. Rol requerido: `seller`. Anti-IDOR: `profiles.sold_by = authenticated seller`; un
+especialista ajeno y uno inexistente devuelven el **mismo** `SpecialistNotInPortfolioError` (404).
+
+### Nuevos endpoints
+
+| Método | Ruta                                     | Respuesta                                                     |
+| ------ | ---------------------------------------- | ------------------------------------------------------------- |
+| GET    | `/api/seller/specialists/:id/activities` | `{ currentStatus, activities: [...] }` — más reciente primero |
+| POST   | `/api/seller/specialists/:id/activities` | `{ activity: {...}, currentStatus }` — 201                    |
+
+**Cambio en endpoint existente:**
+
+| Método | Ruta                      | Cambio                                                                              |
+| ------ | ------------------------- | ----------------------------------------------------------------------------------- |
+| GET    | `/api/seller/specialists` | Cada fila suma `followUpStatus` y `lastActivityAt` (via LEFT JOIN LATERAL, sin N+1) |
+
+### Estados de seguimiento (`FollowUpStatus`)
+
+| Valor                  | Etiqueta             | Se almacena en BD      |
+| ---------------------- | -------------------- | ---------------------- |
+| `sin_contactar`        | Sin contactar        | No (default implícito) |
+| `primer_contacto`      | Primer contacto      | Sí                     |
+| `no_atendio`           | No atendió           | Sí                     |
+| `completar_onboarding` | Completar onboarding | Sí                     |
+| `induccion`            | En inducción         | Sí                     |
+| `reactivar`            | Reactivar            | Sí                     |
+| `desistido`            | Desistido            | Sí                     |
+
+`sin_contactar` **nunca se guarda** — es el estado por defecto cuando no existe ninguna fila
+`status_change` para ese especialista.
+
+### `GET /api/seller/specialists/:id/activities`
+
+Respuesta (dentro del envelope `{success, data}`):
+
+```json
+{
+  "currentStatus": "primer_contacto",
+  "activities": [
+    {
+      "id": "uuid",
+      "type": "status_change",
+      "fromStatus": null,
+      "toStatus": "primer_contacto",
+      "comment": null,
+      "createdAt": "2026-11-18T10:00:00.000Z",
+      "authorName": "Juan Pérez"
+    }
+  ]
+}
+```
+
+`authorName` es `null` cuando el perfil tiene un nombre placeholder (email o genérico).
+
+### `POST /api/seller/specialists/:id/activities`
+
+Cuerpo (al menos uno de `status` o `comment`):
+
+```json
+{ "status": "induccion", "comment": "Texto libre opcional, máx 2000 chars" }
+```
+
+Reglas de negocio:
+
+- `status` igual al actual **sin** `comment` → 422 `SpecialistAlreadySameStatusError` (`SPECIALIST_ALREADY_SAME_STATUS`)
+- Solo `comment` → `type='comment'`, sin cambio de estado
+- `status` distinto al actual (con o sin `comment`) → `type='status_change'`; `fromStatus=null` si venía de `sin_contactar`
+- `status` igual al actual **con** `comment` → se degrada a `type='comment'` (no crea fila redundante de estado)
+
+Respuesta 201 (dentro del envelope `{success, data}`):
+
+```json
+{
+  "activity": {
+    "id": "uuid",
+    "type": "status_change",
+    "fromStatus": null,
+    "toStatus": "induccion",
+    "comment": "...",
+    "createdAt": "2026-11-18T10:05:00.000Z",
+    "authorName": "Juan Pérez"
+  },
+  "currentStatus": "induccion"
+}
+```
+
+### Tabla `seller_specialist_activities`
+
+Migración `20261118000010-seller-specialist-activities.cjs`. Columnas TEXT+CHECK (nunca ENUM):
+
+```sql
+id            UUID PK DEFAULT gen_random_uuid()
+specialist_id UUID NOT NULL → profiles
+seller_id     UUID NOT NULL → profiles
+type          TEXT CHECK IN ('status_change', 'comment')
+from_status   TEXT NULL     CHECK IN (storable values) OR NULL
+to_status     TEXT NULL     CHECK IN (storable values) OR NULL
+comment       TEXT NULL     CHECK length(trim(comment)) > 0 OR NULL
+created_at    TIMESTAMPTZ   DEFAULT now()
+-- row-level: status_change → to_status NOT NULL; comment → comment NOT NULL+non-empty
+```
+
+Índice en `(specialist_id, created_at DESC)`. Append-only: sin UPDATE ni DELETE.
+
+⚠️ `sellerId` sale **siempre** de `CurrentUser().sub` — nunca del cuerpo.
+⚠️ `comment` es texto libre — **NUNCA loguear** (puede contener PII).
+⚠️ `authorName` es PII — **NUNCA loguear**.

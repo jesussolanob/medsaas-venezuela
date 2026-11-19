@@ -1594,3 +1594,9 @@ status='active'` con `QueryTypes.UPDATE` (devuelve `[undefined, affectedCount]`;
   Los términos se aceptan en la bienvenida, que llama al mismo registro del paso 1 con los datos ya
   cargados y SIN `seller_code` (no toca la atribución). El teléfono debe ser canónico (`PhoneInput` +
   normalización en el BFF): el registro rechaza cualquier otro formato.
+- **ADR-100 (2026-11-16):** **Con columnas enum, nunca `COALESCE(col, '')`: usar `IS DISTINCT FROM`.**
+  Postgres intenta castear `''` al enum y falla la consulta entera (Cobros quedó vacío en producción).
+  Toda SQL cruda nueva se ejecuta contra la BD (transacción `READ ONLY`) antes de promover: los tests
+  usan Sequelize simulado y no la validan.
+- **ADR-101 (2026-11-18):** **`appointments.source` distingue el origen real de cada cita a partir de hoy; las filas históricas quedan en `'booking'` (no confiable para clasificar).**
+  Valores trustados: `'booking_public'` (paciente desde la página pública), `'doctor_panel'` (cita creada por el doctor), `'pending_consultation'` (ya existía). El valor `'booking'` puede indicar cualquiera de los dos primeros (fue el único valor que usaban los dos flujos antes). Clasificación de origen en el módulo seller: `appointment.source = 'booking_public'` → booking; `appointment.source = 'doctor_panel'` → doctor; legacy sin valor trustado → fallback a `patients.source` (`'booking'` → booking, `'manual'` → doctor, otro/null → unclassified).

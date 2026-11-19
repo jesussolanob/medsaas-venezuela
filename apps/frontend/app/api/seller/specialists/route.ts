@@ -29,6 +29,14 @@ interface SellerSpecialistRow {
    * llamadas comerciales distintas.
    */
   onboardingCompleted?: boolean;
+  // Counts only (no patient data) — see GET /api/seller/specialists in 04-api-documentation.
+  officesCount?: number;
+  consultationsCount?: number;
+  onboardingStep?: string;
+  paymentMethodsConfigured?: boolean;
+  consultationsByBooking?: number;
+  consultationsByDoctor?: number;
+  consultationsUnclassified?: number;
 }
 
 export async function GET(): Promise<NextResponse> {

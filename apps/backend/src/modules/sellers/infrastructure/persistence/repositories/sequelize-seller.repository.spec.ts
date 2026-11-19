@@ -1,5 +1,6 @@
 import { SequelizeSellerRepository } from './sequelize-seller.repository';
 import type { SellerProfileModel } from '../models/seller-profile.model';
+import type { SellerSpecialistActivityModel } from '../models/seller-specialist-activity.model';
 import type { Sequelize } from 'sequelize-typescript';
 
 /**
@@ -17,9 +18,10 @@ describe('SequelizeSellerRepository.linkSoldBy', () => {
   function makeRepo() {
     const update = jest.fn().mockResolvedValue([1]);
     const profileModel = { update } as unknown as typeof SellerProfileModel;
+    const activityModel = {} as unknown as typeof SellerSpecialistActivityModel;
     const sequelize = {} as Sequelize;
     return {
-      repo: new SequelizeSellerRepository(profileModel, sequelize),
+      repo: new SequelizeSellerRepository(profileModel, activityModel, sequelize),
       update,
     };
   }

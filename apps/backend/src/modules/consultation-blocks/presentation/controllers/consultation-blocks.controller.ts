@@ -1,12 +1,25 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Put, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Patch,
+  Put,
+  UseGuards,
+} from '@nestjs/common';
 import { AppAuthGuard } from '../../../../infrastructure/auth/app-auth.guard';
 import { CurrentUser } from '../../../../presentation/decorators/current-user.decorator';
 import type { CurrentUserPayload } from '../../../../presentation/decorators/current-user.decorator';
 import { ZodValidationPipe } from '../../../../presentation/pipes/zod-validation.pipe';
 import { GetConsultationBlocksUseCase } from '../../application/use-cases/consultation-blocks/get-consultation-blocks.use-case';
 import { SaveConsultationBlocksUseCase } from '../../application/use-cases/consultation-blocks/save-consultation-blocks.use-case';
+import { RenameBlockLabelUseCase } from '../../application/use-cases/consultation-blocks/rename-block-label.use-case';
 import {
+  PatchBlockLabelDtoSchema,
   SaveBlocksDtoSchema,
+  type PatchBlockLabelDto,
   type SaveBlocksDto,
 } from '../../application/dtos/consultation-block.dto';
 
@@ -30,6 +43,7 @@ export class ConsultationBlocksController {
   constructor(
     private readonly getBlocks: GetConsultationBlocksUseCase,
     private readonly saveBlocks: SaveConsultationBlocksUseCase,
+    private readonly renameBlockLabel: RenameBlockLabelUseCase,
   ) {}
 
   /**
@@ -64,6 +78,34 @@ export class ConsultationBlocksController {
     @Body(new ZodValidationPipe(SaveBlocksDtoSchema)) dto: SaveBlocksDto,
   ): Promise<{ success: true; data: unknown }> {
     const result = await this.saveBlocks.execute(user.sub, dto);
+    return { success: true, data: result };
+  }
+
+  /**
+   * PATCH /api/doctor/consultation-blocks/:blockKey/label
+   *
+   * Persists a custom label for a single block belonging to the authenticated
+   * doctor. Only changes custom_label — enabled, sort_order, and all other
+   * overrides remain untouched.
+   *
+   * Body: { custom_label: string | null }
+   *   - string (trimmed, max 80 chars) → sets the custom label
+   *   - null or empty string           → removes override (restores catalog default)
+   *
+   * Errors:
+   *   - 400 INVALID_BLOCK_KEY  → blockKey does not exist in the catalog
+   *   - 400 LOCKED_BLOCK_KEY   → blockKey is a system-locked block
+   *
+   * Returns: { success: true, data: { blockKey, customLabel, label } }
+   */
+  @Patch(':blockKey/label')
+  @HttpCode(HttpStatus.OK)
+  async patchLabel(
+    @CurrentUser() user: CurrentUserPayload,
+    @Param('blockKey') blockKey: string,
+    @Body(new ZodValidationPipe(PatchBlockLabelDtoSchema)) dto: PatchBlockLabelDto,
+  ): Promise<{ success: true; data: unknown }> {
+    const result = await this.renameBlockLabel.execute(user.sub, blockKey, dto);
     return { success: true, data: result };
   }
 }

@@ -1,4 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
+import { deriveOnboardingStep, ONBOARDING_STEP_LABEL_ES } from '@delta/shared-types';
 import {
   ADMIN_REPOSITORY,
   type IAdminRepository,
@@ -135,43 +136,41 @@ const ACTIVITY_LABEL: Record<DoctorExportRow['activityStatus'], string> = {
   inactive: 'Inactivo',
 };
 
-const ONBOARDING_STEP_LABEL: Record<string, string> = {
-  profile: 'Perfil',
-  office: 'Consultorio',
-  service: 'Servicio',
-  completed: 'Completado',
-};
-
 /**
- * Returns a human-readable label for the onboarding step, appending "(omitido)"
- * when the step was explicitly skipped by the doctor.
+ * Returns the Spanish CSV label for the onboarding step, appending "(omitido)"
+ * when the step was explicitly skipped by the specialist.
+ *
+ * Uses the shared `deriveOnboardingStep` pure function so the derivation logic
+ * lives in one place. Both this CSV export and the seller specialist list
+ * endpoint call the same function — their outputs are always consistent.
  *
  * Examples:
- *   null, false, false   → ""
- *   "profile", false, false → "Perfil"
- *   "office", true, false   → "Consultorio (omitido)"
- *   "service", false, true  → "Servicio (omitido)"
- *   "completed", false, false → "Completado"
- */
-/**
- * Last onboarding step for the CSV. Accounts created before the step was tracked
- * (onboarding_last_step NULL) get it derived from what they actually configured,
- * so the column is useful for every specialist, not only the new ones.
+ *   onboardingLastStep=null, onboardingCompleted=false, serviceCount=0 → "Nunca ingresó"
+ *   onboardingLastStep="profile"                                       → "Perfil"
+ *   onboardingLastStep="office", onboardingOfficeSkipped=true          → "Consultorio (omitido)"
+ *   onboardingLastStep="service", onboardingServiceSkipped=true        → "Servicio (omitido)"
+ *   onboardingLastStep="completed"                                     → "Completado"
  */
 function formatOnboardingStep(row: DoctorExportRow): string {
-  const lastStep = row.onboardingLastStep;
-  if (lastStep) {
-    const label = ONBOARDING_STEP_LABEL[lastStep] ?? lastStep;
-    const skipped =
-      (lastStep === 'office' && row.onboardingOfficeSkipped) ||
-      (lastStep === 'service' && row.onboardingServiceSkipped);
-    return skipped ? `${label} (omitido)` : label;
-  }
-  if (row.onboardingCompleted) return 'Completado';
-  if (row.serviceCount > 0) return 'Servicio';
-  if (row.officeCount > 0) return 'Consultorio';
-  if (row.cedula && row.specialty) return 'Perfil';
-  return row.lastSignInAt ? 'Sin completar datos' : 'Nunca ingresó';
+  const key = deriveOnboardingStep({
+    onboardingLastStep: row.onboardingLastStep,
+    onboardingCompleted: row.onboardingCompleted,
+    onboardingOfficeSkipped: row.onboardingOfficeSkipped,
+    onboardingServiceSkipped: row.onboardingServiceSkipped,
+    serviceCount: row.serviceCount,
+    officeCount: row.officeCount,
+    cedula: row.cedula,
+    specialty: row.specialty,
+    lastSignInAt: row.lastSignInAt,
+  });
+
+  const label = ONBOARDING_STEP_LABEL_ES[key];
+
+  // Append the "(omitido)" suffix for explicitly skipped steps.
+  if (key === 'office' && row.onboardingOfficeSkipped) return `${label} (omitido)`;
+  if (key === 'service' && row.onboardingServiceSkipped) return `${label} (omitido)`;
+
+  return label;
 }
 
 function buildCsvRow(row: DoctorExportRow): string {

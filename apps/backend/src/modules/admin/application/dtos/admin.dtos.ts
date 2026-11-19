@@ -337,3 +337,19 @@ export const CreateAdminDoctorBodySchema = z
   .strict();
 
 export type CreateAdminDoctorBody = z.infer<typeof CreateAdminDoctorBodySchema>;
+
+// ---------------------------------------------------------------------------
+// PUT /admin/settings/default-seller — configure the default seller for organic sign-ups
+// ---------------------------------------------------------------------------
+
+export const SetDefaultSellerBodySchema = z
+  .object({
+    /**
+     * UUID of the seller profile to set as default for organic sign-ups.
+     * Pass null to clear the current default (no attribution for organic sign-ups).
+     */
+    sellerId: z.string().uuid({ message: 'El ID debe ser un UUID válido' }).nullable(),
+  })
+  .strict();
+
+export type SetDefaultSellerBody = z.infer<typeof SetDefaultSellerBodySchema>;

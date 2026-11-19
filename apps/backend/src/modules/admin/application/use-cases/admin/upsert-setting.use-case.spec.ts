@@ -107,4 +107,18 @@ describe('UpsertSettingUseCase', () => {
 
     expect(repo.upsertSetting).not.toHaveBeenCalled();
   });
+
+  it('throws SettingNotAllowedError for default_seller_id (must use PUT /settings/default-seller)', async () => {
+    // default_seller_id is protected because the dedicated endpoint validates
+    // that the UUID belongs to an active seller before persisting. Allowing the
+    // generic endpoint to bypass this check could set an invalid/inactive seller.
+    const repo = makeRepo();
+    const useCase = new UpsertSettingUseCase(repo);
+
+    await expect(useCase.execute({ key: 'default_seller_id', value: 'some-uuid' })).rejects.toThrow(
+      SettingNotAllowedError,
+    );
+
+    expect(repo.upsertSetting).not.toHaveBeenCalled();
+  });
 });

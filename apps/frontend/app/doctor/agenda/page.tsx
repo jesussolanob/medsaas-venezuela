@@ -117,6 +117,18 @@ type AvailabilitySlot = {
   start_time: string; // HH:MM
   end_time: string; // HH:MM
   is_enabled: boolean;
+  /**
+   * Effective consultation duration for this block (minutes).
+   * Null/undefined = inherit from ScheduleConfig.slot_duration.
+   * Populated from the office block's own slotDuration when loading
+   * from /api/doctor/offices, mirroring the backend booking logic.
+   */
+  slotDuration?: number | null;
+  /**
+   * Effective buffer between appointments for this block (minutes).
+   * Null/undefined = inherit from ScheduleConfig.buffer_minutes.
+   */
+  bufferMinutes?: number | null;
 };
 
 type CalendarAppointment = {
@@ -252,7 +264,58 @@ function timeToMinutes(time: string): number {
   return h * 60 + m;
 }
 
-/** Generate time slots for a day based on availability and config */
+/**
+ * Duration and buffer shared by every given availability block, for the agenda
+ * labels. `null` means the blocks disagree (offices or blocks with different values).
+ * No blocks → the schedule config.
+ */
+function summarizeSlots(
+  slots: AvailabilitySlot[],
+  config: ScheduleConfig,
+): { duration: number | null; buffer: number | null } {
+  if (slots.length === 0) return { duration: config.slot_duration, buffer: config.buffer_minutes };
+  const durations = new Set(slots.map((s) => s.slotDuration ?? config.slot_duration));
+  const buffers = new Set(slots.map((s) => s.bufferMinutes ?? config.buffer_minutes));
+  return {
+    duration: durations.size === 1 ? [...durations][0] : null,
+    buffer: buffers.size === 1 ? [...buffers][0] : null,
+  };
+}
+
+/**
+ * Returns the effective consultation duration (minutes) for a time slot on a
+ * given day, using the block-level override when present and falling back to
+ * the global ScheduleConfig.slot_duration.
+ *
+ * Mirrors the backend's GetAvailableSlotsUseCase logic:
+ *   duracion = dayEntry.slotDuration ?? office.slotDuration
+ */
+function durationAt(
+  dayOfWeek: number,
+  time: string,
+  slots: AvailabilitySlot[],
+  config: ScheduleConfig,
+): number {
+  const timeMin = timeToMinutes(time);
+  for (const slot of slots) {
+    if (slot.day_of_week !== dayOfWeek || !slot.is_enabled) continue;
+    const start = timeToMinutes(slot.start_time);
+    const end = timeToMinutes(slot.end_time);
+    if (timeMin >= start && timeMin < end) {
+      return slot.slotDuration ?? config.slot_duration;
+    }
+  }
+  return config.slot_duration;
+}
+
+/** Generate time slots for a day based on availability and config.
+ *
+ * Each availability block may carry its own slotDuration and bufferMinutes.
+ * When set, those override the global ScheduleConfig values for that block,
+ * mirroring exactly what the backend booking use-case does. This means a
+ * morning block with 45-min slots and an afternoon block with 20-min slots
+ * are both rendered correctly in the day view without any server round-trip.
+ */
 function generateTimeSlots(
   dayOfWeek: number,
   availSlots: AvailabilitySlot[],
@@ -262,14 +325,17 @@ function generateTimeSlots(
   const result: { time: string; endTime: string }[] = [];
 
   for (const slot of daySlots) {
+    // Each block can have its own duration and buffer; fall back to config defaults.
+    const slotDur = slot.slotDuration ?? config.slot_duration;
+    const bufMin = slot.bufferMinutes ?? config.buffer_minutes;
     const blockStart = timeToMinutes(slot.start_time);
     const blockEnd = timeToMinutes(slot.end_time);
-    const step = config.slot_duration + config.buffer_minutes;
+    const step = slotDur + bufMin;
     let current = blockStart;
 
-    while (current + config.slot_duration <= blockEnd) {
+    while (current + slotDur <= blockEnd) {
       const startStr = `${String(Math.floor(current / 60)).padStart(2, '0')}:${String(current % 60).padStart(2, '0')}`;
-      const endStr = addMinutes(startStr, config.slot_duration);
+      const endStr = addMinutes(startStr, slotDur);
       result.push({ time: startStr, endTime: endStr });
       current += step;
     }
@@ -451,19 +517,43 @@ export default function AgendaPage() {
         if (activeOffices.length > 0) {
           const officeSlots: AvailabilitySlot[] = [];
           activeOffices.forEach((off: any) => {
-            // El backend devuelve camelCase: slotDuration, bufferMinutes, schedule
+            // El backend devuelve camelCase: slotDuration, bufferMinutes, schedule.
+            // Block-level overrides mirror the backend booking logic:
+            //   duracion = block.slotDuration ?? office.slotDuration
+            const offSlotDur: number | undefined =
+              off.slotDuration ?? off.slot_duration ?? undefined;
+            const offBufMin: number | undefined =
+              off.bufferMinutes ?? off.buffer_minutes ?? undefined;
             const schedule = off.schedule as
-              | { day: number; start: string; end: string; enabled: boolean }[]
+              | {
+                  day: number;
+                  start: string;
+                  end: string;
+                  enabled: boolean;
+                  slotDuration?: number | null;
+                  bufferMinutes?: number | null;
+                }[]
               | null;
             if (!Array.isArray(schedule)) return;
             schedule.forEach((s) => {
               if (s.enabled && s.start && s.end) {
+                // Resolve effective duration: block first, then office level.
+                const effectiveDur =
+                  typeof s.slotDuration === 'number' && s.slotDuration > 0
+                    ? s.slotDuration
+                    : offSlotDur;
+                const effectiveBuf =
+                  typeof s.bufferMinutes === 'number' && s.bufferMinutes >= 0
+                    ? s.bufferMinutes
+                    : offBufMin;
                 officeSlots.push({
                   id: `office-${s.day}-${s.start}`,
                   day_of_week: s.day,
                   start_time: s.start,
                   end_time: s.end,
                   is_enabled: true,
+                  slotDuration: effectiveDur ?? null,
+                  bufferMinutes: effectiveBuf ?? null,
                 } as AvailabilitySlot);
               }
             });
@@ -879,13 +969,17 @@ export default function AgendaPage() {
     const pendingAsAppts: CalendarAppointment[] = pendingAppointments.map((p) => {
       const pd = new Date(p.scheduled_at);
       const timeStr = toHHMM(pd);
+      // Derive Caracas day-of-week from the Caracas date string (noon avoids
+      // timezone edge cases) so durationAt uses the correct block.
+      const pdYmd = dateToYMD(pd);
+      const dow = (new Date(pdYmd + 'T12:00:00').getDay() + 6) % 7;
       return {
         id: p.id,
         patient_name: p.patient_name,
-        date: dateToYMD(pd),
+        date: pdYmd,
         isoDate: p.scheduled_at,
         time: timeStr,
-        endTime: addMinutes(timeStr, config.slot_duration),
+        endTime: addMinutes(timeStr, durationAt(dow, timeStr, availSlots, config)),
         chief_complaint: p.chief_complaint ?? undefined,
         status: 'scheduled' as const,
         source: 'appointment' as const,
@@ -921,14 +1015,16 @@ export default function AgendaPage() {
     const pendingAsAppts: CalendarAppointment[] = pendingAppointments.map((p) => {
       const pd = new Date(p.scheduled_at);
       const timeStr = toHHMM(pd);
+      const pdYmd = dateToYMD(pd);
+      const dow = (new Date(pdYmd + 'T12:00:00').getDay() + 6) % 7;
       return {
         id: p.id,
         appointment_id: p.id,
         patient_name: p.patient_name,
-        date: dateToYMD(pd),
+        date: pdYmd,
         isoDate: p.scheduled_at,
         time: timeStr,
-        endTime: addMinutes(timeStr, config.slot_duration),
+        endTime: addMinutes(timeStr, durationAt(dow, timeStr, availSlots, config)),
         chief_complaint: p.chief_complaint ?? undefined,
         status: 'scheduled' as const,
         source: 'appointment' as const,
@@ -1131,8 +1227,19 @@ export default function AgendaPage() {
               Agenda
             </h1>
             <p className="text-sm mt-1" style={{ color: 'var(--dh-gray-600)' }}>
-              Citas cada {config.slot_duration} min
-              {config.buffer_minutes > 0 && ` · ${config.buffer_minutes} min entre citas`}
+              {/* Show per-slot duration only when all active slots agree on the same value.
+                  With multiple offices each having a different duration, a single number
+                  would be misleading — show "Según consultorio" instead. */}
+              {(() => {
+                // With offices of different duration/buffer a single number would lie.
+                const { duration, buffer } = summarizeSlots(
+                  availSlots.filter((s) => s.is_enabled),
+                  config,
+                );
+                const dur = duration === null ? 'Según consultorio' : `Citas cada ${duration} min`;
+                const buf = buffer === null ? '' : buffer > 0 ? ` · ${buffer} min entre citas` : '';
+                return dur + buf;
+              })()}
               {' · '}
               {allAppointments.length} consultas
             </p>
@@ -1563,8 +1670,16 @@ export default function AgendaPage() {
                     Horario del día
                   </p>
                   <p className="text-xs text-slate-400">
-                    Citas de {config.slot_duration} min
-                    {config.buffer_minutes > 0 && ` + ${config.buffer_minutes} min descanso`}
+                    {(() => {
+                      const dow = (selectedDate.getDay() + 6) % 7;
+                      const { duration, buffer } = summarizeSlots(
+                        availSlots.filter((s) => s.day_of_week === dow && s.is_enabled),
+                        config,
+                      );
+                      const dur = duration === null ? 'Según bloque' : `Citas de ${duration} min`;
+                      const buf = buffer && buffer > 0 ? ` + ${buffer} min descanso` : '';
+                      return dur + buf;
+                    })()}
                   </p>
                 </div>
                 <div className="divide-y divide-slate-100">
@@ -2103,13 +2218,15 @@ export default function AgendaPage() {
 
             // Check which slots are already booked
             const isRescheduleSlotBooked = (date: string, time: string): boolean => {
+              const dow = (new Date(date + 'T12:00:00').getDay() + 6) % 7;
+              const dur = durationAt(dow, time, availSlots, config);
               return allAppointments.some((a) => {
                 if (a.id === rescheduling.id) return false; // Exclude current appointment
                 if (a.date !== date) return false;
                 const aStart = timeToMinutes(a.time);
                 const aEnd = timeToMinutes(a.endTime);
                 const newStart = timeToMinutes(time);
-                const newEnd = newStart + config.slot_duration;
+                const newEnd = newStart + dur;
                 return newStart < aEnd && newEnd > aStart;
               });
             };
@@ -2333,14 +2450,19 @@ export default function AgendaPage() {
 
             // Check which slots are already booked
             const isSlotBooked = (date: string, time: string): boolean => {
+              const dow = (new Date(date + 'T12:00:00').getDay() + 6) % 7;
+              const dur = durationAt(dow, time, availSlots, config);
               return [
                 ...allAppointments,
                 ...pendingAppointments.map((p) => {
                   const pd = new Date(p.scheduled_at);
+                  const pdTime = toHHMM(pd);
+                  const pdYmd = dateToYMD(pd);
+                  const pdDow = (new Date(pdYmd + 'T12:00:00').getDay() + 6) % 7;
                   return {
-                    date: dateToYMD(pd),
-                    time: toHHMM(pd),
-                    endTime: addMinutes(toHHMM(pd), config.slot_duration),
+                    date: pdYmd,
+                    time: pdTime,
+                    endTime: addMinutes(pdTime, durationAt(pdDow, pdTime, availSlots, config)),
                   };
                 }),
               ].some((a) => {
@@ -2348,7 +2470,7 @@ export default function AgendaPage() {
                 const aStart = timeToMinutes(a.time);
                 const aEnd = timeToMinutes(a.endTime);
                 const newStart = timeToMinutes(time);
-                const newEnd = newStart + config.slot_duration;
+                const newEnd = newStart + dur;
                 return newStart < aEnd && newEnd > aStart;
               });
             };
