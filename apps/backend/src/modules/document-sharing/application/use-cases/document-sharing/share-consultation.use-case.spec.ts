@@ -6,12 +6,15 @@ import type { IConsultationRepository } from '../../../../consultations/domain/r
 import type { IPatientRepository } from '../../../../patients/domain/repositories/patient.repository';
 import type { IDoctorProfileRepository } from '../../../../doctor-settings/domain/repositories/doctor-profile.repository';
 import type { MailerService } from '../../../../email/application/services/mailer.service';
+import type { IDoctorDocumentFileRepository } from '../../../../doctor-document-files/domain/repositories/doctor-document-file.repository';
 import { SharedDocumentLink } from '../../../domain/entities/shared-document-link.entity';
 import { DocumentAccessCode } from '../../../domain/entities/document-access-code.entity';
 import { Consultation } from '../../../../consultations/domain/entities/consultation.entity';
-import { NoSectionsSelectedError } from '../../../domain/errors/no-sections-selected.error';
+import { NoShareContentError } from '../../../domain/errors/no-share-content.error';
 import { ConsultationNotOwnedError } from '../../../domain/errors/consultation-not-owned.error';
 import { PatientCedulaRequiredForSharingError } from '../../../domain/errors/patient-cedula-required.error';
+import { DoctorDocumentFileInvalidPathError } from '../../../../doctor-document-files/domain/errors/doctor-document-file-invalid-path.error';
+import { DocumentLinkNotFoundError } from '../../../domain/errors/document-link-not-found.error';
 
 const mockLinkRepo: jest.Mocked<ISharedDocumentLinkRepository> = {
   save: jest.fn(),
@@ -95,6 +98,16 @@ const makeConsultation = (override: Partial<{ doctorId: string }> = {}): Consult
     updatedAt: new Date(),
   });
 
+const mockDocFileRepo: jest.Mocked<IDoctorDocumentFileRepository> = {
+  findAllByDoctor: jest.fn(),
+  findById: jest.fn(),
+  findByIdsAndDoctor: jest.fn(),
+  countActiveByDoctor: jest.fn(),
+  save: jest.fn(),
+  rename: jest.fn(),
+  softDelete: jest.fn(),
+};
+
 const makeLink = (): SharedDocumentLink =>
   SharedDocumentLink.create({
     id: 'link-1',
@@ -104,6 +117,7 @@ const makeLink = (): SharedDocumentLink =>
     token: 'abc-token-long',
     sections: { report: true, prescriptions: false, ehr: false },
     docSelection: null,
+    attachments: null,
     status: 'active',
     failedAttempts: 0,
     lastCodeRequestedAt: null,
@@ -148,6 +162,7 @@ describe('ShareConsultationUseCase', () => {
       mockDoctorProfileRepo as unknown as IDoctorProfileRepository,
       mockMailer as unknown as MailerService,
       mockConfig,
+      mockDocFileRepo,
     );
 
     mockLinkRepo.save.mockResolvedValue(makeLink());
@@ -227,14 +242,14 @@ describe('ShareConsultationUseCase', () => {
     ).rejects.toBeInstanceOf(PatientCedulaRequiredForSharingError);
   });
 
-  it('throws NoSectionsSelectedError when all sections are false', async () => {
+  it('throws NoShareContentError when all sections are false and no attachments', async () => {
     await expect(
       useCase.execute({
         consultationId: 'consult-1',
         doctorId: 'doctor-1',
         dto: { sections: { report: false, prescriptions: false, ehr: false } },
       }),
-    ).rejects.toBeInstanceOf(NoSectionsSelectedError);
+    ).rejects.toBeInstanceOf(NoShareContentError);
   });
 
   it('persists link and code', async () => {
@@ -381,5 +396,169 @@ describe('ShareConsultationUseCase', () => {
       expect.objectContaining({ doctorName: 'Su especialista' }),
       expect.anything(),
     );
+  });
+
+  // ---------------------------------------------------------------------------
+  // Attachment resolution tests
+  // ---------------------------------------------------------------------------
+
+  it('succeeds with only attachments (no doc types) when doc_selection types empty', async () => {
+    mockDocFileRepo.findByIdsAndDoctor.mockResolvedValue([
+      {
+        id: 'file-1',
+        doctorId: 'doctor-1',
+        name: 'Análisis.pdf',
+        storagePath: 'document/doctor-1/analisis.pdf',
+        mimeType: 'application/pdf',
+        sizeBytes: 100_000,
+        createdAt: new Date(),
+        isOwnedBy: (id: string) => id === 'doctor-1',
+        isDeleted: () => false,
+      } as unknown as Parameters<typeof mockDocFileRepo.findByIdsAndDoctor>[0] extends never
+        ? never
+        : Awaited<ReturnType<typeof mockDocFileRepo.findByIdsAndDoctor>>[0],
+    ]);
+
+    const result = await useCase.execute({
+      consultationId: 'consult-1',
+      doctorId: 'doctor-1',
+      dto: {
+        sections: { report: false, prescriptions: false, ehr: false },
+        attachments: { libraryFileIds: ['file-1'], uploads: [] },
+      },
+    });
+
+    expect(result.url).toMatch(/^http:\/\/localhost:3000\/documents\//);
+    // The saved link should contain the attachment snapshot
+    const savedLink = mockLinkRepo.save.mock.calls[0]?.[0] as SharedDocumentLink;
+    expect(savedLink.attachments).toHaveLength(1);
+    expect(savedLink.attachments?.[0]).toMatchObject({
+      name: 'Análisis.pdf',
+      storagePath: 'document/doctor-1/analisis.pdf',
+      mimeType: 'application/pdf',
+      source: 'library',
+      libraryFileId: 'file-1',
+    });
+  });
+
+  it('throws NoShareContentError when no sections AND no attachments', async () => {
+    await expect(
+      useCase.execute({
+        consultationId: 'consult-1',
+        doctorId: 'doctor-1',
+        dto: {
+          sections: { report: false, prescriptions: false, ehr: false },
+          doc_selection: { types: [], informeBlockKeys: [] },
+        },
+      }),
+    ).rejects.toBeInstanceOf(NoShareContentError);
+
+    expect(mockLinkRepo.save).not.toHaveBeenCalled();
+  });
+
+  it('resolves upload attachment without calling docFileRepo', async () => {
+    await useCase.execute({
+      consultationId: 'consult-1',
+      doctorId: 'doctor-1',
+      dto: {
+        sections: { report: false, prescriptions: false, ehr: false },
+        attachments: {
+          libraryFileIds: [],
+          uploads: [
+            {
+              name: 'Examen.pdf',
+              filePath: 'document/doctor-1/exam.pdf',
+              mimeType: 'application/pdf',
+              sizeBytes: 50_000,
+            },
+          ],
+        },
+      },
+    });
+
+    // docFileRepo should NOT be called for upload-only attachments
+    expect(mockDocFileRepo.findByIdsAndDoctor).not.toHaveBeenCalled();
+
+    const savedLink = mockLinkRepo.save.mock.calls[0]?.[0] as SharedDocumentLink;
+    expect(savedLink.attachments).toHaveLength(1);
+    expect(savedLink.attachments?.[0]).toMatchObject({
+      name: 'Examen.pdf',
+      storagePath: 'document/doctor-1/exam.pdf',
+      source: 'upload',
+    });
+  });
+
+  it('throws DoctorDocumentFileInvalidPathError for upload with invalid path', async () => {
+    await expect(
+      useCase.execute({
+        consultationId: 'consult-1',
+        doctorId: 'doctor-1',
+        dto: {
+          sections: { report: false, prescriptions: false, ehr: false },
+          attachments: {
+            libraryFileIds: [],
+            uploads: [
+              {
+                name: 'Malicious.pdf',
+                // path belongs to another doctor
+                filePath: 'document/other-doctor/secret.pdf',
+                mimeType: 'application/pdf',
+                sizeBytes: 50_000,
+              },
+            ],
+          },
+        },
+      }),
+    ).rejects.toBeInstanceOf(DoctorDocumentFileInvalidPathError);
+  });
+
+  it('throws DoctorDocumentFileInvalidPathError for path traversal attempt', async () => {
+    await expect(
+      useCase.execute({
+        consultationId: 'consult-1',
+        doctorId: 'doctor-1',
+        dto: {
+          sections: { report: false, prescriptions: false, ehr: false },
+          attachments: {
+            libraryFileIds: [],
+            uploads: [
+              {
+                name: 'Traversal.pdf',
+                filePath: 'document/doctor-1/../../../etc/passwd',
+                mimeType: 'application/pdf',
+                sizeBytes: 50_000,
+              },
+            ],
+          },
+        },
+      }),
+    ).rejects.toBeInstanceOf(DoctorDocumentFileInvalidPathError);
+  });
+
+  it('throws DocumentLinkNotFoundError when library file IDs are not found (anti-IDOR)', async () => {
+    // Repo returns fewer files than requested — some were deleted or belong to another doctor
+    mockDocFileRepo.findByIdsAndDoctor.mockResolvedValue([]);
+
+    await expect(
+      useCase.execute({
+        consultationId: 'consult-1',
+        doctorId: 'doctor-1',
+        dto: {
+          sections: { report: false, prescriptions: false, ehr: false },
+          attachments: { libraryFileIds: ['file-1', 'file-2'], uploads: [] },
+        },
+      }),
+    ).rejects.toBeInstanceOf(DocumentLinkNotFoundError);
+  });
+
+  it('persists null attachments when no attachments provided', async () => {
+    await useCase.execute({
+      consultationId: 'consult-1',
+      doctorId: 'doctor-1',
+      dto: { sections: { report: true, prescriptions: false, ehr: false } },
+    });
+
+    const savedLink = mockLinkRepo.save.mock.calls[0]?.[0] as SharedDocumentLink;
+    expect(savedLink.attachments).toBeNull();
   });
 });
