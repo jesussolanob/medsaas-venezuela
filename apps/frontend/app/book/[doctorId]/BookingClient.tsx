@@ -445,6 +445,8 @@ export default function BookingClient({
     email: '',
     cedula: '',
     notes: '',
+    /** Health note: allergies, conditions, or medications the patient wants to flag. Max 500 chars. */
+    patientAlert: '',
     password: '',
     passwordConfirm: '',
     // Datos clinicos opcionales (se guardan en patients al completar el booking)
@@ -800,6 +802,7 @@ export default function BookingClient({
           patientCedula: patientCedula || null,
           scheduledAt: dateTime.toISOString(),
           chiefComplaint: form.notes.trim() || null,
+          patientAlert: form.patientAlert.trim() || null,
           planName: selectedPlan?.name ?? 'Consulta General',
           // price_on_request plans have no fixed price: send null so the backend
           // creates no payment record. The `: 20` fallback is intentionally removed
@@ -1030,6 +1033,23 @@ export default function BookingClient({
               <p className="text-[10px] text-slate-500 italic">
                 Recibirás el link de la videoconsulta por correo o WhatsApp.
               </p>
+            )}
+            {form.patientAlert.trim() && (
+              <div className="mt-2 pt-2 border-t border-slate-100">
+                <div className="flex items-start gap-2">
+                  <span className="text-amber-500 mt-0.5" aria-hidden="true">
+                    ⚠️
+                  </span>
+                  <div>
+                    <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-0.5">
+                      Nota enviada al especialista
+                    </p>
+                    <p className="text-xs text-slate-700 leading-snug">
+                      {form.patientAlert.trim()}
+                    </p>
+                  </div>
+                </div>
+              </div>
             )}
           </div>
 
@@ -2994,6 +3014,42 @@ export default function BookingClient({
                     Debes indicar el motivo de la consulta.
                   </p>
                 )}
+              </div>
+
+              {/* Alerta del paciente — opcional, max 500 chars */}
+              <div>
+                <label
+                  htmlFor="booking-patient-alert"
+                  className="block text-sm font-medium text-slate-700 mb-1"
+                >
+                  ¿Algo que tu especialista deba saber?
+                  <span className="text-slate-400 text-xs font-normal ml-1">(opcional)</span>
+                </label>
+                <p className="text-xs text-slate-500 mb-1.5">
+                  Alergias, condiciones o medicamentos que tomas. Se guardará en tu ficha.
+                </p>
+                <div className="relative">
+                  <textarea
+                    id="booking-patient-alert"
+                    value={form.patientAlert}
+                    onChange={(e) => {
+                      const v = e.target.value.slice(0, 500);
+                      setForm((p) => ({ ...p, patientAlert: v }));
+                    }}
+                    rows={3}
+                    maxLength={500}
+                    placeholder="Ej: soy alérgico a la penicilina, tomo metformina..."
+                    className={fi + ' resize-none'}
+                    aria-describedby="booking-patient-alert-counter"
+                  />
+                  <span
+                    id="booking-patient-alert-counter"
+                    className="absolute bottom-2 right-3 text-[10px] text-slate-400 pointer-events-none"
+                    aria-live="polite"
+                  >
+                    {form.patientAlert.length}/500
+                  </span>
+                </div>
               </div>
 
               {/* Inline error at the click point (see global banner note above) */}

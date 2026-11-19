@@ -31,6 +31,7 @@ import {
   Phone,
   UserCheck,
   UserX,
+  TriangleAlert,
 } from 'lucide-react';
 import type { AppointmentDetailData } from '@/app/api/doctor/appointments/[id]/route';
 import { showToast } from '@/components/ui/Toaster';
@@ -626,6 +627,28 @@ export default function AppointmentDetailModal({
               <p className="text-[11px] text-slate-500">
                 Usa &ldquo;Ir a consulta&rdquo; para ver el detalle completo y gestionar el pago.
               </p>
+
+              {/* Patient alert — health note from public booking */}
+              {appt.patientAlert && (
+                <div
+                  role="note"
+                  aria-label="Alerta del paciente"
+                  className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 space-y-1.5"
+                >
+                  <div className="flex items-center gap-2">
+                    <TriangleAlert className="w-4 h-4 text-amber-600 shrink-0" aria-hidden="true" />
+                    <p className="text-xs font-bold text-amber-800 uppercase tracking-wide">
+                      Alerta del paciente
+                    </p>
+                  </div>
+                  <p className="text-sm text-amber-900 whitespace-pre-wrap leading-snug">
+                    {appt.patientAlert}
+                  </p>
+                  <p className="text-[10px] text-amber-600 italic">
+                    Indicado por el paciente al reservar · también se guardó en su ficha (Alergias)
+                  </p>
+                </div>
+              )}
 
               {/* Google Meet */}
               {appt.meetLink && (

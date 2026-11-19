@@ -45,6 +45,8 @@ export interface AppointmentDetailData {
   reason: string | null;
   notes: string | null;
   paymentStatus: string | null;
+  /** Health note submitted by the patient during public booking. Null for panel-created appointments. */
+  patientAlert?: string | null;
 }
 
 export async function GET(
