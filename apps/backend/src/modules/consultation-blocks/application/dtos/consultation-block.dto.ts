@@ -1,6 +1,23 @@
 import { z } from 'zod';
 
 /**
+ * Zod schema for the PATCH /api/doctor/consultation-blocks/:blockKey/label body.
+ *
+ * custom_label: trimmed string, max 80 chars.
+ * null or empty string → null (restores the catalog default label).
+ */
+export const PatchBlockLabelDtoSchema = z.object({
+  custom_label: z
+    .string()
+    .trim()
+    .max(80, 'El nombre del bloque no puede superar los 80 caracteres')
+    .nullable()
+    .transform((v) => (v === null || v === '' ? null : v)),
+});
+
+export type PatchBlockLabelDto = z.infer<typeof PatchBlockLabelDtoSchema>;
+
+/**
  * Zod schema for the PUT /api/doctor/consultation-blocks body.
  *
  * blocks: full replacement array for the doctor's configuration.

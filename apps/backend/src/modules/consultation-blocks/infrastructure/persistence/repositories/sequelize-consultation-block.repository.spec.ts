@@ -1,6 +1,7 @@
 import { SequelizeConsultationBlockRepository } from './sequelize-consultation-block.repository';
 
 const DOCTOR_ID = 'dddddddd-0000-0000-0000-000000000001';
+const BLOCK_KEY = 'physical_exam';
 
 /**
  * Unit tests for SequelizeConsultationBlockRepository.getDoctorLayout.
@@ -75,5 +76,121 @@ describe('SequelizeConsultationBlockRepository.getDoctorLayout (unit)', () => {
     const result = await repo.getDoctorLayout(DOCTOR_ID);
 
     expect(result).toBe('vertical');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// upsertBlockLabel
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Unit tests for SequelizeConsultationBlockRepository.upsertBlockLabel.
+ *
+ * The upsert logic:
+ *   - Row exists  → update only customLabel via row.update(...)
+ *   - Row missing → create a new row with customLabel + fallback enabled/sortOrder
+ */
+describe('SequelizeConsultationBlockRepository.upsertBlockLabel (unit)', () => {
+  let mockDoctorBlockModel: {
+    findOne: jest.Mock;
+    create: jest.Mock;
+  };
+  let repo: SequelizeConsultationBlockRepository;
+
+  beforeEach(() => {
+    mockDoctorBlockModel = {
+      findOne: jest.fn(),
+      create: jest.fn(),
+    };
+    // Constructor: catalog, doctorBlock, specialty, profile, sequelize
+    repo = new SequelizeConsultationBlockRepository(
+      null as never,
+      mockDoctorBlockModel as never,
+      null as never,
+      null as never,
+      null as never,
+    );
+  });
+
+  it('updates only customLabel when a row already exists', async () => {
+    const mockUpdate = jest.fn().mockResolvedValue(undefined);
+    mockDoctorBlockModel.findOne.mockResolvedValue({ update: mockUpdate });
+
+    await repo.upsertBlockLabel({
+      doctorId: DOCTOR_ID,
+      blockKey: BLOCK_KEY,
+      customLabel: 'Mi examen',
+      fallbackEnabled: true,
+      fallbackSortOrder: 3,
+    });
+
+    expect(mockDoctorBlockModel.findOne).toHaveBeenCalledWith({
+      where: { doctorId: DOCTOR_ID, blockKey: BLOCK_KEY },
+    });
+    expect(mockUpdate).toHaveBeenCalledWith({ customLabel: 'Mi examen' });
+    expect(mockDoctorBlockModel.create).not.toHaveBeenCalled();
+  });
+
+  it('updates customLabel to null when row exists (restores default)', async () => {
+    const mockUpdate = jest.fn().mockResolvedValue(undefined);
+    mockDoctorBlockModel.findOne.mockResolvedValue({ update: mockUpdate });
+
+    await repo.upsertBlockLabel({
+      doctorId: DOCTOR_ID,
+      blockKey: BLOCK_KEY,
+      customLabel: null,
+      fallbackEnabled: true,
+      fallbackSortOrder: 3,
+    });
+
+    expect(mockUpdate).toHaveBeenCalledWith({ customLabel: null });
+  });
+
+  it('creates a new row when no existing row is found', async () => {
+    mockDoctorBlockModel.findOne.mockResolvedValue(null);
+    mockDoctorBlockModel.create.mockResolvedValue(undefined);
+
+    await repo.upsertBlockLabel({
+      doctorId: DOCTOR_ID,
+      blockKey: BLOCK_KEY,
+      customLabel: 'Mi examen',
+      fallbackEnabled: false,
+      fallbackSortOrder: 5,
+    });
+
+    expect(mockDoctorBlockModel.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        doctorId: DOCTOR_ID,
+        blockKey: BLOCK_KEY,
+        customLabel: 'Mi examen',
+        enabled: false,
+        sortOrder: 5,
+      }),
+    );
+  });
+
+  it('new row inherits fallback enabled and sortOrder from cascade resolution', async () => {
+    mockDoctorBlockModel.findOne.mockResolvedValue(null);
+    mockDoctorBlockModel.create.mockResolvedValue(undefined);
+
+    await repo.upsertBlockLabel({
+      doctorId: DOCTOR_ID,
+      blockKey: BLOCK_KEY,
+      customLabel: null,
+      fallbackEnabled: true,
+      fallbackSortOrder: 2,
+    });
+
+    expect(mockDoctorBlockModel.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        enabled: true,
+        sortOrder: 2,
+        customLabel: null,
+        customContentType: null,
+        customDescription: null,
+        printable: null,
+        sendToPatient: null,
+      }),
+    );
   });
 });
