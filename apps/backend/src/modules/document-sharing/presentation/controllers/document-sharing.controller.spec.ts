@@ -139,12 +139,16 @@ describe('DocumentSharingController', () => {
   // ---------------------------------------------------------------------------
 
   describe('verifyCodeEndpoint', () => {
-    it('returns success with sessionToken and sections', async () => {
+    it('returns sessionToken, sections and the patient-facing fields', async () => {
       const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
+      const codeExpiresAt = new Date(Date.now() + 48 * 3600 * 1000);
       mockVerifyUseCase.execute.mockResolvedValue({
         sessionToken: 'tok.sig',
         sections: { report: true, prescriptions: false, ehr: false },
         expiresAt,
+        codeExpiresAt,
+        doctorName: 'Dra. Ana Pérez',
+        patientNameMasked: 'María R.',
       });
 
       const result = await controller.verifyCodeEndpoint('link-token', {
@@ -154,6 +158,11 @@ describe('DocumentSharingController', () => {
 
       expect(result.success).toBe(true);
       expect(result.data.sessionToken).toBe('tok.sig');
+      // The patient page renders these three; dropping them here left the page
+      // with empty names and crashed it on the missing link expiry.
+      expect(result.data.codeExpiresAt).toBe(codeExpiresAt.toISOString());
+      expect(result.data.doctorName).toBe('Dra. Ana Pérez');
+      expect(result.data.patientNameMasked).toBe('María R.');
     });
 
     it('passes both code and cedula to the use case', async () => {
@@ -162,6 +171,9 @@ describe('DocumentSharingController', () => {
         sessionToken: 'tok.sig',
         sections: { report: true, prescriptions: false, ehr: false },
         expiresAt,
+        codeExpiresAt: new Date(Date.now() + 48 * 3600 * 1000),
+        doctorName: 'Dra. Ana Pérez',
+        patientNameMasked: 'María R.',
       });
 
       await controller.verifyCodeEndpoint('link-token', {
