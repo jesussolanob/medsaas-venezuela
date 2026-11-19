@@ -74,6 +74,7 @@ function makePatientRepo(patient: Patient | null = makePatient()): jest.Mocked<I
     update: jest.fn(),
     softDelete: jest.fn(),
     logReveal: jest.fn(),
+    appendAllergyNote: jest.fn().mockResolvedValue(false),
   } as jest.Mocked<IPatientRepository>;
 }
 

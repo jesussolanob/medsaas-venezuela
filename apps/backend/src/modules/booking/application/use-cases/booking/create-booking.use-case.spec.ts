@@ -148,6 +148,7 @@ describe('CreateBookingUseCase', () => {
       update: jest.fn(),
       softDelete: jest.fn(),
       logReveal: jest.fn(),
+      appendAllergyNote: jest.fn().mockResolvedValue(false),
     };
 
     mockDoctorLoader = { findById: jest.fn() };
@@ -1835,6 +1836,137 @@ describe('CreateBookingUseCase', () => {
       ).resolves.toMatchObject({ id: 'paciente-existente' });
 
       expect(mockCrypto.hashForSearch).toHaveBeenCalledWith('V12345678');
+    });
+  });
+
+  // ─── patient_alert field — DTO validation ────────────────────────────────
+
+  describe('CreateBookingDtoSchema — patient_alert validation', () => {
+    const basePayload = {
+      cf_turnstile_token: 'tok',
+      doctor_id: 'a2ae2d7f-7445-4aff-b39b-ab08f1b75dc0',
+      patient_name: 'Ana',
+      patient_cedula: 'V-12345678',
+      scheduled_at: '2026-08-01T10:00:00Z',
+      appointment_mode: 'presencial',
+      plan_name: 'Consulta',
+      plan_price: 30,
+    };
+
+    it('accepts omitted patient_alert (optional field) and returns undefined', () => {
+      const result = CreateBookingDtoSchema.safeParse(basePayload);
+      expect(result.success).toBe(true);
+      if (result.success) {
+        // When omitted, the transform preserves undefined so the field stays absent.
+        expect(result.data.patient_alert).toBeUndefined();
+      }
+    });
+
+    it('accepts null patient_alert', () => {
+      const result = CreateBookingDtoSchema.safeParse({ ...basePayload, patient_alert: null });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.patient_alert).toBeNull();
+      }
+    });
+
+    it('trims leading and trailing whitespace from patient_alert', () => {
+      const result = CreateBookingDtoSchema.safeParse({
+        ...basePayload,
+        patient_alert: '  Alergia al ibuprofeno  ',
+      });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.patient_alert).toBe('Alergia al ibuprofeno');
+      }
+    });
+
+    it('normalises empty-string patient_alert to null', () => {
+      const result = CreateBookingDtoSchema.safeParse({ ...basePayload, patient_alert: '   ' });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.patient_alert).toBeNull();
+      }
+    });
+
+    it('rejects patient_alert longer than 500 characters', () => {
+      const longText = 'a'.repeat(501);
+      const result = CreateBookingDtoSchema.safeParse({ ...basePayload, patient_alert: longText });
+      expect(result.success).toBe(false);
+    });
+
+    it('accepts patient_alert of exactly 500 characters', () => {
+      const exactText = 'a'.repeat(500);
+      const result = CreateBookingDtoSchema.safeParse({ ...basePayload, patient_alert: exactText });
+      expect(result.success).toBe(true);
+    });
+  });
+
+  // ─── patient_alert field — use-case behaviour ────────────────────────────
+
+  describe('patient_alert — appointment persistence and allergy merge', () => {
+    beforeEach(() => {
+      mockDoctorLoader.findById.mockResolvedValue(DOCTOR);
+      mockAppointmentRepo.hasOverlap.mockResolvedValue(false);
+      mockAppointmentRepo.hasPatientOverlap.mockResolvedValue(false);
+      mockPatientRepo.findByEmailHash.mockResolvedValue(makePatient());
+      mockAppointmentRepo.save.mockImplementation(async (a) => a);
+    });
+
+    it('persists patientAlert on the appointment entity when patient_alert is provided', async () => {
+      // Spread makeDto() and add patient_alert as a named property to preserve type info.
+      // makeDto uses Record<string, unknown> for overrides which loses type tracking.
+      await useCase.execute({ ...makeDto(), patient_alert: 'Alergia al ibuprofeno' });
+
+      expect(mockAppointmentRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({ patientAlert: 'Alergia al ibuprofeno' }),
+        FAKE_TRANSACTION,
+      );
+    });
+
+    it('persists patientAlert as null when patient_alert is omitted', async () => {
+      await useCase.execute(makeDto());
+
+      expect(mockAppointmentRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({ patientAlert: null }),
+        FAKE_TRANSACTION,
+      );
+    });
+
+    it('calls appendAllergyNote after the transaction commit when patient_alert is present', async () => {
+      await useCase.execute({ ...makeDto(), patient_alert: 'Alergia a la penicilina' });
+
+      expect(mockPatientRepo.appendAllergyNote).toHaveBeenCalledWith(
+        'pat-001',
+        'doc-001',
+        'Alergia a la penicilina',
+        expect.any(Date),
+      );
+    });
+
+    it('does NOT call appendAllergyNote when patient_alert is absent', async () => {
+      await useCase.execute(makeDto());
+
+      expect(mockPatientRepo.appendAllergyNote).not.toHaveBeenCalled();
+    });
+
+    it('does NOT call appendAllergyNote when patient_alert is null', async () => {
+      await useCase.execute({ ...makeDto(), patient_alert: null });
+
+      expect(mockPatientRepo.appendAllergyNote).not.toHaveBeenCalled();
+    });
+
+    it('booking completes successfully even when appendAllergyNote throws', async () => {
+      mockPatientRepo.appendAllergyNote.mockRejectedValue(new Error('DB error'));
+
+      const result = await useCase.execute({
+        ...makeDto(),
+        patient_alert: 'Alergia al ibuprofeno',
+      });
+
+      // Booking must succeed despite the allergy-merge failure
+      expect(result.appointment).toBeDefined();
+      expect(mockAppointmentRepo.save).toHaveBeenCalled();
     });
   });
 });
