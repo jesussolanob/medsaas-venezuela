@@ -35,6 +35,7 @@ import type {
   CreateAdminDoctorParams,
   AdminCreatedDoctorResult,
   DoctorPatientRow,
+  BulkAuditEntry,
 } from '../../../domain/repositories/admin.repository';
 import type { PlanConfig } from '../../../domain/value-objects/plan-config.vo';
 import { PlanConfig as PlanConfigVO } from '../../../domain/value-objects/plan-config.vo';
@@ -1707,5 +1708,28 @@ export class SequelizeAdminRepository implements IAdminRepository {
       userAgent: entry.userAgent,
       reason: entry.reason ?? null,
     });
+  }
+
+  /**
+   * Inserts one audit row per entry in a single bulkCreate statement.
+   * No-op when entries is empty.
+   * Fire-and-forget — errors MUST be swallowed by the caller.
+   *
+   * AccessAuditLogModel.created_at has @Default(DataType.NOW) so bulkCreate
+   * does not need to supply it explicitly.
+   */
+  async logAdminRevealBulk(entries: BulkAuditEntry[]): Promise<void> {
+    if (entries.length === 0) return;
+    await this.auditLogModel.bulkCreate(
+      entries.map((e) => ({
+        actorId: e.actorId,
+        actorRole: e.actorRole,
+        patientId: e.patientId,
+        fieldRevealed: e.fieldRevealed,
+        ipAddress: e.ipAddress,
+        userAgent: e.userAgent,
+        reason: e.reason,
+      })),
+    );
   }
 }
