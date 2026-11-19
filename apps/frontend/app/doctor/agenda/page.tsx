@@ -168,6 +168,7 @@ type PendingAppointment = {
   patient_cedula: string | null;
   scheduled_at: string;
   chief_complaint: string | null;
+  patient_alert?: string | null;
   plan_name: string | null;
   plan_price: number | null;
   status: string;
@@ -985,6 +986,7 @@ export default function AgendaPage() {
         time: timeStr,
         endTime: addMinutes(timeStr, durationAt(dow, timeStr, availSlots, config)),
         chief_complaint: p.chief_complaint ?? undefined,
+        patient_alert: p.patient_alert,
         status: 'scheduled' as const,
         source: 'appointment' as const,
         appointment_code: p.appointment_code,
@@ -1030,6 +1032,7 @@ export default function AgendaPage() {
         time: timeStr,
         endTime: addMinutes(timeStr, durationAt(dow, timeStr, availSlots, config)),
         chief_complaint: p.chief_complaint ?? undefined,
+        patient_alert: p.patient_alert,
         status: 'scheduled' as const,
         source: 'appointment' as const,
         appointment_code: p.appointment_code,
