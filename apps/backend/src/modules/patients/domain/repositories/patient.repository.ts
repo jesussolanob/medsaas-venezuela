@@ -87,11 +87,5 @@ export interface IPatientRepository {
    *
    * SECURITY: `text` is health data — never log its value.
    */
-  appendAllergyNote(
-    patientId: string,
-    doctorId: string,
-    text: string,
-    at: Date,
-    transaction?: import('sequelize').Transaction,
-  ): Promise<boolean>;
+  appendAllergyNote(patientId: string, doctorId: string, text: string, at: Date): Promise<boolean>;
 }

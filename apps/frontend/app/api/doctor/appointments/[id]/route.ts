@@ -73,5 +73,17 @@ export async function GET(
     );
   }
 
-  return NextResponse.json({ success: true, data: result.value });
+  // The backend serializes the appointment as `chiefComplaint` / `appointmentMode`;
+  // the modal reads `reason` / `modality`. Without this bridge the "Motivo" section
+  // never rendered and rescheduling sent chiefComplaint = null.
+  const raw = result.value as AppointmentDetailData & {
+    chiefComplaint?: string | null;
+    appointmentMode?: string | null;
+  };
+  const data: AppointmentDetailData = {
+    ...raw,
+    reason: raw.reason ?? raw.chiefComplaint ?? null,
+    modality: raw.modality ?? raw.appointmentMode ?? null,
+  };
+  return NextResponse.json({ success: true, data });
 }

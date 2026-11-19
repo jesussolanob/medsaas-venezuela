@@ -783,7 +783,8 @@ export class CreateBookingUseCase {
           patient.id,
           dto.doctor_id,
           dto.patient_alert,
-          savedAppointment.scheduledAt,
+          // The note says "al reservar el …": the booking date, not the appointment's.
+          new Date(),
         );
       } catch {
         // Non-fatal. Log at warn level without exposing the allergy text (health PII).
