@@ -153,8 +153,7 @@ export class VerifyCodeUseCase {
     //    patient is guaranteed non-null here: cedulaOk === true implies
     //    patient?.cedula != null, so the patient record exists.
     const doctorName = buildDoctorDisplayName(doctorProfile);
-    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-    const patientNameMasked = maskPatientName(patient!.fullName);
+    const patientNameMasked = maskPatientName(patient?.fullName ?? '');
 
     return {
       sessionToken,
@@ -206,7 +205,7 @@ export class VerifyCodeUseCase {
  * Exported for use in tests.
  */
 export function normalizeCedula(raw: string): string {
-  return raw.replace(/[\s\-\.]/g, '').toUpperCase();
+  return raw.replace(/[\s.-]/g, '').toUpperCase();
 }
 
 /**
