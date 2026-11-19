@@ -1659,8 +1659,18 @@ export default function AgendaPage() {
                             }}
                             className={`mb-0.5 rounded px-1.5 py-0.5 w-full text-left ${a.status === 'scheduled' ? 'bg-amber-400' : 'bg-teal-500'}`}
                           >
-                            <p className="text-white text-[9px] font-bold truncate">
-                              {a.time} {a.patient_name}
+                            <p className="text-white text-[9px] font-bold truncate flex items-center gap-1">
+                              {a.patient_alert && (
+                                // The month view is the agenda's default: the alert has to
+                                // be visible here too, not only in week/day views.
+                                <AlertTriangle
+                                  className="w-2.5 h-2.5 shrink-0"
+                                  aria-label="Alerta del paciente"
+                                />
+                              )}
+                              <span className="truncate">
+                                {a.time} {a.patient_name}
+                              </span>
                             </p>
                           </div>
                         ))}
