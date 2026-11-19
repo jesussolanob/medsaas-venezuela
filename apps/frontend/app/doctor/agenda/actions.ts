@@ -99,6 +99,8 @@ export type PendingAgendaAppointment = {
   patient_cedula: string | null;
   scheduled_at: string;
   chief_complaint: string | null;
+  /** Health note from the public booking — shown as an alert. */
+  patient_alert: string | null;
   plan_name: string | null;
   plan_price: number | null;
   status: string;
@@ -241,6 +243,7 @@ function toPendingAppointment(raw: BackendAppointment): PendingAgendaAppointment
     patient_cedula: raw.patientCedula ?? null,
     scheduled_at: raw.scheduledAt,
     chief_complaint: raw.chiefComplaint ?? null,
+    patient_alert: raw.patientAlert ?? null,
     plan_name: raw.planName ?? null,
     plan_price: raw.planPrice ?? null,
     status: raw.status,
