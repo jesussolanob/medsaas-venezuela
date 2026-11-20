@@ -102,6 +102,7 @@ describe('CompleteRegistrationUseCase', () => {
       updateVerification: jest.fn(),
       listByVerificationStatus: jest.fn(),
       findAllSuperAdmins: jest.fn().mockResolvedValue([]),
+      findAdminNotificationExtraEmails: jest.fn().mockResolvedValue([]),
       acceptTerms: jest.fn().mockResolvedValue(undefined),
     } as unknown as jest.Mocked<IDoctorRegistrationRepository>;
 
@@ -383,8 +384,10 @@ describe('CompleteRegistrationUseCase', () => {
       cedula: 'V-12345678',
     });
 
-    // Allow fire-and-forget to settle
-    await Promise.resolve();
+    // Allow fire-and-forget (which uses Promise.all internally) to fully settle.
+    // setTimeout drains all pending microtasks before the callback fires, making
+    // it robust to changes in the internal async chain length.
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
 
     expect(mockMailer.sendTemplate).toHaveBeenCalledWith(
       'doctor_pending_verification',
@@ -424,7 +427,7 @@ describe('CompleteRegistrationUseCase', () => {
       fullName: 'Carlos M.',
       cedula: 'V-12345678',
     });
-    await Promise.resolve();
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
 
     expect(mockMailer.sendTemplate).toHaveBeenCalledWith(
       'doctor_pending_verification',
@@ -451,7 +454,7 @@ describe('CompleteRegistrationUseCase', () => {
       fullName: 'Carlos M.',
       cedula: 'V-12345678',
     });
-    await Promise.resolve();
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
 
     expect(mockMailer.sendTemplate).toHaveBeenCalledWith(
       'doctor_pending_verification',
@@ -478,7 +481,7 @@ describe('CompleteRegistrationUseCase', () => {
       fullName: 'Carlos M.',
       cedula: 'V-12345678',
     });
-    await Promise.resolve();
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
 
     expect(mockMailer.sendTemplate).toHaveBeenCalledWith(
       'doctor_pending_verification',
@@ -524,6 +527,106 @@ describe('CompleteRegistrationUseCase', () => {
     await expect(
       useCase.execute({ doctorId: 'doc-1', phone: '584141234567', fullName: 'Dr.', cedula: 'V-1' }),
     ).resolves.toBeDefined();
+  });
+
+  // ---------------------------------------------------------------------------
+  // Extra notification emails (admin_notification_extra_emails setting)
+  // ---------------------------------------------------------------------------
+
+  it('sends to union of super_admin and extra emails (deduplicates by case-insensitive address)', async () => {
+    const registration = makeRegistration();
+    mockRepo.findById.mockResolvedValue(makeEmptyRegistration());
+    mockRepo.updateRegistration.mockResolvedValue(registration);
+    mockRepo.findAllSuperAdmins.mockResolvedValue([
+      { id: 'a1', email: 'admin@deltasalud.app', fullName: 'Admin' },
+    ]);
+    // One extra overlaps with the admin (different case — must be dropped)
+    mockRepo.findAdminNotificationExtraEmails.mockResolvedValue([
+      'Admin@DeltaSalud.app', // duplicate — should be dropped
+      'laura.deltasalud@gmail.com',
+    ]);
+    mockMailer.sendTemplate.mockResolvedValue({ id: 'msg-extra' });
+
+    await useCase.execute({
+      doctorId: 'doc-1',
+      phone: '584141234567',
+      fullName: 'Dr. Test',
+      cedula: 'V-99999',
+    });
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+    const verifyCalls = (mockMailer.sendTemplate as jest.Mock).mock.calls.filter(
+      ([tpl]: [string]) => tpl === 'doctor_pending_verification',
+    );
+    expect(verifyCalls).toHaveLength(1);
+    expect(verifyCalls[0]![1]).toEqual(['admin@deltasalud.app', 'laura.deltasalud@gmail.com']);
+  });
+
+  it('still sends when there are no super_admins but extra emails exist', async () => {
+    const registration = makeRegistration();
+    mockRepo.findById.mockResolvedValue(makeEmptyRegistration());
+    mockRepo.updateRegistration.mockResolvedValue(registration);
+    mockRepo.findAllSuperAdmins.mockResolvedValue([]);
+    mockRepo.findAdminNotificationExtraEmails.mockResolvedValue(['laura.deltasalud@gmail.com']);
+    mockMailer.sendTemplate.mockResolvedValue({ id: 'msg-extra-only' });
+
+    await useCase.execute({
+      doctorId: 'doc-1',
+      phone: '584141234567',
+      fullName: 'Dr. Test',
+      cedula: 'V-11111',
+    });
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+    const verifyCalls = (mockMailer.sendTemplate as jest.Mock).mock.calls.filter(
+      ([tpl]: [string]) => tpl === 'doctor_pending_verification',
+    );
+    expect(verifyCalls).toHaveLength(1);
+    expect(verifyCalls[0]![1]).toEqual(['laura.deltasalud@gmail.com']);
+  });
+
+  it('falls back to super_admins only when findAdminNotificationExtraEmails throws', async () => {
+    const registration = makeRegistration();
+    mockRepo.findById.mockResolvedValue(makeEmptyRegistration());
+    mockRepo.updateRegistration.mockResolvedValue(registration);
+    mockRepo.findAllSuperAdmins.mockResolvedValue([
+      { id: 'a1', email: 'admin@deltasalud.app', fullName: 'Admin' },
+    ]);
+    mockRepo.findAdminNotificationExtraEmails.mockRejectedValue(new Error('DB timeout'));
+    mockMailer.sendTemplate.mockResolvedValue({ id: 'msg-fallback' });
+
+    await useCase.execute({
+      doctorId: 'doc-1',
+      phone: '584141234567',
+      fullName: 'Dr. Test',
+      cedula: 'V-22222',
+    });
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+    const verifyCalls = (mockMailer.sendTemplate as jest.Mock).mock.calls.filter(
+      ([tpl]: [string]) => tpl === 'doctor_pending_verification',
+    );
+    expect(verifyCalls).toHaveLength(1);
+    expect(verifyCalls[0]![1]).toEqual(['admin@deltasalud.app']);
+  });
+
+  it('does not throw when findAdminNotificationExtraEmails rejects (fire-and-forget is safe)', async () => {
+    const registration = makeRegistration();
+    mockRepo.findById.mockResolvedValue(makeEmptyRegistration());
+    mockRepo.updateRegistration.mockResolvedValue(registration);
+    mockRepo.findAllSuperAdmins.mockResolvedValue([
+      { id: 'a1', email: 'admin@deltasalud.app', fullName: 'Admin' },
+    ]);
+    mockRepo.findAdminNotificationExtraEmails.mockRejectedValue(new Error('settings read error'));
+
+    await expect(
+      useCase.execute({
+        doctorId: 'doc-1',
+        phone: '584141234567',
+        fullName: 'Dr. Test',
+        cedula: 'V-33333',
+      }),
+    ).resolves.not.toThrow();
   });
 
   // ---------------------------------------------------------------------------
@@ -1018,7 +1121,7 @@ describe('CompleteRegistrationUseCase', () => {
       acceptedTerms: true,
     });
 
-    await Promise.resolve();
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
 
     const notifyCalls = (mockMailer.sendTemplate as jest.Mock).mock.calls.filter(
       ([tpl]: [string]) => tpl === 'doctor_pending_verification',

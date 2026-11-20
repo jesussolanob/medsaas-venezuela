@@ -297,18 +297,38 @@ export class CompleteRegistrationUseCase {
     registration: DoctorRegistration,
     phone: string | null,
   ): Promise<void> {
-    const admins = await this.repo.findAllSuperAdmins();
+    // Fetch super_admins and extra emails in parallel.
+    // Extra email read failure is non-fatal: log a warning and fall back to
+    // super_admins only so the notification is never silently dropped.
+    const [admins, extraEmails] = await Promise.all([
+      this.repo.findAllSuperAdmins(),
+      this.repo.findAdminNotificationExtraEmails().catch((err: unknown) => {
+        this.logger.warn(
+          `[registration] failed to read extra notification emails — using super_admins only: ${err instanceof Error ? err.message : String(err)}`,
+        );
+        return [] as string[];
+      }),
+    ]);
 
-    if (admins.length === 0) {
-      this.logger.warn('[registration] no super_admin profiles found — skipping notification');
+    // Case-insensitive union: super_admin emails first, then extras.
+    const seen = new Set<string>();
+    const recipients: string[] = [];
+    for (const email of [...admins.map((a) => a.email), ...extraEmails]) {
+      const lc = email.toLowerCase();
+      if (!seen.has(lc)) {
+        seen.add(lc);
+        recipients.push(email);
+      }
+    }
+
+    if (recipients.length === 0) {
+      this.logger.warn('[registration] no recipients found — skipping notification');
       return;
     }
 
-    const emails = admins.map((a) => a.email);
-
     await this.mailer.sendTemplate(
       'doctor_pending_verification',
-      emails,
+      recipients,
       {
         panelUrl: `${this.appBaseUrl()}/admin/verifications`,
         doctorId: registration.id,
@@ -328,7 +348,7 @@ export class CompleteRegistrationUseCase {
     );
 
     this.logger.log(
-      `[registration] verification notification dispatched to ${admins.length} admin(s)`,
+      `[registration] verification notification dispatched to ${recipients.length} recipient(s) (${admins.length} admin(s) + ${extraEmails.length} extra(s))`,
     );
   }
 }
