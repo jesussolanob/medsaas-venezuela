@@ -135,6 +135,14 @@ export interface IContactRequestRepository {
   /** Returns all super_admin profiles for notification dispatch. */
   findAllSuperAdmins(): Promise<SuperAdminRow[]>;
 
+  /**
+   * Returns the extra notification email addresses from app_settings key
+   * `admin_notification_extra_emails`. Parses, lowercases, validates, and
+   * deduplicates before returning.
+   * SECURITY: never log the returned email addresses (PII). Log counts only.
+   */
+  findAdminNotificationExtraEmails(): Promise<string[]>;
+
   /** Returns app_settings values for the given keys. */
   getSettings(keys: string[]): Promise<AppSettingRow[]>;
 }

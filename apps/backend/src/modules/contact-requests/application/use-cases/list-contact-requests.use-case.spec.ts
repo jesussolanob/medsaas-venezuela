@@ -19,6 +19,7 @@ describe('ListContactRequestsUseCase', () => {
       findByIdWithDoctor: jest.fn(),
       countPending: jest.fn(),
       findAllSuperAdmins: jest.fn(),
+      findAdminNotificationExtraEmails: jest.fn(),
       getSettings: jest.fn(),
     };
     useCase = new ListContactRequestsUseCase(mockRepo);
