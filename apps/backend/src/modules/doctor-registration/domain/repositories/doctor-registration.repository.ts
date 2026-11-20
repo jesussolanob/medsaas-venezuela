@@ -94,6 +94,14 @@ export interface IDoctorRegistrationRepository {
   findAllSuperAdmins(): Promise<SuperAdminRow[]>;
 
   /**
+   * Returns the extra notification email addresses from app_settings key
+   * `admin_notification_extra_emails`. Parses, lowercases, validates, and
+   * deduplicates before returning.
+   * SECURITY: never log the returned email addresses (PII). Log counts only.
+   */
+  findAdminNotificationExtraEmails(): Promise<string[]>;
+
+  /**
    * Persists the terms acceptance timestamp and version on the doctor's profile.
    * Sets terms_accepted_at = params.acceptedAt and terms_accepted_version = params.version.
    * Silently no-ops when the profile does not exist (best-effort, fire-and-forget caller).
