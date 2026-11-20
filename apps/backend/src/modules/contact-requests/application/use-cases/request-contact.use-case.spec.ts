@@ -46,6 +46,7 @@ describe('RequestContactUseCase', () => {
       findByIdWithDoctor: jest.fn(),
       countPending: jest.fn(),
       findAllSuperAdmins: jest.fn(),
+      findAdminNotificationExtraEmails: jest.fn(),
       getSettings: jest.fn(),
     };
 
@@ -66,6 +67,7 @@ describe('RequestContactUseCase', () => {
     mockRepo.findAllSuperAdmins.mockResolvedValue([
       { id: 'admin-1', email: 'admin@test.com', fullName: 'Admin' },
     ]);
+    mockRepo.findAdminNotificationExtraEmails.mockResolvedValue([]);
     mockRepo.findByIdWithDoctor.mockResolvedValue(null);
     mockRepo.incrementNotificationCount.mockResolvedValue();
     mockMailer.sendTemplate.mockResolvedValue({
@@ -271,6 +273,85 @@ describe('RequestContactUseCase', () => {
         expect.objectContaining({ doctorName: 'Especialista' }),
         expect.anything(),
       );
+    });
+  });
+
+  describe('extra notification emails', () => {
+    it('sends to union of super_admin and extra emails (deduplicates by case-insensitive address)', async () => {
+      // Arrange: one super_admin and two extras; one extra overlaps with admin (different case)
+      mockRepo.findAllSuperAdmins.mockResolvedValue([
+        { id: 'admin-1', email: 'admin@deltasalud.app', fullName: 'Admin' },
+      ]);
+      mockRepo.findAdminNotificationExtraEmails.mockResolvedValue([
+        'Admin@DeltaSalud.app', // duplicate of admin (different case — should be dropped)
+        'laura.deltasalud@gmail.com',
+      ]);
+      mockRepo.save.mockResolvedValue(makeRequest());
+
+      await useCase.execute({ doctorId: 'doctor-1', channel: 'whatsapp' });
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+      expect(mockMailer.sendTemplate).toHaveBeenCalledWith(
+        'support_contact_request',
+        // admin@deltasalud.app appears first (from super_admin list); the
+        // duplicate 'Admin@DeltaSalud.app' is dropped; laura keeps its original
+        // casing from the extras list (already lowercased by the parser).
+        ['admin@deltasalud.app', 'laura.deltasalud@gmail.com'],
+        expect.any(Object),
+        expect.anything(),
+      );
+    });
+
+    it('still sends when there are no super_admins but extra emails exist', async () => {
+      mockRepo.findAllSuperAdmins.mockResolvedValue([]);
+      mockRepo.findAdminNotificationExtraEmails.mockResolvedValue(['laura.deltasalud@gmail.com']);
+      mockRepo.save.mockResolvedValue(makeRequest());
+
+      await useCase.execute({ doctorId: 'doctor-1', channel: 'whatsapp' });
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+      expect(mockMailer.sendTemplate).toHaveBeenCalledWith(
+        'support_contact_request',
+        ['laura.deltasalud@gmail.com'],
+        expect.any(Object),
+        expect.anything(),
+      );
+    });
+
+    it('skips notification when both super_admins and extras are empty', async () => {
+      mockRepo.findAllSuperAdmins.mockResolvedValue([]);
+      mockRepo.findAdminNotificationExtraEmails.mockResolvedValue([]);
+      mockRepo.save.mockResolvedValue(makeRequest());
+
+      await useCase.execute({ doctorId: 'doctor-1', channel: 'whatsapp' });
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+      expect(mockMailer.sendTemplate).not.toHaveBeenCalled();
+    });
+
+    it('falls back to super_admins only when findAdminNotificationExtraEmails throws', async () => {
+      mockRepo.findAdminNotificationExtraEmails.mockRejectedValue(new Error('DB timeout'));
+      mockRepo.save.mockResolvedValue(makeRequest());
+
+      await useCase.execute({ doctorId: 'doctor-1', channel: 'whatsapp' });
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+      // Should still call sendTemplate with the single super_admin email
+      expect(mockMailer.sendTemplate).toHaveBeenCalledWith(
+        'support_contact_request',
+        ['admin@test.com'],
+        expect.any(Object),
+        expect.anything(),
+      );
+    });
+
+    it('does not throw when findAdminNotificationExtraEmails throws (fire-and-forget is safe)', async () => {
+      mockRepo.findAdminNotificationExtraEmails.mockRejectedValue(new Error('settings read error'));
+      mockRepo.save.mockResolvedValue(makeRequest());
+
+      await expect(
+        useCase.execute({ doctorId: 'doctor-1', channel: 'whatsapp' }),
+      ).resolves.toBeDefined();
     });
   });
 

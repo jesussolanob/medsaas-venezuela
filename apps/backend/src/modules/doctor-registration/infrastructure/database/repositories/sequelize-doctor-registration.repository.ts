@@ -1,5 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/sequelize';
+import { QueryTypes } from 'sequelize';
+import { Sequelize } from 'sequelize-typescript';
 import {
   DoctorRegistration,
   type VerificationStatus,
@@ -13,12 +15,16 @@ import type {
 } from '../../../domain/repositories/doctor-registration.repository';
 import { DoctorRegistrationNotFoundError } from '../../../domain/errors/doctor-not-found.error';
 import { RegistrationProfileModel } from '../models/registration-profile.model';
+import { parseAdminExtraEmails } from '../../../../../infrastructure/utils/parse-admin-extra-emails.util';
 
 @Injectable()
 export class SequelizeDoctorRegistrationRepository implements IDoctorRegistrationRepository {
   constructor(
     @InjectModel(RegistrationProfileModel)
     private readonly model: typeof RegistrationProfileModel,
+    // Sequelize is registered globally by SequelizeModule.forRootAsync in AppModule.
+    // Adding it here does NOT require an extra providers[] entry in the module.
+    private readonly sequelize: Sequelize,
   ) {}
 
   async findById(doctorId: string): Promise<DoctorRegistration | null> {
@@ -109,6 +115,17 @@ export class SequelizeDoctorRegistrationRepository implements IDoctorRegistratio
       email: r.email,
       fullName: r.fullName,
     }));
+  }
+
+  async findAdminNotificationExtraEmails(): Promise<string[]> {
+    const rows = await this.sequelize.query<{ value: string }>(
+      `SELECT value FROM app_settings WHERE key = :key LIMIT 1`,
+      {
+        type: QueryTypes.SELECT,
+        replacements: { key: 'admin_notification_extra_emails' },
+      },
+    );
+    return parseAdminExtraEmails(rows[0]?.value ?? null);
   }
 
   async acceptTerms(doctorId: string, params: TermsAcceptanceParams): Promise<void> {

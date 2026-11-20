@@ -19,6 +19,7 @@ describe('GetSupportInfoUseCase', () => {
       findByIdWithDoctor: jest.fn(),
       countPending: jest.fn(),
       findAllSuperAdmins: jest.fn(),
+      findAdminNotificationExtraEmails: jest.fn(),
       getSettings: jest.fn(),
     };
     useCase = new GetSupportInfoUseCase(mockRepo);

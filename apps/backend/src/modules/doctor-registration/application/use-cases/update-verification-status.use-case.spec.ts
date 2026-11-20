@@ -30,6 +30,7 @@ describe('UpdateVerificationStatusUseCase', () => {
       updateVerification: jest.fn(),
       listByVerificationStatus: jest.fn(),
       findAllSuperAdmins: jest.fn(),
+      findAdminNotificationExtraEmails: jest.fn(),
     } as unknown as jest.Mocked<IDoctorRegistrationRepository>;
 
     useCase = new UpdateVerificationStatusUseCase(mockRepo);

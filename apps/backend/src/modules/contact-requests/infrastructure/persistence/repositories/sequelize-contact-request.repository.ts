@@ -13,6 +13,7 @@ import type {
   SuperAdminRow,
   AppSettingRow,
 } from '../../../domain/repositories/icontact-request.repository';
+import { parseAdminExtraEmails } from '../../../../../infrastructure/utils/parse-admin-extra-emails.util';
 import { ContactRequestModel } from '../models/contact-request.model';
 import { ContactProfileModel } from '../models/contact-profile.model';
 
@@ -360,6 +361,12 @@ export class SequelizeContactRequestRepository implements IContactRequestReposit
       email: r.email,
       fullName: r.fullName ?? 'Administrador',
     }));
+  }
+
+  async findAdminNotificationExtraEmails(): Promise<string[]> {
+    const rows = await this.getSettings(['admin_notification_extra_emails']);
+    const raw = rows.find((r) => r.key === 'admin_notification_extra_emails')?.value ?? null;
+    return parseAdminExtraEmails(raw);
   }
 
   async getSettings(keys: string[]): Promise<AppSettingRow[]> {

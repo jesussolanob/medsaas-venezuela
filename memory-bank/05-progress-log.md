@@ -4,6 +4,25 @@
 > ⚠️ Orden: **la entrada más nueva va ARRIBA**. La del 2026-08-11 quedó al final
 > del archivo por error; no se movió para no ensuciar el diff.
 
+## 2026-11-20 — Correos admin adicionales vía app_settings (feature/correos-admin-adicionales)
+
+Rama: `feature/correos-admin-adicionales`. Pendiente de merge a `develop`.
+
+1. **Nueva clave `admin_notification_extra_emails` en `app_settings`:** lista de correos separados por
+   coma/punto y coma/salto de línea. Permite que `laura.deltasalud@gmail.com` (u otros) reciban los
+   correos de "solicitud de contacto" y "nuevo especialista registrado" sin ser `super_admin`.
+2. **`findAdminNotificationExtraEmails(): Promise<string[]>`** añadido a los puertos
+   `IContactRequestRepository` e `IDoctorRegistrationRepository` y sus implementaciones Sequelize.
+3. **Utilidad compartida** `apps/backend/src/infrastructure/utils/parse-admin-extra-emails.util.ts`:
+   parsea, valida regex, normaliza a lowercase y deduplica. 23 tests de unidad.
+4. **Use cases actualizados** (`request-contact`, `complete-registration`): `recipients =
+unique(super_admins ∪ extra_emails)`, dedup case-insensitive. Zero admins + extras → envía igual.
+   Error al leer la clave → warn + fallback a solo super_admins (nunca bloquea).
+5. **SECURITY:** nunca se loguean emails (PII); solo se loguean conteos de recipientes.
+6. Verificado: build ✓, tsc --noEmit ✓, eslint --max-warnings 0 ✓, 5 323 tests verdes ✓.
+
+La clave se activa con un `INSERT INTO app_settings (key, value) VALUES ('admin_notification_extra_emails', 'laura.deltasalud@gmail.com')` que ejecuta el lead en la BD de staging/prod.
+
 ## 2026-11-16/17 — Hotfix de Cobros vacío + observaciones del 16/11 (en producción)
 
 `main` = `2e3d3a13`; `develop` contiene `main`.
