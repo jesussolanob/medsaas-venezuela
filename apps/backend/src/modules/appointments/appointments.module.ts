@@ -55,6 +55,8 @@ import { PackagesModule } from '../packages/packages.module';
 // AvailabilityBlocksModule exports AVAILABILITY_BLOCK_REPOSITORY for GetAvailableSlotsUseCase.
 // No circular dependency: AvailabilityBlocksModule only imports SequelizeModule.
 import { AvailabilityBlocksModule } from '../availability-blocks/availability-blocks.module';
+// Exports CreateNotificationUseCase; only imports SequelizeModule (no cycle).
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
   imports: [
@@ -73,6 +75,7 @@ import { AvailabilityBlocksModule } from '../availability-blocks/availability-bl
     // Required by CreateAppointmentUseCase to validate office ownership/modality.
     // Also provides OFFICE_REPOSITORY for GetAvailableSlotsUseCase.
     OfficesModule,
+    NotificationsModule,
     // Exports CancelCalendarEventUseCase for cancelling Google Calendar events
     // when an appointment is cancelled via UpdateAppointmentStatusUseCase.
     IntegrationsModule,

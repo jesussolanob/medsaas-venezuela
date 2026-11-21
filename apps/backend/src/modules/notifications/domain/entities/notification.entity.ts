@@ -19,7 +19,9 @@ export type NotificationType =
   /** Patient cancelled their appointment via the WhatsApp quick-reply button. */
   | 'appointment_cancelled_by_patient'
   /** Patient confirmed their attendance via the WhatsApp quick-reply button. */
-  | 'appointment_confirmed_by_patient';
+  | 'appointment_confirmed_by_patient'
+  /** Patient moved their appointment through the WhatsApp reschedule link. */
+  | 'appointment_rescheduled_by_patient';
 export type NotificationEntityType = 'quote' | 'appointment';
 
 export interface NotificationParams {
