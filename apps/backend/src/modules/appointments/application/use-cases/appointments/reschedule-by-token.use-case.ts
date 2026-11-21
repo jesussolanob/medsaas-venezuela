@@ -12,7 +12,7 @@ import {
   DOCTOR_PROFILE_REPOSITORY,
   type IDoctorProfileRepository,
 } from '../../../../doctor-settings/domain/repositories/doctor-profile.repository';
-import type { GetAvailableSlotsUseCase } from '../../../../booking/application/use-cases/booking/get-available-slots.use-case';
+import { GetAvailableSlotsUseCase } from '../../../../booking/application/use-cases/booking/get-available-slots.use-case';
 import { toCaracasHHMM } from '../../../../../domain/caracas-time';
 
 /** Statuses that allow a public reschedule via token link. */

@@ -9,13 +9,16 @@ import { APPOINTMENT_REPOSITORY } from './domain/repositories/appointment.reposi
 // GetAvailableSlotsUseCase deps — provided here to avoid the circular dependency
 // AppointmentsModule → BookingModule → PendingConsultationsModule → AppointmentsModule.
 // OFFICE_REPOSITORY comes from OfficesModule (already imported below).
-// DOCTOR_SCHEDULE_REPOSITORY comes from DoctorSettingsModule (already imported below).
 // AVAILABILITY_BLOCK_REPOSITORY comes from AvailabilityBlocksModule (imported below).
-// BOOKING_DOCTOR_LOADER and ProfileModel are bound directly here (read-only profile lookup).
+// BOOKING_DOCTOR_LOADER, ProfileModel, DOCTOR_SCHEDULE_REPOSITORY, and DoctorScheduleModel
+// are bound directly here (DoctorSettingsModule does NOT export DOCTOR_SCHEDULE_REPOSITORY).
 import { GetAvailableSlotsUseCase } from '../booking/application/use-cases/booking/get-available-slots.use-case';
 import { BOOKING_DOCTOR_LOADER } from '../booking/domain/repositories/booking-doctor.repository';
 import { SequelizeBookingDoctorRepository } from '../booking/infrastructure/database/repositories/sequelize-booking-doctor.repository';
 import { ProfileModel } from '../booking/infrastructure/database/models/profile.model';
+import { DOCTOR_SCHEDULE_REPOSITORY } from '../doctor-settings/domain/repositories/doctor-schedule.repository';
+import { SequelizeDoctorScheduleRepository } from '../doctor-settings/infrastructure/database/repositories/sequelize-doctor-schedule.repository';
+import { DoctorScheduleModel } from '../doctor-settings/infrastructure/database/models/doctor-schedule.model';
 
 import { CreateAppointmentUseCase } from './application/use-cases/appointments/create-appointment.use-case';
 import { UpdateAppointmentStatusUseCase } from './application/use-cases/appointments/update-appointment-status.use-case';
@@ -58,9 +61,14 @@ import { AvailabilityBlocksModule } from '../availability-blocks/availability-bl
     SequelizeModule.forFeature([
       AppointmentModel,
       AppointmentChangesLogModel,
-      // ProfileModel is used by SequelizeBookingDoctorRepository (BOOKING_DOCTOR_LOADER)
-      // which is needed by GetAvailableSlotsUseCase for the anti-enumeration guard.
+      // ProfileModel — used by SequelizeBookingDoctorRepository (BOOKING_DOCTOR_LOADER)
+      // for GetAvailableSlotsUseCase's anti-enumeration guard.
       ProfileModel,
+      // DoctorScheduleModel — used by SequelizeDoctorScheduleRepository
+      // (DOCTOR_SCHEDULE_REPOSITORY) for GetAvailableSlotsUseCase horizon check.
+      // DoctorSettingsModule does NOT export DOCTOR_SCHEDULE_REPOSITORY, so it must
+      // be bound directly here (same pattern as BookingModule).
+      DoctorScheduleModel,
     ]),
     // Required by CreateAppointmentUseCase to validate office ownership/modality.
     // Also provides OFFICE_REPOSITORY for GetAvailableSlotsUseCase.
@@ -72,7 +80,7 @@ import { AvailabilityBlocksModule } from '../availability-blocks/availability-bl
     // auto-creating consultations on appointment confirmation.
     ConsultationsModule,
     // Exports DOCTOR_PROFILE_REPOSITORY for resolving doctor name on public confirm page.
-    // Also exports DOCTOR_SCHEDULE_REPOSITORY for GetAvailableSlotsUseCase (horizon check).
+    // NOTE: does NOT export DOCTOR_SCHEDULE_REPOSITORY — that is bound directly in providers.
     DoctorSettingsModule,
     // Exports PRICING_PLAN_REPOSITORY for ChangeAppointmentServiceUseCase: corregir el
     // servicio exige leer el catálogo (que exista, que sea del doctor, y su sessions_count).
@@ -94,6 +102,12 @@ import { AvailabilityBlocksModule } from '../availability-blocks/availability-bl
     {
       provide: BOOKING_DOCTOR_LOADER,
       useClass: SequelizeBookingDoctorRepository,
+    },
+    // DOCTOR_SCHEDULE_REPOSITORY — horizon check in GetAvailableSlotsUseCase.
+    // DoctorSettingsModule does NOT export this token; bound directly (same as BookingModule).
+    {
+      provide: DOCTOR_SCHEDULE_REPOSITORY,
+      useClass: SequelizeDoctorScheduleRepository,
     },
     // Infrastructure services: stateless HMAC tokens.
     AppointmentConfirmTokenService,
