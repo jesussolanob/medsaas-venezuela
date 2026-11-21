@@ -88,6 +88,7 @@ describe('UpdateTransactionUseCase', () => {
       softDelete: jest.fn(),
       logReveal: jest.fn(),
       appendAllergyNote: jest.fn().mockResolvedValue(false),
+      setWhatsAppOptOut: jest.fn().mockResolvedValue(undefined),
     };
     useCase = new UpdateTransactionUseCase(mockFinanceRepo, mockConceptRepo, mockPatientRepo);
   });

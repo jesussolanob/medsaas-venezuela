@@ -63,6 +63,7 @@ import { DoctorPromptsModule } from './modules/doctor-prompts/doctor-prompts.mod
 import { TeamMeetingsModule } from './modules/team-meetings/team-meetings.module';
 import { RetentionInvitesModule } from './modules/retention-invites/retention-invites.module';
 import { DoctorDocumentFilesModule } from './modules/doctor-document-files/doctor-document-files.module';
+import { WhatsAppModule } from './modules/whatsapp/whatsapp.module';
 
 @Module({
   imports: [
@@ -134,6 +135,7 @@ import { DoctorDocumentFilesModule } from './modules/doctor-document-files/docto
     TeamMeetingsModule,
     RetentionInvitesModule,
     DoctorDocumentFilesModule,
+    WhatsAppModule,
   ],
   controllers: [HealthController],
   providers: [

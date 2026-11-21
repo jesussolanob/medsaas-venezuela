@@ -628,6 +628,30 @@ export default function AppointmentDetailModal({
                 Usa &ldquo;Ir a consulta&rdquo; para ver el detalle completo y gestionar el pago.
               </p>
 
+              {/* Patient confirmed via WhatsApp */}
+              {appt.patientConfirmedAt && (
+                <div
+                  role="note"
+                  aria-label="Confirmación del paciente"
+                  className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 flex items-center gap-3"
+                >
+                  <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" aria-hidden="true" />
+                  <div>
+                    <p className="text-xs font-bold text-emerald-800">
+                      Paciente confirmó por WhatsApp
+                    </p>
+                    <p className="text-[11px] text-emerald-700 mt-0.5">
+                      El{' '}
+                      {new Intl.DateTimeFormat('es-VE', {
+                        dateStyle: 'medium',
+                        timeStyle: 'short',
+                        timeZone: 'America/Caracas',
+                      }).format(new Date(appt.patientConfirmedAt))}
+                    </p>
+                  </div>
+                </div>
+              )}
+
               {/* Patient alert — health note from public booking */}
               {appt.patientAlert && (
                 <div

@@ -32,6 +32,9 @@ describe('GetDoctorRemindersQueueUseCase', () => {
       insertPending: jest.fn(),
       markSent: jest.fn(),
       markFailed: jest.fn(),
+      findDueForWhatsAppReminder: jest.fn().mockResolvedValue([]),
+      countWhatsAppUniqueRecipientsLast24h: jest.fn().mockResolvedValue(0),
+      updateExternalIds: jest.fn().mockResolvedValue(undefined),
     };
     useCase = new GetDoctorRemindersQueueUseCase(mockRepo);
   });

@@ -85,6 +85,7 @@ const mockPatientRepo = {
   softDelete: jest.fn(),
   logReveal: jest.fn(),
   appendAllergyNote: jest.fn().mockResolvedValue(false),
+  setWhatsAppOptOut: jest.fn().mockResolvedValue(undefined),
 } as jest.Mocked<IPatientRepository>;
 
 const mockDoctorProfileRepo = {
@@ -170,6 +171,7 @@ const signToken = (linkId: string, token: string, exp: Date): string => {
       softDelete: jest.fn(),
       logReveal: jest.fn(),
       appendAllergyNote: jest.fn().mockResolvedValue(false),
+      setWhatsAppOptOut: jest.fn().mockResolvedValue(undefined),
     } as jest.Mocked<IPatientRepository>,
     {
       findByDoctorId: jest.fn(),

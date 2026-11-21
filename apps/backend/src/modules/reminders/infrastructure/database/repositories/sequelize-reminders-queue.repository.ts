@@ -8,6 +8,7 @@ import type { ReminderQueueStatus } from '../../../domain/entities/reminder-queu
 import type {
   IRemindersQueueRepository,
   AppointmentDueRow,
+  AppointmentDueRowWhatsApp,
   InsertQueueRowInput,
 } from '../../../domain/repositories/reminders-queue.repository';
 import { RemindersQueueModel } from '../models/reminders-queue.model';
@@ -39,6 +40,24 @@ interface DueRow {
   patient_name: string | null;
   scheduled_at: Date;
   appointment_mode: string;
+}
+
+interface DueRowWhatsApp {
+  appointment_id: string;
+  doctor_id: string;
+  patient_id: string | null;
+  patient_phone: string | null;
+  patient_name: string | null;
+  scheduled_at: Date;
+  appointment_mode: string;
+  office_name: string | null;
+  consultation_payment_status: string | null;
+  quiet_hours_start: string | null;
+  quiet_hours_end: string | null;
+}
+
+interface CountRow {
+  count: string;
 }
 
 interface InsertResult {
@@ -151,12 +170,15 @@ export class SequelizeRemindersQueueRepository implements IRemindersQueueReposit
         AND COALESCE(rs.enabled, true) = true
         AND COALESCE(rs.channel, 'both') IN ('email', 'both')
         AND COALESCE(rs.${settingsColumn}, true) = true
-        -- Idempotency: skip rows already present in the queue for this offsetType.
+        -- Idempotency: skip rows already present in the queue for this offsetType+email.
+        -- Channel is now part of the unique constraint; scope to 'email' so that a
+        -- WhatsApp row for the same appointment does NOT block the email row.
         AND NOT EXISTS (
           SELECT 1
           FROM reminders_queue rq
           WHERE rq.appointment_id = a.id
             AND rq.offset_type = :offsetType
+            AND rq.channel = 'email'
         )
       ORDER BY a.scheduled_at ASC
       LIMIT :cap
@@ -186,7 +208,7 @@ export class SequelizeRemindersQueueRepository implements IRemindersQueueReposit
         (id, appointment_id, doctor_id, patient_id, offset_type, scheduled_for, channel, status, attempts, created_at)
       VALUES
         (:id, :appointmentId, :doctorId, :patientId, :offsetType, :scheduledFor, :channel, 'pending', 0, NOW())
-      ON CONFLICT (appointment_id, offset_type) DO NOTHING
+      ON CONFLICT (appointment_id, offset_type, channel) DO NOTHING
       RETURNING id
       `,
       {
@@ -203,7 +225,137 @@ export class SequelizeRemindersQueueRepository implements IRemindersQueueReposit
       },
     );
 
-    return rows[0]?.id ?? null;
+    const rowId = rows[0]?.id ?? null;
+
+    // Optionally record Zernio external IDs in the same transaction-like sequence.
+    if (rowId && (input.externalMessageId || input.externalConversationId)) {
+      await this.updateExternalIds(
+        rowId,
+        input.externalMessageId ?? '',
+        input.externalConversationId ?? '',
+      );
+    }
+
+    return rowId;
+  }
+
+  async findDueForWhatsAppReminder(
+    offsetType: string,
+    windowStart: Date,
+    windowEnd: Date,
+    statuses: string[],
+    cap: number,
+  ): Promise<AppointmentDueRowWhatsApp[]> {
+    // Whitelist offsetType → settings column to prevent SQL injection via interpolation.
+    const SETTINGS_COLUMN: Record<string, string> = {
+      '24h': 'reminder_24h_enabled',
+      '3h': 'reminder_3h_enabled',
+    };
+    const settingsColumn = SETTINGS_COLUMN[offsetType];
+    if (!settingsColumn) {
+      throw new Error(`Unknown offsetType for WhatsApp reminder dispatch: ${offsetType}`);
+    }
+
+    const rows = await this.sequelize.query<DueRowWhatsApp>(
+      `
+      SELECT
+        a.id                        AS appointment_id,
+        a.doctor_id,
+        a.patient_id,
+        a.patient_phone,
+        a.patient_name,
+        a.scheduled_at,
+        a.appointment_mode,
+        dof.name                    AS office_name,
+        cons.payment_status         AS consultation_payment_status,
+        rs.quiet_hours_start,
+        rs.quiet_hours_end
+      FROM appointments a
+      LEFT JOIN reminders_settings rs ON rs.doctor_id = a.doctor_id
+      LEFT JOIN doctor_offices dof    ON dof.id = a.office_id
+      -- Opt-out: skip patients who have opted out of WhatsApp reminders.
+      LEFT JOIN patients pt           ON pt.id = a.patient_id
+      -- LATERAL ensures exactly one consultation row per appointment (most recent).
+      LEFT JOIN LATERAL (
+        SELECT payment_status
+        FROM consultations
+        WHERE appointment_id = a.id
+        ORDER BY created_at DESC
+        LIMIT 1
+      ) cons ON true
+      WHERE
+        a.status IN (:statuses)
+        AND a.patient_phone IS NOT NULL
+        AND a.scheduled_at >= :windowStart
+        AND a.scheduled_at <= :windowEnd
+        -- Respect patient opt-out.
+        AND COALESCE(pt.whatsapp_opt_out, false) = false
+        -- Respect per-doctor settings.
+        AND COALESCE(rs.enabled, true) = true
+        AND COALESCE(rs.channel, 'both') IN ('whatsapp', 'both')
+        AND COALESCE(rs.${settingsColumn}, true) = true
+        -- Idempotency: skip rows already queued as WhatsApp for this offsetType.
+        AND NOT EXISTS (
+          SELECT 1
+          FROM reminders_queue rq
+          WHERE rq.appointment_id = a.id
+            AND rq.offset_type = :offsetType
+            AND rq.channel = 'whatsapp'
+        )
+      ORDER BY a.scheduled_at ASC
+      LIMIT :cap
+      `,
+      {
+        replacements: { statuses, windowStart, windowEnd, offsetType, cap },
+        type: QueryTypes.SELECT,
+      },
+    );
+
+    return rows.map((r) => ({
+      appointmentId: r.appointment_id,
+      doctorId: r.doctor_id,
+      patientId: r.patient_id ?? null,
+      patientPhone: r.patient_phone ?? null,
+      patientName: r.patient_name ?? null,
+      scheduledAt: r.scheduled_at,
+      appointmentMode: r.appointment_mode,
+      officeName: r.office_name ?? null,
+      consultationPaymentStatus: r.consultation_payment_status ?? null,
+      quietHoursStart: r.quiet_hours_start ?? null,
+      quietHoursEnd: r.quiet_hours_end ?? null,
+    }));
+  }
+
+  async countWhatsAppUniqueRecipientsLast24h(): Promise<number> {
+    const rows = await this.sequelize.query<CountRow>(
+      `
+      SELECT COUNT(DISTINCT patient_id) AS count
+      FROM reminders_queue
+      WHERE channel = 'whatsapp'
+        AND status = 'sent'
+        AND sent_at >= NOW() - INTERVAL '24 hours'
+        AND patient_id IS NOT NULL
+      `,
+      { type: QueryTypes.SELECT },
+    );
+    return parseInt(rows[0]?.count ?? '0', 10);
+  }
+
+  async updateExternalIds(
+    rowId: string,
+    externalMessageId: string,
+    externalConversationId: string,
+  ): Promise<void> {
+    await this.sequelize.query(
+      `UPDATE reminders_queue
+       SET external_message_id = :externalMessageId,
+           external_conversation_id = :externalConversationId
+       WHERE id = :rowId`,
+      {
+        replacements: { rowId, externalMessageId, externalConversationId },
+        type: QueryTypes.UPDATE,
+      },
+    );
   }
 
   async markSent(rowId: string): Promise<void> {

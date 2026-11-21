@@ -117,6 +117,7 @@ function makePatientRepo(patient: Partial<Patient> | null = null): jest.Mocked<I
     softDelete: jest.fn(),
     logReveal: jest.fn(),
     appendAllergyNote: jest.fn().mockResolvedValue(false),
+    setWhatsAppOptOut: jest.fn().mockResolvedValue(undefined),
   };
 }
 

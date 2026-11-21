@@ -68,6 +68,14 @@ export class RemindersQueueModel extends Model {
   @Column({ type: DataType.TEXT, allowNull: true, field: 'error_message' })
   declare errorMessage: string | null;
 
+  /** Zernio messageId — set after a successful WhatsApp template send. */
+  @Column({ type: DataType.TEXT, allowNull: true, field: 'external_message_id' })
+  declare externalMessageId: string | null;
+
+  /** Zernio conversationId — set after a successful WhatsApp template send. */
+  @Column({ type: DataType.TEXT, allowNull: true, field: 'external_conversation_id' })
+  declare externalConversationId: string | null;
+
   @CreatedAt
   @Column({ field: 'created_at' })
   declare createdAt: Date;

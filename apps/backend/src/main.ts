@@ -12,7 +12,22 @@ async function bootstrap(): Promise<void> {
   // Enforce a 512 kb hard cap on all JSON request bodies before any controller
   // sees the data. This is the outer guard; BlockContentSanitizer also enforces
   // 300 000 chars at the use-case boundary (defense-in-depth).
-  app.useBodyParser('json', { limit: '512kb' });
+  //
+  // The verify callback captures the raw body bytes on req.rawBody so that the
+  // webhook signature controller can compute HMAC-SHA256 over the original wire
+  // bytes rather than a re-serialised version.  Without this, any key ordering
+  // or spacing difference between the original payload and JSON.stringify(parsed)
+  // would silently break HMAC verification in production.
+  app.useBodyParser('json', {
+    limit: '512kb',
+    verify: (
+      req: import('express').Request & { rawBody?: Buffer },
+      _res: import('express').Response,
+      buf: Buffer,
+    ) => {
+      req.rawBody = buf;
+    },
+  });
 
   const globalPrefix = 'api';
   app.setGlobalPrefix(globalPrefix);

@@ -88,4 +88,10 @@ export interface IPatientRepository {
    * SECURITY: `text` is health data — never log its value.
    */
   appendAllergyNote(patientId: string, doctorId: string, text: string, at: Date): Promise<boolean>;
+
+  /**
+   * Update the WhatsApp opt-out flag for a patient (not scoped to doctor:
+   * this is a patient preference written by the patient themselves via booking).
+   */
+  setWhatsAppOptOut(patientId: string, optOut: boolean): Promise<void>;
 }

@@ -102,6 +102,14 @@ export class Appointment {
      * Added by migration 20261120000001-appointment-patient-alert.
      */
     public readonly patientAlert: string | null = null,
+    /**
+     * Timestamp set when the patient presses "Confirmar" in the WhatsApp quick-reply.
+     * Does NOT change the appointment status — it is a soft confirmation signal for
+     * the specialist's view.
+     * Null until the patient confirms via WhatsApp or for legacy rows.
+     * Added by migration 20261121000003-whatsapp-appointment-confirmed.
+     */
+    public readonly patientConfirmedAt: Date | null = null,
   ) {}
 
   /**
@@ -176,6 +184,7 @@ export class Appointment {
       params.officeName ?? null,
       params.planId ?? null,
       params.patientAlert ?? null,
+      params.patientConfirmedAt ?? null,
     );
   }
 }
@@ -262,4 +271,10 @@ export interface AppointmentCreateParams {
    * Null for appointments created from the doctor panel or legacy rows.
    */
   patientAlert?: string | null;
+  /**
+   * Timestamp set when the patient presses "Confirmar" in the WhatsApp quick-reply.
+   * Does NOT change the appointment status.
+   * Null for legacy rows or when not yet confirmed via WhatsApp.
+   */
+  patientConfirmedAt?: Date | null;
 }

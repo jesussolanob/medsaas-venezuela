@@ -50,6 +50,7 @@ function makeRepo(scopedResult: Appointment | null): jest.Mocked<IAppointmentRep
     // New anti-IDOR method: enforces ownership at the SQL WHERE level.
     findByIdScopedEnriched: jest.fn().mockResolvedValue(scopedResult),
     changeService: jest.fn().mockResolvedValue(null),
+    setPatientConfirmedAt: jest.fn().mockResolvedValue(undefined),
     list: jest.fn(),
     save: jest.fn(),
     updateStatus: jest.fn(),

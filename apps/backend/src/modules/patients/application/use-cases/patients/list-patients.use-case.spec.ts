@@ -30,6 +30,7 @@ function makeMockRepo(): jest.Mocked<IPatientRepository> {
     softDelete: jest.fn(),
     logReveal: jest.fn(),
     appendAllergyNote: jest.fn().mockResolvedValue(false),
+    setWhatsAppOptOut: jest.fn().mockResolvedValue(undefined),
   };
 }
 

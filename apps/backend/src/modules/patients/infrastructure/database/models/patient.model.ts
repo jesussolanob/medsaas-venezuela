@@ -127,4 +127,13 @@ export class PatientModel extends Model {
   @DeletedAt
   @Column({ type: DataType.DATE, field: 'deleted_at' })
   declare deletedAt: Date | null;
+
+  /**
+   * When true the patient has opted out of WhatsApp appointment reminders.
+   * Set to true when the booking DTO includes `whatsapp_reminders: false`.
+   * Added by migration 20261121000002-whatsapp-patient-opt-out.
+   */
+  @Default(false)
+  @Column({ type: DataType.BOOLEAN, allowNull: false, field: 'whatsapp_opt_out' })
+  declare whatsappOptOut: boolean;
 }

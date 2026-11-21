@@ -39,6 +39,12 @@ export interface PatientCreateParams {
   emergencyContactPhone?: string | null;
   emergencyContactRelationship?: string | null;
   notes?: string | null;
+  /**
+   * When true the patient will not receive WhatsApp appointment reminders.
+   * Set via the booking DTO field `whatsapp_reminders=false` and cleared when
+   * the patient explicitly opts back in (`whatsapp_reminders=true`).
+   */
+  whatsappOptOut?: boolean;
   deletedAt?: Date | null;
   createdAt: Date;
   updatedAt: Date;
@@ -67,6 +73,8 @@ export class Patient {
   readonly emergencyContactPhone: string | null;
   readonly emergencyContactRelationship: string | null;
   readonly notes: string | null;
+  /** When true the patient has opted out of WhatsApp appointment reminders. */
+  readonly whatsappOptOut: boolean;
   readonly deletedAt: Date | null;
   readonly createdAt: Date;
   readonly updatedAt: Date;
@@ -93,6 +101,7 @@ export class Patient {
     this.emergencyContactPhone = params.emergencyContactPhone ?? null;
     this.emergencyContactRelationship = params.emergencyContactRelationship ?? null;
     this.notes = params.notes ?? null;
+    this.whatsappOptOut = params.whatsappOptOut ?? false;
     this.deletedAt = params.deletedAt ?? null;
     this.createdAt = params.createdAt;
     this.updatedAt = params.updatedAt;

@@ -5958,3 +5958,31 @@ Share consultation BFF actualizado para reenviar `attachments` al backend.
 - `pnpm nx test backend --maxWorkers=2` → 5252 tests, 0 fallos
 - `pnpm exec tsc -p apps/frontend/tsconfig.json --noEmit` → limpio
 - ESLint → 0 errores, 0 advertencias
+
+---
+
+## 2026-11-21 — Módulo WhatsApp: recordatorios automáticos + webhook + reagendamiento público
+
+### Resumen
+
+Implementación completa del módulo `whatsapp` para recordatorios automáticos de citas vía WhatsApp Business API (Zernio reseller). Incluye:
+
+- Adaptador Zernio (`ZernioWhatsAppSenderAdapter`): fetch con retry 1× en 5xx/429, allowlist, gate `WHATSAPP_ENABLED`.
+- Integración con cron de recordatorios (paso 7 best-effort): ventanas 24h y 3h, 3 plantillas, límite diario Meta TIER_250 (240 destinatarios).
+- Webhook `POST /api/webhooks/zernio`: verify firma HMAC, manejo de botones confirm/reschedule/cancel + texto libre, siempre 200.
+- Tokens de acción con HMAC-SHA256 (`AppointmentActionTokenService`): single-use reschedule via `satMs`.
+- Endpoints públicos `GET/POST /api/public/appointments/reschedule/:token`: reagendamiento sin auth, single-use, anti-enumeración (404 en token inválido).
+- `AppointmentRescheduleTokenService` en AppointmentsModule (evita dep. circular con WhatsApp).
+- Opt-out en booking: `whatsapp_reminders: boolean` en CreateBookingDto → `patients.whatsapp_opt_out`.
+- Admin test endpoint `POST /api/admin/whatsapp/test-reminder` (bloqueado en prod).
+- 3 migraciones `.cjs`: reminders_queue channel, patients opt-out, appointments patient_confirmed_at.
+- BFF frontend: `app/api/public/appointments/reschedule/[token]/route.ts`.
+- Help guide: sección WhatsApp en Recordatorios del especialista.
+- 51 tests en dispatch use case, 14 en webhook use case, 11 en test reminder, 11 en reschedule by token.
+
+### Verificación
+
+- `pnpm nx build backend` → OK (OOM fork-ts-checker conocido, no fatal)
+- `pnpm exec tsc -p apps/backend/tsconfig.app.json --noEmit` → limpio
+- `pnpm exec tsc -p apps/frontend/tsconfig.json --noEmit` → limpio
+- `pnpm nx test backend --maxWorkers=2` → 5385 tests, 551 suites, 0 fallos
