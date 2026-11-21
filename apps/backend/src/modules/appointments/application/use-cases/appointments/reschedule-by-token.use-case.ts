@@ -106,6 +106,12 @@ export class RescheduleByTokenUseCase {
   async execute(token: string, newScheduledAt: Date): Promise<AppointmentRescheduleInfo> {
     const { appointment, doctorName } = await this.loadAndVerify(token);
 
+    // Reject past dates immediately — rescheduling to a time in the past is
+    // never valid regardless of slot availability.
+    if (newScheduledAt <= new Date()) {
+      throw new AppointmentConflictError(newScheduledAt);
+    }
+
     const durationMinutes = appointment.durationMinutes ?? DEFAULT_SLOT_DURATION_MINUTES;
 
     // Check slot overlap for the new datetime (exclude the appointment itself).
@@ -123,10 +129,12 @@ export class RescheduleByTokenUseCase {
     const updated = await this.appointmentRepo.updateScheduledAt(appointment.id, newScheduledAt);
 
     // Audit log — best-effort.
+    // actor_id is UUID NOT NULL without FK; use the doctor's UUID to satisfy
+    // the constraint (self-service reschedule is logged under the doctor's id).
     try {
       await this.appointmentRepo.logStatusChange({
         appointmentId: appointment.id,
-        actorId: 'patient_self_service',
+        actorId: appointment.doctorId,
         oldStatus: appointment.status,
         newStatus: updated.status,
       });
@@ -160,9 +168,7 @@ export class RescheduleByTokenUseCase {
   // Private helpers
   // ---------------------------------------------------------------------------
 
-  private async loadAndVerify(
-    token: string,
-  ): Promise<{
+  private async loadAndVerify(token: string): Promise<{
     appointment: import('../../../domain/entities/appointment.entity').Appointment;
     doctorName: string;
   }> {

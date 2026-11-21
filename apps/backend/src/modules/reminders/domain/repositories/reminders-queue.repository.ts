@@ -31,6 +31,14 @@ export interface AppointmentDueRowWhatsApp {
   officeName: string | null;
   /** Payment status of the linked consultation, or null when no consultation exists. */
   consultationPaymentStatus: string | null;
+  /**
+   * Doctor's quiet-hours window start in 'HH:MM:SS' format (America/Caracas local time),
+   * or null when the doctor has no reminders_settings row.
+   * Reminders are skipped when the DISPATCH time falls within [quietHoursStart, quietHoursEnd).
+   */
+  quietHoursStart: string | null;
+  /** Doctor's quiet-hours window end in 'HH:MM:SS' format.  Null when no settings row. */
+  quietHoursEnd: string | null;
 }
 
 /**

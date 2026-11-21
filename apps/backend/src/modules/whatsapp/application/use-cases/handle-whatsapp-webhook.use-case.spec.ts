@@ -2,17 +2,25 @@ import { HandleWhatsAppWebhookUseCase } from './handle-whatsapp-webhook.use-case
 import type { IAppointmentRepository } from '../../../appointments/domain/repositories/appointment.repository';
 import type { IWhatsAppSender } from '../../domain/ports/iwhatsapp-sender.port';
 import { AppointmentActionTokenService } from '../../infrastructure/services/appointment-action-token.service';
+import { AppointmentRescheduleTokenService } from '../../../appointments/infrastructure/services/appointment-reschedule-token.service';
 import { ConfigService } from '@nestjs/config';
 import { Appointment } from '../../../appointments/domain/entities/appointment.entity';
 import type { AppointmentStatus } from '@delta/shared-types';
 
 const SECRET = 'test-webhook-secret-for-unit-tests!';
 
-function makeTokenService(): AppointmentActionTokenService {
-  const config = {
+function makeSharedConfig(): ConfigService {
+  return {
     get: (k: string) => (k === 'APPOINTMENT_ACTION_SECRET' ? SECRET : null),
   } as unknown as ConfigService;
-  return new AppointmentActionTokenService(config);
+}
+
+function makeTokenService(): AppointmentActionTokenService {
+  return new AppointmentActionTokenService(makeSharedConfig());
+}
+
+function makeRescheduleTokenService(): AppointmentRescheduleTokenService {
+  return new AppointmentRescheduleTokenService(makeSharedConfig());
 }
 
 function makeAppt(
@@ -71,6 +79,7 @@ function makeRepo(appt: Appointment | null = makeAppt()): jest.Mocked<IAppointme
     findById: jest.fn().mockResolvedValue(appt),
     updateStatus: jest.fn().mockResolvedValue(appt),
     setPatientConfirmedAt: jest.fn().mockResolvedValue(undefined),
+    logStatusChange: jest.fn().mockResolvedValue(undefined),
   } as unknown as jest.Mocked<IAppointmentRepository>;
 }
 
@@ -81,20 +90,28 @@ function makeWhatsApp(): jest.Mocked<IWhatsAppSender> {
   } as jest.Mocked<IWhatsAppSender>;
 }
 
+function makeAppConfig(): ConfigService {
+  return {
+    get: (k: string) => {
+      if (k === 'APP_BASE_URL') return 'https://app.deltasalud.app';
+      if (k === 'APPOINTMENT_ACTION_SECRET') return SECRET;
+      return null;
+    },
+  } as unknown as ConfigService;
+}
+
 function makeSut(
   repo: jest.Mocked<IAppointmentRepository>,
   whatsApp: jest.Mocked<IWhatsAppSender>,
   createNotification = { execute: jest.fn().mockResolvedValue({}) },
 ): HandleWhatsAppWebhookUseCase {
-  const config = {
-    get: (k: string) => (k === 'APP_BASE_URL' ? 'https://app.deltasalud.app' : null),
-  } as unknown as ConfigService;
   return new HandleWhatsAppWebhookUseCase(
     repo,
     whatsApp,
     makeTokenService(),
     createNotification as never,
-    config,
+    makeAppConfig(),
+    makeRescheduleTokenService(),
   );
 }
 
@@ -146,10 +163,34 @@ describe('HandleWhatsAppWebhookUseCase', () => {
       expect(result.action).toBe('noop');
       expect(repo.setPatientConfirmedAt).not.toHaveBeenCalled();
     });
+
+    it('returns noop and sends friendly message when appointment status is inactive', async () => {
+      // e.g. already cancelled — confirm button from an old reminder should not throw
+      const appt = makeAppt({ status: 'cancelled' });
+      const repo = makeRepo(appt);
+      const whatsApp = makeWhatsApp();
+      const sut = makeSut(repo, whatsApp);
+
+      const payload = tokenService.generateButtonPayload({
+        appointmentId: 'appt-001',
+        expMs: appt.scheduledAt.getTime(),
+        action: 'confirm',
+        satMs: 0,
+      });
+
+      const result = await sut.execute({ buttonPayload: payload, conversationId: 'conv-1' });
+      expect(result.action).toBe('noop');
+      expect(repo.setPatientConfirmedAt).not.toHaveBeenCalled();
+      expect(whatsApp.sendText).toHaveBeenCalledWith(
+        expect.objectContaining({
+          text: expect.stringContaining('no está activa'),
+        }),
+      );
+    });
   });
 
   describe('button_reply: reschedule', () => {
-    it('sends booking link and returns reschedule', async () => {
+    it('sends /cita/reagendar/ link (proper reschedule token) and returns reschedule', async () => {
       const appt = makeAppt();
       const repo = makeRepo(appt);
       const whatsApp = makeWhatsApp();
@@ -168,9 +209,15 @@ describe('HandleWhatsAppWebhookUseCase', () => {
       expect(whatsApp.sendText).toHaveBeenCalledWith(
         expect.objectContaining({
           conversationId: 'conv-1',
-          text: expect.stringContaining('/book/doc-001?reagendar='),
+          // The URL must use the public /cita/reagendar/ path with a proper
+          // AppointmentRescheduleTokenService token (not the button payload).
+          text: expect.stringContaining('/cita/reagendar/'),
         }),
       );
+      // Confirm it no longer embeds the raw button payload (action token) in the URL.
+      const firstCall = whatsApp.sendText.mock.calls[0] as [{ text: string }] | undefined;
+      const sentText = firstCall?.[0]?.text ?? '';
+      expect(sentText).not.toContain('/book/doc-001?reagendar=');
     });
 
     it('returns noop when reschedule token already used (satMs mismatch)', async () => {
@@ -217,6 +264,30 @@ describe('HandleWhatsAppWebhookUseCase', () => {
       );
       expect(notify.execute).toHaveBeenCalledWith(
         expect.objectContaining({ type: 'appointment_cancelled_by_patient' }),
+      );
+    });
+
+    it('writes audit log with doctor id as actorId on cancel', async () => {
+      const appt = makeAppt({ status: 'scheduled', paymentStatus: null });
+      const repo = makeRepo(appt);
+      const whatsApp = makeWhatsApp();
+      const sut = makeSut(repo, whatsApp);
+
+      const payload = tokenService.generateButtonPayload({
+        appointmentId: 'appt-001',
+        expMs: appt.scheduledAt.getTime(),
+        action: 'cancel',
+        satMs: 0,
+      });
+
+      await sut.execute({ buttonPayload: payload, conversationId: 'conv-1' });
+
+      expect(repo.logStatusChange).toHaveBeenCalledWith(
+        expect.objectContaining({
+          appointmentId: 'appt-001',
+          actorId: 'doc-001', // doctor's UUID, not literal 'patient_self_service'
+          newStatus: 'cancelled',
+        }),
       );
     });
 

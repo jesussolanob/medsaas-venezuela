@@ -84,10 +84,12 @@ export class DispatchWhatsAppRemindersUseCase {
 
     const remaining = DAILY_CAP - usedToday;
 
-    const [r24h, r3h] = await Promise.all([
-      this.dispatch24h(now, Math.min(remaining, DISPATCH_CAP)),
-      this.dispatch3h(now, Math.min(remaining, DISPATCH_CAP)),
-    ]);
+    // Run windows SEQUENTIALLY and share the budget so the combined sent count
+    // never exceeds the daily cap.  Running them in parallel would let both
+    // windows race against the same `remaining` budget and potentially exceed it.
+    const r24h = await this.dispatch24h(now, Math.min(remaining, DISPATCH_CAP));
+    const remaining3h = Math.max(0, remaining - r24h.sent);
+    const r3h = await this.dispatch3h(now, Math.min(remaining3h, DISPATCH_CAP));
 
     return {
       sent24h: r24h.sent,
@@ -107,8 +109,11 @@ export class DispatchWhatsAppRemindersUseCase {
     now: Date,
     cap: number,
   ): Promise<{ sent: number; failed: number; skipped: number }> {
-    const windowStart = new Date(now.getTime() + 23 * 60 * 60 * 1000 + 45 * 60 * 1000);
-    const windowEnd = new Date(now.getTime() + 24 * 60 * 60 * 1000 + 15 * 60 * 1000);
+    // Tolerant window: any appointment scheduled 3 h to 24 h from now is eligible.
+    // The wide window means a delayed cron run still picks up appointments that
+    // would have been missed with a tight ±15-min window.
+    const windowStart = new Date(now.getTime() + 3 * 60 * 60 * 1000); // now + 3 h
+    const windowEnd = new Date(now.getTime() + 24 * 60 * 60 * 1000); // now + 24 h
 
     const appointments = await this.queueRepo.findDueForWhatsAppReminder(
       '24h',
@@ -130,7 +135,7 @@ export class DispatchWhatsAppRemindersUseCase {
 
     for (const appt of appointments) {
       try {
-        const outcome = await this.send24h(appt, doctorMap);
+        const outcome = await this.send24h(appt, doctorMap, now);
         if (outcome === 'sent') sent++;
         else if (outcome === 'failed') failed++;
         else skipped++;
@@ -149,8 +154,16 @@ export class DispatchWhatsAppRemindersUseCase {
   private async send24h(
     appt: AppointmentDueRowWhatsApp,
     doctorMap: Map<string, string>,
+    now: Date,
   ): Promise<'sent' | 'failed' | 'skipped'> {
     if (!appt.patientPhone) return 'skipped';
+
+    // Respect the doctor's quiet hours — do not send during their configured
+    // no-disturbance window (applied to the CURRENT dispatch time, not the
+    // appointment time).
+    if (this.isInQuietHours(appt.quietHoursStart, appt.quietHoursEnd, now)) {
+      return 'skipped';
+    }
 
     // Insert idempotency row (ON CONFLICT DO NOTHING → returns null if already queued)
     const rowId = await this.queueRepo.insertPending({
@@ -202,8 +215,11 @@ export class DispatchWhatsAppRemindersUseCase {
     now: Date,
     cap: number,
   ): Promise<{ sent: number; failed: number; skipped: number }> {
-    const windowStart = new Date(now.getTime() + 2 * 60 * 60 * 1000 + 45 * 60 * 1000);
-    const windowEnd = new Date(now.getTime() + 3 * 60 * 60 * 1000 + 15 * 60 * 1000);
+    // Tolerant window: any appointment scheduled 30 min to 3 h from now is eligible.
+    // This window is non-overlapping with the 24h window (which ends at now+24h,
+    // starts at now+3h), so the same appointment cannot receive both reminders.
+    const windowStart = new Date(now.getTime() + 30 * 60 * 1000); // now + 30 min
+    const windowEnd = new Date(now.getTime() + 3 * 60 * 60 * 1000); // now + 3 h
 
     const appointments = await this.queueRepo.findDueForWhatsAppReminder(
       '3h',
@@ -225,7 +241,7 @@ export class DispatchWhatsAppRemindersUseCase {
 
     for (const appt of appointments) {
       try {
-        const outcome = await this.send3h(appt, doctorMap);
+        const outcome = await this.send3h(appt, doctorMap, now);
         if (outcome === 'sent') sent++;
         else if (outcome === 'failed') failed++;
         else skipped++;
@@ -244,8 +260,13 @@ export class DispatchWhatsAppRemindersUseCase {
   private async send3h(
     appt: AppointmentDueRowWhatsApp,
     doctorMap: Map<string, string>,
+    now: Date,
   ): Promise<'sent' | 'failed' | 'skipped'> {
     if (!appt.patientPhone) return 'skipped';
+
+    if (this.isInQuietHours(appt.quietHoursStart, appt.quietHoursEnd, now)) {
+      return 'skipped';
+    }
 
     const rowId = await this.queueRepo.insertPending({
       appointmentId: appt.appointmentId,
@@ -298,8 +319,50 @@ export class DispatchWhatsAppRemindersUseCase {
       hour: '2-digit',
       minute: '2-digit',
     });
-    const officeName = appt.officeName ?? 'su consultorio';
+    // {{4}}: 'consulta en línea' for online appointments; office name otherwise.
+    const officeName =
+      appt.appointmentMode === 'online'
+        ? 'consulta en línea'
+        : (appt.officeName ?? 'su consultorio');
     return [firstName, doctorName, time, officeName];
+  }
+
+  // ---------------------------------------------------------------------------
+  // Quiet-hours helper
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Returns true when the given `now` falls within the doctor's configured
+   * quiet-hours window (applied in the America/Caracas timezone).
+   *
+   * quietStart / quietEnd are stored as 'HH:MM:SS' strings (e.g. '21:00:00').
+   * When quietStart > quietEnd the window crosses midnight (e.g. 21:00–08:00).
+   */
+  private isInQuietHours(quietStart: string | null, quietEnd: string | null, now: Date): boolean {
+    if (!quietStart || !quietEnd) return false;
+
+    // Extract the current time-of-day string ('HH:MM:SS') in Caracas timezone.
+    const parts = new Intl.DateTimeFormat('en', {
+      timeZone: 'America/Caracas',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+    }).formatToParts(now);
+
+    const h = parts.find((p) => p.type === 'hour')?.value ?? '00';
+    const m = parts.find((p) => p.type === 'minute')?.value ?? '00';
+    const s = parts.find((p) => p.type === 'second')?.value ?? '00';
+    const currentTime = `${h}:${m}:${s}`;
+
+    if (quietStart > quietEnd) {
+      // Window crosses midnight: quiet when time >= start OR time < end.
+      // E.g. 21:00:00–08:00:00 → quiet at 22:00, 00:00, 07:59.
+      return currentTime >= quietStart || currentTime < quietEnd;
+    } else {
+      // Same-day window: quiet when start <= time < end.
+      return currentTime >= quietStart && currentTime < quietEnd;
+    }
   }
 
   /**

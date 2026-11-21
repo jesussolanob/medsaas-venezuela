@@ -15,6 +15,7 @@ import { AdminWhatsAppTestController } from './presentation/controllers/admin-wh
 import { AppointmentsModule } from '../appointments/appointments.module';
 import { DoctorSettingsModule } from '../doctor-settings/doctor-settings.module';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { AppointmentRescheduleTokenService } from '../appointments/infrastructure/services/appointment-reschedule-token.service';
 
 /**
  * WhatsAppModule — WhatsApp adapter, webhook handling, and test endpoint.
@@ -34,6 +35,8 @@ import { NotificationsModule } from '../notifications/notifications.module';
  *
  * Dependencies satisfied by imports:
  *   - APPOINTMENT_REPOSITORY → AppointmentsModule (exported)
+ *   - AppointmentRescheduleTokenService → AppointmentsModule (exported, re-provided here
+ *     so NestJS resolves it without requesting another module import)
  *   - DOCTOR_PROFILE_REPOSITORY → DoctorSettingsModule (exported)
  *   - CreateNotificationUseCase → NotificationsModule (exported)
  *   - ConfigService → global (registered in AppModule)
@@ -50,6 +53,10 @@ import { NotificationsModule } from '../notifications/notifications.module';
 
     // Infrastructure services
     AppointmentActionTokenService,
+    // AppointmentRescheduleTokenService is exported from AppointmentsModule and
+    // is available via that import.  We re-declare it here so NestJS resolves
+    // the constructor parameter without an extra module import.
+    AppointmentRescheduleTokenService,
 
     // Use cases (no queue dependency)
     HandleWhatsAppWebhookUseCase,

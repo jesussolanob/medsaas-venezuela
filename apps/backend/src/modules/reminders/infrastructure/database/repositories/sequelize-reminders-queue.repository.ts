@@ -52,6 +52,8 @@ interface DueRowWhatsApp {
   appointment_mode: string;
   office_name: string | null;
   consultation_payment_status: string | null;
+  quiet_hours_start: string | null;
+  quiet_hours_end: string | null;
 }
 
 interface CountRow {
@@ -265,16 +267,29 @@ export class SequelizeRemindersQueueRepository implements IRemindersQueueReposit
         a.scheduled_at,
         a.appointment_mode,
         dof.name                    AS office_name,
-        c.payment_status            AS consultation_payment_status
+        cons.payment_status         AS consultation_payment_status,
+        rs.quiet_hours_start,
+        rs.quiet_hours_end
       FROM appointments a
       LEFT JOIN reminders_settings rs ON rs.doctor_id = a.doctor_id
       LEFT JOIN doctor_offices dof    ON dof.id = a.office_id
-      LEFT JOIN consultations c       ON c.appointment_id = a.id
+      -- Opt-out: skip patients who have opted out of WhatsApp reminders.
+      LEFT JOIN patients pt           ON pt.id = a.patient_id
+      -- LATERAL ensures exactly one consultation row per appointment (most recent).
+      LEFT JOIN LATERAL (
+        SELECT payment_status
+        FROM consultations
+        WHERE appointment_id = a.id
+        ORDER BY created_at DESC
+        LIMIT 1
+      ) cons ON true
       WHERE
         a.status IN (:statuses)
         AND a.patient_phone IS NOT NULL
         AND a.scheduled_at >= :windowStart
         AND a.scheduled_at <= :windowEnd
+        -- Respect patient opt-out.
+        AND COALESCE(pt.whatsapp_opt_out, false) = false
         -- Respect per-doctor settings.
         AND COALESCE(rs.enabled, true) = true
         AND COALESCE(rs.channel, 'both') IN ('whatsapp', 'both')
@@ -306,6 +321,8 @@ export class SequelizeRemindersQueueRepository implements IRemindersQueueReposit
       appointmentMode: r.appointment_mode,
       officeName: r.office_name ?? null,
       consultationPaymentStatus: r.consultation_payment_status ?? null,
+      quietHoursStart: r.quiet_hours_start ?? null,
+      quietHoursEnd: r.quiet_hours_end ?? null,
     }));
   }
 

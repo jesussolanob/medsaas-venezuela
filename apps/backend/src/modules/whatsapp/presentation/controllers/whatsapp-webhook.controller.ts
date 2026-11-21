@@ -70,9 +70,14 @@ export class WhatsAppWebhookController {
       throw new UnauthorizedException('Missing webhook signature');
     }
 
-    // Raw body is attached by NestJS via rawBody option
-    const rawBody: Buffer =
-      (req as Request & { rawBody?: Buffer }).rawBody ?? Buffer.from(JSON.stringify(req.body));
+    // Raw body is captured by the verify callback in main.ts useBodyParser.
+    // Fail-closed: if rawBody is absent (middleware misconfiguration) reject the
+    // request rather than falling back to a re-serialised body, which would
+    // silently compute the wrong HMAC and accept spoofed payloads.
+    const rawBody = (req as Request & { rawBody?: Buffer }).rawBody;
+    if (!rawBody) {
+      throw new UnauthorizedException('Raw body not available for signature verification');
+    }
 
     const expectedHex = createHmac('sha256', secret).update(rawBody).digest('hex');
 

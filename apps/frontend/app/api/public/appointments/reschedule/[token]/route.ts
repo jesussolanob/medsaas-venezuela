@@ -135,12 +135,18 @@ export async function POST(
   }
 
   if (!backendRes.ok) {
-    let errorMessage = 'No se pudo reagendar la cita. Intenta de nuevo.';
-    try {
-      const errJson = (await backendRes.json()) as { message?: string; error?: string };
-      errorMessage = errJson?.message ?? errJson?.error ?? errorMessage;
-    } catch {
-      // cuerpo vacío o no-JSON
+    // Only surface the backend's specific error message for domain-level responses
+    // (404 token-not-found, 409 conflict, 422 validation); all other errors
+    // (500, 503, etc.) get a generic Spanish message to avoid leaking internals.
+    const defaultMsg = 'No se pudo reagendar la cita. Intenta de nuevo.';
+    let errorMessage = defaultMsg;
+    if ([404, 409, 422].includes(backendRes.status)) {
+      try {
+        const errJson = (await backendRes.json()) as { message?: string; error?: string };
+        errorMessage = errJson?.message ?? errJson?.error ?? defaultMsg;
+      } catch {
+        // cuerpo vacío o no-JSON — keep default
+      }
     }
     return NextResponse.json({ error: errorMessage }, { status: backendRes.status });
   }

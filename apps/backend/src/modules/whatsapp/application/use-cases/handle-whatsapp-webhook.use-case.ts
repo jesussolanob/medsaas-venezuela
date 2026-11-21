@@ -6,6 +6,7 @@ import {
 } from '../../../appointments/domain/repositories/appointment.repository';
 import { WHATSAPP_SENDER, type IWhatsAppSender } from '../../domain/ports/iwhatsapp-sender.port';
 import { AppointmentActionTokenService } from '../../infrastructure/services/appointment-action-token.service';
+import { AppointmentRescheduleTokenService } from '../../../appointments/infrastructure/services/appointment-reschedule-token.service';
 import { CreateNotificationUseCase } from '../../../notifications/application/use-cases/create-notification.use-case';
 
 export interface ZernioWebhookPayload {
@@ -31,10 +32,13 @@ const FREE_TEXT_REPLY =
  *
  * Processes inbound events from the Zernio webhook:
  *   - button_reply → parses HMAC-signed payload, routes by action
- *     - confirm    → sets patient_confirmed_at on the appointment (no status change)
- *     - reschedule → replies with booking link {APP_BASE_URL}/book/{doctorId}?reagendar={token}
- *     - cancel     → cancels appointment if payment is NOT approved; otherwise replies
- *                    with a message telling the patient to call their doctor
+ *     - confirm    → sets patient_confirmed_at on the appointment when status is
+ *                    scheduled/confirmed; friendly inactive reply otherwise
+ *     - reschedule → generates a single-use HMAC reschedule URL token and replies
+ *                    with the public /cita/reagendar/<token> link
+ *     - cancel     → cancels appointment if payment is NOT approved; writes audit
+ *                    log using the doctor's id as actor (UUID constraint on the
+ *                    appointment_changes_log table)
  *   - inbound text → replies ONCE with a "this number only sends reminders" message
  *   - everything else → no-op (always returns 200 upstream)
  *
@@ -62,6 +66,12 @@ export class HandleWhatsAppWebhookUseCase {
     @Inject(CreateNotificationUseCase)
     private readonly createNotification: CreateNotificationUseCase | null,
     private readonly config: ConfigService,
+    // AppointmentRescheduleTokenService — produces the single-use URL token for
+    // the public /cita/reagendar/<token> page.  Injected as optional to avoid a
+    // hard startup failure when APPOINTMENT_ACTION_SECRET is not set in tests that
+    // don't exercise the reschedule path.
+    @Optional()
+    private readonly rescheduleTokenService: AppointmentRescheduleTokenService | null,
   ) {
     this.appBaseUrl = (config.get<string>('APP_BASE_URL') ?? '').replace(/\/+$/, '');
   }
@@ -105,6 +115,17 @@ export class HandleWhatsAppWebhookUseCase {
 
     switch (decoded.action) {
       case 'confirm': {
+        // Status guard: only active appointments can be confirmed.
+        if (!['scheduled', 'confirmed'].includes(appointment.status)) {
+          if (payload.conversationId) {
+            await this.whatsApp.sendText({
+              conversationId: payload.conversationId,
+              text: 'Esta cita ya no está activa y no puede confirmarse. Para más información, contacta a tu especialista.',
+            });
+          }
+          return { action: 'noop' };
+        }
+
         // Single-use check: if already confirmed, skip silently
         if (appointment.patientConfirmedAt) {
           return { action: 'noop' };
@@ -137,10 +158,14 @@ export class HandleWhatsAppWebhookUseCase {
         }
 
         if (payload.conversationId) {
-          const bookingLink = `${this.appBaseUrl}/book/${appointment.doctorId}?reagendar=${payload.buttonPayload ?? ''}`;
+          // Generate a proper single-use reschedule URL token (3-part HMAC).
+          // The button payload is an AppointmentActionToken (4-part); we cannot
+          // embed it directly in the URL because the public reschedule page uses
+          // AppointmentRescheduleTokenService for verification.
+          const rescheduleLink = this.buildRescheduleLink(appointment);
           await this.whatsApp.sendText({
             conversationId: payload.conversationId,
-            text: `Haz clic aquí para reagendar tu cita: ${bookingLink}`,
+            text: `Haz clic aquí para reagendar tu cita: ${rescheduleLink}`,
           });
         }
         return { action: 'reschedule' };
@@ -164,6 +189,19 @@ export class HandleWhatsAppWebhookUseCase {
         }
 
         await this.appointmentRepo.updateStatus(appointment.id, 'cancelled');
+
+        // Write audit log — actor_id is UUID NOT NULL without FK; use the
+        // doctor's UUID so the constraint is satisfied.  Best-effort.
+        try {
+          await this.appointmentRepo.logStatusChange({
+            appointmentId: appointment.id,
+            actorId: appointment.doctorId,
+            oldStatus: appointment.status,
+            newStatus: 'cancelled',
+          });
+        } catch {
+          // Audit log failure must not break the webhook flow
+        }
 
         // Notify the doctor (best-effort)
         if (this.createNotification) {
@@ -214,6 +252,21 @@ export class HandleWhatsAppWebhookUseCase {
   // ---------------------------------------------------------------------------
   // Private helpers
   // ---------------------------------------------------------------------------
+
+  private buildRescheduleLink(
+    appointment: import('../../../appointments/domain/entities/appointment.entity').Appointment,
+  ): string {
+    if (this.rescheduleTokenService) {
+      const token = this.rescheduleTokenService.generate({
+        appointmentId: appointment.id,
+        satMs: appointment.scheduledAt.getTime(),
+      });
+      return `${this.appBaseUrl}/cita/reagendar/${token}`;
+    }
+    // Fallback when service is not wired (e.g., local dev without secret):
+    // send the booking page so the patient can still reach the doctor.
+    return `${this.appBaseUrl}/book/${appointment.doctorId}`;
+  }
 
   private formatCaracasDate(d: Date): string {
     return d.toLocaleDateString('es-VE', {

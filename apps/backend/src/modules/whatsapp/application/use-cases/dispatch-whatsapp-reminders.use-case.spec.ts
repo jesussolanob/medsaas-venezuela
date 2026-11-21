@@ -21,6 +21,8 @@ function makeAppt(overrides: Partial<AppointmentDueRowWhatsApp> = {}): Appointme
     appointmentMode: 'presencial',
     officeName: 'Clínica Centro',
     consultationPaymentStatus: null,
+    quietHoursStart: null,
+    quietHoursEnd: null,
     ...overrides,
   };
 }
