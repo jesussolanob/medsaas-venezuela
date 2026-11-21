@@ -460,6 +460,11 @@ export default function BookingClient({
     address: '',
     city: '',
   });
+  // WhatsApp reminders opt-in: checked by default.
+  // Sent as `whatsapp_reminders` boolean to the booking API.
+  // The backend stores it on the patient record and the WhatsApp module respects it.
+  const [whatsappReminders, setWhatsappReminders] = useState(true);
+
   const [submitting, setSubmitting] = useState(false);
   // RONDA 24: ref sincrono para bloquear double-click antes de que el render propague.
   // Se mantiene sincronizado con `submitting` via useEffect mas abajo.
@@ -829,6 +834,7 @@ export default function BookingClient({
           // El backend resuelve expiresAt desde validity_days del plan; el cliente
           // NO calcula ni envía fechas de expiración.
           planId: selectedPlan?.id ?? null,
+          whatsapp_reminders: whatsappReminders,
           additionalSessions: deferAllSessions
             ? []
             : additionalSessionDates
@@ -3051,6 +3057,26 @@ export default function BookingClient({
                   </span>
                 </div>
               </div>
+
+              {/* WhatsApp reminders opt-in */}
+              <label className="flex items-start gap-3 cursor-pointer select-none group">
+                <span className="mt-0.5 shrink-0">
+                  <input
+                    type="checkbox"
+                    checked={whatsappReminders}
+                    onChange={(e) => setWhatsappReminders(e.target.checked)}
+                    className="w-4 h-4 rounded border-slate-300 text-cyan-500 focus:ring-cyan-500 cursor-pointer"
+                    aria-label="Recibir recordatorios por WhatsApp"
+                  />
+                </span>
+                <span className="text-sm text-slate-700 leading-snug group-hover:text-slate-900 transition-colors">
+                  Quiero recibir recordatorios de mi cita por WhatsApp
+                  <span className="block text-xs text-slate-400 mt-0.5 font-normal">
+                    Te avisaremos 24 horas antes y el mismo día. Puedes desactivarlo en tu próxima
+                    reserva.
+                  </span>
+                </span>
+              </label>
 
               {/* Inline error at the click point (see global banner note above) */}
               {error && (

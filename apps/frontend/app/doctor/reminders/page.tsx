@@ -372,31 +372,59 @@ export default function RemindersPage() {
           </div>
         </div>
 
-        {/* Message preview box */}
-        <div className="bg-white border border-slate-200 rounded-xl p-4">
-          <p className="text-xs font-semibold text-slate-400 uppercase mb-2">
-            Vista previa del mensaje
-          </p>
-          <div className="bg-emerald-50 border border-emerald-100 rounded-lg p-3 text-sm text-slate-700 leading-relaxed">
-            <p>
-              Hola <strong>[Paciente]</strong>
+        {/* Automated WhatsApp message previews (read-only) */}
+        <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-4">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">
+              Mensajes automáticos — vista previa
             </p>
-            <p className="mt-1">
-              Tu consulta con <strong>{doctorName || '[Doctor]'}</strong> está{' '}
-              <strong>confirmada</strong> para:
+            <span className="text-[10px] bg-slate-100 text-slate-500 font-medium px-2 py-0.5 rounded-full">
+              No editables · Meta aprobados
+            </span>
+          </div>
+
+          {/* 24h reminder */}
+          <div>
+            <p className="text-xs font-medium text-slate-500 mb-1.5 flex items-center gap-1.5">
+              <Clock className="w-3.5 h-3.5 text-slate-400" aria-hidden="true" />
+              24 horas antes de la cita
             </p>
-            <p className="mt-1">
-              - <strong>Fecha:</strong> [día, fecha]
+            <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-3 text-sm text-slate-700 leading-relaxed">
+              <p>
+                Hola <strong>[Paciente]</strong>, te recordamos que mañana tienes una cita con{' '}
+                <strong>{doctorName || '[Especialista]'}</strong> a las <strong>[hora]</strong> en{' '}
+                <strong>[consultorio]</strong>.
+              </p>
+              <p className="mt-2 text-xs text-slate-500">
+                Si la cita ya está pagada, el mensaje de Cancelar no se incluye.
+              </p>
+              {/* Quick-reply button pills */}
+              <div className="mt-3 flex flex-wrap gap-1.5">
+                {(['Confirmar', 'Reagendar', 'Cancelar'] as const).map((label) => (
+                  <span
+                    key={label}
+                    className="text-[11px] font-medium text-cyan-700 border border-cyan-200 bg-white rounded-full px-2.5 py-0.5"
+                  >
+                    {label}
+                  </span>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Same-day (3h) reminder */}
+          <div>
+            <p className="text-xs font-medium text-slate-500 mb-1.5 flex items-center gap-1.5">
+              <Clock className="w-3.5 h-3.5 text-slate-400" aria-hidden="true" />
+              El mismo día (≈ 3 horas antes)
             </p>
-            <p>
-              - <strong>Hora:</strong> [hora]
-            </p>
-            <p>
-              - <strong>Servicio:</strong> [nombre del plan]
-            </p>
-            <p className="mt-1 text-xs text-slate-500">
-              Por favor llega con 10 minutos de anticipación.
-            </p>
+            <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-3 text-sm text-slate-700 leading-relaxed">
+              <p>
+                Hola <strong>[Paciente]</strong>, hoy tienes tu cita con{' '}
+                <strong>{doctorName || '[Especialista]'}</strong> a las <strong>[hora]</strong> en{' '}
+                <strong>[consultorio]</strong>. ¡Te esperamos!
+              </p>
+            </div>
           </div>
         </div>
 

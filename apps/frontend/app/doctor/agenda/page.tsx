@@ -158,6 +158,11 @@ type CalendarAppointment = {
   payment_status?: 'pending' | 'approved' | null;
   /** Health note submitted by the patient during public booking. Shown as amber badge. */
   patient_alert?: string | null;
+  /**
+   * ISO timestamp when the patient confirmed attendance via WhatsApp quick-reply.
+   * Shown as a small green check icon in appointment cards.
+   */
+  patientConfirmedAt?: string | null;
 };
 
 type PendingAppointment = {
@@ -179,6 +184,8 @@ type PendingAppointment = {
   package_id?: string | null;
   session_number?: number | null;
   total_sessions?: number | null;
+  /** ISO timestamp when the patient confirmed attendance via WhatsApp quick-reply. */
+  patientConfirmedAt?: string | null;
 };
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -703,6 +710,7 @@ export default function AgendaPage() {
         meet_link: a.meet_link,
         payment_status: a.payment_status,
         patient_alert: a.patient_alert ?? null,
+        patientConfirmedAt: a.patientConfirmedAt ?? null,
       }));
     setAllAppointments(uniqueAppts);
 
@@ -987,6 +995,7 @@ export default function AgendaPage() {
         endTime: addMinutes(timeStr, durationAt(dow, timeStr, availSlots, config)),
         chief_complaint: p.chief_complaint ?? undefined,
         patient_alert: p.patient_alert,
+        patientConfirmedAt: p.patientConfirmedAt ?? null,
         status: 'scheduled' as const,
         source: 'appointment' as const,
         appointment_code: p.appointment_code,
@@ -1033,6 +1042,7 @@ export default function AgendaPage() {
         endTime: addMinutes(timeStr, durationAt(dow, timeStr, availSlots, config)),
         chief_complaint: p.chief_complaint ?? undefined,
         patient_alert: p.patient_alert,
+        patientConfirmedAt: p.patientConfirmedAt ?? null,
         status: 'scheduled' as const,
         source: 'appointment' as const,
         appointment_code: p.appointment_code,
@@ -1593,6 +1603,12 @@ export default function AgendaPage() {
                                   aria-label="Alerta del paciente"
                                 />
                               )}
+                              {a.patientConfirmedAt && (
+                                <CheckCircle
+                                  className="w-3.5 h-3.5 text-emerald-500 shrink-0"
+                                  aria-label="Paciente confirmó por WhatsApp"
+                                />
+                              )}
                             </div>
                             <p className="text-xs text-slate-400 truncate">
                               {new Date(a.isoDate).toLocaleDateString('es-VE', {
@@ -1669,6 +1685,12 @@ export default function AgendaPage() {
                                 <AlertTriangle
                                   className="w-2.5 h-2.5 shrink-0"
                                   aria-label="Alerta del paciente"
+                                />
+                              )}
+                              {a.patientConfirmedAt && (
+                                <CheckCircle
+                                  className="w-2.5 h-2.5 shrink-0"
+                                  aria-label="Paciente confirmó por WhatsApp"
                                 />
                               )}
                               <span className="truncate">
@@ -1769,6 +1791,12 @@ export default function AgendaPage() {
                                         <AlertTriangle
                                           className="w-3 h-3 text-amber-500 shrink-0"
                                           aria-label="Alerta del paciente"
+                                        />
+                                      )}
+                                      {a.patientConfirmedAt && (
+                                        <CheckCircle
+                                          className="w-3 h-3 text-emerald-500 shrink-0"
+                                          aria-label="Paciente confirmó por WhatsApp"
                                         />
                                       )}
                                     </p>
@@ -1893,6 +1921,12 @@ export default function AgendaPage() {
                                                   aria-label="Alerta del paciente"
                                                 />
                                               )}
+                                              {slotAppt.patientConfirmedAt && (
+                                                <CheckCircle
+                                                  className="w-3 h-3 text-emerald-500 shrink-0"
+                                                  aria-label="Paciente confirmó por WhatsApp"
+                                                />
+                                              )}
                                             </p>
                                             {slotAppt.consultation_code && (
                                               <span className="text-[10px] font-mono text-slate-400">
@@ -1996,6 +2030,12 @@ export default function AgendaPage() {
                                             <AlertTriangle
                                               className="w-3 h-3 text-amber-500 shrink-0"
                                               aria-label="Alerta del paciente"
+                                            />
+                                          )}
+                                          {a.patientConfirmedAt && (
+                                            <CheckCircle
+                                              className="w-3 h-3 text-emerald-500 shrink-0"
+                                              aria-label="Paciente confirmó por WhatsApp"
                                             />
                                           )}
                                         </p>

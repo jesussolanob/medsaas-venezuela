@@ -85,6 +85,11 @@ export type AgendaAppointment = {
    * Null for appointments created from the doctor panel or legacy rows.
    */
   patient_alert?: string | null;
+  /**
+   * ISO timestamp when the patient confirmed attendance via WhatsApp quick-reply.
+   * Null when the patient has not confirmed or the WhatsApp reminder was not sent.
+   */
+  patientConfirmedAt?: string | null;
 };
 
 /**
@@ -111,6 +116,8 @@ export type PendingAgendaAppointment = {
   package_id: string | null;
   session_number: number | null;
   total_sessions: number | null;
+  /** ISO timestamp when the patient confirmed attendance via WhatsApp quick-reply. */
+  patientConfirmedAt?: string | null;
 };
 
 // ---------------------------------------------------------------------------
@@ -155,6 +162,11 @@ interface BackendAppointment {
   paymentStatus?: 'pending' | 'approved' | null;
   /** Código de la consulta vinculada (DLT-YYYYMM-NNNN). Null cuando no hay consulta. */
   consultationCode?: string | null;
+  /**
+   * ISO timestamp when the patient confirmed attendance via WhatsApp quick-reply.
+   * Set by HandleWhatsAppWebhookUseCase when the patient replies "Confirmar".
+   */
+  patientConfirmedAt?: string | null;
   // meet_link no está en el entity actual — Fase 5
 }
 
@@ -231,6 +243,7 @@ function toAgendaAppointment(raw: BackendAppointment, slotDuration: number): Age
     payment_status: (raw.paymentStatus as AgendaAppointment['payment_status']) ?? null,
     consultation_code: raw.consultationCode ?? null,
     patient_alert: raw.patientAlert ?? null,
+    patientConfirmedAt: raw.patientConfirmedAt ?? null,
   };
 }
 
@@ -254,6 +267,7 @@ function toPendingAppointment(raw: BackendAppointment): PendingAgendaAppointment
     package_id: raw.packageId ?? null,
     session_number: raw.sessionNumber ?? null,
     total_sessions: null, // enriquecido por el caller si hay package
+    patientConfirmedAt: raw.patientConfirmedAt ?? null,
   };
 }
 
