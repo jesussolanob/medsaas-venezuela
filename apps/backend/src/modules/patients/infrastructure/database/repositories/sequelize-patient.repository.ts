@@ -348,6 +348,10 @@ export class SequelizePatientRepository implements IPatientRepository {
     };
   }
 
+  async setWhatsAppOptOut(patientId: string, optOut: boolean): Promise<void> {
+    await this.patientModel.update({ whatsappOptOut: optOut }, { where: { id: patientId } });
+  }
+
   private toDomain(row: PatientModel): Patient {
     return Patient.create({
       id: row.id,
@@ -371,6 +375,7 @@ export class SequelizePatientRepository implements IPatientRepository {
       emergencyContactPhone: row.emergencyContactPhone,
       emergencyContactRelationship: row.emergencyContactRelationship,
       notes: row.notes,
+      whatsappOptOut: row.whatsappOptOut ?? false,
       deletedAt: row.deletedAt,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,

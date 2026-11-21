@@ -16,11 +16,13 @@ import { ConfirmAppointmentByTokenUseCase } from './application/use-cases/appoin
 import { GetAppointmentConfirmInfoUseCase } from './application/use-cases/appointments/get-appointment-confirm-info.use-case';
 import { SyncDoctorCalendarUseCase } from './application/use-cases/appointments/sync-doctor-calendar.use-case';
 import { ChangeAppointmentServiceUseCase } from './application/use-cases/appointments/change-appointment-service.use-case';
+import { RescheduleByTokenUseCase } from './application/use-cases/appointments/reschedule-by-token.use-case';
 
 import { AppointmentsController } from './presentation/controllers/appointments.controller';
 import { PublicAppointmentsController } from './presentation/controllers/public-appointments.controller';
 
 import { AppointmentConfirmTokenService } from './infrastructure/services/appointment-confirm-token.service';
+import { AppointmentRescheduleTokenService } from './infrastructure/services/appointment-reschedule-token.service';
 
 // Required by CreateAppointmentUseCase for office ownership + modality validation.
 import { OfficesModule } from '../offices/offices.module';
@@ -61,8 +63,9 @@ import { PackagesModule } from '../packages/packages.module';
       provide: APPOINTMENT_REPOSITORY,
       useClass: SequelizeAppointmentRepository,
     },
-    // Infrastructure service: stateless HMAC token for appointment confirmation.
+    // Infrastructure services: stateless HMAC tokens.
     AppointmentConfirmTokenService,
+    AppointmentRescheduleTokenService,
     // Use cases
     CreateAppointmentUseCase,
     UpdateAppointmentStatusUseCase,
@@ -74,7 +77,12 @@ import { PackagesModule } from '../packages/packages.module';
     ChangeAppointmentServiceUseCase,
     GetAppointmentConfirmInfoUseCase,
     SyncDoctorCalendarUseCase,
+    RescheduleByTokenUseCase,
   ],
-  exports: [APPOINTMENT_REPOSITORY, AppointmentConfirmTokenService],
+  exports: [
+    APPOINTMENT_REPOSITORY,
+    AppointmentConfirmTokenService,
+    AppointmentRescheduleTokenService,
+  ],
 })
 export class AppointmentsModule {}

@@ -217,6 +217,14 @@ export interface IAppointmentRepository {
   deleteById(id: string): Promise<void>;
 
   /**
+   * Sets patient_confirmed_at to the given timestamp (or NOW() when null).
+   * Called by the WhatsApp webhook handler when the patient presses "Confirmar".
+   * Does NOT change appointment status.
+   * No-op when the row does not exist (safe for idempotent webhook replays).
+   */
+  setPatientConfirmedAt(id: string, confirmedAt?: Date): Promise<void>;
+
+  /**
    * Finds the first completed appointment whose payment_id matches the given
    * paymentId. Used by DispatchPendingConsultationRemindersUseCase to determine
    * the anchor date (when session 1 was attended) for escalated reminders.

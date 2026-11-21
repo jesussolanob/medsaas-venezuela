@@ -1665,3 +1665,75 @@ created_at    TIMESTAMPTZ   DEFAULT now()
 **Seguridad:** `patient_alert` es dato de salud (PII). **Nunca loguear su contenido.** Scoped por `doctorId` (anti-IDOR en `appendAllergyNote`).
 
 **Tests:** 93 tests en `create-booking.use-case.spec.ts` + 10 tests de merge rules en `sequelize-patient.repository.append-allergy.spec.ts`.
+
+---
+
+### 2026-11-21 — Recordatorios WhatsApp + reagendamiento público por token
+
+#### Módulo WhatsApp (`apps/backend/src/modules/whatsapp/`)
+
+Nuevos endpoints públicos y de admin:
+
+| Endpoint                                     | Método | Auth                                          | Descripción                                                                                                                                                                         |
+| -------------------------------------------- | ------ | --------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
+| `/api/webhooks/zernio`                       | POST   | Firma HMAC `x-zernio-signature: sha256=<hex>` | Webhook Zernio: recibe button replies y texto libre. Fail-closed: 401 si `ZERNIO_WEBHOOK_SECRET` no configurado. Siempre 200 después de verificar firma.                            |
+| `/api/admin/whatsapp/test-reminder`          | POST   | AppAuthGuard + RolesGuard (`super_admin`)     | Solo staging/dev. Lanza un recordatorio de prueba para un `appointment_id`. Body: `{ appointmentId: uuid, type: '24h'                                                               | '3h' }`. |
+| `/api/public/appointments/reschedule/:token` | GET    | Ninguna (pública)                             | Info de la cita para el formulario de reagendamiento (nombre sin apellido, especialista, fecha, hora, modalidad). Token HMAC de un solo uso (satMs). 404 en token inválido/vencido. |
+| `/api/public/appointments/reschedule/:token` | POST   | Ninguna (pública)                             | Mueve la cita a la nueva fecha. Body: `{ scheduledAt: ISO8601 }`. Token expira después del movimiento. 409 en conflicto de horario.                                                 |
+
+#### Integración con cron de recordatorios
+
+`POST /api/cron/appointment-reminders` ahora incluye un **paso 7** (best-effort) que despacha recordatorios por WhatsApp. La respuesta incluye campos adicionales:
+
+```json
+{
+  "whatsAppSent24h": 3,
+  "whatsAppFailed24h": 0,
+  "whatsAppSent3h": 1,
+  "whatsAppFailed3h": 0
+}
+```
+
+Límite diario: 240 destinatarios únicos en las últimas 24h (Meta TIER_250). Si se supera, el paso WhatsApp se omite completamente para ese ciclo.
+
+#### Booking: opt-out de WhatsApp
+
+`CreateBookingDto` acepta nuevo campo opcional: `whatsapp_reminders: boolean`
+
+- `false` → activa `patients.whatsapp_opt_out = true`
+- `true` → limpia `patients.whatsapp_opt_out = false`
+- omitido → no cambia el setting actual
+
+#### Migraciones
+
+| Migración                                           | Descripción                                                                                                                                                                                        |
+| --------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `20261121000001-whatsapp-reminders-columns.cjs`     | Agrega `channel TEXT`, `external_message_id TEXT`, `external_conversation_id TEXT` a `reminders_queue`. Cambia UNIQUE(appointment_id, offset_type) → UNIQUE(appointment_id, offset_type, channel). |
+| `20261121000002-whatsapp-patient-opt-out.cjs`       | Agrega `whatsapp_opt_out BOOLEAN NOT NULL DEFAULT false` a `patients`.                                                                                                                             |
+| `20261121000003-whatsapp-appointment-confirmed.cjs` | Agrega `patient_confirmed_at TIMESTAMPTZ NULL` a `appointments`.                                                                                                                                   |
+
+#### Variables de entorno requeridas
+
+| Variable                     | Descripción                                                 | Prod                       | Staging                    |
+| ---------------------------- | ----------------------------------------------------------- | -------------------------- | -------------------------- |
+| `ZERNIO_API_KEY`             | API key de Zernio (GCP Secret)                              | secret                     | secret                     |
+| `ZERNIO_WEBHOOK_SECRET`      | Secret HMAC para verificar webhook (GCP Secret)             | secret                     | secret                     |
+| `APPOINTMENT_ACTION_SECRET`  | Secret para tokens de acción de citas (GCP Secret)          | secret                     | secret                     |
+| `ZERNIO_WHATSAPP_ACCOUNT_ID` | ID de cuenta de WhatsApp en Zernio                          | `6afc5b492728c5ed0bbdb5f7` | `6afc5b492728c5ed0bbdb5f7` |
+| `WHATSAPP_ENABLED`           | Activa/desactiva el envío                                   | `true`                     | `false`                    |
+| `WHATSAPP_ALLOWLIST`         | Lista blanca de teléfonos (separados por coma) para staging | —                          | `584141234571`             |
+
+#### Frontend BFF thin proxy
+
+| Ruta Next.js                                       | Backend                                           | Descripción                  |
+| -------------------------------------------------- | ------------------------------------------------- | ---------------------------- |
+| `GET /api/public/appointments/reschedule/[token]`  | `GET /api/public/appointments/reschedule/:token`  | Info de cita para formulario |
+| `POST /api/public/appointments/reschedule/[token]` | `POST /api/public/appointments/reschedule/:token` | Mover la cita                |
+
+#### Seguridad
+
+- **Nunca loguear** teléfonos, nombres, cuerpo de mensajes WhatsApp.
+- El webhook siempre responde 200 después de verificar la firma (evitar reenvíos de Zernio).
+- Tokens de acción: HMAC-SHA256 con `APPOINTMENT_ACTION_SECRET`, single-use via `satMs`.
+- `AppointmentRescheduleTokenService` vive en `AppointmentsModule` (no en `WhatsAppModule`) para evitar dependencia circular.
+- Staging: `WHATSAPP_ENABLED=false` + `WHATSAPP_ALLOWLIST` previene envíos reales a pacientes.

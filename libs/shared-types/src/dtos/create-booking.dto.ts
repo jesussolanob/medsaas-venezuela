@@ -135,6 +135,19 @@ export const CreateBookingDtoSchema = z
      * slots de 9:00 y 10:00 quedan bloqueados correctamente.
      */
     duration_minutes: z.number().int().min(5).max(480).optional(),
+
+    /**
+     * Patient's WhatsApp reminder preference, submitted during booking.
+     *
+     * - true  → patient opts in  → clears whatsapp_opt_out flag.
+     * - false → patient opts out → sets whatsapp_opt_out flag.
+     * - omitted → no change to the existing opt-out setting.
+     *
+     * Only honoured on the public booking path. The doctor-initiated path
+     * (skipPatientBookingRules=true) may also supply it to manage on behalf
+     * of the patient.
+     */
+    whatsapp_reminders: z.boolean().optional(),
   })
   .strict();
 

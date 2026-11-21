@@ -13,8 +13,14 @@
  * No imports from NestJS, Sequelize, or any external library.
  */
 
-export type NotificationType = 'quote_accepted' | 'quote_rejected';
-export type NotificationEntityType = 'quote';
+export type NotificationType =
+  | 'quote_accepted'
+  | 'quote_rejected'
+  /** Patient cancelled their appointment via the WhatsApp quick-reply button. */
+  | 'appointment_cancelled_by_patient'
+  /** Patient confirmed their attendance via the WhatsApp quick-reply button. */
+  | 'appointment_confirmed_by_patient';
+export type NotificationEntityType = 'quote' | 'appointment';
 
 export interface NotificationParams {
   id: string;

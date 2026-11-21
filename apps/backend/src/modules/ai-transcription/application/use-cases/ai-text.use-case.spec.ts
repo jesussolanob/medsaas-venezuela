@@ -224,6 +224,7 @@ describe('AiTextUseCase', () => {
       softDelete: jest.fn(),
       logReveal: jest.fn(),
       appendAllergyNote: jest.fn().mockResolvedValue(false),
+      setWhatsAppOptOut: jest.fn().mockResolvedValue(undefined),
     };
     mockConsultationRepo = {
       findById: jest.fn(),

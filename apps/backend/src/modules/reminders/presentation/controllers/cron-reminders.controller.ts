@@ -19,6 +19,8 @@ import { ApplyScheduledDeactivationsUseCase } from '../../../doctor-settings/app
 import { ExpireDuePendingConsultationsUseCase } from '../../../pending-consultations/application/use-cases/expire-due-pending-consultations.use-case';
 import { DispatchQuoteExpiryNoticesUseCase } from '../../../quotes/application/use-cases/dispatch-quote-expiry-notices.use-case';
 import { DispatchMeetingRemindersUseCase } from '../../../team-meetings/application/use-cases/dispatch-meeting-reminders.use-case';
+import { DispatchWhatsAppRemindersUseCase } from '../../../whatsapp/application/use-cases/dispatch-whatsapp-reminders.use-case';
+import type { DispatchWhatsAppRemindersResult } from '../../../whatsapp/application/use-cases/dispatch-whatsapp-reminders.use-case';
 
 interface CronRunResult extends DispatchDueRemindersResult {
   /** Pending consultation reminder emails sent in this run. */
@@ -44,6 +46,11 @@ interface CronRunResult extends DispatchDueRemindersResult {
   /** Meeting invite emails sent in this run (doctor-inactivity cron). */
   meetingInvitePre: number;
   meetingInviteExpired: number;
+  /** WhatsApp reminder counts. */
+  whatsAppSent24h: number;
+  whatsAppFailed24h: number;
+  whatsAppSent3h: number;
+  whatsAppFailed3h: number;
 }
 
 interface SuccessResponse<T> {
@@ -95,6 +102,9 @@ export class CronRemindersController {
     @Optional()
     @Inject(DispatchMeetingRemindersUseCase)
     private readonly dispatchMeetingReminders: DispatchMeetingRemindersUseCase | null,
+    @Optional()
+    @Inject(DispatchWhatsAppRemindersUseCase)
+    private readonly dispatchWhatsAppReminders: DispatchWhatsAppRemindersUseCase | null,
   ) {}
 
   @Post('appointment-reminders')
@@ -184,6 +194,26 @@ export class CronRemindersController {
       }
     }
 
+    // 7. WhatsApp reminders (24h + 3h) — best-effort
+    let whatsAppResult: DispatchWhatsAppRemindersResult = {
+      sent24h: 0,
+      failed24h: 0,
+      skipped24h: 0,
+      sent3h: 0,
+      failed3h: 0,
+      skipped3h: 0,
+    };
+    if (this.dispatchWhatsAppReminders) {
+      try {
+        whatsAppResult = await this.dispatchWhatsAppReminders.execute();
+      } catch (err: unknown) {
+        this.logger.warn(
+          '[cron] dispatchWhatsAppReminders failed — other reminders unaffected: ' +
+            (err instanceof Error ? err.message : String(err)),
+        );
+      }
+    }
+
     return {
       success: true,
       data: {
@@ -203,6 +233,10 @@ export class CronRemindersController {
         // not in the appointment-reminders cron (every 15 min). Always 0 here.
         meetingInvitePre: 0,
         meetingInviteExpired: 0,
+        whatsAppSent24h: whatsAppResult.sent24h,
+        whatsAppFailed24h: whatsAppResult.failed24h,
+        whatsAppSent3h: whatsAppResult.sent3h,
+        whatsAppFailed3h: whatsAppResult.failed3h,
       },
     };
   }

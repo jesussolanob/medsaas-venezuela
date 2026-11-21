@@ -71,6 +71,7 @@ const signToken = (linkId: string, token: string, exp: Date): string => {
       softDelete: jest.fn(),
       logReveal: jest.fn(),
       appendAllergyNote: jest.fn().mockResolvedValue(false),
+      setWhatsAppOptOut: jest.fn().mockResolvedValue(undefined),
     } as jest.Mocked<IPatientRepository>,
     {
       findByDoctorId: jest.fn(),
@@ -137,6 +138,7 @@ const mockPatientRepo: jest.Mocked<IPatientRepository> = {
   softDelete: jest.fn(),
   logReveal: jest.fn(),
   appendAllergyNote: jest.fn().mockResolvedValue(false),
+  setWhatsAppOptOut: jest.fn().mockResolvedValue(undefined),
 };
 
 const mockDoctorProfileRepo: jest.Mocked<IDoctorProfileRepository> = {
