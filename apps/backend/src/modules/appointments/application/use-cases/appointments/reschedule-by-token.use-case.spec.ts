@@ -177,6 +177,17 @@ describe('RescheduleByTokenUseCase', () => {
       );
     });
 
+    it('throws 404 once the appointment start time has passed (expired link)', async () => {
+      const past = new Date(Date.now() - 60 * 60 * 1000);
+      const appt = makeAppointment({ scheduledAt: past });
+      const { sut, tokenService } = makeSut(appt);
+      const token = tokenService.generate({ appointmentId: appt.id, satMs: past.getTime() });
+
+      await expect(sut.getInfo(token)).rejects.toBeInstanceOf(
+        AppointmentRescheduleInvalidTokenError,
+      );
+    });
+
     it('throws AppointmentNotReschedulableError for cancelled appointment', async () => {
       const appt = makeAppointment({ status: 'cancelled' });
       const { sut, tokenService } = makeSut(appt);
