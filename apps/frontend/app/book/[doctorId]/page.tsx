@@ -12,12 +12,13 @@ const BACKEND_URL = process.env.BACKEND_INTERNAL_URL ?? 'http://localhost:3001';
  * Minimal public fetch helper for booking endpoints — no auth headers needed
  * since the booking controller is explicitly public (@Public() / no guard).
  */
-async function publicFetch<T>(path: string): Promise<T | null> {
+async function publicFetch<T>(path: string, fresh = false): Promise<T | null> {
   try {
     const res = await fetch(`${BACKEND_URL}${path}`, {
       headers: { 'Content-Type': 'application/json' },
-      // Booking info can be cached briefly; slots should stay fresh.
-      next: { revalidate: 60 },
+      // Booking info can be cached briefly; slots should stay fresh. Reschedule
+      // info must never be cached: a used link would keep showing the old date.
+      ...(fresh ? { cache: 'no-store' as const } : { next: { revalidate: 60 } }),
     });
     if (!res.ok) return null;
     const json = (await res.json()) as { success: boolean; data: T };
@@ -107,6 +108,7 @@ export default async function PublicBookingPage({
     const [rescheduleInfo, officesRawForReschedule] = await Promise.all([
       publicFetch<AppointmentRescheduleInfo>(
         `/api/public/appointments/reschedule/${encodeURIComponent(reagendarToken)}`,
+        true,
       ),
       publicFetch<DoctorOfficeRaw[]>(`/api/booking/${doctorId}/offices`),
     ]);
