@@ -234,9 +234,11 @@ export class RescheduleByTokenUseCase {
 
     // 5. Resolve doctor display name (safe, non-PII)
     const doctorProfile = await this.doctorProfileRepo.findByDoctorId(appointment.doctorId);
-    const title = doctorProfile?.professionalTitle ?? 'Dr.';
-    const name = doctorProfile?.fullName ?? 'Su especialista';
-    const doctorName = `${title} ${name}`.trim();
+    // Title only when the specialist set one: a default "Dr." misgendered women
+    // and psychologists (same rule as the patient-facing emails).
+    const title = doctorProfile?.professionalTitle?.trim() ?? '';
+    const name = doctorProfile?.fullName?.trim() || 'tu especialista';
+    const doctorName = title ? `${title} ${name}` : name;
 
     return { appointment, doctorName };
   }

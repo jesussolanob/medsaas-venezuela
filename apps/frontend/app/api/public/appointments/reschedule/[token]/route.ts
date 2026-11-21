@@ -36,9 +36,10 @@ export interface AppointmentRescheduleInfo {
 
 export async function GET(
   _req: NextRequest,
-  { params }: { params: { token: string } },
+  { params }: { params: Promise<{ token: string }> },
 ): Promise<NextResponse> {
-  const { token } = params;
+  // Next 16: route params are async; reading them synchronously yields undefined.
+  const { token } = await params;
 
   if (!token || token.trim() === '') {
     return NextResponse.json(
@@ -91,9 +92,10 @@ export async function GET(
 
 export async function POST(
   req: NextRequest,
-  { params }: { params: { token: string } },
+  { params }: { params: Promise<{ token: string }> },
 ): Promise<NextResponse> {
-  const { token } = params;
+  // Next 16: route params are async; reading them synchronously yields undefined.
+  const { token } = await params;
 
   if (!token || token.trim() === '') {
     return NextResponse.json(
