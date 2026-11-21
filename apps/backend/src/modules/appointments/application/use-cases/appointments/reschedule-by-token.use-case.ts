@@ -221,6 +221,12 @@ export class RescheduleByTokenUseCase {
       throw new AppointmentRescheduleInvalidTokenError();
     }
 
+    // 3b. The link expires when the appointment starts: an old WhatsApp link must
+    // not move a past appointment that nobody marked as attended.
+    if (appointment.scheduledAt.getTime() <= Date.now()) {
+      throw new AppointmentRescheduleInvalidTokenError();
+    }
+
     // 4. Status must allow patient self-service reschedule.
     if (!TOKEN_RESCHEDULABLE_STATUSES.has(appointment.status)) {
       throw new AppointmentNotReschedulableError(appointment.status);
