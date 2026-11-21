@@ -1,3 +1,5 @@
+import { SyncConsultationDateUseCase } from '../../../../consultations/application/use-cases/consultations/sync-consultation-date.use-case';
+import { CreateNotificationUseCase } from '../../../../notifications/application/use-cases/create-notification.use-case';
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import {
   APPOINTMENT_REPOSITORY,
@@ -83,19 +85,17 @@ export class RescheduleByTokenUseCase {
      */
     private readonly slotsUseCase: GetAvailableSlotsUseCase,
     /**
-     * SyncConsultationDateUseCase — optional. When present, moves the
-     * consultation date alongside the appointment date.
-     * Injected by string token because TypeScript emits Object for union types.
+     * SyncConsultationDateUseCase — moves consultations.consultation_date with the
+     * appointment, same class the specialist's reschedule uses. A string token that
+     * nobody registered left the consultation on the old date.
      */
     @Optional()
-    @Inject('SYNC_CONSULTATION_DATE_USE_CASE')
-    private readonly syncConsultationDate: {
-      execute(input: {
-        appointmentId: string;
-        doctorId: string;
-        newScheduledAt: Date;
-      }): Promise<void>;
-    } | null = null,
+    @Inject(SyncConsultationDateUseCase)
+    private readonly syncConsultationDate: SyncConsultationDateUseCase | null = null,
+    /** In-app bell notice for the specialist (best-effort). */
+    @Optional()
+    @Inject(CreateNotificationUseCase)
+    private readonly createNotification: CreateNotificationUseCase | null = null,
   ) {}
 
   /**
@@ -187,6 +187,32 @@ export class RescheduleByTokenUseCase {
       } catch (err: unknown) {
         this.logger.warn(
           `[reschedule-by-token] syncConsultationDate failed (non-fatal): ` +
+            (err instanceof Error ? err.message : String(err)),
+        );
+      }
+    }
+
+    // Bell notice for the specialist — best-effort, never blocks the reschedule.
+    if (this.createNotification) {
+      try {
+        await this.createNotification.execute({
+          doctorId: appointment.doctorId,
+          type: 'appointment_rescheduled_by_patient',
+          title: 'Cita reagendada por el paciente',
+          body: `El paciente movió su cita al ${newScheduledAt.toLocaleString('es-VE', {
+            timeZone: 'America/Caracas',
+            weekday: 'long',
+            day: 'numeric',
+            month: 'long',
+            hour: 'numeric',
+            minute: '2-digit',
+          })}.`,
+          entityType: 'appointment',
+          entityId: appointment.id,
+        });
+      } catch (err: unknown) {
+        this.logger.warn(
+          `[reschedule-by-token] notification failed (non-fatal): ` +
             (err instanceof Error ? err.message : String(err)),
         );
       }

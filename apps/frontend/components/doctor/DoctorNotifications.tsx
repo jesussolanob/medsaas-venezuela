@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { Bell, CheckCheck, FileText } from 'lucide-react';
+import { Bell, CheckCheck, FileText, CheckCircle, CalendarX, CalendarClock } from 'lucide-react';
 import type { NotificationItem } from '@/app/api/doctor/notifications/route';
 
 const POLL_MS = 60_000;
@@ -19,6 +19,22 @@ const POLL_MS = 60_000;
  * MVP: solo notificaciones de presupuestos (quote_accepted | quote_rejected).
  * Polling cada 60 s — best-effort, fallo de red se ignora silenciosamente.
  */
+/** Icon and colour per notification type (quotes + WhatsApp patient actions). */
+function notificationVisual(type: string): { Icon: typeof FileText; tone: string } {
+  switch (type) {
+    case 'quote_accepted':
+      return { Icon: FileText, tone: 'bg-teal-100 text-teal-600' };
+    case 'appointment_confirmed_by_patient':
+      return { Icon: CheckCircle, tone: 'bg-emerald-100 text-emerald-600' };
+    case 'appointment_cancelled_by_patient':
+      return { Icon: CalendarX, tone: 'bg-red-100 text-red-500' };
+    case 'appointment_rescheduled_by_patient':
+      return { Icon: CalendarClock, tone: 'bg-amber-100 text-amber-600' };
+    default:
+      return { Icon: FileText, tone: 'bg-red-100 text-red-500' };
+  }
+}
+
 export default function DoctorNotifications() {
   const [items, setItems] = useState<NotificationItem[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -152,16 +168,19 @@ export default function DoctorNotifications() {
                   ].join(' ')}
                 >
                   {/* Icon */}
-                  <div
-                    className={[
-                      'mt-0.5 flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center',
-                      n.type === 'quote_accepted'
-                        ? 'bg-teal-100 text-teal-600'
-                        : 'bg-red-100 text-red-500',
-                    ].join(' ')}
-                  >
-                    <FileText className="w-3.5 h-3.5" />
-                  </div>
+                  {(() => {
+                    const { Icon, tone } = notificationVisual(n.type);
+                    return (
+                      <div
+                        className={[
+                          'mt-0.5 flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center',
+                          tone,
+                        ].join(' ')}
+                      >
+                        <Icon className="w-3.5 h-3.5" />
+                      </div>
+                    );
+                  })()}
 
                   {/* Text */}
                   <div className="flex-1 min-w-0">
