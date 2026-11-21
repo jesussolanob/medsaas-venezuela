@@ -237,6 +237,13 @@ export class SequelizeAppointmentRepository implements IAppointmentRepository {
     await this.appointmentModel.destroy({ where: { id } });
   }
 
+  async setPatientConfirmedAt(id: string, confirmedAt?: Date): Promise<void> {
+    await this.appointmentModel.update(
+      { patientConfirmedAt: confirmedAt ?? new Date() },
+      { where: { id } },
+    );
+  }
+
   async updateStatus(id: string, status: AppointmentStatus): Promise<Appointment> {
     await this.appointmentModel.update({ status }, { where: { id } });
     const updated = await this.appointmentModel.findByPk(id);
@@ -759,6 +766,7 @@ export class SequelizeAppointmentRepository implements IAppointmentRepository {
       googleCalendarEventId: row.googleCalendarEventId ?? null,
       durationMinutes: row.durationMinutes ?? null,
       patientAlert: row.patientAlert ?? null,
+      patientConfirmedAt: row.patientConfirmedAt ?? null,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
     });

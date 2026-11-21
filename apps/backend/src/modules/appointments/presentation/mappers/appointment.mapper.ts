@@ -76,6 +76,13 @@ export function toPlainAppointment(appt: Appointment): Record<string, unknown> {
     paymentStatus: appt.paymentStatus,
     /** Consultation code (DLT-YYYYMM-NNNN). Null when no consultation is linked. */
     consultationCode: appt.consultationCode,
+    /**
+     * Timestamp when the patient confirmed attendance via WhatsApp quick-reply.
+     * Null when the patient has not confirmed or the reminder was not sent via
+     * WhatsApp. Used by the specialist's agenda to show a "Paciente confirmó"
+     * indicator on appointment cards.
+     */
+    patientConfirmedAt: appt.patientConfirmedAt ?? null,
   };
 }
 

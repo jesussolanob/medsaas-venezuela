@@ -363,6 +363,19 @@ Configuracion de recordatorios automaticos a pacientes. (Requiere plan Base o Pl
 - El correo de recordatorio que envias al paciente muestra su **codigo de consulta** (el mismo DLT-… que ve en sus documentos).
 - **Los recordatorios automaticos ya estan activos:** el sistema envia por email de forma automatica el recordatorio de **24 horas antes** y el de **1 hora antes** de cada cita, sin que tengas que hacer nada. El recordatorio de 24 horas incluye un **enlace para que el paciente confirme la cita** por si mismo (confirmacion por token); al confirmar, la cita pasa a Confirmada. Ademas puedes enviar un recordatorio manual desde la cita. Si conectas Google Calendar, este envia su propio recordatorio 30 minutos antes.
 
+**Recordatorios por WhatsApp:**
+- Si activas el canal WhatsApp o 'Ambos', el sistema envia automaticamente mensajes de WhatsApp al telefono del paciente: uno **24 horas antes** y otro **3 horas antes** de la cita.
+- El mensaje de 24 horas (cuando la cita no esta pagada) incluye **tres botones de accion rapida**: 'Confirmar asistencia', 'Reagendar' y 'Cancelar'. El paciente puede tocar uno directamente desde WhatsApp sin entrar al portal.
+- El mensaje de 24 horas (cuando el pago ya esta aprobado) no incluye el boton de cancelar por cobro anticipado.
+- El mensaje de 3 horas es un aviso del dia sin botones de accion.
+- **Boton Confirmar:** marca la cita como Confirmada. Si ya estaba confirmada, el bot responde que ya fue registrado.
+- **Boton Reagendar:** envia al paciente un enlace de un solo uso para elegir una nueva fecha/hora. El enlace expira automaticamente cuando la cita se mueve (cada reagendamiento genera un nuevo enlace).
+- **Boton Cancelar:** cancela la cita y notifica al especialista. No funciona si el pago ya esta aprobado; en ese caso el bot indica que debe contactar al consultorio.
+- **Opt-in del paciente:** en el paso de confirmacion del formulario de reserva aparece la casilla **'Quiero recibir recordatorios de mi cita por WhatsApp'**, marcada por defecto. Si el paciente la desmarca, el sistema NO le enviara recordatorios por WhatsApp. Esta preferencia queda guardada con la cita.
+- El limite diario es de 240 destinatarios unicos por dia (limite de la API de Meta TIER_250). Si la agenda tiene mas citas, el sistema omite las que superen el tope y las envía por email normalmente.
+- Estos recordatorios requieren que el canal WhatsApp este activado en /doctor/reminders. Si el canal es solo Email, no se envian mensajes de WhatsApp.
+- **Indicador 'Paciente confirmo por WhatsApp':** cuando el paciente toca el boton Confirmar del mensaje de WhatsApp, su cita queda marcada con una **marca verde de verificacion** (icono de cheque verde) visible en las tarjetas de tu agenda (vistas mes, semana y dia) y en la lista de citas pendientes. Al abrir el detalle de la cita tambien aparece la fecha y hora exactas en que el paciente confirmo. Este indicador es de solo lectura; no es necesario que hagas nada.
+
 ### 6.12 Configuracion / Perfil — /doctor/settings
 
 Perfil, metodos de pago, notificaciones y mas. Incluye:

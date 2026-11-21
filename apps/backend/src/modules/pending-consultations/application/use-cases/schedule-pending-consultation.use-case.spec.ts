@@ -117,6 +117,7 @@ describe('SchedulePendingConsultationUseCase', () => {
       findUpcomingWithoutCalendarEvent: jest.fn().mockResolvedValue([]),
       findByIdScopedEnriched: jest.fn().mockResolvedValue(null),
       changeService: jest.fn().mockResolvedValue(null),
+      setPatientConfirmedAt: jest.fn().mockResolvedValue(undefined),
     };
 
     mockPaymentRepo = {
@@ -143,6 +144,7 @@ describe('SchedulePendingConsultationUseCase', () => {
       softDelete: jest.fn(),
       logReveal: jest.fn(),
       appendAllergyNote: jest.fn().mockResolvedValue(false),
+      setWhatsAppOptOut: jest.fn().mockResolvedValue(undefined),
     };
 
     mockSequelize = makeSequelizeMock();

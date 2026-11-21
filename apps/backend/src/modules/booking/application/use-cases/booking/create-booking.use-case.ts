@@ -769,6 +769,18 @@ export class CreateBookingUseCase {
       return saved;
     });
 
+    // --- Step 6a: Persist WhatsApp opt-out preference (best-effort, post-commit) ---
+    // When explicitly provided via the booking form, update the patient's opt-out flag.
+    // The booking itself is already committed — a failure here must NOT roll it back.
+    // SECURITY: never log the preference value or the patientId together.
+    if (dto.whatsapp_reminders === false || dto.whatsapp_reminders === true) {
+      try {
+        await this.patientRepo.setWhatsAppOptOut(patient.id, dto.whatsapp_reminders === false);
+      } catch {
+        this.logger.warn('[booking] setWhatsAppOptOut failed (non-fatal)');
+      }
+    }
+
     // --- Step 6b: Merge patient_alert into patients.allergies (best-effort, post-commit) ---
     // The transaction is already committed at this point, so a failure here CANNOT
     // roll back the booking. We prefer post-commit over in-transaction to avoid the

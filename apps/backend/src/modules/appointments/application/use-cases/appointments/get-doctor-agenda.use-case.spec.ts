@@ -63,6 +63,7 @@ function makeRepo(items: Appointment[]): jest.Mocked<IAppointmentRepository> {
     findUpcomingWithoutCalendarEvent: jest.fn().mockResolvedValue([]),
     findByIdScopedEnriched: jest.fn().mockResolvedValue(null),
     changeService: jest.fn().mockResolvedValue(null),
+    setPatientConfirmedAt: jest.fn().mockResolvedValue(undefined),
   } as jest.Mocked<IAppointmentRepository>;
 }
 

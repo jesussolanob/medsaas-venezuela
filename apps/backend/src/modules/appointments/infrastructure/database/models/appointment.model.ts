@@ -172,6 +172,15 @@ export class AppointmentModel extends Model {
   @Column({ type: DataType.TEXT, allowNull: true, field: 'patient_alert' })
   declare patientAlert: string | null;
 
+  /**
+   * Timestamp set when the patient presses "Confirmar" in the WhatsApp quick-reply.
+   * Does NOT change the appointment status — it is a soft confirmation signal for
+   * the specialist's view. Null until the patient confirms via WhatsApp.
+   * Added by migration 20261121000003-whatsapp-appointment-confirmed.
+   */
+  @Column({ type: DataType.DATE, allowNull: true, field: 'patient_confirmed_at' })
+  declare patientConfirmedAt: Date | null;
+
   @CreatedAt
   @Column({ field: 'created_at' })
   declare createdAt: Date;

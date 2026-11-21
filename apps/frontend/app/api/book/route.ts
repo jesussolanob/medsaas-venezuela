@@ -67,6 +67,7 @@ export async function POST(req: NextRequest) {
       receiptUrl,
       planId,
       additionalSessions,
+      whatsapp_reminders,
     } = body as {
       doctorId?: string;
       patientId?: string;
@@ -92,6 +93,8 @@ export async function POST(req: NextRequest) {
         office_id?: string | null;
         appointment_mode?: string | null;
       }> | null;
+      /** Patient opts in to receive WhatsApp reminders. Default true. */
+      whatsapp_reminders?: boolean;
     };
 
     // Basic required field validation
@@ -168,6 +171,8 @@ export async function POST(req: NextRequest) {
       // additional_sessions: array de fechas para sesiones 2..N que el paciente
       // eligió agendar ahora. Si es vacío [] el backend las crea como pendientes.
       ...(Array.isArray(additionalSessions) ? { additional_sessions: additionalSessions } : {}),
+      // WhatsApp reminders opt-in: default true when field is absent (backward compat).
+      whatsapp_reminders: whatsapp_reminders !== false,
     };
 
     // Forward to the backend booking endpoint (no auth headers — it's public)

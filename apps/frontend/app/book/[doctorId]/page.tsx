@@ -1,6 +1,8 @@
 import BookingClient from './BookingClient';
+import RescheduleFlow from './RescheduleFlow';
 import { normalizePaymentMethods, normalizePaymentDetailKeys } from '@/lib/payment-methods';
 import { AlertCircle } from 'lucide-react';
+import type { AppointmentRescheduleInfo } from '@/app/api/public/appointments/reschedule/[token]/route';
 
 // Backend booking endpoints are public (no auth required).
 // We call them directly from the server component without dev-auth headers.
@@ -85,11 +87,81 @@ interface DoctorOfficeRaw {
 // Server Component — fetches doctor data from the NestJS backend (public endpoints).
 export default async function PublicBookingPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ doctorId: string }>;
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { doctorId } = await params;
+  const resolvedSearchParams = searchParams ? await searchParams : {};
+  const reagendarToken =
+    typeof resolvedSearchParams.reagendar === 'string'
+      ? resolvedSearchParams.reagendar.trim()
+      : null;
 
+  // ── Reagendar branch ─────────────────────────────────────────────────────
+  // When a reagendar token is present we bypass the normal booking flow.
+  if (reagendarToken) {
+    // Fetch the reschedule info and the offices (needed for slot generation)
+    // in parallel. The offices call reuses the same public backend endpoint.
+    const [rescheduleInfo, officesRawForReschedule] = await Promise.all([
+      publicFetch<AppointmentRescheduleInfo>(
+        `/api/public/appointments/reschedule/${encodeURIComponent(reagendarToken)}`,
+      ),
+      publicFetch<DoctorOfficeRaw[]>(`/api/booking/${doctorId}/offices`),
+    ]);
+
+    if (!rescheduleInfo) {
+      // Token is invalid or expired — show a friendly screen.
+      return (
+        <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+          <div className="text-center max-w-sm">
+            <div className="w-16 h-16 rounded-2xl bg-amber-50 flex items-center justify-center mx-auto mb-4">
+              <AlertCircle className="w-8 h-8 text-amber-400" />
+            </div>
+            <h2 className="text-lg font-bold text-slate-700">Este enlace ya no es válido</h2>
+            <p className="text-sm text-slate-500 mt-2">
+              El link de reagendamiento ya fue usado o expiró. Escríbele a tu especialista para
+              reagendar.
+            </p>
+            <a
+              href={`/book/${doctorId}`}
+              className="inline-block mt-5 px-5 py-2.5 rounded-xl bg-teal-500 text-white text-sm font-semibold hover:bg-teal-600 transition-colors"
+            >
+              Reservar una cita nueva
+            </a>
+          </div>
+        </div>
+      );
+    }
+
+    // Normalize offices for RescheduleFlow (same shape as BookingClient).
+    const officesForReschedule =
+      officesRawForReschedule && officesRawForReschedule.length > 0
+        ? officesRawForReschedule.map((o) => ({
+            id: o.id,
+            name: o.name,
+            address: o.address,
+            city: o.city,
+            phone: o.phone,
+            schedule: o.schedule ?? [],
+            slot_duration: o.slotDuration ?? 30,
+            buffer_minutes: o.bufferMinutes ?? 0,
+            modality: o.modality ?? 'in_person',
+          }))
+        : [];
+
+    return (
+      <RescheduleFlow
+        token={reagendarToken}
+        info={rescheduleInfo}
+        doctorId={doctorId}
+        offices={officesForReschedule}
+      />
+    );
+  }
+
+  // ── Normal booking branch ─────────────────────────────────────────────────
   // Fetch doctor info, plans, and offices in parallel.
   const [doctorInfo, plans, officesRaw] = await Promise.all([
     publicFetch<DoctorInfo>(`/api/booking/${doctorId}/info`),

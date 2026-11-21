@@ -47,6 +47,11 @@ export interface AppointmentDetailData {
   paymentStatus: string | null;
   /** Health note submitted by the patient during public booking. Null for panel-created appointments. */
   patientAlert?: string | null;
+  /**
+   * ISO timestamp when the patient confirmed attendance via WhatsApp quick-reply.
+   * Null when the patient has not confirmed or the reminder was not sent via WhatsApp.
+   */
+  patientConfirmedAt?: string | null;
 }
 
 export async function GET(

@@ -17,6 +17,7 @@ import { GetAdminRemindersQueueUseCase } from './application/use-cases/reminders
 import { SendAppointmentReminderEmailUseCase } from './application/use-cases/reminders/send-appointment-reminder-email.use-case';
 import { DispatchDueRemindersUseCase } from './application/use-cases/reminders/dispatch-due-reminders.use-case';
 import { DispatchDoctorInactivityNoticesUseCase } from './application/use-cases/reminders/dispatch-doctor-inactivity-notices.use-case';
+import { DispatchWhatsAppRemindersUseCase } from '../whatsapp/application/use-cases/dispatch-whatsapp-reminders.use-case';
 
 import { DoctorRemindersController } from './presentation/controllers/doctor-reminders.controller';
 import { AdminRemindersController } from './presentation/controllers/admin-reminders.controller';
@@ -43,6 +44,10 @@ import { TeamMeetingsModule } from '../team-meetings/team-meetings.module';
 // @Optional into DispatchDoctorInactivityNoticesUseCase so invite dispatch runs
 // first in the daily cron. No cycle: RetentionInvitesModule does not import RemindersModule.
 import { RetentionInvitesModule } from '../retention-invites/retention-invites.module';
+// WhatsAppModule exports WHATSAPP_SENDER and AppointmentActionTokenService, both
+// needed by DispatchWhatsAppRemindersUseCase (which lives HERE to access
+// REMINDERS_QUEUE_REPOSITORY without creating a circular import).
+import { WhatsAppModule } from '../whatsapp/whatsapp.module';
 
 /**
  * RemindersModule — Doctor reminder configuration + queue monitoring + cron dispatch.
@@ -90,6 +95,7 @@ import { RetentionInvitesModule } from '../retention-invites/retention-invites.m
     QuotesModule,
     TeamMeetingsModule,
     RetentionInvitesModule,
+    WhatsAppModule,
   ],
   controllers: [DoctorRemindersController, AdminRemindersController, CronRemindersController],
   providers: [
@@ -115,6 +121,10 @@ import { RetentionInvitesModule } from '../retention-invites/retention-invites.m
     SendAppointmentReminderEmailUseCase,
     DispatchDueRemindersUseCase,
     DispatchDoctorInactivityNoticesUseCase,
+    // WhatsApp dispatch lives here (not in WhatsAppModule) to access
+    // REMINDERS_QUEUE_REPOSITORY without circular imports.
+    DispatchWhatsAppRemindersUseCase,
   ],
+  exports: [DispatchWhatsAppRemindersUseCase],
 })
 export class RemindersModule {}
