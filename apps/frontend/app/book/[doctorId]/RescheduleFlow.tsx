@@ -145,6 +145,15 @@ function groupByDate(slots: Slot[]): Record<string, Slot[]> {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
+/** "2026-11-24" → "24 nov." (noon avoids timezone shifts). */
+function formatShortDay(ymd: string | undefined): string {
+  if (!ymd) return '';
+  return new Date(`${ymd}T12:00:00`).toLocaleDateString('es-VE', {
+    day: 'numeric',
+    month: 'short',
+  });
+}
+
 export default function RescheduleFlow({ token, info, doctorId, offices }: RescheduleFlowProps) {
   const [step, setStep] = useState<Step>('date');
   const [selectedDate, setSelectedDate] = useState('');
@@ -342,7 +351,7 @@ export default function RescheduleFlow({ token, info, doctorId, offices }: Resch
               </button>
               <span className="text-xs text-slate-500 font-medium" aria-live="polite">
                 {weekDates.length > 0
-                  ? `${weekDates[0]} – ${weekDates[weekDates.length - 1]}`
+                  ? `${formatShortDay(weekDates[0])} – ${formatShortDay(weekDates[weekDates.length - 1])}`
                   : 'Sin fechas disponibles'}
               </span>
               <button
@@ -515,7 +524,9 @@ export default function RescheduleFlow({ token, info, doctorId, offices }: Resch
                 disabled={submitting}
                 className="flex-1 py-3 rounded-xl font-semibold text-sm bg-teal-500 text-white hover:bg-teal-600 disabled:opacity-40 transition-all"
               >
-                {submitting ? 'Moviendo cita…' : `Mover mi cita al ${selectedTime}`}
+                {submitting
+                  ? 'Moviendo cita…'
+                  : `Mover mi cita al ${selectedDate ? formatShortDay(selectedDate) : ''} a las ${selectedTime}`}
               </button>
             </div>
           </section>
