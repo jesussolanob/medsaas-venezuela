@@ -43,7 +43,7 @@ interface SuccessResponse<T> {
  *   - Invalid tokens return 404 (anti-enumeration — never expose if an ID exists).
  *   - Responses contain only safe non-PII fields (status, doctorName, date, time, modality).
  *
- * Used by the frontend's /cita/confirmar/[token] and /cita/reagendar/[token] pages.
+ * Used by the frontend's /cita/confirmar/[token] and /book/[doctorId]?reagendar=[token] pages.
  */
 @Controller('public/appointments')
 export class PublicAppointmentsController {

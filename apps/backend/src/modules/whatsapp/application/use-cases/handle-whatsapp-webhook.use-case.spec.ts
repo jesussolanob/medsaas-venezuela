@@ -190,7 +190,7 @@ describe('HandleWhatsAppWebhookUseCase', () => {
   });
 
   describe('button_reply: reschedule', () => {
-    it('sends /cita/reagendar/ link (proper reschedule token) and returns reschedule', async () => {
+    it('sends /book/<doctorId>?reagendar=<token> link and returns reschedule', async () => {
       const appt = makeAppt();
       const repo = makeRepo(appt);
       const whatsApp = makeWhatsApp();
@@ -206,18 +206,17 @@ describe('HandleWhatsAppWebhookUseCase', () => {
       const result = await sut.execute({ buttonPayload: payload, conversationId: 'conv-1' });
 
       expect(result.action).toBe('reschedule');
+      // The URL must use the booking page with ?reagendar= query param (single-use token).
       expect(whatsApp.sendText).toHaveBeenCalledWith(
         expect.objectContaining({
           conversationId: 'conv-1',
-          // The URL must use the public /cita/reagendar/ path with a proper
-          // AppointmentRescheduleTokenService token (not the button payload).
-          text: expect.stringContaining('/cita/reagendar/'),
+          text: expect.stringContaining('/book/doc-001?reagendar='),
         }),
       );
-      // Confirm it no longer embeds the raw button payload (action token) in the URL.
+      // Must NOT use the old /cita/reagendar/ path.
       const firstCall = whatsApp.sendText.mock.calls[0] as [{ text: string }] | undefined;
       const sentText = firstCall?.[0]?.text ?? '';
-      expect(sentText).not.toContain('/book/doc-001?reagendar=');
+      expect(sentText).not.toContain('/cita/reagendar/');
     });
 
     it('returns noop when reschedule token already used (satMs mismatch)', async () => {

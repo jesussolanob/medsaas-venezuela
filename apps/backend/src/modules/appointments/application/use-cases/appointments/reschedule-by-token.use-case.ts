@@ -6,11 +6,14 @@ import {
 import { AppointmentRescheduleTokenService } from '../../../infrastructure/services/appointment-reschedule-token.service';
 import { AppointmentRescheduleInvalidTokenError } from '../../../domain/errors/appointment-reschedule-invalid-token.error';
 import { AppointmentConflictError } from '../../../domain/errors/appointment-conflict.error';
+import { AppointmentSlotUnavailableError } from '../../../domain/errors/appointment-slot-unavailable.error';
 import { AppointmentNotReschedulableError } from '../../../domain/errors/appointment-not-reschedulable.error';
 import {
   DOCTOR_PROFILE_REPOSITORY,
   type IDoctorProfileRepository,
 } from '../../../../doctor-settings/domain/repositories/doctor-profile.repository';
+import type { GetAvailableSlotsUseCase } from '../../../../booking/application/use-cases/booking/get-available-slots.use-case';
+import { toCaracasHHMM } from '../../../../../domain/caracas-time';
 
 /** Statuses that allow a public reschedule via token link. */
 const TOKEN_RESCHEDULABLE_STATUSES: ReadonlySet<string> = new Set(['scheduled', 'confirmed']);
@@ -70,6 +73,16 @@ export class RescheduleByTokenUseCase {
     private readonly doctorProfileRepo: IDoctorProfileRepository,
     private readonly tokenService: AppointmentRescheduleTokenService,
     /**
+     * GetAvailableSlotsUseCase — required. Validates that the requested new
+     * scheduledAt is an actual slot offered by the doctor's office schedule,
+     * including availability blocks, booking horizon, and min lead days.
+     *
+     * Provided in AppointmentsModule (not imported from BookingModule to avoid
+     * the AppointmentsModule → BookingModule → PendingConsultationsModule →
+     * AppointmentsModule circular dependency).
+     */
+    private readonly slotsUseCase: GetAvailableSlotsUseCase,
+    /**
      * SyncConsultationDateUseCase — optional. When present, moves the
      * consultation date alongside the appointment date.
      * Injected by string token because TypeScript emits Object for union types.
@@ -113,6 +126,24 @@ export class RescheduleByTokenUseCase {
     }
 
     const durationMinutes = appointment.durationMinutes ?? DEFAULT_SLOT_DURATION_MINUTES;
+
+    // Validate that the requested time is an actual slot in the doctor's public
+    // booking availability: same constraints as the booking widget (office schedule
+    // blocks with per-block slotDuration and buffers, availability blocks/vacations,
+    // booking horizon, and min lead days).
+    const dateStr = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'America/Caracas',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(newScheduledAt);
+    const requestedHHMM = toCaracasHHMM(newScheduledAt);
+
+    const slotsResult = await this.slotsUseCase.execute(appointment.doctorId, dateStr);
+    const slot = slotsResult.slots.find((s) => s.time === requestedHHMM);
+    if (!slot || !slot.available) {
+      throw new AppointmentSlotUnavailableError();
+    }
 
     // Check slot overlap for the new datetime (exclude the appointment itself).
     const hasConflict = await this.appointmentRepo.hasOverlap({
