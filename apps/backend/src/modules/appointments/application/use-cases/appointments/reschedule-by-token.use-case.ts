@@ -199,14 +199,16 @@ export class RescheduleByTokenUseCase {
           doctorId: appointment.doctorId,
           type: 'appointment_rescheduled_by_patient',
           title: 'Cita reagendada por el paciente',
-          body: `El paciente movió su cita al ${newScheduledAt.toLocaleString('es-VE', {
-            timeZone: 'America/Caracas',
-            weekday: 'long',
-            day: 'numeric',
-            month: 'long',
-            hour: 'numeric',
-            minute: '2-digit',
-          })}.`,
+          body: `El paciente movió su cita al ${newScheduledAt
+            .toLocaleString('es-VE', {
+              timeZone: 'America/Caracas',
+              weekday: 'long',
+              day: 'numeric',
+              month: 'long',
+              hour: 'numeric',
+              minute: '2-digit',
+            })
+            .replace(/\.$/, '')}.`,
           entityType: 'appointment',
           entityId: appointment.id,
         });

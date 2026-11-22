@@ -281,7 +281,9 @@ export default function RescheduleFlow({ token, info, doctorId, offices }: Resch
           <h2 className="text-xl font-bold text-slate-800 mb-2">¡Listo!</h2>
           <p className="text-slate-600 text-sm leading-relaxed">
             Tu cita quedó para el <span className="font-semibold text-slate-800">{si.date}</span> a
-            las <span className="font-semibold text-slate-800">{si.time}</span>.
+            las <span className="font-semibold text-slate-800">{si.time}</span>
+            {/* "a. m." already ends in a period: avoid "a. m.." */}
+            {si.time.endsWith('.') ? '' : '.'}
           </p>
           <p className="text-xs text-slate-400 mt-5">
             {si.doctorName} recibirá la notificación de tu cambio.
