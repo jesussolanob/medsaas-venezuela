@@ -153,4 +153,18 @@ export interface IRemindersQueueRepository {
    * Marks a queue row as failed, recording the error detail and incrementing attempts.
    */
   markFailed(rowId: string, errorMessage: string): Promise<void>;
+
+  /**
+   * Looks up a queue row by its external_message_id (Zernio wamid) and channel.
+   *
+   * Used by HandleWhatsAppWebhookUseCase to resolve the appointment from the
+   * quotedMessageId of an inbound button-tap: when a patient taps a quick-reply,
+   * Zernio echoes the original message's wamid in metadata.quotedMessageId.
+   *
+   * Returns { rowId, appointmentId } when found, null when not found.
+   */
+  findByExternalMessageId(
+    externalMessageId: string,
+    channel: string,
+  ): Promise<{ rowId: string; appointmentId: string } | null>;
 }
