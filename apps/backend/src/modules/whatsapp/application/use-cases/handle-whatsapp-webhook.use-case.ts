@@ -169,7 +169,12 @@ export class HandleWhatsAppWebhookUseCase {
       return { action: 'noop' };
     }
 
-    const appointment = await this.appointmentRepo.findById(reminderRow.appointmentId);
+    // Enriched read: carries the consultation's payment status, which the cancel
+    // guard needs (findById never loads it, so a paid visit could be cancelled).
+    const appointment = await this.appointmentRepo.findByIdScopedEnriched(
+      reminderRow.appointmentId,
+      reminderRow.doctorId,
+    );
     if (!appointment) {
       this.logger.debug('[whatsapp-webhook] appointment not found for reminder row — noop');
       return { action: 'noop' };
@@ -213,11 +218,26 @@ export class HandleWhatsAppWebhookUseCase {
       return { action: 'noop' };
     }
 
-    // Single-use check: if already confirmed, skip silently.
+    // Already confirmed (second tap): acknowledge without touching the record.
     if (appointment.patientConfirmedAt) {
+      if (conversationId) {
+        await this.whatsApp.sendText({
+          conversationId,
+          text: `Ya tenemos tu confirmación para el ${this.formatCaracasDate(appointment.scheduledAt)} a las ${this.formatCaracasTime(appointment.scheduledAt)}. ¡Te esperamos!`,
+        });
+      }
       return { action: 'noop' };
     }
     await this.appointmentRepo.setPatientConfirmedAt(appointment.id);
+
+    // Reply to the patient — the owner-approved flow ends with a thank-you.
+    if (conversationId) {
+      const firstName = (appointment.patientName ?? '').trim().split(/\s+/)[0];
+      await this.whatsApp.sendText({
+        conversationId,
+        text: `¡Gracias${firstName ? `, ${firstName}` : ''}! Tu asistencia quedó confirmada para el ${this.formatCaracasDate(appointment.scheduledAt)} a las ${this.formatCaracasTime(appointment.scheduledAt)}. Te esperamos.`,
+      });
+    }
 
     // Notify the doctor (best-effort).
     if (this.createNotification) {
@@ -241,6 +261,16 @@ export class HandleWhatsAppWebhookUseCase {
     appointment: Appointment,
     conversationId?: string,
   ): Promise<HandleWebhookResult> {
+    // Same guard as confirm: no link for cancelled/finished appointments.
+    if (!['scheduled', 'confirmed'].includes(appointment.status)) {
+      if (conversationId) {
+        await this.whatsApp.sendText({
+          conversationId,
+          text: 'Esta cita ya no está activa. Si necesitas una nueva, escríbele a tu especialista.',
+        });
+      }
+      return { action: 'noop' };
+    }
     if (conversationId) {
       const rescheduleLink = this.buildRescheduleLink(appointment);
       await this.whatsApp.sendText({
@@ -260,7 +290,7 @@ export class HandleWhatsAppWebhookUseCase {
       if (conversationId) {
         await this.whatsApp.sendText({
           conversationId,
-          text: 'Tu cita tiene un pago aprobado y no puede cancelarse por este medio. Por favor, contacta directamente a tu especialista.',
+          text: `Esta cita ya está pagada, así que no se puede cancelar. Puedes reagendarla aquí: ${this.buildRescheduleLink(appointment)}`,
         });
       }
       return { action: 'noop' };
@@ -338,6 +368,15 @@ export class HandleWhatsAppWebhookUseCase {
     });
     // The booking page uses ?reagendar=<token> query param to enter reschedule mode.
     return `${this.appBaseUrl}/book/${appointment.doctorId}?reagendar=${token}`;
+  }
+
+  /** "10:40 a. m." in America/Caracas. */
+  private formatCaracasTime(d: Date): string {
+    return d.toLocaleTimeString('es-VE', {
+      timeZone: 'America/Caracas',
+      hour: 'numeric',
+      minute: '2-digit',
+    });
   }
 
   private formatCaracasDate(d: Date): string {
