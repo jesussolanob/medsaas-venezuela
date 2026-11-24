@@ -9,13 +9,14 @@
  *
  * Cubre TODOS los campos clinicos basicos de la tabla `patients`:
  *   identidad: full_name, cedula, email, phone
- *   demograficos: birth_date, age, sex, blood_type
+ *   demograficos: birth_date, sex, blood_type (la edad se deriva, no se guarda)
  *   ubicacion: address, city
  *   clinicos: allergies, chronic_conditions
  *   contacto emergencia: emergency_contact_name, emergency_contact_phone
  */
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
+import { ageFromBirthDate } from '@delta/shared-utils';
 import {
   X,
   User,
@@ -44,7 +45,6 @@ export type PatientFormData = {
   email?: string | null;
   phone?: string | null;
   birth_date?: string | null;
-  age?: number | null;
   sex?: 'male' | 'female' | 'other' | '' | null;
   blood_type?: string | null;
   address?: string | null;
@@ -97,7 +97,6 @@ export default function PatientForm({
     email: '',
     phone: '',
     birth_date: '',
-    age: null,
     sex: '',
     blood_type: '',
     address: '',
@@ -113,21 +112,8 @@ export default function PatientForm({
   }));
   const [error, setError] = useState('');
 
-  // Auto-calcular edad cuando cambia birth_date.
-  // Se agrega 'T12:00:00' para evitar el offset UTC que haría que una fecha
-  // como '1990-03-15' se interprete como '1990-03-14T21:00:00' en zonas UTC-3.
-  useEffect(() => {
-    if (!data.birth_date) return;
-    const birth = new Date(data.birth_date + 'T12:00:00');
-    if (isNaN(birth.getTime())) return;
-    const now = new Date();
-    let age = now.getFullYear() - birth.getFullYear();
-    const m = now.getMonth() - birth.getMonth();
-    if (m < 0 || (m === 0 && now.getDate() < birth.getDate())) age--;
-    if (age >= 0 && age <= 130 && age !== data.age) {
-      setData((d) => ({ ...d, age }));
-    }
-  }, [data.birth_date]);
+  // La edad nunca se guarda: siempre se deriva de la fecha de nacimiento.
+  const age = ageFromBirthDate(data.birth_date);
 
   function set<K extends keyof PatientFormData>(key: K, value: PatientFormData[K]) {
     setData((d) => ({ ...d, [key]: value }));
@@ -271,12 +257,10 @@ export default function PatientForm({
           </div>
           <div className="flex flex-col">
             <label className={lbl}>Edad (calculada)</label>
-            {/* La edad NO se ingresa a mano: siempre se deriva de la fecha de
-                nacimiento. La referencia de edad se persiste igual (útil para el
-                histórico de consultas). */}
+            {/* La edad NO se ingresa ni se guarda: siempre se deriva de la fecha de nacimiento. */}
             <input
               type="number"
-              value={data.age ?? ''}
+              value={age ?? ''}
               className={fiReadOnly}
               placeholder="—"
               readOnly

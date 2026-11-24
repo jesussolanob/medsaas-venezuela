@@ -16,7 +16,6 @@ export const UpdatePatientDtoSchema = z.object({
   email: z.string().email().nullable().optional(),
   source: z.string().nullable().optional(),
   birth_date: z.string().nullable().optional(),
-  age: z.number().int().nullable().optional(),
   sex: z.enum(['male', 'female', 'other']).nullable().optional(),
   blood_type: z.string().nullable().optional(),
   allergies: z.string().nullable().optional(),

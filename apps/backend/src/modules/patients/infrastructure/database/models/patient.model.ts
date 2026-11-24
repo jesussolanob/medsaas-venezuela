@@ -71,9 +71,6 @@ export class PatientModel extends Model {
   @Column({ type: DataType.DATEONLY, allowNull: true, field: 'birth_date' })
   declare birthDate: string | null;
 
-  @Column({ type: DataType.INTEGER, allowNull: true })
-  declare age: number | null;
-
   @Column({ type: DataType.TEXT, allowNull: true })
   declare sex: string | null;
 

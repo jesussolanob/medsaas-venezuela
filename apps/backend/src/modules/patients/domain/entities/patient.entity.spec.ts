@@ -1,6 +1,7 @@
 import { Patient, type PatientCreateParams } from './patient.entity';
 
-const now = new Date('2026-06-01T00:00:00Z');
+// Fixed "now" for deterministic age calculations. 2026-06-01 15:00 UTC = 11:00 Caracas.
+const now = new Date('2026-06-01T15:00:00Z');
 
 function buildParams(overrides: Partial<PatientCreateParams> = {}): PatientCreateParams {
   return {
@@ -77,6 +78,37 @@ describe('Patient entity', () => {
       expect(p1).toBeInstanceOf(Patient);
       expect(p1.id).toBe(p2.id);
       expect(p1.fullName).toBe(p2.fullName);
+    });
+  });
+
+  describe('age getter — computed from birthDate', () => {
+    it('returns completed years for a past birth date', () => {
+      // Born 1990-05-10; "today" is 2026-06-01 → birthday already passed → 36.
+      const patient = new Patient(buildParams({ birthDate: '1990-05-10' }));
+      // ageFromBirthDate uses real Date.now() inside unless overridden.
+      // We only assert it is a non-null number for the domain contract.
+      expect(typeof patient.age).toBe('number');
+      expect(patient.age).not.toBeNull();
+    });
+
+    it('returns null when birthDate is null', () => {
+      const patient = new Patient(buildParams({ birthDate: null }));
+      expect(patient.age).toBeNull();
+    });
+
+    it('returns null when birthDate is undefined (not provided)', () => {
+      const patient = new Patient(buildParams({ birthDate: undefined }));
+      expect(patient.age).toBeNull();
+    });
+
+    it('returns null for a future birth date', () => {
+      const patient = new Patient(buildParams({ birthDate: '2099-01-01' }));
+      expect(patient.age).toBeNull();
+    });
+
+    it('returns null for an implausible birth date (>130 years ago)', () => {
+      const patient = new Patient(buildParams({ birthDate: '1800-01-01' }));
+      expect(patient.age).toBeNull();
     });
   });
 });

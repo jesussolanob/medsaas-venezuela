@@ -171,7 +171,6 @@ export class PatientsController {
       email: dto.email,
       source: toPatientSource(dto.source),
       birthDate: dto.birth_date,
-      age: dto.age,
       sex: dto.sex,
       authUserId: dto.auth_user_id,
       // Datos demográficos/ubicación/clínicos/contacto de emergencia — se perdían al
@@ -207,7 +206,6 @@ export class PatientsController {
       email: dto.email,
       source: toPatientSource(dto.source),
       birthDate: dto.birth_date,
-      age: dto.age,
       sex: dto.sex,
       bloodType: dto.blood_type,
       allergies: dto.allergies,

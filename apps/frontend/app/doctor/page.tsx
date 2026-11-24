@@ -1,5 +1,6 @@
 'use client';
 
+import { ageFromBirthDate } from '@delta/shared-utils';
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useBcvRate } from '@/lib/useBcvRate';
 import { formatBs, type PaymentRow } from '@/lib/finances';
@@ -639,7 +640,6 @@ export default function DoctorDashboard() {
       if (!doctorId) throw new Error('Sesion expirada');
       const res = await addPatient(doctorId, {
         full_name: formData.full_name,
-        age: formData.age ?? undefined,
         birth_date: formData.birth_date ?? undefined,
         phone: formData.phone ?? undefined,
         cedula: formData.cedula ?? undefined,
@@ -2001,7 +2001,6 @@ export default function DoctorDashboard() {
               phone: data.phone ?? undefined,
               email: data.email ?? undefined,
               birth_date: data.birth_date ?? undefined,
-              age: data.age ?? undefined,
               sex: data.sex ?? undefined,
               blood_type: data.blood_type ?? undefined,
               address: data.address ?? undefined,
@@ -2021,7 +2020,7 @@ export default function DoctorDashboard() {
                 id: res.patient_id,
                 doctor_id: doctorId,
                 full_name: data.full_name,
-                age: data.age ?? null,
+                age: ageFromBirthDate(data.birth_date),
                 phone: data.phone ?? null,
                 cedula: data.cedula ?? null,
                 email: data.email ?? null,

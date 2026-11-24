@@ -23,7 +23,6 @@ export interface CreatePatientInput {
   email?: string | null;
   source?: PatientSource | null;
   birthDate?: string | null;
-  age?: number | null;
   sex?: 'male' | 'female' | 'other' | null;
   bloodType?: string | null;
   allergies?: string | null;
@@ -95,7 +94,6 @@ export class CreatePatientUseCase {
       identityId,
       source: input.source ?? null,
       birthDate: input.birthDate ?? null,
-      age: input.age ?? null,
       sex: input.sex ?? null,
       bloodType: input.bloodType ?? null,
       allergies: input.allergies ?? null,
