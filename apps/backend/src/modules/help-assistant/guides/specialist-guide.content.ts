@@ -365,12 +365,13 @@ Configuracion de recordatorios automaticos a pacientes. (Requiere plan Base o Pl
 
 **Recordatorios por WhatsApp:**
 - Si activas el canal WhatsApp o 'Ambos', el sistema envia automaticamente mensajes de WhatsApp al telefono del paciente: uno **24 horas antes** y otro **3 horas antes** de la cita.
-- El mensaje de 24 horas (cuando la cita no esta pagada) incluye **tres botones de accion rapida**: 'Confirmar asistencia', 'Reagendar' y 'Cancelar'. El paciente puede tocar uno directamente desde WhatsApp sin entrar al portal.
-- El mensaje de 24 horas (cuando el pago ya esta aprobado) no incluye el boton de cancelar por cobro anticipado.
+- El mensaje de 24 horas (cuando la cita no esta pagada) incluye **tres botones**: 'Confirmar', 'Reagendar' y 'Cancelar'. El paciente puede tocar uno directamente desde WhatsApp sin entrar a ningun portal.
+- El mensaje de 24 horas (cuando la cita ya esta pagada) trae solo 'Confirmar' y 'Reagendar': una cita pagada no se puede cancelar desde WhatsApp.
 - El mensaje de 3 horas es un aviso del dia sin botones de accion.
-- **Boton Confirmar:** marca la cita como Confirmada. Si ya estaba confirmada, el bot responde que ya fue registrado.
-- **Boton Reagendar:** envia al paciente un enlace de un solo uso para elegir una nueva fecha/hora. El enlace expira automaticamente cuando la cita se mueve (cada reagendamiento genera un nuevo enlace).
-- **Boton Cancelar:** cancela la cita y notifica al especialista. No funciona si el pago ya esta aprobado; en ese caso el bot indica que debe contactar al consultorio.
+- **Boton Confirmar:** NO cambia el estado de la cita; deja registrado que el paciente confirmo su asistencia (marca verde en tu agenda) y le responde "¡Gracias…! Tu asistencia quedo confirmada para el (fecha) a las (hora)". Si ya habia confirmado, le responde que ya tenemos su confirmacion. Recibes un aviso en la campana.
+- **Boton Reagendar:** le responde al paciente con un enlace a tu pagina de reservas que mueve **la misma cita** (no crea otra): elige un nuevo dia y hora dentro de tus horarios disponibles y pulsa "Mover mi cita…". La fecha de la consulta se actualiza sola y recibes un aviso en la campana. Al reagendar se borra la confirmacion anterior (la marca verde desaparece hasta que vuelva a confirmar). El enlace deja de servir cuando la hora de la cita ya paso.
+- **Boton Cancelar:** cancela la cita, te avisa en la campana y le responde al paciente con el enlace de tu pagina de reservas por si quiere agendar una nueva. Si la cita ya esta pagada no se cancela: el paciente recibe el enlace para reagendarla.
+- Los botones siguen visibles en WhatsApp despues de usarlos (es como funciona WhatsApp); si el paciente toca otro despues, el sistema aplica la accion que corresponda.
 - **Opt-in del paciente:** en el paso de confirmacion del formulario de reserva aparece la casilla **'Quiero recibir recordatorios de mi cita por WhatsApp'**, marcada por defecto. Si el paciente la desmarca, el sistema NO le enviara recordatorios por WhatsApp. Esta preferencia queda guardada con la cita.
 - El limite diario es de 240 destinatarios unicos por dia (limite de la API de Meta TIER_250). Si la agenda tiene mas citas, el sistema omite las que superen el tope y las envía por email normalmente.
 - Estos recordatorios requieren que el canal WhatsApp este activado en /doctor/reminders. Si el canal es solo Email, no se envian mensajes de WhatsApp.

@@ -1636,3 +1636,25 @@ status='active'` con `QueryTypes.UPDATE` (devuelve `[undefined, affectedCount]`;
   usan Sequelize simulado y no la validan.
 - **ADR-101 (2026-11-18):** **`appointments.source` distingue el origen real de cada cita a partir de hoy; las filas históricas quedan en `'booking'` (no confiable para clasificar).**
   Valores trustados: `'booking_public'` (paciente desde la página pública), `'doctor_panel'` (cita creada por el doctor), `'pending_consultation'` (ya existía). El valor `'booking'` puede indicar cualquiera de los dos primeros (fue el único valor que usaban los dos flujos antes). Clasificación de origen en el módulo seller: `appointment.source = 'booking_public'` → booking; `appointment.source = 'doctor_panel'` → doctor; legacy sin valor trustado → fallback a `patients.source` (`'booking'` → booking, `'manual'` → doctor, otro/null → unclassified).
+- **ADR-102 (2026-11-24):** **Los webhooks externos entran por un servicio propio (`apps/webhooks`), nunca por el frontend.**
+  El backend es privado (IAM). `deltasalud-webhooks` solo verifica la firma y reenvía el cuerpo crudo con un ID token
+  de Google; no tiene lógica de negocio. Un despliegue por entorno (`delta-webhooks-staging` → backend de staging,
+  `delta-webhooks` → backend de prod), cada SA con `run.invoker` SOLO sobre su backend. Sin reparto por número de
+  teléfono ni excepciones. Logs solo de error + Sentry. Backend y webhooks de prod con min-instances=1 (sin cola).
+- **ADR-103 (2026-11-24):** **La respuesta a un botón de WhatsApp se correlaciona por el mensaje citado, no por un token.**
+  Zernio no permite payloads en botones quick-reply. La acción sale del texto del botón y la cita de
+  `metadata.quotedMessageId` = `reminders_queue.external_message_id`. Dedupe durable en `whatsapp_inbound_events`
+  (Zernio reintenta si no recibe 2xx en 5 s y una instancia fría no comparte memoria).
+- **ADR-104 (2026-11-24):** **Confirmar por WhatsApp no cambia `appointments.status`.** Guarda `patient_confirmed_at`
+  (marca verde en la agenda). Reagendar por el enlace público mueve la MISMA cita y borra esa confirmación. Una
+  cita con la consulta pagada no se cancela por WhatsApp (plantilla sin botón y guard en el backend).
+- **ADR-105 (2026-11-24):** **Un solo `package.json` (el de la raíz) y overrides en `pnpm-workspace.yaml`.** Con pnpm 11
+  los `overrides` viven en el workspace: toda imagen que haga `pnpm install --frozen-lockfile` debe copiar
+  `pnpm-workspace.yaml` o falla con `ERR_PNPM_LOCKFILE_CONFIG_MISMATCH`.
+- **ADR-106 (2026-11-24):** **La edad del paciente no se guarda: se deriva de `birth_date`.** `ageFromBirthDate`
+  (`@delta/shared-utils`, fecha de Caracas) en backend y frontend; el getter `Patient.age` la calcula y la API la
+  sigue devolviendo. Columna `patients.age` eliminada (`20261125000001`).
+- **ADR-107 (2026-11-19):** **Los adjuntos de documentos compartidos se descargan por separado.** Nunca se fusionan en el
+  PDF generado (decisión del dueño). Cada descarga queda en `access_audit_log`.
+- **ADR-108 (2026-11-20):** **La demo de los vendedores se hace con cuentas de especialista en staging.** No hay modo demo
+  en prod (evita excepciones en crons y correos). El botón "Modo Demo" del vendedor solo abre `staging…/login`.

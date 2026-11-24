@@ -13,6 +13,17 @@
 Fases 0-3 (NX + shared-types + backend NestJS) son base de todo lo de abajo.
 Estado: Fase 0 ✅ · Fase 1 en-progreso.
 
+## Estado al 2026-11-24 — lo que espera promoción y decisiones del dueño
+
+- **Listo en staging, falta promover a `main`:** Modo Demo del vendedor, métricas del admin unificadas, recordatorios
+  por WhatsApp (entran APAGADOS en prod), servicio `deltasalud-webhooks`, FK de recordatorios (al promover empiezan a
+  salir los recordatorios por correo que nunca se enviaron), package.json único + parches de seguridad, edad derivada.
+- **Encender WhatsApp en prod (decisión del dueño):** antes, mapear `hooks.deltasalud.app`, registrar el webhook de
+  Zernio de prod, separar definitivamente el número de ventas de Jesús (su webhook está desactivado) y que Jesús haga la
+  verificación de negocio de Meta (límite de 250 destinatarios/día).
+- **Pendiente de la lista 13-11:** reagendar canceladas (C), modal y agenda del mockup, vista de especialista para el
+  vendedor, hora de Cobros en la zona del navegador.
+
 ## Onboarding mínimo + CSV de especialistas (pedido del dueño, 2026-11-12) — completado (en staging 2026-11-13, sin promover)
 
 > Rama `feature/onboarding-minimo`. Objetivo de negocio: que con lo mínimo al especialista ya le puedan
