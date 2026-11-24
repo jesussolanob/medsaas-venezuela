@@ -433,6 +433,12 @@ describe('HandleWhatsAppWebhookUseCase', () => {
       expect(notify.execute).toHaveBeenCalledWith(
         expect.objectContaining({ type: 'appointment_cancelled_by_patient' }),
       );
+      // The reply offers the specialist's booking link to book again.
+      expect(whatsApp.sendText).toHaveBeenCalledWith(
+        expect.objectContaining({
+          text: expect.stringContaining('https://app.deltasalud.app/book/doc-001'),
+        }),
+      );
     });
 
     it('does NOT cancel when payment is approved', async () => {

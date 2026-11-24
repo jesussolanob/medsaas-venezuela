@@ -22,6 +22,7 @@ function makeAppointment(
     scheduledAt: Date;
     patientName: string;
     appointmentMode: string;
+    patientConfirmedAt: Date | null;
   }> = {},
 ): Appointment {
   return Appointment.create({
@@ -34,6 +35,7 @@ function makeAppointment(
     status: (overrides.status ?? 'scheduled') as import('@delta/shared-types').AppointmentStatus,
     appointmentMode: (overrides.appointmentMode ??
       'presencial') as import('@delta/shared-types').AppointmentMode,
+    patientConfirmedAt: overrides.patientConfirmedAt ?? null,
     createdAt: new Date(),
     updatedAt: new Date(),
   });
@@ -98,6 +100,7 @@ function makeSut(
     hasOverlap: jest.fn().mockResolvedValue(overrides.hasOverlap ?? false),
     updateScheduledAt: jest.fn().mockResolvedValue(overrides.updateScheduledAtResult ?? appt),
     logStatusChange: jest.fn().mockResolvedValue(undefined),
+    setPatientConfirmedAt: jest.fn().mockResolvedValue(undefined),
   };
 
   const doctorProfileRepo = {
@@ -246,6 +249,37 @@ describe('RescheduleByTokenUseCase', () => {
 
       expect(appointmentRepo.updateScheduledAt).toHaveBeenCalledWith(appt.id, newDate);
       expect(result.currentScheduledAt).toBe(newDate.toISOString());
+    });
+
+    it('clears the WhatsApp confirmation, which was for the old time', async () => {
+      const appt = makeAppointment({ patientConfirmedAt: new Date() });
+      const newDate = new Date(FUTURE.getTime() + 2 * 60 * 60 * 1000);
+      const { sut, tokenService, appointmentRepo } = makeSut(appt, {
+        hasOverlap: false,
+        updateScheduledAtResult: makeAppointment({ scheduledAt: newDate }),
+      });
+      const token = tokenService.generate({
+        appointmentId: appt.id,
+        satMs: appt.scheduledAt.getTime(),
+      });
+
+      await sut.execute(token, newDate);
+
+      expect(appointmentRepo.setPatientConfirmedAt).toHaveBeenCalledWith(appt.id, null);
+    });
+
+    it('does not touch the confirmation when there was none', async () => {
+      const appt = makeAppointment();
+      const newDate = new Date(FUTURE.getTime() + 2 * 60 * 60 * 1000);
+      const { sut, tokenService, appointmentRepo } = makeSut(appt, { hasOverlap: false });
+      const token = tokenService.generate({
+        appointmentId: appt.id,
+        satMs: appt.scheduledAt.getTime(),
+      });
+
+      await sut.execute(token, newDate);
+
+      expect(appointmentRepo.setPatientConfirmedAt).not.toHaveBeenCalled();
     });
 
     it('throws AppointmentConflictError when new slot has overlap', async () => {
