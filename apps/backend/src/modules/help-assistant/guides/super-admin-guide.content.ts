@@ -77,9 +77,9 @@ Estas reglas son la base para responder muchas preguntas. Memorízalas.
   borran datos. El sistema lo baja al plan Delta Free automáticamente en su próximo inicio de
   sesión. No hay un cron que lo haga: ocurre "perezosamente" al entrar.
 - **Estados de actividad del especialista:** Se calculan según el último acceso (last_sign_in_at).
-  - Activo: acceso en los últimos 7 días.
-  - Frío: sin acceso entre 7 y 30 días.
-  - Inactivo: sin acceso más de 30 días.
+  - Activo (últimos 7 días): acceso en los últimos 7 días.
+  - Frío (7–30 días): sin acceso entre 7 y 30 días.
+  - Inactivo (+30 días o nunca): sin acceso más de 30 días, o sin registro de acceso.
 - **Plan permanente:** Delta Free es permanente (is_permanent) y no tiene fecha de vencimiento.
 - **Gating doble del especialista:** Lo que un especialista puede usar = capacidades de su ROL (matriz de
   Roles) INTERSECCIÓN features de su PLAN. Si su plan no incluye un módulo, le aparece un candado
@@ -103,14 +103,14 @@ Es el panel de control central. Sirve para ver de un vistazo el estado de la pla
   - **Revisar pagos** (si hay pagos pendientes) — lleva a /admin/subscriptions.
   - **Ver especialistas** — lleva a /admin/doctors.
 - Primera fila de tarjetas KPI:
-  - **Especialistas activos** (y total registrado).
+  - **Activos (últimos 7 días)** (y total registrado): especialistas con acceso reciente.
   - **Consultas hoy** (tiempo real).
   - **Consultas este mes** (con comparación vs mes anterior).
-  - **Suscripciones activas** (y cuántas en trial).
+  - **Suscripciones pagas** (y cuántas en trial): suscripciones con status 'active', sin trials.
 - Segunda fila de tarjetas KPI:
-  - **Especialistas fríos** (sin acceso 7 a 30 días).
-  - **Especialistas inactivos** (sin acceso más de 30 días; muestra cuántas suscripciones por
-    vencer).
+  - **Fríos (7–30 días)**: especialistas sin acceso entre 7 y 30 días.
+  - **Inactivos (+30 días o nunca)**: sin acceso más de 30 días o sin registro de acceso; muestra
+    cuántas suscripciones están por vencer.
   - **Pacientes totales** (agregado de toda la plataforma, sin datos personales).
   - **Por cobrar** (monto total de pagos de suscripción pendientes de aprobación; cuentas por
     cobrar).
@@ -129,7 +129,7 @@ Gestión completa de los especialistas de la plataforma. Aquí se busca, se ve d
 exporta y se activa/suspende a un especialista.
 
 **Encabezado y acciones principales:**
-- Subtítulo con el total de profesionales registrados y cuántos están activos.
+- Subtítulo con el total de profesionales registrados y cuántos están activos esta semana.
 - Botón **Exportar** — descarga un archivo CSV (especialistas.csv) con la lista de especialistas
   (compatible con Excel).
 - Botón **Nuevo especialista** — abre un formulario (titulado "Nuevo especialista") para dar de alta a un
@@ -137,15 +137,16 @@ exporta y se activa/suspende a un especialista.
   para guardar dice **Crear especialista**: al guardar se crea la cuenta y el perfil, y se envía un
   correo de verificación automático.
 
-**Tarjetas KPI:** Total registrados (y nuevos este mes), Activos (% del total), "+7d sin
-actividad" (posible churn) y Nuevos este mes.
+**Tarjetas KPI (5 tarjetas):** Total registrados, Activos (últimos 7 días), Fríos (7–30 días),
+Inactivos (+30 días o nunca) y Nuevos este mes. Los tres buckets de actividad usan la misma
+definición que el Dashboard (basados en last_sign_in_at; sin registro de acceso = Inactivo).
 - **"Nuevos este mes"** cuenta los especialistas cuya fecha de registro cae desde el día 1 del
   mes actual hasta hoy (basado en la fecha en que se creó el perfil en el sistema).
 
 **Búsqueda y filtros:**
 - Buscador por nombre, cédula, email o especialidad (filtra en vivo).
-- Filtro "Todas las especialidades".
-- Filtro de orden "Más recientes".
+- **Chips de actividad:** Todos, Activos (últ. 7 días), Fríos (7–30 días), Inactivos (+30d o nunca),
+  Nuevos este mes. Al seleccionar un chip se filtran los especialistas y también la exportación CSV/PDF.
 - **Filtro de fecha "Desde / Hasta"** (fecha de registro): limita la lista a los especialistas
   registrados en el rango de fechas indicado. Útil para ver altas de un período específico.
 
