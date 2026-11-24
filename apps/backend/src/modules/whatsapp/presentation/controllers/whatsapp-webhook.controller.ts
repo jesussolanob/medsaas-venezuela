@@ -99,23 +99,44 @@ const asStr = (v: unknown): string | undefined => (typeof v === 'string' && v ? 
 
 /**
  * Maps Zernio's message.received event to the flat shape the use case expects.
- * Accepts both the documented nested shape and a flat one (tests, retries).
+ *
+ * Real payload shape (confirmed in staging):
+ *   - metadata lives at the ROOT level (not inside message)
+ *   - metadata.buttonPayload  → the button label the patient tapped
+ *   - metadata.quotedMessageId → wamid of the original outbound reminder
+ *   - account.accountId → identifies the Zernio account
+ *
+ * Accepts both the confirmed nested shape and a flat one (backward compat).
  */
 export function normalizeZernioPayload(body: unknown): ZernioWebhookPayload {
   const root = asObj(body) ?? {};
   const message = asObj(root['message']) ?? {};
-  const metadata = asObj(message['metadata']) ?? asObj(root['metadata']) ?? {};
+  const rootMetadata = asObj(root['metadata']) ?? {};
+  const msgMetadata = asObj(message['metadata']) ?? {};
   const sender = asObj(message['sender']) ?? {};
-  const interactiveId =
-    asStr(metadata['interactiveId']) ??
-    asStr(metadata['buttonPayload']) ??
-    asStr(metadata['payload']);
+  const account = asObj(root['account']) ?? {};
+
+  // quotedMessageId: root metadata has priority per spec; fall back to message.metadata.
+  const quotedMessageId =
+    asStr(rootMetadata['quotedMessageId']) ?? asStr(msgMetadata['quotedMessageId']);
+
+  // buttonPayload: the button label text ("Confirmar", "Reagendar", "Cancelar").
+  // Root metadata first, then message.metadata, then root flat field for backward compat.
+  const buttonPayload =
+    asStr(rootMetadata['buttonPayload']) ??
+    asStr(msgMetadata['buttonPayload']) ??
+    asStr(rootMetadata['interactiveId']) ??
+    asStr(msgMetadata['interactiveId']) ??
+    asStr(root['buttonPayload']);
+
   return {
     event: asStr(root['event']) ?? asStr(root['type']),
     conversationId: asStr(message['conversationId']) ?? asStr(root['conversationId']),
     messageId: asStr(message['id']) ?? asStr(message['messageId']) ?? asStr(root['messageId']),
     participantId: asStr(sender['phoneNumber']) ?? asStr(root['participantId']),
-    buttonPayload: interactiveId ?? asStr(root['buttonPayload']),
+    accountId: asStr(account['accountId']) ?? asStr(root['accountId']),
+    quotedMessageId,
+    buttonPayload,
     messageBody: asStr(message['text']) ?? asStr(root['messageBody']),
   };
 }

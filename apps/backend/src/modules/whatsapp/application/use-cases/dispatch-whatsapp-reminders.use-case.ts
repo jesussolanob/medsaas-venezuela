@@ -1,20 +1,14 @@
-import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import {
   REMINDERS_QUEUE_REPOSITORY,
   type IRemindersQueueRepository,
   type AppointmentDueRowWhatsApp,
 } from '../../../reminders/domain/repositories/reminders-queue.repository';
-import {
-  WHATSAPP_SENDER,
-  type IWhatsAppSender,
-  type TemplateButtonParam,
-} from '../../domain/ports/iwhatsapp-sender.port';
+import { WHATSAPP_SENDER, type IWhatsAppSender } from '../../domain/ports/iwhatsapp-sender.port';
 import {
   DOCTOR_PROFILE_REPOSITORY,
   type IDoctorProfileRepository,
 } from '../../../doctor-settings/domain/repositories/doctor-profile.repository';
-import { AppointmentActionTokenService } from '../../infrastructure/services/appointment-action-token.service';
 import { buildDoctorDisplayName } from '../../../document-sharing/application/utils/build-doctor-display-name';
 
 export interface DispatchWhatsAppRemindersResult {
@@ -56,7 +50,6 @@ const TEMPLATE_LANG = 'es';
 @Injectable()
 export class DispatchWhatsAppRemindersUseCase {
   private readonly logger = new Logger(DispatchWhatsAppRemindersUseCase.name);
-  private readonly appBaseUrl: string;
 
   constructor(
     @Inject(REMINDERS_QUEUE_REPOSITORY)
@@ -65,12 +58,7 @@ export class DispatchWhatsAppRemindersUseCase {
     private readonly whatsApp: IWhatsAppSender,
     @Inject(DOCTOR_PROFILE_REPOSITORY)
     private readonly doctorProfileRepo: IDoctorProfileRepository,
-    @Optional()
-    private readonly tokenService: AppointmentActionTokenService | null,
-    private readonly config: ConfigService,
-  ) {
-    this.appBaseUrl = (config.get<string>('APP_BASE_URL') ?? '').replace(/\/+$/, '');
-  }
+  ) {}
 
   async execute(): Promise<DispatchWhatsAppRemindersResult> {
     const now = new Date();
@@ -180,7 +168,10 @@ export class DispatchWhatsAppRemindersUseCase {
     const isPaid = appt.consultationPaymentStatus === 'approved';
     const templateName = isPaid ? TEMPLATE_24H_PAID : TEMPLATE_24H_UNPAID;
     const params = this.buildTemplateParams(appt, doctorMap);
-    const buttonParams = isPaid ? undefined : this.build24hButtonParams(appt);
+
+    // NOTE: templateButtonParams are NOT sent — Zernio rejects quick_reply subType
+    // (only "url"|"copy_code"|"flow" are accepted). Button taps are identified
+    // server-side by matching metadata.quotedMessageId → reminders_queue.external_message_id.
 
     try {
       const result = await this.whatsApp.sendTemplate({
@@ -188,7 +179,6 @@ export class DispatchWhatsAppRemindersUseCase {
         templateName,
         templateLanguage: TEMPLATE_LANG,
         templateParams: params,
-        templateButtonParams: buttonParams,
       });
 
       if (!result) {
@@ -363,57 +353,6 @@ export class DispatchWhatsAppRemindersUseCase {
       // Same-day window: quiet when start <= time < end.
       return currentTime >= quietStart && currentTime < quietEnd;
     }
-  }
-
-  /**
-   * Builds quick-reply button params for the 24h UNPAID template.
-   * Buttons: Confirmar (index 0), Reagendar (index 1), Cancelar (index 2).
-   * Each carries an HMAC-signed action token.
-   */
-  private build24hButtonParams(appt: AppointmentDueRowWhatsApp): TemplateButtonParam[] | undefined {
-    if (!this.tokenService) return undefined;
-
-    const expMs = appt.scheduledAt.getTime();
-    const satMs = appt.scheduledAt.getTime();
-
-    const confirmPayload = this.tokenService.generateButtonPayload({
-      appointmentId: appt.appointmentId,
-      expMs,
-      action: 'confirm',
-      satMs: 0,
-    });
-
-    const reschedulePayload = this.tokenService.generateButtonPayload({
-      appointmentId: appt.appointmentId,
-      expMs,
-      action: 'reschedule',
-      satMs,
-    });
-
-    const cancelPayload = this.tokenService.generateButtonPayload({
-      appointmentId: appt.appointmentId,
-      expMs,
-      action: 'cancel',
-      satMs: 0,
-    });
-
-    return [
-      {
-        index: 0,
-        subType: 'quick_reply',
-        parameters: [{ type: 'payload', payload: confirmPayload }],
-      },
-      {
-        index: 1,
-        subType: 'quick_reply',
-        parameters: [{ type: 'payload', payload: reschedulePayload }],
-      },
-      {
-        index: 2,
-        subType: 'quick_reply',
-        parameters: [{ type: 'payload', payload: cancelPayload }],
-      },
-    ];
   }
 
   private async buildDoctorNameMap(

@@ -8,10 +8,8 @@ import {
   DOCTOR_PROFILE_REPOSITORY,
   type IDoctorProfileRepository,
 } from '../../../doctor-settings/domain/repositories/doctor-profile.repository';
-import { AppointmentActionTokenService } from '../../infrastructure/services/appointment-action-token.service';
 import { buildDoctorDisplayName } from '../../../document-sharing/application/utils/build-doctor-display-name';
 import { AppointmentNotFoundError } from '../../../appointments/domain/errors/appointment-not-found.error';
-import type { TemplateButtonParam } from '../../domain/ports/iwhatsapp-sender.port';
 
 export interface SendTestWhatsAppReminderInput {
   appointmentId: string;
@@ -32,6 +30,10 @@ export interface SendTestWhatsAppReminderResult {
  * Sends a WhatsApp reminder for the given appointment without inserting a queue row.
  * Useful for verifying template rendering and allowlist configuration.
  *
+ * NOTE: templateButtonParams are NOT sent — Zernio rejects quick_reply subType
+ * (only "url"|"copy_code"|"flow" are accepted). Button taps are identified
+ * server-side by matching metadata.quotedMessageId → reminders_queue.external_message_id.
+ *
  * Requires NODE_ENV !== 'production' — the controller enforces this guard.
  */
 @Injectable()
@@ -43,7 +45,6 @@ export class SendTestWhatsAppReminderUseCase {
     private readonly whatsApp: IWhatsAppSender,
     @Inject(DOCTOR_PROFILE_REPOSITORY)
     private readonly doctorProfileRepo: IDoctorProfileRepository,
-    private readonly tokenService: AppointmentActionTokenService,
   ) {}
 
   async execute(input: SendTestWhatsAppReminderInput): Promise<SendTestWhatsAppReminderResult> {
@@ -75,17 +76,12 @@ export class SendTestWhatsAppReminderUseCase {
           : 'recordatorio_cita_24h'
         : 'recordatorio_cita_hoy';
 
-    const buttonParams: TemplateButtonParam[] | undefined =
-      input.type === '24h' && appointment.paymentStatus !== 'approved'
-        ? this.build24hButtonParams(appointment.id, appointment.scheduledAt)
-        : undefined;
-
     const result = await this.whatsApp.sendTemplate({
       participantId: appointment.patientPhone,
       templateName,
       templateLanguage: 'es',
       templateParams,
-      templateButtonParams: buttonParams,
+      // templateButtonParams intentionally omitted — Zernio rejects quick_reply subType
     });
 
     return {
@@ -94,48 +90,5 @@ export class SendTestWhatsAppReminderUseCase {
       messageId: result?.messageId ?? null,
       conversationId: result?.conversationId ?? null,
     };
-  }
-
-  private build24hButtonParams(appointmentId: string, scheduledAt: Date): TemplateButtonParam[] {
-    const expMs = scheduledAt.getTime();
-
-    const confirmPayload = this.tokenService.generateButtonPayload({
-      appointmentId,
-      expMs,
-      action: 'confirm',
-      satMs: 0,
-    });
-
-    const reschedulePayload = this.tokenService.generateButtonPayload({
-      appointmentId,
-      expMs,
-      action: 'reschedule',
-      satMs: expMs,
-    });
-
-    const cancelPayload = this.tokenService.generateButtonPayload({
-      appointmentId,
-      expMs,
-      action: 'cancel',
-      satMs: 0,
-    });
-
-    return [
-      {
-        index: 0,
-        subType: 'quick_reply',
-        parameters: [{ type: 'payload', payload: confirmPayload }],
-      },
-      {
-        index: 1,
-        subType: 'quick_reply',
-        parameters: [{ type: 'payload', payload: reschedulePayload }],
-      },
-      {
-        index: 2,
-        subType: 'quick_reply',
-        parameters: [{ type: 'payload', payload: cancelPayload }],
-      },
-    ];
   }
 }

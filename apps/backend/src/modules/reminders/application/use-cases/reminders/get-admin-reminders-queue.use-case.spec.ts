@@ -40,6 +40,7 @@ describe('GetAdminRemindersQueueUseCase', () => {
       findDueForWhatsAppReminder: jest.fn().mockResolvedValue([]),
       countWhatsAppUniqueRecipientsLast24h: jest.fn().mockResolvedValue(0),
       updateExternalIds: jest.fn().mockResolvedValue(undefined),
+      findByExternalMessageId: jest.fn().mockResolvedValue(null),
     };
     useCase = new GetAdminRemindersQueueUseCase(mockRepo);
   });

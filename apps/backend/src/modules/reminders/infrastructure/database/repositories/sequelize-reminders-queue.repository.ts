@@ -377,6 +377,25 @@ export class SequelizeRemindersQueueRepository implements IRemindersQueueReposit
     );
   }
 
+  async findByExternalMessageId(
+    externalMessageId: string,
+    channel: string,
+  ): Promise<{ rowId: string; appointmentId: string } | null> {
+    const rows = await this.sequelize.query<{ id: string; appointment_id: string }>(
+      `SELECT id, appointment_id
+       FROM reminders_queue
+       WHERE external_message_id = :externalMessageId
+         AND channel = :channel
+       LIMIT 1`,
+      {
+        replacements: { externalMessageId, channel },
+        type: QueryTypes.SELECT,
+      },
+    );
+    const row = rows[0];
+    return row ? { rowId: row.id, appointmentId: row.appointment_id } : null;
+  }
+
   // ---------------------------------------------------------------------------
   // Private helpers
   // ---------------------------------------------------------------------------
