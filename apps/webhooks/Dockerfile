@@ -22,6 +22,9 @@ ENV NODE_ENV=production
 ENV PORT=8080
 # NX webpack emits main.js + a pruned package.json/pnpm-lock.yaml.
 COPY --from=build /repo/dist/apps/webhooks ./
+# The security `overrides` live in pnpm-workspace.yaml (pnpm 11): without it the
+# frozen install fails with ERR_PNPM_LOCKFILE_CONFIG_MISMATCH.
+COPY --from=build /repo/pnpm-workspace.yaml ./
 # Install only the externalized prod deps (e.g. @sentry/node).
 # --ignore-scripts prevents post-install build steps for native addons.
 RUN pnpm install --prod --frozen-lockfile --ignore-scripts \
