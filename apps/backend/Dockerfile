@@ -19,6 +19,9 @@ ENV NODE_ENV=production
 ENV PORT=8080
 # NX emits main.js + a pruned package.json/pnpm-lock.yaml here.
 COPY --from=build /repo/dist/apps/backend ./
+# The security `overrides` live in pnpm-workspace.yaml (pnpm 11): without it the
+# frozen install fails with ERR_PNPM_LOCKFILE_CONFIG_MISMATCH.
+COPY --from=build /repo/pnpm-workspace.yaml ./
 # Install the externalized prod deps. The pruned manifest omits packages that are
 # only required dynamically (sequelize's pg driver) or transitively (tslib, the
 # TS import helper) — add them explicitly so the bundle resolves at runtime.
