@@ -40,7 +40,9 @@ overrides:
   # editor shipped in the frontend bundle).
   prosemirror-view: ^1.44.0
   markdown-it: ^14.3.3
-  # decode-uri-component: RUNTIME, pulled by minio (backend storage adapter)
-  # via query-string. 0.x releases of this single-function utility have no
-  # breaking API changes across this range.
-  decode-uri-component: ^0.5.1
+  # decode-uri-component: NOT overridden on purpose. query-string@7.1.3 (via
+  # minio, backend storage adapter) pins ^0.2.2, the last CJS release —
+  # 0.3.0+ ships `"type": "module"` only. Forcing 0.5.1 broke `require()` at
+  # runtime (CommonJS "Unexpected token 'export'", backend boot + jest both
+  # failed). Left at 0.2.2 (vulnerable per pnpm audit) until query-string/
+  # minio ship an ESM-compatible major — see security report.
