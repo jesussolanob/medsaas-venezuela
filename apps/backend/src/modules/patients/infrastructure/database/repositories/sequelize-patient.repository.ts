@@ -155,7 +155,6 @@ export class SequelizePatientRepository implements IPatientRepository {
         identityId: patient.identityId,
         source: patient.source,
         birthDate: patient.birthDate,
-        age: patient.age,
         sex: patient.sex,
         bloodType: patient.bloodType,
         allergies: patient.allergies,
@@ -213,7 +212,6 @@ export class SequelizePatientRepository implements IPatientRepository {
     const plainFields: Array<keyof Patient> = [
       'source',
       'birthDate',
-      'age',
       'sex',
       'bloodType',
       'allergies',
@@ -364,7 +362,6 @@ export class SequelizePatientRepository implements IPatientRepository {
       identityId: row.identityId ?? null,
       source: parseSource(row.source),
       birthDate: row.birthDate,
-      age: row.age,
       sex: parseSex(row.sex),
       bloodType: row.bloodType,
       allergies: row.allergies,

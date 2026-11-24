@@ -395,7 +395,6 @@ export async function getPatientDetail(patientId: string): Promise<Patient | nul
 
 export type AddPatientInput = {
   full_name: string;
-  age?: number | null;
   birth_date?: string | null;
   phone?: string | null;
   cedula?: string | null;
@@ -454,7 +453,6 @@ export async function addPatient(
     email: normalizeEmail(input.email),
     source: normalizeStr(input.source) ?? 'manual',
     birth_date: normalizeStr(input.birth_date),
-    age: input.age ?? null,
     sex: normalizeSex(input.sex),
     auth_user_id: null,
     blood_type: normalizeStr(input.blood_type),
@@ -593,7 +591,6 @@ export async function updateConsultationNotes(
 
 export type UpdatePatientInput = {
   full_name?: string;
-  age?: number | null;
   birth_date?: string | null;
   phone?: string | null;
   cedula?: string | null;
@@ -624,7 +621,6 @@ export async function updatePatient(
   // Build a partial body — only send fields that were explicitly provided.
   const body: Record<string, unknown> = {};
   if (input.full_name !== undefined) body.full_name = input.full_name;
-  if (input.age !== undefined) body.age = input.age;
   if (input.birth_date !== undefined) body.birth_date = input.birth_date;
   if (input.phone !== undefined) body.phone = input.phone;
   if (input.cedula !== undefined) body.cedula = input.cedula;

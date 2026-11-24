@@ -71,7 +71,7 @@ function makePatient(): Patient {
     id: PATIENT_ID,
     doctorId: DOCTOR_ID,
     fullName: 'Juan Pérez',
-    age: 35,
+    birthDate: '1990-05-10',
     sex: 'male',
     bloodType: 'O+',
     allergies: null,

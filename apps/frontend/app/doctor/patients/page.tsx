@@ -99,6 +99,7 @@ import { showToast } from '@/components/ui/Toaster';
 import NewRequestModal from '@/components/patient-requests/NewRequestModal';
 import RequestDetailModal from '@/app/doctor/patient-requests/RequestDetailModal';
 import { useBcvRate } from '@/lib/useBcvRate';
+import { ageFromBirthDate } from '@delta/shared-utils';
 
 // Tipo alineado a la respuesta camelCase del backend shared-files.
 type SharedFile = {
@@ -296,7 +297,6 @@ export default function PatientsPage() {
   const [editing, setEditing] = useState(false);
   const [editPat, setEditPat] = useState({
     full_name: '',
-    age: '',
     birth_date: '',
     phone: '',
     cedula: '',
@@ -318,7 +318,6 @@ export default function PatientsPage() {
   // New patient form
   const [newPat, setNewPat] = useState({
     full_name: '',
-    age: '',
     birth_date: '',
     phone: '',
     cedula: '',
@@ -328,18 +327,6 @@ export default function PatientsPage() {
     source: '',
   });
 
-  // Auto-calculate age from birth_date.
-  // Bug 1: se agrega 'T12:00:00' para evitar el offset UTC que hace que una
-  // fecha 'YYYY-MM-DD' se interprete un día antes en zonas con UTC negativo.
-  const calcAgeFromBirthDate = (dateStr: string): string => {
-    if (!dateStr) return '';
-    const birth = new Date(dateStr + 'T12:00:00');
-    const today = new Date();
-    let age = today.getFullYear() - birth.getFullYear();
-    const m = today.getMonth() - birth.getMonth();
-    if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) age--;
-    return age >= 0 ? String(age) : '';
-  };
   const [patError, setPatError] = useState('');
 
   // New consultation form
@@ -497,7 +484,6 @@ export default function PatientsPage() {
   function startEditPatient(p: Patient) {
     setEditPat({
       full_name: p.full_name || '',
-      age: p.age ? String(p.age) : '',
       birth_date: p.birth_date || '',
       phone: p.phone || '',
       cedula: p.cedula || '',
@@ -537,7 +523,6 @@ export default function PatientsPage() {
     try {
       const res = await updatePatient(selected.id, doctorId, {
         full_name: editPat.full_name,
-        age: editPat.age ? parseInt(editPat.age) : null,
         birth_date: editPat.birth_date || null,
         phone: editPat.phone || null,
         cedula: editPat.cedula || null,
@@ -560,7 +545,7 @@ export default function PatientsPage() {
         return;
       }
       // Update local state
-      const updated = { ...selected, ...editPat, age: editPat.age ? parseInt(editPat.age) : null };
+      const updated = { ...selected, ...editPat, age: ageFromBirthDate(editPat.birth_date) };
       setSelected(updated as Patient);
       setPatients((prev) => prev.map((p) => (p.id === selected.id ? (updated as Patient) : p)));
       setEditing(false);
@@ -730,7 +715,6 @@ export default function PatientsPage() {
         // EDIT — UPDATE
         const res = await updatePatient(formData.id, doctorId, {
           full_name: formData.full_name,
-          age: formData.age ?? null,
           birth_date: formData.birth_date ?? null,
           phone: formData.phone ?? null,
           cedula: formData.cedula ?? null,
@@ -759,7 +743,6 @@ export default function PatientsPage() {
         // CREATE — INSERT
         const res = await addPatient(doctorId, {
           full_name: formData.full_name,
-          age: formData.age ?? undefined,
           birth_date: formData.birth_date ?? undefined,
           phone: formData.phone ?? undefined,
           cedula: formData.cedula ?? undefined,
@@ -815,7 +798,6 @@ export default function PatientsPage() {
     startTransition(async () => {
       const res = await addPatient(doctorId, {
         full_name: newPat.full_name,
-        age: newPat.age ? parseInt(newPat.age) : undefined,
         birth_date: newPat.birth_date || undefined,
         phone: newPat.phone || undefined,
         cedula: newPat.cedula || undefined,
@@ -833,7 +815,6 @@ export default function PatientsPage() {
       showToast({ type: 'success', message: 'Paciente creado' });
       setNewPat({
         full_name: '',
-        age: '',
         birth_date: '',
         phone: '',
         cedula: '',
@@ -1202,7 +1183,6 @@ export default function PatientsPage() {
                           email: selected.email || '',
                           phone: selected.phone || '',
                           birth_date: selected.birth_date || '',
-                          age: selected.age ?? null,
                           sex: (selected.sex as any) ?? '',
                           blood_type: selected.blood_type || '',
                           address: selected.address || '',
@@ -1338,7 +1318,6 @@ export default function PatientsPage() {
                   email: selected.email || '',
                   phone: selected.phone || '',
                   birth_date: selected.birth_date || '',
-                  age: selected.age ?? null,
                   sex: (selected.sex as any) ?? '',
                   blood_type: selected.blood_type || '',
                   address: selected.address || '',
@@ -1403,7 +1382,6 @@ export default function PatientsPage() {
                   email: selected.email || '',
                   phone: selected.phone || '',
                   birth_date: selected.birth_date || '',
-                  age: selected.age ?? null,
                   sex: (selected.sex as any) ?? '',
                   blood_type: selected.blood_type || '',
                   address: selected.address || '',
@@ -1457,7 +1435,6 @@ export default function PatientsPage() {
                   email: selected.email || '',
                   phone: selected.phone || '',
                   birth_date: selected.birth_date || '',
-                  age: selected.age ?? null,
                   sex: (selected.sex as any) ?? '',
                   blood_type: selected.blood_type || '',
                   address: selected.address || '',
@@ -1499,7 +1476,6 @@ export default function PatientsPage() {
                     email: selected.email || '',
                     phone: selected.phone || '',
                     birth_date: selected.birth_date || '',
-                    age: selected.age ?? null,
                     sex: (selected.sex as any) ?? '',
                     blood_type: selected.blood_type || '',
                     address: selected.address || '',
@@ -3124,11 +3100,7 @@ export default function PatientsPage() {
                     type="date"
                     value={newPat.birth_date}
                     max={todayCaracasISO()}
-                    onChange={(e) => {
-                      const bd = e.target.value;
-                      const calculatedAge = calcAgeFromBirthDate(bd);
-                      setNewPat((p) => ({ ...p, birth_date: bd, age: calculatedAge }));
-                    }}
+                    onChange={(e) => setNewPat((p) => ({ ...p, birth_date: e.target.value }))}
                     className={fi}
                   />
                 </div>
@@ -3136,16 +3108,13 @@ export default function PatientsPage() {
                   <label className="block text-sm font-medium text-slate-700 mb-1.5">Edad</label>
                   <input
                     type="number"
-                    min="0"
-                    max="150"
-                    value={newPat.age}
-                    onChange={(e) => setNewPat((p) => ({ ...p, age: e.target.value }))}
-                    placeholder="35"
-                    className={fi}
+                    value={ageFromBirthDate(newPat.birth_date) ?? ''}
+                    placeholder="—"
+                    readOnly
+                    aria-readonly="true"
+                    title="Se calcula automáticamente desde la fecha de nacimiento"
+                    className={fiReadOnly}
                   />
-                  {newPat.birth_date && (
-                    <p className="text-xs text-slate-400 mt-1">Calculada automáticamente</p>
-                  )}
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1.5">Sexo</label>
@@ -3292,11 +3261,7 @@ export default function PatientsPage() {
                     type="date"
                     value={editPat.birth_date}
                     max={todayCaracasISO()}
-                    onChange={(e) => {
-                      const bd = e.target.value;
-                      const calculatedAge = calcAgeFromBirthDate(bd);
-                      setEditPat((p) => ({ ...p, birth_date: bd, age: calculatedAge }));
-                    }}
+                    onChange={(e) => setEditPat((p) => ({ ...p, birth_date: e.target.value }))}
                     className={fi}
                   />
                 </div>
@@ -3304,11 +3269,12 @@ export default function PatientsPage() {
                   <label className="block text-sm font-medium text-slate-700 mb-1.5">Edad</label>
                   <input
                     type="number"
-                    min="0"
-                    max="150"
-                    value={editPat.age}
-                    onChange={(e) => setEditPat((p) => ({ ...p, age: e.target.value }))}
-                    className={fi}
+                    value={ageFromBirthDate(editPat.birth_date) ?? ''}
+                    placeholder="—"
+                    readOnly
+                    aria-readonly="true"
+                    title="Se calcula automáticamente desde la fecha de nacimiento"
+                    className={fiReadOnly}
                   />
                 </div>
                 <div>
@@ -3639,23 +3605,13 @@ export default function PatientsPage() {
 
 const fi =
   'w-full px-3 py-2.5 text-sm border border-slate-200 rounded-xl outline-none focus:border-teal-400 focus:ring-2 focus:ring-teal-500/10 bg-white transition-colors';
+// Campo derivado de solo lectura (la edad sale de la fecha de nacimiento).
+const fiReadOnly =
+  'w-full px-3 py-2.5 text-sm border border-slate-200 rounded-xl outline-none bg-slate-50 text-slate-500 cursor-not-allowed';
 
-// Helper: derivar edad desde fecha de nacimiento si patients.age no está set.
-// Pacientes registrados sin la columna `age` (o con valor stale) muestran "No
-// registrado" si solo confiábamos en la columna — ahora calculamos al vuelo
-// cuando tenemos birth_date.
-// Bug 1 fix: se agrega 'T12:00:00' para evitar el offset UTC en zonas negativas
-// (ej: UTC-4 Venezuela) que haría que '1990-03-15' → '1990-03-14 20:00'.
-function getDisplayAge(p: { age?: number | null; birth_date?: string | null }): number | null {
-  if (p.age != null && p.age >= 0) return p.age;
-  if (!p.birth_date) return null;
-  const birth = new Date(p.birth_date + 'T12:00:00');
-  if (isNaN(birth.getTime())) return null;
-  const now = new Date();
-  let years = now.getFullYear() - birth.getFullYear();
-  const monthDiff = now.getMonth() - birth.getMonth();
-  if (monthDiff < 0 || (monthDiff === 0 && now.getDate() < birth.getDate())) years--;
-  return years >= 0 ? years : null;
+// La edad nunca se guarda: siempre se deriva de la fecha de nacimiento.
+function getDisplayAge(p: { birth_date?: string | null }): number | null {
+  return ageFromBirthDate(p.birth_date);
 }
 
 // ════════════════════════════════════════════════════════════════════════════
