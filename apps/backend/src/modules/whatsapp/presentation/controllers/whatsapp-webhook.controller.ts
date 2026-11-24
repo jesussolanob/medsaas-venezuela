@@ -39,15 +39,15 @@ export class WhatsAppWebhookController {
 
   @Post('zernio')
   @HttpCode(HttpStatus.OK)
-  async handleWebhook(
-    @Req() req: Request,
-    @Body() body: ZernioWebhookPayload,
-  ): Promise<{ success: true }> {
+  async handleWebhook(@Req() req: Request, @Body() body: unknown): Promise<{ success: true }> {
     // Verify webhook signature before processing
     this.verifySignature(req);
 
-    // Delegate to use case — always returns 200 (errors logged internally)
-    const result = await this.handleWebhookUseCase.execute(body);
+    // Zernio nests the data (message.text, message.conversationId, metadata.
+    // interactiveId for button taps). Log only the key structure — never values,
+    // they carry phones and message text.
+    this.logger.log(`[webhook] shape=${describeShape(body)}`);
+    const result = await this.handleWebhookUseCase.execute(normalizeZernioPayload(body));
     this.logger.debug(`[webhook] action=${result.action}`);
 
     return { success: true };
@@ -90,4 +90,45 @@ export class WhatsAppWebhookController {
       throw new UnauthorizedException('Invalid webhook signature');
     }
   }
+}
+
+type Obj = Record<string, unknown>;
+const asObj = (v: unknown): Obj | undefined =>
+  v && typeof v === 'object' && !Array.isArray(v) ? (v as Obj) : undefined;
+const asStr = (v: unknown): string | undefined => (typeof v === 'string' && v ? v : undefined);
+
+/**
+ * Maps Zernio's message.received event to the flat shape the use case expects.
+ * Accepts both the documented nested shape and a flat one (tests, retries).
+ */
+export function normalizeZernioPayload(body: unknown): ZernioWebhookPayload {
+  const root = asObj(body) ?? {};
+  const message = asObj(root['message']) ?? {};
+  const metadata = asObj(message['metadata']) ?? asObj(root['metadata']) ?? {};
+  const sender = asObj(message['sender']) ?? {};
+  const interactiveId =
+    asStr(metadata['interactiveId']) ??
+    asStr(metadata['buttonPayload']) ??
+    asStr(metadata['payload']);
+  return {
+    event: asStr(root['event']) ?? asStr(root['type']),
+    conversationId: asStr(message['conversationId']) ?? asStr(root['conversationId']),
+    messageId: asStr(message['id']) ?? asStr(message['messageId']) ?? asStr(root['messageId']),
+    participantId: asStr(sender['phoneNumber']) ?? asStr(root['participantId']),
+    buttonPayload: interactiveId ?? asStr(root['buttonPayload']),
+    messageBody: asStr(message['text']) ?? asStr(root['messageBody']),
+  };
+}
+
+/** Key paths of a payload (no values) — safe to log for diagnosing the shape. */
+function describeShape(v: unknown, prefix = '', depth = 0): string {
+  const o = asObj(v);
+  if (!o || depth > 3) return prefix ? prefix : '';
+  return Object.keys(o)
+    .map((k) => {
+      const path = prefix ? `${prefix}.${k}` : k;
+      const child = asObj(o[k]);
+      return child ? describeShape(child, path, depth + 1) : path;
+    })
+    .join(',');
 }
