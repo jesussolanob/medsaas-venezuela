@@ -1,5 +1,6 @@
 'use client';
 
+import { ageFromBirthDate } from '@delta/shared-utils';
 // L7 (2026-04-29): añadidos KPIs (consultas/mes, pacientes únicos, crecimiento MoM),
 // dropdown de meses (últimos 12), gráfico Recharts de ingresos vs egresos
 // (últimos 6 meses) y exportación CSV de consultas con diagnóstico/duración.
@@ -2441,7 +2442,6 @@ export default function FinancesPage() {
               phone: data.phone ?? undefined,
               email: data.email ?? undefined,
               birth_date: data.birth_date ?? undefined,
-              age: data.age ?? undefined,
               sex: data.sex ?? undefined,
               blood_type: data.blood_type ?? undefined,
               address: data.address ?? undefined,
@@ -2460,7 +2460,7 @@ export default function FinancesPage() {
               id: res.patient_id,
               doctor_id: doctorId,
               full_name: data.full_name,
-              age: data.age ?? null,
+              age: ageFromBirthDate(data.birth_date),
               phone: data.phone ?? null,
               cedula: data.cedula ?? null,
               email: data.email ?? null,

@@ -32,6 +32,7 @@ import {
 import PatientForm, { type PatientFormData } from '@/components/patient/PatientForm';
 import { updatePatient, type UpdatePatientInput } from '@/app/doctor/patients/actions';
 import { showToast } from '@/components/ui/Toaster';
+import { ageFromBirthDate } from '@delta/shared-utils';
 
 // ---------------------------------------------------------------------------
 // Tipos
@@ -96,7 +97,6 @@ function detailToFormData(p: PatientDetail, patientId: string): PatientFormData 
     email: p.email ?? '',
     phone: p.phone ?? '',
     birth_date: p.birthDate ?? '',
-    age: p.age ?? null,
     sex: (p.sex as PatientFormData['sex']) ?? '',
     blood_type: p.bloodType ?? '',
     address: p.address ?? '',
@@ -216,7 +216,6 @@ export default function PatientFichaModal({ patientId, patientName, onClose }: P
       email: formData.email ?? null,
       phone: formData.phone ?? null,
       birth_date: formData.birth_date ?? null,
-      age: formData.age ?? null,
       sex: formData.sex ?? null,
       blood_type: formData.blood_type ?? null,
       address: formData.address ?? null,
@@ -261,7 +260,7 @@ export default function PatientFichaModal({ patientId, patientName, onClose }: P
         email: formData.email ?? null,
         phone: formData.phone ?? null,
         birthDate: formData.birth_date ?? null,
-        age: formData.age ?? null,
+        age: ageFromBirthDate(formData.birth_date),
         sex: formData.sex ?? null,
         bloodType: formData.blood_type ?? null,
         address: formData.address ?? null,

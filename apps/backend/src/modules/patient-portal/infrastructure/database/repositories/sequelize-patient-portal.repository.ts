@@ -435,7 +435,6 @@ export class SequelizePatientPortalRepository implements IPatientPortalRepositor
       email: row.email ? this.crypto.decrypt(row.email) : null,
       source: parseSource(row.source),
       birthDate: row.birthDate,
-      age: row.age,
       sex: (row.sex as Patient['sex']) ?? null,
       bloodType: row.bloodType,
       allergies: row.allergies,

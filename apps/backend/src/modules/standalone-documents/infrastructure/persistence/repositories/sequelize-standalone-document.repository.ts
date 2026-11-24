@@ -3,6 +3,7 @@ import { InjectModel } from '@nestjs/sequelize';
 import { QueryTypes, UniqueConstraintError } from 'sequelize';
 import { Sequelize } from 'sequelize-typescript';
 import { randomUUID } from 'crypto';
+import { ageFromBirthDate } from '@delta/shared-utils';
 import {
   StandaloneDocument,
   type StandaloneDocumentType,
@@ -123,14 +124,14 @@ export class SequelizeStandaloneDocumentRepository implements IStandaloneDocumen
       updated_at: string;
       full_name: string;
       cedula: string | null;
-      age: number | null;
+      birth_date: string | null;
     };
 
     const rows = await this.sequelize.query<RawRow>(
       `SELECT sd.id, sd.doctor_id, sd.patient_id, sd.type, sd.code, sd.status,
               sd.content, sd.void_reason, sd.issued_at, sd.voided_at,
               sd.created_at, sd.updated_at,
-              p.full_name, p.cedula, p.age
+              p.full_name, p.cedula, p.birth_date
          FROM standalone_documents sd
          JOIN patients p ON p.id = sd.patient_id
         WHERE sd.id = :id AND sd.doctor_id = :doctorId AND p.deleted_at IS NULL`,
@@ -160,7 +161,7 @@ export class SequelizeStandaloneDocumentRepository implements IStandaloneDocumen
         id: r.patient_id,
         fullName: this.crypto.decrypt(r.full_name),
         cedula: r.cedula ? this.crypto.decrypt(r.cedula) : null,
-        age: r.age ?? null,
+        age: ageFromBirthDate(r.birth_date),
       },
     };
   }

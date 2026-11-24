@@ -21,7 +21,6 @@ export interface UpdatePatientInput {
   email?: string | null;
   source?: PatientSource | null;
   birthDate?: string | null;
-  age?: number | null;
   sex?: 'male' | 'female' | 'other' | null;
   bloodType?: string | null;
   allergies?: string | null;
@@ -78,7 +77,6 @@ export class UpdatePatientUseCase {
       ...(input.email !== undefined && { email: input.email }),
       ...(input.source !== undefined && { source: input.source }),
       ...(input.birthDate !== undefined && { birthDate: input.birthDate }),
-      ...(input.age !== undefined && { age: input.age }),
       ...(input.sex !== undefined && { sex: input.sex }),
       ...(input.bloodType !== undefined && { bloodType: input.bloodType }),
       ...(input.allergies !== undefined && { allergies: input.allergies }),
