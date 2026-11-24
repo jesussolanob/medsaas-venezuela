@@ -2,18 +2,8 @@ import { SendTestWhatsAppReminderUseCase } from './send-test-whatsapp-reminder.u
 import type { IAppointmentRepository } from '../../../appointments/domain/repositories/appointment.repository';
 import type { IWhatsAppSender } from '../../domain/ports/iwhatsapp-sender.port';
 import type { IDoctorProfileRepository } from '../../../doctor-settings/domain/repositories/doctor-profile.repository';
-import { AppointmentActionTokenService } from '../../infrastructure/services/appointment-action-token.service';
-import { ConfigService } from '@nestjs/config';
 import { Appointment } from '../../../appointments/domain/entities/appointment.entity';
 import { AppointmentNotFoundError } from '../../../appointments/domain/errors/appointment-not-found.error';
-
-function makeTokenService(): AppointmentActionTokenService {
-  const config = {
-    get: (k: string) =>
-      k === 'APPOINTMENT_ACTION_SECRET' ? 'test-secret-32-bytes-padding!!' : null,
-  } as unknown as ConfigService;
-  return new AppointmentActionTokenService(config);
-}
 
 function makeAppt(
   overrides: { paymentStatus?: string | null; patientPhone?: string | null } = {},
@@ -81,7 +71,7 @@ function makeSut(
     }),
   } as unknown as jest.Mocked<IDoctorProfileRepository>;
 
-  const sut = new SendTestWhatsAppReminderUseCase(repo, whatsApp, doctorRepo, makeTokenService());
+  const sut = new SendTestWhatsAppReminderUseCase(repo, whatsApp, doctorRepo);
 
   return { sut, whatsApp };
 }
@@ -101,7 +91,7 @@ describe('SendTestWhatsAppReminderUseCase', () => {
     expect(result.sent).toBe(false);
   });
 
-  it('sends 24h unpaid template with button params', async () => {
+  it('sends 24h unpaid template (buttons come from the template itself)', async () => {
     const appt = makeAppt({ paymentStatus: null });
     const { sut, whatsApp } = makeSut(appt);
     const result = await sut.execute({ appointmentId: 'appt-001', type: '24h' });
@@ -109,7 +99,8 @@ describe('SendTestWhatsAppReminderUseCase', () => {
     expect(result.sent).toBe(true);
     expect(result.templateName).toBe('recordatorio_cita_24h');
     const call = whatsApp.sendTemplate.mock.calls[0]![0];
-    expect(call.templateButtonParams).toHaveLength(3);
+    // Zernio rejects per-send quick-reply payloads; replies are matched by quoted message.
+    expect(call.templateButtonParams).toBeUndefined();
   });
 
   it('sends 24h paid template without button params', async () => {

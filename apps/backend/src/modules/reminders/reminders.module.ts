@@ -44,9 +44,8 @@ import { TeamMeetingsModule } from '../team-meetings/team-meetings.module';
 // @Optional into DispatchDoctorInactivityNoticesUseCase so invite dispatch runs
 // first in the daily cron. No cycle: RetentionInvitesModule does not import RemindersModule.
 import { RetentionInvitesModule } from '../retention-invites/retention-invites.module';
-// WhatsAppModule exports WHATSAPP_SENDER and AppointmentActionTokenService, both
-// needed by DispatchWhatsAppRemindersUseCase (which lives HERE to access
-// REMINDERS_QUEUE_REPOSITORY without creating a circular import).
+// WhatsAppModule exports WHATSAPP_SENDER, needed by DispatchWhatsAppRemindersUseCase
+// (which lives HERE to access REMINDERS_QUEUE_REPOSITORY without circular import).
 import { WhatsAppModule } from '../whatsapp/whatsapp.module';
 
 /**

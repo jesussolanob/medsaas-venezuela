@@ -5,7 +5,6 @@ import type {
 } from '../../../reminders/domain/repositories/reminders-queue.repository';
 import type { IWhatsAppSender } from '../../domain/ports/iwhatsapp-sender.port';
 import type { IDoctorProfileRepository } from '../../../doctor-settings/domain/repositories/doctor-profile.repository';
-import { ConfigService } from '@nestjs/config';
 
 const NOW = new Date('2026-12-15T10:00:00Z');
 const APPT_TIME = new Date('2026-12-16T14:00:00Z'); // ~28h from NOW → within 24h window (23h45m–24h15m)
@@ -69,24 +68,12 @@ function makeDoctorRepo(): jest.Mocked<IDoctorProfileRepository> {
   } as unknown as jest.Mocked<IDoctorProfileRepository>;
 }
 
-function makeConfig(baseUrl = 'https://app.deltasalud.app'): ConfigService {
-  return {
-    get: (k: string) => (k === 'APP_BASE_URL' ? baseUrl : null),
-  } as unknown as ConfigService;
-}
-
 function makeSut(
   repo: jest.Mocked<IRemindersQueueRepository>,
   whatsApp: jest.Mocked<IWhatsAppSender>,
   doctorRepo = makeDoctorRepo(),
 ): DispatchWhatsAppRemindersUseCase {
-  return new DispatchWhatsAppRemindersUseCase(
-    repo,
-    whatsApp,
-    doctorRepo,
-    null, // tokenService not needed for unit tests
-    makeConfig(),
-  );
+  return new DispatchWhatsAppRemindersUseCase(repo, whatsApp, doctorRepo);
 }
 
 describe('DispatchWhatsAppRemindersUseCase', () => {
