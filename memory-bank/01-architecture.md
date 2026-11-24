@@ -13,6 +13,8 @@ flowchart LR
   BE --> PG[(PostgreSQL)]
   BE --> R[(Redis)]
   BE --> GCS[(Storage)]
+  Z[Zernio WhatsApp] -->|webhook POST| WH[apps/webhooks — Node.js relay]
+  WH -->|IAM Bearer| BE
   subgraph Monorepo NX
     FE --- LIBS[libs/shared-types · shared-utils · shared-crypto]
     BE --- LIBS
@@ -22,6 +24,40 @@ flowchart LR
 En local (Etapa 1) no hay Cloudflare/Auth0/GCS: el browser pega a Next.js
 (localhost:3000), Next.js pega a NestJS (localhost:3001), NestJS a Postgres/Redis
 Docker. Auth con `DevAuthGuard` (headers `x-dev-user-id`, `x-dev-user-role`).
+
+## apps/webhooks — deltasalud-webhooks (2026-11-24)
+
+Servicio público y standalone (Node 22 + TypeScript, `node:http`, NO NestJS) que
+actúa como relay entre Zernio y el backend privado de Cloud Run.
+
+**Por qué existe:** el backend usa `--no-allow-unauthenticated` (IAM-protected).
+Zernio no puede obtener un token de GCP, así que no puede llamarlo directamente.
+El relay es público, verifica la firma HMAC del payload y luego lo reenvía al
+backend adjuntando un Bearer token de identidad de GCP (metadata server).
+
+**Rutas:**
+
+- `GET /health` → 200 `{status:"ok"}`
+- `POST /zernio` → verifica firma, reenvía al backend, responde a Zernio
+
+**Sin lógica de negocio:** el relay no parsea ni modifica el payload. Todo el
+procesamiento ocurre en `POST /api/webhooks/zernio` del backend NestJS.
+
+**Routing:** cada deployment apunta a UN solo backend.
+
+- `delta-webhooks` (main) → `delta-backend` (producción)
+- `delta-webhooks-staging` (staging) → `delta-backend-staging`
+
+**Logging:** solo cuando hay errores (nunca en éxito). PII nunca se loguea.
+
+**Cloud Run:**
+
+- Producción: `--allow-unauthenticated --min-instances=1 --max-instances=5`
+- Staging: `--allow-unauthenticated --min-instances=0 --max-instances=5`
+- Service accounts: `delta-webhooks@...` y `delta-webhooks-staging@...`
+  (ya tienen `roles/run.invoker` sobre sus respectivos backends)
+
+**ADR-011 (2026-11-24):** El proxy de webhook que vivía en `apps/frontend/app/api/webhooks/zernio/route.ts` fue eliminado. Los webhooks de Zernio ahora van directo a `delta-webhooks` → `delta-backend`. Esto permite que el backend sea completamente `--no-allow-unauthenticated` sin depender de que el frontend esté arriba.
 
 ## Capas DDD del backend (regla de dependencia unidireccional)
 

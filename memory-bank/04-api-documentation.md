@@ -1737,3 +1737,61 @@ Límite diario: 240 destinatarios únicos en las últimas 24h (Meta TIER_250). S
 - Tokens de acción: HMAC-SHA256 con `APPOINTMENT_ACTION_SECRET`, single-use via `satMs`.
 - `AppointmentRescheduleTokenService` vive en `AppointmentsModule` (no en `WhatsAppModule`) para evitar dependencia circular.
 - Staging: `WHATSAPP_ENABLED=false` + `WHATSAPP_ALLOWLIST` previene envíos reales a pacientes.
+
+---
+
+### 2026-11-24 — apps/webhooks: servicio relay de Zernio (deltasalud-webhooks)
+
+Nuevo servicio standalone (Node 22, `node:http`, NO NestJS) desplegado como Cloud Run
+separado. Recibe los webhooks de Zernio y los reenvía al backend privado (IAM-protected).
+
+**Cambio:** el thin-proxy `apps/frontend/app/api/webhooks/zernio/route.ts` fue eliminado.
+Los webhooks de Zernio ahora van directamente al servicio `deltasalud-webhooks` público.
+
+#### Endpoints de apps/webhooks
+
+| Endpoint  | Método | Auth                                          | Descripción                                                                     |
+| --------- | ------ | --------------------------------------------- | ------------------------------------------------------------------------------- |
+| `/health` | GET    | Pública                                       | Health check. Responde `{status:"ok"}` siempre.                                 |
+| `/zernio` | POST   | Firma HMAC `x-zernio-signature: sha256=<hex>` | Verifica firma, adjunta IAM Bearer token, reenvía raw bytes al backend privado. |
+
+#### Mapeo de respuestas
+
+| Respuesta del backend           | Respuesta a Zernio    | Motivo                             |
+| ------------------------------- | --------------------- | ---------------------------------- |
+| 2xx                             | 200 `{received:true}` | Éxito                              |
+| 4xx (excepto 408 y 429)         | 200 `{received:true}` | No reintentar (backend rechazó ok) |
+| 5xx / 408 / 429 / timeout / red | 502                   | Zernio reintentará                 |
+| Firma inválida / ausente        | 401                   | Fail-closed                        |
+| Body > 512 KB                   | 413                   | Payload demasiado grande           |
+
+#### Variables de entorno de apps/webhooks
+
+| Variable                | Descripción                                          | Prod                                | Staging                             |
+| ----------------------- | ---------------------------------------------------- | ----------------------------------- | ----------------------------------- |
+| `ZERNIO_WEBHOOK_SECRET` | HMAC key (GCP Secret `ZERNIO_WEBHOOK_SECRET:latest`) | secret                              | secret                              |
+| `BACKEND_URL`           | URL base del backend Cloud Run (sin `/`)             | `https://delta-backend-....run.app` | `https://delta-backend-staging-...` |
+| `SENTRY_DSN`            | DSN de Sentry (mismo proyecto que el backend)        | DSN del backend                     | vacío (Sentry deshabilitado)        |
+| `SENTRY_ENVIRONMENT`    | Entorno en Sentry                                    | `production`                        | `staging`                           |
+| `PORT`                  | Puerto HTTP                                          | 8080                                | 8080                                |
+
+#### Service accounts (ya creadas)
+
+| SA                                                              | Rol IAM sobre                                  |
+| --------------------------------------------------------------- | ---------------------------------------------- |
+| `delta-webhooks@sodium-shard-499116-r3.iam.gserviceaccount.com` | `roles/run.invoker` en `delta-backend`         |
+| `delta-webhooks-staging@...`                                    | `roles/run.invoker` en `delta-backend-staging` |
+
+#### Logging (solo errores — nunca en éxito)
+
+| Evento                  | severity | outcome                 |
+| ----------------------- | -------- | ----------------------- |
+| Firma inválida/ausente  | WARNING  | bad_signature           |
+| Backend 5xx/408/429     | ERROR    | backend_error           |
+| Backend 4xx no retry    | ERROR    | backend_error           |
+| Timeout / network       | ERROR    | timeout / backend_error |
+| Body demasiado grande   | WARNING  | too_large               |
+| Error inesperado        | ERROR    | backend_error           |
+| Config faltante al boot | ERROR    | backend_error           |
+
+Nunca se loguea: body, teléfono, nombres, texto de mensaje, firma, tokens de IAM.
