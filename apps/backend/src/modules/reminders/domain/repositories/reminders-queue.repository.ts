@@ -166,5 +166,5 @@ export interface IRemindersQueueRepository {
   findByExternalMessageId(
     externalMessageId: string,
     channel: string,
-  ): Promise<{ rowId: string; appointmentId: string } | null>;
+  ): Promise<{ rowId: string; appointmentId: string; doctorId: string } | null>;
 }

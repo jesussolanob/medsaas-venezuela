@@ -170,6 +170,7 @@ function makeAppt(
 function makeRepo(appt: Appointment | null = makeAppt()): jest.Mocked<IAppointmentRepository> {
   return {
     findById: jest.fn().mockResolvedValue(appt),
+    findByIdScopedEnriched: jest.fn().mockResolvedValue(appt),
     updateStatus: jest.fn().mockResolvedValue(appt),
     setPatientConfirmedAt: jest.fn().mockResolvedValue(undefined),
     logStatusChange: jest.fn().mockResolvedValue(undefined),
@@ -184,9 +185,10 @@ function makeWhatsApp(): jest.Mocked<IWhatsAppSender> {
 }
 
 function makeQueueRepo(
-  row: { rowId: string; appointmentId: string } | null = {
+  row: { rowId: string; appointmentId: string; doctorId: string } | null = {
     rowId: 'queue-row-1',
     appointmentId: 'appt-001',
+    doctorId: 'doc-001',
   },
 ): jest.Mocked<IRemindersQueueRepository> {
   return {
@@ -231,7 +233,7 @@ describe('HandleWhatsAppWebhookUseCase', () => {
 
       const result = await sut.execute(payload);
       expect(result.action).toBe('noop');
-      expect(repo.findById).not.toHaveBeenCalled();
+      expect(repo.findByIdScopedEnriched).not.toHaveBeenCalled();
     });
 
     it('passes when accountId matches', async () => {
@@ -251,6 +253,13 @@ describe('HandleWhatsAppWebhookUseCase', () => {
 
       const result = await sut.execute(payload);
       expect(result.action).toBe('confirm');
+      // The patient must get a thank-you in the same conversation.
+      expect(whatsApp.sendText).toHaveBeenCalledWith(
+        expect.objectContaining({
+          conversationId: CONVERSATION_ID,
+          text: expect.stringContaining('quedó confirmada'),
+        }),
+      );
     });
   });
 
@@ -282,7 +291,11 @@ describe('HandleWhatsAppWebhookUseCase', () => {
       const appt = makeAppt({ status: 'scheduled' });
       const repo = makeRepo(appt);
       const whatsApp = makeWhatsApp();
-      const queueRepo = makeQueueRepo({ rowId: 'row-1', appointmentId: 'appt-001' });
+      const queueRepo = makeQueueRepo({
+        rowId: 'row-1',
+        appointmentId: 'appt-001',
+        doctorId: 'doc-001',
+      });
       const notify = { execute: jest.fn().mockResolvedValue({}) };
       const sut = makeSut(repo, whatsApp, queueRepo, notify);
 
@@ -299,7 +312,7 @@ describe('HandleWhatsAppWebhookUseCase', () => {
 
       expect(result.action).toBe('confirm');
       expect(queueRepo.findByExternalMessageId).toHaveBeenCalledWith(QUOTED_WAMID, 'whatsapp');
-      expect(repo.findById).toHaveBeenCalledWith('appt-001');
+      expect(repo.findByIdScopedEnriched).toHaveBeenCalledWith('appt-001', 'doc-001');
       expect(repo.setPatientConfirmedAt).toHaveBeenCalledWith('appt-001');
       expect(notify.execute).toHaveBeenCalledWith(
         expect.objectContaining({ type: 'appointment_confirmed_by_patient' }),
@@ -427,7 +440,7 @@ describe('HandleWhatsAppWebhookUseCase', () => {
       expect(result.action).toBe('noop');
       expect(repo.updateStatus).not.toHaveBeenCalled();
       expect(whatsApp.sendText).toHaveBeenCalledWith(
-        expect.objectContaining({ text: expect.stringContaining('contacta directamente') }),
+        expect.objectContaining({ text: expect.stringMatching(/ya está pagada.*reagendar=/s) }),
       );
     });
   });
