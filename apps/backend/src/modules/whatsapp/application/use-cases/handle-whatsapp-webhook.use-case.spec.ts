@@ -196,6 +196,18 @@ function makeQueueRepo(
   } as unknown as jest.Mocked<IRemindersQueueRepository>;
 }
 
+/** In-memory stand-in for the DB claim: true only the first time an id is seen. */
+function makeInboundEvents(): { claim: jest.Mock } {
+  const seen = new Set<string>();
+  return {
+    claim: jest.fn(async (id: string) => {
+      if (seen.has(id)) return false;
+      seen.add(id);
+      return true;
+    }),
+  };
+}
+
 function makeSut(
   repo: jest.Mocked<IAppointmentRepository>,
   whatsApp: jest.Mocked<IWhatsAppSender>,
@@ -207,6 +219,7 @@ function makeSut(
     whatsApp,
     makeRescheduleTokenService(),
     queueRepo,
+    makeInboundEvents(),
     createNotification as never,
     makeSharedConfig(),
   );
