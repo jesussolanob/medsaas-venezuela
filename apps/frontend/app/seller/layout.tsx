@@ -20,7 +20,12 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState } from 'react';
-import { Home, Users, DollarSign, CreditCard, Menu, X } from 'lucide-react';
+import { Home, Users, DollarSign, CreditCard, Menu, X, MonitorPlay } from 'lucide-react';
+
+// NEXT_PUBLIC_* vars are inlined at build time. The default points to the staging
+// environment, which is the natural demo environment for sellers. In production
+// no extra build-arg is needed; override with NEXT_PUBLIC_DEMO_URL to change.
+const DEMO_URL = process.env.NEXT_PUBLIC_DEMO_URL ?? 'https://staging.deltasalud.app/login';
 import { clsx } from 'clsx';
 import { Toaster } from '@/components/ui/Toaster';
 import { DeltaMark } from '@/components/dh';
@@ -162,6 +167,42 @@ export default function SellerLayout({ children }: { children: React.ReactNode }
               );
             })}
           </nav>
+
+          {/*
+            Modo Demo — abre el staging como demostración para el vendedor.
+            Usa popup si el navegador lo permite; si lo bloquea, abre una pestaña
+            nueva. El element raíz es <a> para que funcione sin JS (new tab).
+          */}
+          <div className="px-3 pb-2">
+            <a
+              href={DEMO_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => {
+                e.preventDefault();
+                const popup = window.open(
+                  DEMO_URL,
+                  'delta-modo-demo',
+                  'popup,width=1366,height=850',
+                );
+                if (!popup) {
+                  // Popup blocked — fall back to a regular new tab.
+                  window.open(DEMO_URL, '_blank', 'noopener,noreferrer');
+                }
+              }}
+              className="flex items-center gap-2.5 w-full px-3.5 py-2.5 rounded-[var(--dh-r-md)] text-sm font-semibold transition-all hover:opacity-80"
+              style={{
+                background: 'var(--dh-turquoise-50)',
+                color: 'var(--dh-turquoise-700)',
+                border: '1px solid var(--dh-turquoise-100, #ccfbf1)',
+              }}
+              title="Abre el ambiente de demostración en una ventana aparte. Inicia sesión con tu cuenta de especialista de demo."
+              aria-label="Abrir modo de demostración"
+            >
+              <MonitorPlay className="w-[18px] h-[18px] shrink-0" aria-hidden="true" />
+              Modo Demo
+            </a>
+          </div>
 
           {/*
             Términos, privacidad y cerrar sesión: la MISMA fila de iconos que el

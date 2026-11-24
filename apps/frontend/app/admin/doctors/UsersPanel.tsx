@@ -15,7 +15,8 @@ import {
   Clock,
   Users,
   UserCheck,
-  AlertTriangle,
+  Snowflake,
+  UserX,
 } from 'lucide-react';
 import { reportError } from '@/lib/report-error';
 import DateRangeFilter, { type DateRangeValue } from '@/components/admin/DateRangeFilter';
@@ -171,12 +172,30 @@ function subscriptionPillStatus(
   }
 }
 
+/**
+ * Activity bucket — matches the backend `getDashboardData()` logic exactly:
+ *   active   = last_sign_in_at within the last 7 days
+ *   cold     = last_sign_in_at between 7 and 30 days ago
+ *   inactive = last_sign_in_at older than 30 days, OR never signed in (null)
+ *
+ * Intentionally does NOT fall back to created_at for the bucket (unlike the
+ * display helper `effectiveDaysSince`), so the counts on this page always
+ * match the dashboard KPIs.
+ */
+function activityBucket(d: Pick<Doctor, 'last_sign_in_at'>): 'active' | 'cold' | 'inactive' {
+  const days = daysSince(d.last_sign_in_at);
+  if (days === null || days > 30) return 'inactive';
+  if (days <= 7) return 'active';
+  return 'cold';
+}
+
 // Filtros disponibles sobre la lista de especialistas.
-// 'all'         → sin filtro adicional
-// 'active'      → is_active === true
-// 'inactive_7d' → sin actividad ≥7 días (y is_active)
-// 'new_month'   → registrado en el mes actual (Caracas timezone)
-type ActiveFilter = 'all' | 'active' | 'inactive_7d' | 'new_month';
+// 'all'      → sin filtro adicional
+// 'active'   → acceso en los últimos 7 días (bucket active)
+// 'cold'     → acceso hace 7–30 días (bucket cold)
+// 'inactive' → sin acceso +30 días o nunca (bucket inactive)
+// 'new_month'→ registrado en el mes actual (Caracas timezone)
+type ActiveFilter = 'all' | 'active' | 'cold' | 'inactive' | 'new_month';
 
 /** Email sign-ups may have no real name (empty or the email itself). */
 /**
@@ -244,13 +263,22 @@ export default function UsersPanel() {
     a.remove();
   };
 
-  const activeDoctors = doctors.filter((d) => d.is_active).length;
-  const inactiveDays7 = doctors.filter((d) => {
-    const days = effectiveDaysSince(d);
-    // Doctors with no activity data (days === null) are NOT counted as inactive —
-    // they are new accounts that have never signed in. Only count those with real data.
-    return days !== null && days >= 7 && d.is_active;
-  }).length;
+  // Activity bucket counts — same formula as the dashboard backend.
+  // These counts match getDashboardData() because both use last_sign_in_at only
+  // (no created_at fallback) and treat null as inactive.
+  const activeCount = useMemo(
+    () => doctors.filter((d) => activityBucket(d) === 'active').length,
+    [doctors],
+  );
+  const coldCount = useMemo(
+    () => doctors.filter((d) => activityBucket(d) === 'cold').length,
+    [doctors],
+  );
+  const inactiveCount = useMemo(
+    () => doctors.filter((d) => activityBucket(d) === 'inactive').length,
+    [doctors],
+  );
+
   // "Nuevos este mes" uses Caracas timezone so viewers outside Venezuela
   // see the same count as local admins.
   const newThisMonth = useMemo(() => {
@@ -267,12 +295,11 @@ export default function UsersPanel() {
     let result = doctors;
 
     if (activeFilter === 'active') {
-      result = result.filter((d) => d.is_active);
-    } else if (activeFilter === 'inactive_7d') {
-      result = result.filter((d) => {
-        const days = effectiveDaysSince(d);
-        return days !== null && days >= 7 && d.is_active;
-      });
+      result = result.filter((d) => activityBucket(d) === 'active');
+    } else if (activeFilter === 'cold') {
+      result = result.filter((d) => activityBucket(d) === 'cold');
+    } else if (activeFilter === 'inactive') {
+      result = result.filter((d) => activityBucket(d) === 'inactive');
     } else if (activeFilter === 'new_month') {
       result = result.filter((d) => d.created_at && new Date(d.created_at).getTime() >= startMs);
     }
@@ -299,7 +326,7 @@ export default function UsersPanel() {
     <>
       <PageHead
         title="Especialistas"
-        subtitle={`${doctors.length} profesionales registrados · ${activeDoctors} activos en la plataforma`}
+        subtitle={`${doctors.length} profesionales registrados · ${activeCount} activos esta semana`}
         actions={
           <>
             <Btn
@@ -325,8 +352,8 @@ export default function UsersPanel() {
         }
       />
 
-      {/* KPIs */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5 mb-5">
+      {/* KPIs — 5 cards using the same 3-bucket activity definition as the dashboard */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5 mb-5">
         <StatCard
           label="Total registrados"
           value={doctors.length.toLocaleString('es-VE')}
@@ -335,18 +362,25 @@ export default function UsersPanel() {
           deltaColor={newThisMonth > 0 ? 'success' : 'neutral'}
         />
         <StatCard
-          label="Activos"
-          value={activeDoctors.toLocaleString('es-VE')}
+          label="Activos (últimos 7 días)"
+          value={activeCount.toLocaleString('es-VE')}
           icon={<UserCheck size={16} />}
-          delta={`${doctors.length > 0 ? Math.round((activeDoctors / doctors.length) * 100) : 0}% del total`}
+          delta="Acceso en la última semana"
           deltaColor="success"
         />
         <StatCard
-          label="+7d sin actividad"
-          value={inactiveDays7.toLocaleString('es-VE')}
-          icon={<AlertTriangle size={16} />}
-          delta={inactiveDays7 > 0 ? 'Posible churn' : 'Todos activos'}
-          deltaColor={inactiveDays7 > 0 ? 'error' : 'success'}
+          label="Fríos (7–30 días)"
+          value={coldCount.toLocaleString('es-VE')}
+          icon={<Snowflake size={16} />}
+          delta={coldCount > 0 ? 'Seguimiento recomendado' : 'Sin fríos'}
+          deltaColor={coldCount > 0 ? 'neutral' : 'success'}
+        />
+        <StatCard
+          label="Inactivos (+30 días o nunca)"
+          value={inactiveCount.toLocaleString('es-VE')}
+          icon={<UserX size={16} />}
+          delta={inactiveCount > 0 ? 'Posible churn' : 'Sin inactivos'}
+          deltaColor={inactiveCount > 0 ? 'error' : 'success'}
         />
         <StatCard
           label="Nuevos este mes"
@@ -392,8 +426,9 @@ export default function UsersPanel() {
         {(
           [
             { key: 'all', label: 'Todos', count: doctors.length },
-            { key: 'active', label: 'Activos', count: activeDoctors },
-            { key: 'inactive_7d', label: '+7d sin actividad', count: inactiveDays7 },
+            { key: 'active', label: 'Activos (últ. 7 días)', count: activeCount },
+            { key: 'cold', label: 'Fríos (7–30 días)', count: coldCount },
+            { key: 'inactive', label: 'Inactivos (+30d o nunca)', count: inactiveCount },
             { key: 'new_month', label: 'Nuevos este mes', count: newThisMonth },
           ] as { key: ActiveFilter; label: string; count: number }[]
         ).map(({ key, label, count }) => {

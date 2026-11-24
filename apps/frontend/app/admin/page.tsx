@@ -217,7 +217,7 @@ export default async function AdminDashboard() {
           className="group block rounded-[var(--dh-r-lg)] transition-shadow hover:shadow-md focus-visible:ring-2 focus-visible:ring-teal-500 outline-none"
         >
           <StatCard
-            label="Especialistas activos"
+            label="Activos (últimos 7 días)"
             value={activeDoctors.toLocaleString('es-VE')}
             delta={`${totalDoctors.toLocaleString('es-VE')} en total`}
             deltaColor="neutral"
@@ -258,7 +258,7 @@ export default async function AdminDashboard() {
           className="group block rounded-[var(--dh-r-lg)] transition-shadow hover:shadow-md focus-visible:ring-2 focus-visible:ring-teal-500 outline-none"
         >
           <StatCard
-            label="Suscripciones activas"
+            label="Suscripciones pagas"
             value={activeSubscriptions.toLocaleString('es-VE')}
             delta={trialSubscriptions > 0 ? `${trialSubscriptions} en trial` : 'Sin trials'}
             deltaColor="success"
@@ -275,9 +275,9 @@ export default async function AdminDashboard() {
           className="group block rounded-[var(--dh-r-lg)] transition-shadow hover:shadow-md focus-visible:ring-2 focus-visible:ring-teal-500 outline-none"
         >
           <StatCard
-            label="Especialistas fríos"
+            label="Fríos (7–30 días)"
             value={coldDoctors.toLocaleString('es-VE')}
-            delta="Sin acceso 7-30 días"
+            delta="7–30 días sin conexión"
             deltaColor="neutral"
             icon={<Snowflake size={16} />}
             className="group-hover:border-teal-200 transition-colors cursor-pointer"
@@ -288,12 +288,12 @@ export default async function AdminDashboard() {
           className="group block rounded-[var(--dh-r-lg)] transition-shadow hover:shadow-md focus-visible:ring-2 focus-visible:ring-teal-500 outline-none"
         >
           <StatCard
-            label="Especialistas inactivos"
+            label="Inactivos (+30 días o nunca)"
             value={inactiveDoctors.toLocaleString('es-VE')}
             delta={
               expiringCount > 0
                 ? `${expiringCount} suscripción(es) por vencer`
-                : 'Sin acceso +30 días'
+                : '+30 días sin conexión o nunca'
             }
             deltaColor={inactiveDoctors > 0 ? 'error' : 'neutral'}
             icon={<UserX size={16} />}
