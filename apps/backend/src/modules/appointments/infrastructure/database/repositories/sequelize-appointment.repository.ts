@@ -237,9 +237,9 @@ export class SequelizeAppointmentRepository implements IAppointmentRepository {
     await this.appointmentModel.destroy({ where: { id } });
   }
 
-  async setPatientConfirmedAt(id: string, confirmedAt?: Date): Promise<void> {
+  async setPatientConfirmedAt(id: string, confirmedAt?: Date | null): Promise<void> {
     await this.appointmentModel.update(
-      { patientConfirmedAt: confirmedAt ?? new Date() },
+      { patientConfirmedAt: confirmedAt === undefined ? new Date() : confirmedAt },
       { where: { id } },
     );
   }

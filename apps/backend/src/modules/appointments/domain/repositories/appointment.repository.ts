@@ -222,7 +222,8 @@ export interface IAppointmentRepository {
    * Does NOT change appointment status.
    * No-op when the row does not exist (safe for idempotent webhook replays).
    */
-  setPatientConfirmedAt(id: string, confirmedAt?: Date): Promise<void>;
+  /** Omitted → now; null → clears it (e.g. the patient moved the appointment). */
+  setPatientConfirmedAt(id: string, confirmedAt?: Date | null): Promise<void>;
 
   /**
    * Finds the first completed appointment whose payment_id matches the given

@@ -159,6 +159,13 @@ export class RescheduleByTokenUseCase {
     // Persist the new scheduledAt.
     const updated = await this.appointmentRepo.updateScheduledAt(appointment.id, newScheduledAt);
 
+    // The patient's WhatsApp confirmation was for the old time: clear it so the
+    // specialist doesn't see "confirmó" on a slot nobody confirmed. Only this
+    // patient path does it — the specialist's own reschedule is unchanged.
+    if (appointment.patientConfirmedAt) {
+      await this.appointmentRepo.setPatientConfirmedAt(appointment.id, null);
+    }
+
     // Audit log — best-effort.
     // actor_id is UUID NOT NULL without FK; use the doctor's UUID to satisfy
     // the constraint (self-service reschedule is logged under the doctor's id).

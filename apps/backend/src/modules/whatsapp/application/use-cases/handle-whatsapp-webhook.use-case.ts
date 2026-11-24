@@ -333,7 +333,9 @@ export class HandleWhatsAppWebhookUseCase {
     if (conversationId) {
       await this.whatsApp.sendText({
         conversationId,
-        text: 'Tu cita ha sido cancelada exitosamente. Para reagendar, contacta a tu especialista.',
+        // Owner request: leave the door open — the specialist's normal booking
+        // link (the cancelled appointment can't be moved, so no reagendar token).
+        text: `Tu cita fue cancelada. Si quieres agendar una nueva, puedes hacerlo aquí: ${this.appBaseUrl}/book/${appointment.doctorId}`,
       });
     }
     return { action: 'cancel' };
