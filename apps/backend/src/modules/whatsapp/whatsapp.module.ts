@@ -1,3 +1,5 @@
+import { WHATSAPP_INBOUND_EVENTS } from './domain/ports/iwhatsapp-inbound-events.port';
+import { SequelizeWhatsAppInboundEventsRepository } from './infrastructure/repositories/sequelize-whatsapp-inbound-events.repository';
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { SequelizeModule } from '@nestjs/sequelize';
@@ -70,6 +72,12 @@ import { NotificationsModule } from '../notifications/notifications.module';
     {
       provide: REMINDERS_QUEUE_REPOSITORY,
       useClass: SequelizeRemindersQueueRepository,
+    },
+
+    // Durable dedupe of inbound messages (Zernio retries).
+    {
+      provide: WHATSAPP_INBOUND_EVENTS,
+      useClass: SequelizeWhatsAppInboundEventsRepository,
     },
 
     // Use cases

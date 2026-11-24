@@ -1,3 +1,7 @@
+import {
+  WHATSAPP_INBOUND_EVENTS,
+  type IWhatsAppInboundEvents,
+} from '../../domain/ports/iwhatsapp-inbound-events.port';
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
@@ -86,14 +90,6 @@ export class HandleWhatsAppWebhookUseCase {
   private readonly appBaseUrl: string;
   private readonly zernioAccountId: string | null;
 
-  /**
-   * In-memory set for best-effort idempotency by Zernio message.id.
-   * Prevents duplicate processing on webhook retries within the same instance.
-   * Bounded to MAX_PROCESSED_IDS entries; oldest half is evicted on overflow.
-   */
-  private readonly processedMessageIds = new Set<string>();
-  private static readonly MAX_PROCESSED_IDS = 1000;
-
   constructor(
     @Inject(APPOINTMENT_REPOSITORY)
     private readonly appointmentRepo: IAppointmentRepository,
@@ -105,6 +101,8 @@ export class HandleWhatsAppWebhookUseCase {
     private readonly rescheduleTokenService: AppointmentRescheduleTokenService,
     @Inject(REMINDERS_QUEUE_REPOSITORY)
     private readonly queueRepo: IRemindersQueueRepository,
+    @Inject(WHATSAPP_INBOUND_EVENTS)
+    private readonly inboundEvents: IWhatsAppInboundEvents,
     @Optional()
     @Inject(CreateNotificationUseCase)
     private readonly createNotification: CreateNotificationUseCase | null,
@@ -122,8 +120,10 @@ export class HandleWhatsAppWebhookUseCase {
         return { action: 'noop' };
       }
 
-      // 2. Idempotency: skip messages already processed in this instance.
-      if (payload.messageId && this.processedMessageIds.has(payload.messageId)) {
+      // 2. Idempotency: claim the message id in the DB. Zernio retries slow
+      // deliveries and a retry may land on another instance, so an in-memory
+      // set let the same tap reply twice.
+      if (payload.messageId && !(await this.inboundEvents.claim(payload.messageId))) {
         this.logger.debug('[whatsapp-webhook] duplicate message.id — noop');
         return { action: 'noop' };
       }
@@ -131,13 +131,10 @@ export class HandleWhatsAppWebhookUseCase {
       // 3. Route by quotedMessageId (button tap) or free text.
       if (payload.quotedMessageId) {
         const result = await this.handleQuotedReply(payload);
-        // Mark as processed only after successful handling.
-        if (payload.messageId) this.markProcessed(payload.messageId);
         return result;
       }
 
       if (payload.messageBody && payload.conversationId) {
-        if (payload.messageId) this.markProcessed(payload.messageId);
         return await this.handleFreeText(payload.conversationId);
       }
     } catch (err: unknown) {
@@ -386,18 +383,6 @@ export class HandleWhatsAppWebhookUseCase {
       day: 'numeric',
       month: 'long',
     });
-  }
-
-  private markProcessed(messageId: string): void {
-    if (this.processedMessageIds.size >= HandleWhatsAppWebhookUseCase.MAX_PROCESSED_IDS) {
-      // Evict oldest half to bound memory usage.
-      const arr = [...this.processedMessageIds];
-      this.processedMessageIds.clear();
-      for (const id of arr.slice(-HandleWhatsAppWebhookUseCase.MAX_PROCESSED_IDS / 2)) {
-        this.processedMessageIds.add(id);
-      }
-    }
-    this.processedMessageIds.add(messageId);
   }
 }
 
