@@ -98,7 +98,9 @@ export class ZernioWhatsAppSenderAdapter implements IWhatsAppSender {
     // when it was opened — if we can send a text reply, the conversation exists.
     if (!this.enabled || !this.apiKey || !this.accountId) return false;
 
-    const body = { text: input.text };
+    // Zernio's send-message contract: accountId is required and the text goes in
+    // `message` — `{ text }` was rejected and the reply silently never left.
+    const body = { accountId: this.accountId, message: input.text };
 
     try {
       await this.requestWithRetry(
@@ -107,7 +109,10 @@ export class ZernioWhatsAppSenderAdapter implements IWhatsAppSender {
         body,
       );
       return true;
-    } catch {
+    } catch (err: unknown) {
+      this.logger.warn(
+        `[zernio] text reply failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
       return false;
     }
   }

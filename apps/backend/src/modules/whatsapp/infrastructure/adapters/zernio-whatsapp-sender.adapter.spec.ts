@@ -178,8 +178,13 @@ describe('ZernioWhatsAppSenderAdapter', () => {
         text: 'Este número solo envía recordatorios.',
       });
       expect(result).toBe(true);
-      const [url] = (fetch as jest.Mock).mock.calls[0] as [string, RequestInit];
+      const [url, init] = (fetch as jest.Mock).mock.calls[0] as [string, RequestInit];
       expect(url).toContain('/v1/inbox/conversations/conv123/messages');
+      // Zernio's contract: accountId required, text in `message`.
+      const sent = JSON.parse(String(init.body)) as Record<string, unknown>;
+      expect(sent['message']).toBe('Este número solo envía recordatorios.');
+      expect(typeof sent['accountId']).toBe('string');
+      expect(sent['text']).toBeUndefined();
     });
 
     it('returns false when WHATSAPP_ENABLED=false', async () => {
