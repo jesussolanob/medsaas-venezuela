@@ -2,8 +2,8 @@
 # Los libs (@delta/*) y todas las apps (backend, frontend, webhooks) se
 # resuelven vía tsconfig paths / NX project graph, no como paquetes pnpm
 # separados — por eso no hay entradas en `packages:`. Este archivo sigue
-# existiendo solo para `allowBuilds` (pnpm 11 ya no lee esa clave desde el
-# campo "pnpm" de package.json).
+# existiendo solo para `allowBuilds` y `overrides` (pnpm 11 ya no lee esas
+# claves desde el campo "pnpm" de package.json).
 allowBuilds:
   '@nestjs/core': false
   '@parcel/watcher': true
@@ -14,5 +14,33 @@ allowBuilds:
   nx: true
   sharp: true
   unrs-resolver: true
+
 minimumReleaseAgeExclude:
   - prosemirror-view@1.44.0
+
+# AUDIT FIX 2026-11-24: parches mínimos para CVEs críticos/altos en deps
+# transitivas (pnpm audit) que no se resuelven con un bump del padre directo.
+overrides:
+  proxy-addr: ^2.0.8
+  form-data@2.5.5: 2.5.6
+  form-data@4.0.5: 4.0.6
+  websocket-driver: ^0.7.5
+  tmp: ^0.2.7
+  handlebars: ^4.7.10
+  shell-quote: ^1.12.0
+  # zod@3.x (shadcn/MCP sdk chain) is intentionally left alone — only the
+  # stray 4.4.3 copy (eslint-plugin-react-hooks/zod-validation-error, a
+  # devDependency chain) needs to dedupe onto our patched 4.6.x line.
+  zod@4.4.3: ^4.6.6
+  # body-parser/multer come in via express@5.2.1, pulled by BOTH shadcn (CLI,
+  # not shipped) AND @nestjs/platform-express (RUNTIME, backend) — must patch.
+  body-parser@2.2.2: ^2.4.0
+  multer: ^2.5.0
+  # prosemirror-view/markdown-it: RUNTIME, pulled by @tiptap/pm (the rich-text
+  # editor shipped in the frontend bundle).
+  prosemirror-view: ^1.44.0
+  markdown-it: ^14.3.3
+  # decode-uri-component: RUNTIME, pulled by minio (backend storage adapter)
+  # via query-string. 0.x releases of this single-function utility have no
+  # breaking API changes across this range.
+  decode-uri-component: ^0.5.1
