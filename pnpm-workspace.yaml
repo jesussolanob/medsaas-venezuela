@@ -1,8 +1,9 @@
-# Monorepo NX integrado: dependencias centralizadas en el package.json raíz.
-# Los libs (@delta/*) se resuelven vía tsconfig paths, no como paquetes pnpm.
-# Solo el frontend legacy mantiene su propio package.json por ahora.
-packages:
-  - "apps/frontend"
+# Monorepo NX integrado: UNA sola fuente de dependencias (package.json raíz).
+# Los libs (@delta/*) y todas las apps (backend, frontend, webhooks) se
+# resuelven vía tsconfig paths / NX project graph, no como paquetes pnpm
+# separados — por eso no hay entradas en `packages:`. Este archivo sigue
+# existiendo solo para `allowBuilds` (pnpm 11 ya no lee esa clave desde el
+# campo "pnpm" de package.json).
 allowBuilds:
   '@nestjs/core': false
   '@parcel/watcher': true
@@ -13,3 +14,5 @@ allowBuilds:
   nx: true
   sharp: true
   unrs-resolver: true
+minimumReleaseAgeExclude:
+  - prosemirror-view@1.44.0
