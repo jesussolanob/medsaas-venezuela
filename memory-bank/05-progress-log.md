@@ -4,6 +4,117 @@
 > ⚠️ Orden: **la entrada más nueva va ARRIBA**. La del 2026-08-11 quedó al final
 > del archivo por error; no se movió para no ensuciar el diff.
 
+## 2026-11-18 → 2026-11-24 — Sesión larga: QA de Marco, Documentos frecuentes, alergias, WhatsApp, webhooks, dependencias y edad
+
+Ramas: `feature/qa-marco-*`, `feature/documentos-frecuentes`, `feature/alerta-alergias`, `feature/correos-admin-adicionales`,
+`feature/whatsapp-recordatorios`, `feature/modo-demo-y-metricas-admin` (`ac0e7259`), `feature/webhooks-service`,
+`chore/single-package-json-security` (`54d4bddf`), `feature/edad-desde-nacimiento`. Todo por `feature/*` → `develop` → `staging`.
+
+**Estado al cierre (2026-11-24):**
+
+- En PRODUCCIÓN (`main`=`f0bb9f84`): todo hasta "correos a Laura" (puntos 1–8).
+- En STAGING sin promover (puntos 9–15): Modo Demo, métricas del admin, WhatsApp (apagado en prod), servicio de webhooks,
+  arreglo de la FK de recordatorios, package.json único + parches de seguridad, edad derivada.
+
+### En producción
+
+1. **QA de Marco (prod) — duración del consultorio y nombres de bloques.**
+   - La agenda usaba la duración del PRIMER consultorio para todo y dibujaba las citas con la duración del turno.
+     Ahora: duración por bloque/consultorio (`durationAt`, `summarizeSlots` en `app/doctor/agenda/page.tsx`) y fin
+     de la cita = `durationMinutes` de la cita.
+   - Renombrar bloques no se aplicaba: Plantillas leía snake_case (el backend manda camelCase), el catálogo
+     "Agregar bloque" usaba `defaultLabel`, y el lápiz "Renombrar bloque" dentro de la consulta nunca guardaba
+     (faltaba `onLabelChange`). Nuevo `PATCH /api/doctor/consultation-blocks/:key/label`.
+2. **Ficha del especialista para el vendedor:** modal ancho, 2 columnas (datos a la izquierda, gestión de
+   seguimiento a la derecha), teléfono como enlace a WhatsApp con formato "+58 414-…" (`formatPhoneInternational`).
+3. **Documentos frecuentes (idea de Paola):** biblioteca en Plantillas → pestaña "Documentos frecuentes"; al
+   compartir documentos se adjuntan archivos de la biblioteca o subidos en el momento. El paciente descarga CADA
+   adjunto POR SEPARADO (decisión del dueño: nunca mezclarlos en el PDF). Arreglado de paso: la página del paciente
+   mostraba nombres vacíos y el vencimiento de la sesión en vez del del enlace; el controller descartaba campos
+   (la página se caía); el acceso a documentos compartidos nunca se auditaba (CHECK de `access_audit_log`).
+4. **Alerta de alergias (audio de Marco):** campo opcional en el booking "¿Algo que tu especialista deba saber?"
+   → `appointments.patient_alert` y se agrega a `patients.allergies`. Alerta ámbar en tarjetas de la agenda
+   (mes/semana/día + pendientes), en el detalle de la cita (debajo del pago), arriba en la consulta y en la pestaña
+   Récipe. De paso: el "Motivo" nunca salía en el detalle de la cita (el BFF ahora mapea `chiefComplaint → reason`
+   y `appointmentMode → modality` en `app/api/doctor/appointments/[id]/route.ts`).
+5. **Auditoría del admin:** al listar los pacientes de un especialista (`GET /api/admin/doctors/:doctorId/patients`)
+   se guarda 1 fila por paciente en `access_audit_log`. Nunca había funcionado (CHECK + FK lo rechazaban).
+6. **20 errores de tipos del backend** corregidos (`tsc` en 0; el build con webpack no revisa tipos).
+7. **Novedades publicadas** (solo las que eligió el dueño): "Documentos frecuentes" y "Alertas de alergias de tus pacientes".
+8. **Correos a Laura:** contacto y nuevo especialista también van a `app_settings.admin_notification_extra_emails`
+   (prod = `laura.deltasalud@gmail.com`).
+
+### Fuera del código
+
+- **Cuenta demo de Laura en staging** (script `demo-laura.cjs`, copia por SQL): perfil `6055bf81-7d63-448f-a456-80856bc551cc`
+  "Laura Demo", Medicina General, Delta Plus hasta 2099, verificada; 4 pacientes (cédulas 90000101–104,
+  `laura.deltasalud+pacienteN@gmail.com`) creados con reservas públicas reales. Decisión: los vendedores muestran
+  la experiencia desde staging; NO se construye un "modo demo" en prod.
+
+### En staging (sin promover)
+
+9. **Botón "Modo Demo" del vendedor** (`app/seller/layout.tsx`): abre `https://staging.deltasalud.app/login` en otra
+   ventana (`NEXT_PUBLIC_DEMO_URL`). Sin login automático ("para no enredar nada").
+10. **Métricas del admin unificadas (aceptado por Marco):** "Activos (últimos 7 días)", "Fríos (7–30 días)" e
+    "Inactivos (+30 días o nunca)" con la MISMA fórmula en el dashboard y en Especialistas (`activityBucket` en
+    `UsersPanel.tsx`); "Suscripciones activas" → "Suscripciones pagas"; se quitó el "98" basado en `is_active`.
+11. **Recordatorios por WhatsApp (Zernio)** — probados de punta a punta con el teléfono de Lucas en staging.
+    - 3 plantillas aprobadas por Meta: `recordatorio_cita_24h` [Confirmar][Reagendar][Cancelar],
+      `recordatorio_cita_24h_pagada` [Confirmar][Reagendar], `recordatorio_cita_hoy`.
+    - Decisiones del dueño: no cambia nada del flujo del especialista; las citas pagadas no tienen Cancelar;
+      Reagendar = enlace `/book/{doctorId}?reagendar=<token>` que salta pasos y mueve LA MISMA cita; Confirmar marca
+      `patient_confirmed_at` y responde "¡Gracias…"; Cancelar responde con el enlace de reservas; reagendar borra la
+      confirmación; que los botones sigan tocables está bien.
+    - Zernio no acepta payloads en botones quick-reply → la cita se encuentra por el mensaje citado
+      (`metadata.quotedMessageId` = wamid enviado → `reminders_queue.external_message_id`).
+    - Respuestas de texto: el cuerpo correcto es `{accountId, message}` (se tragaba el error en silencio).
+    - Doble "Gracias": reintentos de Zernio (< 5 s o reintenta) sobre instancias frías con dedupe en memoria →
+      tabla `whatsapp_inbound_events` (migración `20261124000002`).
+    - El guard de "cita pagada" nunca funcionaba (`findById` no trae el pago) → `findByIdScopedEnriched`.
+    - Reagendar: URL equivocada, sin validación de turnos, params de Next 16 sin `await`, caché vieja (`no-store`),
+      fecha de la consulta sin sincronizar, sin aviso en la campana y "a. m.." duplicado — todo arreglado.
+      `@Inject(SyncConsultationDateUseCase)` (antes un token string no registrado).
+    - 🔴 **La FK de `reminders_queue.patient_id` apuntaba a `profiles`** → todo insert fallaba: **los recordatorios
+      por correo NUNCA se enviaron en prod** (0 filas). Migración `20261124000001` la apunta a `patients(id)`.
+      Al promover, los recordatorios por correo empiezan a salir. Sin novedad publicada (es un bug).
+    - Prod: `WHATSAPP_ENABLED=false` hasta que el dueño decida. Staging: `true` con allowlist = teléfono de Lucas.
+    - Número de ventas de Jesús (+58 422 1033582) ya no está en esta cuenta de Zernio; su webhook
+      "agentkit-delta-salud" quedó DESACTIVADO (no borrado) con OK explícito del dueño, porque contestaba los botones.
+12. **Servicio `apps/webhooks` (`deltasalud-webhooks`)** — el dueño rechazó que el webhook entrara por el frontend.
+    Servicio Node mínimo: verifica la firma HMAC y reenvía el cuerpo crudo al backend privado con ID token de Google.
+    Sin lógica de negocio, sin reparto por número, logs SOLO de error + Sentry (`service: webhooks`). 2xx → 200;
+    4xx (no 408/429) → 200 + Sentry; 5xx/timeout → 502 (Zernio reintenta). Despliegues: `delta-webhooks-staging`
+    (min 0, invoker SOLO del backend de staging) y `delta-webhooks` (main, min 1, invoker SOLO del backend de prod).
+    Backend de prod pasa a min-instances=1. Se eliminó la ruta del frontend. Dominio `hooks-staging.deltasalud.app`
+    activo; `hooks.deltasalud.app` se crea al promover. Sin cola de Cloud Tasks por ahora.
+13. **Un solo `package.json` + parches de seguridad** — `apps/frontend/package.json` eliminado; manda el de la raíz.
+    `overrides` y `allowBuilds` viven en `pnpm-workspace.yaml` (pnpm 11). next 16.4.6, react 19.3.1, @sentry/\* 10.78.0,
+    zod 4.6.6, axios 1.21.1. Auditoría: críticas 11 → 0, altas 92 → 63 (todas de desarrollo). El override de
+    `decode-uri-component` se revirtió (rompía el arranque CJS). Los Dockerfile de backend y webhooks copian
+    `pnpm-workspace.yaml` al runtime (sin eso: `ERR_PNPM_LOCKFILE_CONFIG_MISMATCH`). Verificado en staging:
+    páginas públicas y del especialista cargan sin errores.
+14. **Edad derivada de la fecha de nacimiento** — `patients.age` se eliminó (migración `20261125000001`). La API sigue
+    devolviendo `age`, calculada con `ageFromBirthDate` (`libs/shared-utils`, fecha de Caracas). Los campos de edad
+    de los formularios (PatientForm, ficha de Pacientes nueva/editar) son de solo lectura y derivados; ya no se envía
+    `age` al crear/editar. Verificado en staging: fecha 10/05/1990 → "36 años", también tras recargar.
+15. **Guía del asistente de ayuda:** sección de WhatsApp corregida (Confirmar no cambia el estado; Reagendar mueve la
+    misma cita y borra la confirmación; Cancelar responde con el enlace de reservas; pagadas sin Cancelar).
+
+### Lecciones
+
+- Tras desplegar quedo parado en `staging`: volver a la rama feature antes de commitear (dos arreglos cayeron en
+  `staging` y hubo que cherry-pickearlos).
+- Dos agentes escribiendo en el mismo árbol mezclaron ramas (el commit de WhatsApp cayó en la rama del demo).
+- No tocar configuraciones de terceros (webhook de Jesús) sin OK explícito para esa acción concreta.
+- Los tests con Sequelize simulado no ven FKs, SQL ni DI: arrancar el dist contra la BD de staging y hacer curl.
+
+### Pendiente antes de promover
+
+- Mapeo `hooks.deltasalud.app` → `delta-webhooks` (tras su primer deploy de `main`) + CNAME en Cloudflare.
+- Registrar/cambiar el webhook de Zernio de prod cuando se encienda WhatsApp; verificación de negocio de Meta
+  (Jesús) para el límite de 250/día.
+- Quitar el log temporal `[webhook] shape=` del controller del backend.
+
 ## 2026-11-20 — Correos admin adicionales vía app_settings (feature/correos-admin-adicionales)
 
 Rama: `feature/correos-admin-adicionales`. Pendiente de merge a `develop`.
