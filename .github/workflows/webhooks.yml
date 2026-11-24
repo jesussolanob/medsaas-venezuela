@@ -1,0 +1,129 @@
+name: Deploy webhooks (Cloud Run)
+
+# Deploys the standalone deltasalud-webhooks relay service.
+# It is intentionally separate from deploy.yml / staging.yml so the
+# frontend/backend pipeline is never triggered by webhooks-only changes.
+#
+# Branch → Cloud Run service mapping:
+#   main    → delta-webhooks          (prod, --min-instances=1)
+#   staging → delta-webhooks-staging  (staging, --min-instances=0)
+#
+# The service is public (--allow-unauthenticated): Zernio must be able to
+# reach it. It attaches a Google IAM Bearer token when forwarding to the
+# private backend (--no-allow-unauthenticated).
+#
+# Service accounts (must be created by the platform lead):
+#   delta-webhooks@sodium-shard-499116-r3.iam.gserviceaccount.com
+#     roles/run.invoker on delta-backend
+#   delta-webhooks-staging@sodium-shard-499116-r3.iam.gserviceaccount.com
+#     roles/run.invoker on delta-backend-staging (and delta-backend for phone routing)
+#
+# Secret (must exist in Secret Manager):
+#   ZERNIO_WEBHOOK_SECRET  HMAC key shared with Zernio
+on:
+  push:
+    branches: [main, staging]
+    paths:
+      - 'apps/webhooks/**'
+      - '.github/workflows/webhooks.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: deploy-webhooks-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  PROJECT_ID: sodium-shard-499116-r3
+  REGION: us-east1
+  AR: us-east1-docker.pkg.dev/sodium-shard-499116-r3/delta
+  WIF_PROVIDER: projects/763714620325/locations/global/workloadIdentityPools/github-pool/providers/github-provider
+  DEPLOYER_SA: delta-deployer-sa@sodium-shard-499116-r3.iam.gserviceaccount.com
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    # Only deploy from the two target branches (guards against accidental
+    # workflow_dispatch on a feature branch).
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/staging'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Auth to GCP (Workload Identity Federation)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.DEPLOYER_SA }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      # Resolve branch-specific deployment parameters into GITHUB_ENV so
+      # all subsequent steps can reference them as $SERVICE, $IMG_TAG, etc.
+      - name: Resolve deployment config
+        run: |
+          if [[ "$GITHUB_REF" == "refs/heads/main" ]]; then
+            echo "SERVICE=delta-webhooks" >> "$GITHUB_ENV"
+            echo "WEBHOOKS_SA=delta-webhooks@${PROJECT_ID}.iam.gserviceaccount.com" >> "$GITHUB_ENV"
+            echo "IMG_TAG=${{ github.sha }}" >> "$GITHUB_ENV"
+            echo "MIN_INSTANCES=1" >> "$GITHUB_ENV"
+            echo "BACKEND_URL=https://delta-backend-knliodnwza-ue.a.run.app" >> "$GITHUB_ENV"
+            echo "SENTRY_ENVIRONMENT=production" >> "$GITHUB_ENV"
+            # Same DSN as the backend (same Sentry project, tagged service:webhooks).
+            echo "SENTRY_DSN=https://4625772d0a646495299927f853ea9978@o4511532342640640.ingest.us.sentry.io/4511532365119488" >> "$GITHUB_ENV"
+          else
+            echo "SERVICE=delta-webhooks-staging" >> "$GITHUB_ENV"
+            echo "WEBHOOKS_SA=delta-webhooks-staging@${PROJECT_ID}.iam.gserviceaccount.com" >> "$GITHUB_ENV"
+            echo "IMG_TAG=staging-${{ github.sha }}" >> "$GITHUB_ENV"
+            echo "MIN_INSTANCES=0" >> "$GITHUB_ENV"
+            echo "BACKEND_URL=https://delta-backend-staging-knliodnwza-ue.a.run.app" >> "$GITHUB_ENV"
+            echo "SENTRY_ENVIRONMENT=staging" >> "$GITHUB_ENV"
+            # Sentry disabled in staging (empty DSN → no init in service code).
+            echo "SENTRY_DSN=" >> "$GITHUB_ENV"
+          fi
+
+      # Build via Cloud Build (consistent with how frontend/backend images are built).
+      # Uses apps/webhooks/cloudbuild.yaml — does NOT modify the root cloudbuild.yaml.
+      - name: Build & push webhooks image
+        run: |
+          gcloud builds submit \
+            --config=apps/webhooks/cloudbuild.yaml \
+            --substitutions="_AR=$AR,_TAG=$IMG_TAG" \
+            --project="$PROJECT_ID" \
+            .
+
+      # Deploy the Cloud Run service. SENTRY_DSN is set only for production.
+      - name: Deploy to Cloud Run
+        run: |
+          if [[ -n "$SENTRY_DSN" ]]; then
+            EXTRA_ENV=",SENTRY_DSN=$SENTRY_DSN"
+          else
+            EXTRA_ENV=""
+          fi
+
+          gcloud run deploy "$SERVICE" \
+            --image="$AR/webhooks:$IMG_TAG" \
+            --region="$REGION" \
+            --service-account="$WEBHOOKS_SA" \
+            --allow-unauthenticated \
+            --set-secrets=ZERNIO_WEBHOOK_SECRET=ZERNIO_WEBHOOK_SECRET:latest \
+            --set-env-vars="BACKEND_URL=$BACKEND_URL,SENTRY_ENVIRONMENT=$SENTRY_ENVIRONMENT${EXTRA_ENV}" \
+            --cpu=1 \
+            --memory=256Mi \
+            --concurrency=80 \
+            --min-instances="$MIN_INSTANCES" \
+            --max-instances=5 \
+            --port=8080
+
+      - name: Summary
+        run: |
+          URL=$(gcloud run services describe "$SERVICE" \
+            --region="$REGION" --format='value(status.url)')
+          echo "### Webhooks deploy OK :rocket:" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Service: $SERVICE → $URL" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Backend: $BACKEND_URL" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Image: $AR/webhooks:$IMG_TAG" >> "$GITHUB_STEP_SUMMARY"

@@ -1,0 +1,30 @@
+# Cloud Build config for the webhooks service only.
+# Invoked by .github/workflows/webhooks.yml — does NOT affect the main
+# cloudbuild.yaml that builds the frontend and backend images.
+#
+# Usage:
+#   gcloud builds submit --config=apps/webhooks/cloudbuild.yaml \
+#     --substitutions=_TAG=<sha> .
+substitutions:
+  _AR: us-east1-docker.pkg.dev/sodium-shard-499116-r3/delta
+  _TAG: latest
+
+steps:
+  - name: gcr.io/cloud-builders/docker
+    id: build-webhooks
+    args:
+      - build
+      - -f
+      - apps/webhooks/Dockerfile
+      - -t
+      - '${_AR}/webhooks:${_TAG}'
+      - .
+
+images:
+  - '${_AR}/webhooks:${_TAG}'
+
+options:
+  machineType: E2_HIGHCPU_8
+  logging: CLOUD_LOGGING_ONLY
+
+timeout: 1200s
