@@ -1674,12 +1674,12 @@ created_at    TIMESTAMPTZ   DEFAULT now()
 
 Nuevos endpoints públicos y de admin:
 
-| Endpoint                                     | Método | Auth                                          | Descripción                                                                                                                                                                         |
-| -------------------------------------------- | ------ | --------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
-| `/api/webhooks/zernio`                       | POST   | Firma HMAC `x-zernio-signature: sha256=<hex>` | Webhook Zernio: recibe button replies y texto libre. Fail-closed: 401 si `ZERNIO_WEBHOOK_SECRET` no configurado. Siempre 200 después de verificar firma.                            |
-| `/api/admin/whatsapp/test-reminder`          | POST   | AppAuthGuard + RolesGuard (`super_admin`)     | Solo staging/dev. Lanza un recordatorio de prueba para un `appointment_id`. Body: `{ appointmentId: uuid, type: '24h'                                                               | '3h' }`. |
-| `/api/public/appointments/reschedule/:token` | GET    | Ninguna (pública)                             | Info de la cita para el formulario de reagendamiento (nombre sin apellido, especialista, fecha, hora, modalidad). Token HMAC de un solo uso (satMs). 404 en token inválido/vencido. |
-| `/api/public/appointments/reschedule/:token` | POST   | Ninguna (pública)                             | Mueve la cita a la nueva fecha. Body: `{ scheduledAt: ISO8601 }`. Token expira después del movimiento. 409 en conflicto de horario.                                                 |
+| Endpoint                                     | Método | Auth                                          | Descripción                                                                                                                                                                                                                                                                                                                                                                                  |
+| -------------------------------------------- | ------ | --------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
+| `/api/webhooks/zernio`                       | POST   | Firma HMAC `x-zernio-signature: sha256=<hex>` | Webhook Zernio (lo llama SOLO el servicio `apps/webhooks` con ID token de Google: el backend es privado). La acción sale del TEXTO del botón (`metadata.buttonPayload`) y la cita del mensaje citado (`metadata.quotedMessageId` = wamid enviado → `reminders_queue.external_message_id`). Dedupe durable por `message.id` en `whatsapp_inbound_events`. Fail-closed: 401 sin secreto/firma. |
+| `/api/admin/whatsapp/test-reminder`          | POST   | AppAuthGuard + RolesGuard (`super_admin`)     | Solo staging/dev. Lanza un recordatorio de prueba para un `appointment_id`. Body: `{ appointmentId: uuid, type: '24h'                                                                                                                                                                                                                                                                        | '3h' }`. |
+| `/api/public/appointments/reschedule/:token` | GET    | Ninguna (pública)                             | Info de la cita para el modo reagendar de `/book/{doctorId}?reagendar=<token>` (nombre sin apellido, especialista, fecha, hora, modalidad). Token HMAC (`APPOINTMENT_ACTION_SECRET`); inválido si la cita ya pasó o ya se movió. El BFF lo pide con `cache:'no-store'`.                                                                                                                      |
+| `/api/public/appointments/reschedule/:token` | POST   | Ninguna (pública)                             | Mueve LA MISMA cita. Body: `{ scheduledAt: ISO8601 }`. Valida contra `GetAvailableSlotsUseCase` (409 si el horario no está libre), sincroniza la fecha de la consulta, notifica a la campana (`appointment_rescheduled_by_patient`) y BORRA `patient_confirmed_at`.                                                                                                                          |
 
 #### Integración con cron de recordatorios
 
@@ -1714,14 +1714,14 @@ Límite diario: 240 destinatarios únicos en las últimas 24h (Meta TIER_250). S
 
 #### Variables de entorno requeridas
 
-| Variable                     | Descripción                                                 | Prod                       | Staging                    |
-| ---------------------------- | ----------------------------------------------------------- | -------------------------- | -------------------------- |
-| `ZERNIO_API_KEY`             | API key de Zernio (GCP Secret)                              | secret                     | secret                     |
-| `ZERNIO_WEBHOOK_SECRET`      | Secret HMAC para verificar webhook (GCP Secret)             | secret                     | secret                     |
-| `APPOINTMENT_ACTION_SECRET`  | Secret para tokens de acción de citas (GCP Secret)          | secret                     | secret                     |
-| `ZERNIO_WHATSAPP_ACCOUNT_ID` | ID de cuenta de WhatsApp en Zernio                          | `6afc5b492728c5ed0bbdb5f7` | `6afc5b492728c5ed0bbdb5f7` |
-| `WHATSAPP_ENABLED`           | Activa/desactiva el envío                                   | `true`                     | `false`                    |
-| `WHATSAPP_ALLOWLIST`         | Lista blanca de teléfonos (separados por coma) para staging | —                          | `584141234571`             |
+| Variable                     | Descripción                                                 | Prod                                | Staging                                            |
+| ---------------------------- | ----------------------------------------------------------- | ----------------------------------- | -------------------------------------------------- |
+| `ZERNIO_API_KEY`             | API key de Zernio (GCP Secret)                              | secret                              | secret                                             |
+| `ZERNIO_WEBHOOK_SECRET`      | Secret HMAC para verificar webhook (GCP Secret)             | secret                              | secret                                             |
+| `APPOINTMENT_ACTION_SECRET`  | Secret para tokens de acción de citas (GCP Secret)          | secret                              | secret                                             |
+| `ZERNIO_WHATSAPP_ACCOUNT_ID` | ID de cuenta de WhatsApp en Zernio                          | `6afc5b492728c5ed0bbdb5f7`          | `6afc5b492728c5ed0bbdb5f7`                         |
+| `WHATSAPP_ENABLED`           | Activa/desactiva el envío                                   | `false` (hasta que el dueño decida) | `true`                                             |
+| `WHATSAPP_ALLOWLIST`         | Lista blanca de teléfonos (separados por coma) para staging | —                                   | `vars.WHATSAPP_ALLOWLIST` = `584242588391` (Lucas) |
 
 #### Frontend BFF thin proxy
 
@@ -1733,10 +1733,11 @@ Límite diario: 240 destinatarios únicos en las últimas 24h (Meta TIER_250). S
 #### Seguridad
 
 - **Nunca loguear** teléfonos, nombres, cuerpo de mensajes WhatsApp.
-- El webhook siempre responde 200 después de verificar la firma (evitar reenvíos de Zernio).
-- Tokens de acción: HMAC-SHA256 con `APPOINTMENT_ACTION_SECRET`, single-use via `satMs`.
+- Zernio exige un 2xx en < 5 s o reintenta: el dedupe en BD (`whatsapp_inbound_events`, `INSERT … ON CONFLICT DO NOTHING RETURNING`) evita respuestas dobles aunque el reintento caiga en otra instancia.
+- Zernio NO acepta payloads en botones quick-reply (`templateButtonParams` solo url/copy_code/flow): por eso la correlación es por mensaje citado, no por token en el botón.
+- Tokens de reagendamiento: HMAC-SHA256 con `APPOINTMENT_ACTION_SECRET` (el antiguo `appointment-action-token.service.ts` de los botones se eliminó).
 - `AppointmentRescheduleTokenService` vive en `AppointmentsModule` (no en `WhatsAppModule`) para evitar dependencia circular.
-- Staging: `WHATSAPP_ENABLED=false` + `WHATSAPP_ALLOWLIST` previene envíos reales a pacientes.
+- Staging: `WHATSAPP_ENABLED=true` pero `WHATSAPP_ALLOWLIST` limita los envíos al teléfono de Lucas. Prod: `WHATSAPP_ENABLED=false`.
 
 ---
 
@@ -1795,3 +1796,47 @@ Los webhooks de Zernio ahora van directamente al servicio `deltasalud-webhooks` 
 | Config faltante al boot | ERROR    | backend_error           |
 
 Nunca se loguea: body, teléfono, nombres, texto de mensaje, firma, tokens de IAM.
+
+#### Respuestas por botón (texto al paciente vía `POST /v1/inbox/conversations/{id}/messages` `{accountId, message}`)
+
+| Botón     | Efecto                                                                                                                 | Respuesta                                                                                                                                             |
+| --------- | ---------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Confirmar | `appointments.patient_confirmed_at = now()` (NO cambia `status`) + aviso en la campana                                 | "¡Gracias, X! Tu asistencia quedó confirmada para el {fecha} a las {hora}. Te esperamos." (o "Ya tenemos tu confirmación…")                           |
+| Reagendar | Solo si la cita está activa                                                                                            | Enlace `{APP_BASE_URL}/book/{doctorId}?reagendar=<token>`                                                                                             |
+| Cancelar  | Cancela + aviso en la campana. Si la consulta está PAGADA no cancela (`findByIdScopedEnriched` trae el estado de pago) | "Tu cita fue cancelada. Si quieres agendar una nueva…: {APP_BASE_URL}/book/{doctorId}" / pagada: "Esta cita ya está pagada… reagendarla aquí: {link}" |
+
+Plantillas aprobadas por Meta: `recordatorio_cita_24h` [Confirmar][Reagendar][Cancelar], `recordatorio_cita_24h_pagada`
+[Confirmar][Reagendar], `recordatorio_cita_hoy` (sin botones).
+
+#### Migraciones del 2026-11-24
+
+| Migración                                       | Descripción                                                                                                                                                                                                             |
+| ----------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `20261124000001-reminders-queue-patient-fk.cjs` | La FK `reminders_queue.patient_id` apuntaba a `profiles(id)` → TODO insert de recordatorio fallaba (en prod 0 filas: los recordatorios por correo NUNCA se enviaron). Ahora apunta a `patients(id)` ON DELETE SET NULL. |
+| `20261124000002-whatsapp-inbound-events.cjs`    | Tabla `whatsapp_inbound_events(message_id PK, received_at)` para el dedupe de reintentos de Zernio.                                                                                                                     |
+
+#### Dominios del relay
+
+- Staging: `https://hooks-staging.deltasalud.app/zernio` (Cloud Run domain mapping de `delta-webhooks-staging` + CNAME en
+  Cloudflare → `ghs.googlehosted.com`, DNS-only). Webhook de Zernio `delta-recordatorios-staging` (id `6b05ba037db4d81feabbf03f`,
+  filtrado al accountId `6afc5b492728c5ed0bbdb5f7`).
+- Prod (pendiente al promover): `hooks.deltasalud.app` → `delta-webhooks` (min-instances 1). Sin reparto por número:
+  cada despliegue responde a su backend, sea cual sea el número.
+
+---
+
+### 2026-11-24 — Edad del paciente derivada (`patients.age` eliminada)
+
+- `GET /api/patients`, `GET /api/patients/:id`, portal del paciente y `GET /api/standalone-documents/:id` siguen
+  devolviendo `age`, pero **calculada** desde `birth_date` (fecha de Caracas, `ageFromBirthDate` de `@delta/shared-utils`;
+  null si falta, es futura o > 130 años).
+- `POST /api/patients` y `PUT /api/patients/:id` ya **no aceptan** `age` (se quitó de `UpdatePatientDtoSchema`; Zod lo descarta).
+- Migración `20261125000001-drop-patients-age.cjs` (`DROP COLUMN IF EXISTS age`; el down la recrea y la rellena desde
+  `birth_date`). En prod: 132 pacientes, 22 con edad y todos con `birth_date` → sin pérdida.
+
+### 2026-11-19/20 — Auditoría del admin y correos extra
+
+- `GET /api/admin/doctors/:id/patients` registra **una fila por paciente** en `access_audit_log` (antes nunca se
+  guardó: el CHECK de `action` y la FK lo rechazaban). Las descargas de documentos compartidos también se auditan.
+- `app_settings.admin_notification_extra_emails`: correos extra (coma) para "contacto" y "nuevo especialista".
+  Prod = `laura.deltasalud@gmail.com`.
