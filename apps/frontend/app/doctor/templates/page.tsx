@@ -1105,6 +1105,7 @@ export default function TemplatesPage() {
                           signature_url: profileSignatureUrl,
                           show_logo: config.show_logo,
                           show_signature: config.show_signature,
+                          page_orientation: config.page_orientation,
                         }}
                         doctor={{
                           fullName: doctorName || 'Dr. Nombre Apellido',
