@@ -274,7 +274,7 @@ function hasBlockContent(block: ContentBlock | undefined): boolean {
  * Determina qué tipos de documento están disponibles (enabled) para la consulta actual.
  *
  * Reglas (separación clara por tipo):
- * - recipe:       savedPrescriptions con medicamentos → 2 hojas (Récipe + Indicaciones)
+ * - recipe:       savedPrescriptions con medicamentos → Récipe + Indicaciones (2 hojas A4 o 1 carta horizontal)
  * - paraclinical: el bloque 'paraclinical' O 'requested_exams' tiene contenido
  * - history:      patientEhrCount > 0
  * - rest:         restContent es no vacío
@@ -307,7 +307,7 @@ export function computeAvailableDocTypes(
 
   const recipeDescription =
     savedPrescriptions.length > 0
-      ? `${totalMedCount} medicamento${totalMedCount !== 1 ? 's' : ''} · 2 hojas (Récipe + Indicaciones)`
+      ? `${totalMedCount} medicamento${totalMedCount !== 1 ? 's' : ''} · Récipe + Indicaciones`
       : hasPrescriptionBlock
         ? 'Prescripción en la consulta'
         : 'Sin receta registrada';
