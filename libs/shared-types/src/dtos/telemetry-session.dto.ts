@@ -12,12 +12,12 @@ export const JourneyStepInputSchema = z
   .object({
     action: z
       .string()
-      .min(1, { message: 'action must not be empty' })
-      .max(100, { message: 'action max length is 100' }),
+      .min(1, { message: 'La acción no puede estar vacía' })
+      .max(100, { message: 'La acción no puede superar 100 caracteres' }),
     resource_type: z.string().max(100).nullable().optional(),
     resource_id: z.string().max(512).nullable().optional(),
     occurred_at: z.string().datetime({
-      message: 'occurred_at must be a valid ISO 8601 datetime',
+      message: 'La fecha del evento no es válida',
     }),
     metadata: z.record(z.string(), z.unknown()).nullable().optional(),
   })
@@ -38,10 +38,10 @@ export const UpsertTelemetrySessionDtoSchema = z
   .object({
     session_id: z
       .string()
-      .min(1, { message: 'session_id must not be empty' })
-      .max(100, { message: 'session_id max length is 100' }),
+      .min(1, { message: 'El ID de sesión no puede estar vacío' })
+      .max(100, { message: 'El ID de sesión no puede superar 100 caracteres' }),
     events: z.array(JourneyStepInputSchema).max(TELEMETRY_SESSION_EVENT_MAX, {
-      message: `events array exceeds maximum of ${TELEMETRY_SESSION_EVENT_MAX} per request`,
+      message: `El lote supera el máximo de ${TELEMETRY_SESSION_EVENT_MAX} eventos por solicitud`,
     }),
     ended: z.boolean().optional(),
   })
@@ -56,9 +56,9 @@ export type UpsertTelemetrySessionDto = z.infer<typeof UpsertTelemetrySessionDto
  */
 export const QueryTelemetrySessionsDtoSchema = z
   .object({
-    doctorId: z.string().uuid({ message: 'doctorId must be a valid UUID' }).optional(),
-    from: z.string().datetime({ message: 'from must be a valid ISO 8601 datetime' }).optional(),
-    to: z.string().datetime({ message: 'to must be a valid ISO 8601 datetime' }).optional(),
+    doctorId: z.string().uuid({ message: 'El ID del especialista no es válido' }).optional(),
+    from: z.string().datetime({ message: 'La fecha de inicio no es válida' }).optional(),
+    to: z.string().datetime({ message: 'La fecha de fin no es válida' }).optional(),
     limit: z.coerce.number().int().min(1).max(100).default(50),
     offset: z.coerce.number().int().min(0).default(0),
   })

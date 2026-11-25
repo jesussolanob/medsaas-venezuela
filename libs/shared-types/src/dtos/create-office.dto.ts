@@ -7,8 +7,8 @@ import { z } from 'zod';
 export const DayScheduleSchema = z.object({
   day: z.number().int().min(0).max(6),
   enabled: z.boolean(),
-  start: z.string().regex(/^\d{2}:\d{2}$/, 'start must be in HH:MM format'),
-  end: z.string().regex(/^\d{2}:\d{2}$/, 'end must be in HH:MM format'),
+  start: z.string().regex(/^\d{2}:\d{2}$/, 'La hora de inicio debe tener formato HH:MM'),
+  end: z.string().regex(/^\d{2}:\d{2}$/, 'La hora de fin debe tener formato HH:MM'),
   /**
    * Duración y separación PROPIAS del bloque, en minutos. Opcionales: sin ellas
    * el bloque hereda las del consultorio, que es como venía funcionando, así que
@@ -46,7 +46,7 @@ const safeUrlSchema = z
   );
 
 export const CreateOfficeDtoSchema = z.object({
-  name: z.string().min(1, 'name is required').max(200),
+  name: z.string().min(1, 'El nombre del consultorio es requerido').max(200),
   address: z.string().max(500).optional().default(''),
   city: z.string().max(200).optional().default(''),
   phone: z.string().max(50).optional().default(''),
@@ -54,15 +54,15 @@ export const CreateOfficeDtoSchema = z.object({
   slot_duration: z
     .number()
     .int()
-    .min(5, 'slot_duration must be at least 5 minutes')
-    .max(240, 'slot_duration must be at most 240 minutes')
+    .min(5, 'La duración del turno debe ser al menos 5 minutos')
+    .max(240, 'La duración del turno no puede superar 240 minutos')
     .optional()
     .default(30),
   buffer_minutes: z
     .number()
     .int()
-    .min(0, 'buffer_minutes cannot be negative')
-    .max(120, 'buffer_minutes must be at most 120 minutes')
+    .min(0, 'El margen entre turnos no puede ser negativo')
+    .max(120, 'El margen entre turnos no puede superar 120 minutos')
     .optional()
     .default(10),
   /** Modality of appointments accepted by this office. Default: 'in_person'. */

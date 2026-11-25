@@ -14,8 +14,8 @@ export const DoctorRegistrationDtoSchema = z
   .object({
     full_name: z
       .string()
-      .min(2, 'full_name must be at least 2 characters')
-      .max(200, 'full_name must be at most 200 characters'),
+      .min(2, 'El nombre debe tener al menos 2 caracteres')
+      .max(200, 'El nombre no puede superar 200 caracteres'),
     cedula: cedulaSchema,
     /**
      * Teléfono del especialista — OBLIGATORIO desde 2026-08-17.
@@ -24,7 +24,12 @@ export const DoctorRegistrationDtoSchema = z
      * onboarding y sin él no se completa el alta. Formato canónico que emite
      * PhoneInput: código de país + número, solo dígitos (ej. 584141234567).
      */
-    phone: z.string().regex(/^\d{8,20}$/, 'phone must be 8-20 digits including country code'),
+    phone: z
+      .string()
+      .regex(
+        /^\d{8,20}$/,
+        'El teléfono debe tener entre 8 y 20 dígitos incluyendo el código de país',
+      ),
     mpps_number: z.string().min(1).max(50).nullable().optional(),
     colegiado_number: z.string().min(1).max(50).nullable().optional(),
     /**
@@ -58,7 +63,7 @@ export const DoctorRegistrationDtoSchema = z
       .string()
       .min(1)
       .max(20)
-      .regex(/^[A-Z0-9]+$/, 'seller_code must be uppercase alphanumeric')
+      .regex(/^[A-Z0-9]+$/, 'El código de vendedor solo admite letras mayúsculas y números')
       .optional(),
   })
   .strict();
@@ -72,7 +77,7 @@ export type DoctorRegistrationDto = z.infer<typeof DoctorRegistrationDtoSchema>;
 export const UpdateVerificationStatusDtoSchema = z
   .object({
     status: z.enum(['verified', 'rejected'], {
-      error: 'status must be "verified" or "rejected"',
+      error: 'El estado debe ser "verified" o "rejected"',
     }),
   })
   .strict();
