@@ -34,7 +34,7 @@ export default function HelpPage() {
       time: '5 min',
       content: [
         'Ve a Configuración → Perfil y agrega: foto, teléfono, dirección del consultorio, métodos de pago aceptados (Pago Móvil, Zelle, Binance, etc).',
-        'En Configuración → Bloques de consulta personaliza qué quieres registrar en cada consulta (motivo, diagnóstico, tratamiento, prescripción, tareas, etc).',
+        'En Plantillas → Bloques de consulta personaliza qué quieres registrar en cada consulta (motivo, diagnóstico, tratamiento, prescripción, tareas, etc).',
         'En Configuración → Tasa de cambio elige USD, EUR o tasa personalizada para convertir tus precios a bolívares.',
       ],
     },

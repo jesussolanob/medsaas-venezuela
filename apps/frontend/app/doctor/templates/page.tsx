@@ -574,11 +574,11 @@ export default function TemplatesPage() {
                 Esta página solo cambia el <b>branding visual</b> de los PDFs. Para
                 activar/desactivar las
                 <b> secciones del formulario</b> de consulta (los bloques que ves al atender un
-                paciente), debes ir a <b>Configuración → Bloques de consulta</b>.
+                paciente), entra a <b>Bloques de consulta</b> con el botón de la derecha.
               </p>
             </div>
             <span className="text-amber-700 text-sm font-bold whitespace-nowrap">
-              Ir a Bloques →
+              Ir a Bloques de consulta →
             </span>
           </div>
         </a>
