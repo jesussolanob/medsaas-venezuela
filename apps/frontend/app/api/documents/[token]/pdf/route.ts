@@ -95,6 +95,7 @@ interface DocumentRenderData {
     showSignature: boolean;
     logoUrl: string | null;
     signatureUrl: string | null;
+    pageOrientation: 'portrait' | 'landscape';
   } | null;
 }
 
@@ -225,6 +226,7 @@ function buildTemplateConfig(
       signature_url: tc.signatureUrl ?? doctor.signatureUrl,
       show_logo: tc.showLogo,
       show_signature: tc.showSignature,
+      page_orientation: tc.pageOrientation ?? 'portrait',
     };
   }
   return {
@@ -236,6 +238,7 @@ function buildTemplateConfig(
     signature_url: doctor.signatureUrl,
     show_logo: true,
     show_signature: true,
+    page_orientation: 'portrait',
   };
 }
 

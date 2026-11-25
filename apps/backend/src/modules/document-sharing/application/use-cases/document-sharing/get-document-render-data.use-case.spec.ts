@@ -267,6 +267,7 @@ const makeTemplate = (): DoctorTemplate =>
     logoUrl: 'uploads/logos/doctor-1/logo.png',
     signatureUrl: 'uploads/signatures/doctor-1/sig.png',
     fontFamily: 'Helvetica',
+    pageOrientation: 'portrait',
     headerText: 'Delta Medical',
     footerText: 'Confidencial',
     showLogo: true,
@@ -392,6 +393,7 @@ describe('GetDocumentRenderDataUseCase', () => {
     expect(result.templateConfig).not.toBeNull();
     expect(result.templateConfig?.headerText).toBe('Delta Medical');
     expect(result.templateConfig?.primaryColor).toBe('#1A73E8');
+    expect(result.templateConfig?.pageOrientation).toBe('portrait');
     // Signed URLs should be resolved
     expect(result.templateConfig?.logoUrl).toBe('https://storage.example.com/signed?token=abc');
   });
@@ -750,5 +752,94 @@ describe('GetDocumentRenderDataUseCase', () => {
     );
     expect(result.doctor.signatureUrl).toBe('https://storage.example.com/signed?token=abc');
     expect(result.doctor.signatureUrl).not.toBe(storedGcsUrl);
+  });
+
+  // -----------------------------------------------------------------------
+  // pageOrientation — sourced from recipe template, not informe template
+  // -----------------------------------------------------------------------
+
+  it('(a) consultation path: returns landscape when recipe template is landscape and informe is portrait', async () => {
+    // informe template: portrait; recipe template: landscape
+    mockDoctorTemplateRepo.findByDoctorAndType.mockImplementation(
+      async (_doctorId: string, type: string) => {
+        if (type === 'recipe') {
+          return DoctorTemplate.create({
+            id: 'tmpl-recipe',
+            doctorId: 'doctor-1',
+            templateType: 'recipe',
+            logoUrl: null,
+            signatureUrl: null,
+            fontFamily: 'Helvetica',
+            pageOrientation: 'landscape',
+            headerText: 'Recipe Header',
+            footerText: 'Recipe Footer',
+            showLogo: false,
+            showSignature: true,
+            primaryColor: '#000000',
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          });
+        }
+        // informe template: portrait
+        return makeTemplate();
+      },
+    );
+
+    const sessionToken = signToken('link-1', 'the-link-token', new Date(Date.now() + 60_000));
+    const result = await useCase.execute({ token: 'the-link-token', sessionToken });
+
+    expect(result.templateConfig).not.toBeNull();
+    // Colors and branding still come from informe template
+    expect(result.templateConfig?.primaryColor).toBe('#1A73E8');
+    // Orientation comes from recipe template
+    expect(result.templateConfig?.pageOrientation).toBe('landscape');
+  });
+
+  it('(c) consultation path: defaults to portrait when no recipe template exists', async () => {
+    // informe template exists; recipe template absent
+    mockDoctorTemplateRepo.findByDoctorAndType.mockImplementation(
+      async (_doctorId: string, type: string) => {
+        if (type === 'recipe') return null;
+        return makeTemplate(); // informe: portrait
+      },
+    );
+
+    const sessionToken = signToken('link-1', 'the-link-token', new Date(Date.now() + 60_000));
+    const result = await useCase.execute({ token: 'the-link-token', sessionToken });
+
+    expect(result.templateConfig).not.toBeNull();
+    expect(result.templateConfig?.pageOrientation).toBe('portrait');
+  });
+
+  it('(d) consultation path: only a recipe template saved -> its styling and landscape are used', async () => {
+    // Doctor only configured Plantillas -> Récipe; no informe row exists.
+    mockDoctorTemplateRepo.findByDoctorAndType.mockImplementation(
+      async (_doctorId: string, type: string) => {
+        if (type === 'informe') return null;
+        return DoctorTemplate.create({
+          id: 'tmpl-recipe',
+          doctorId: 'doctor-1',
+          templateType: 'recipe',
+          logoUrl: null,
+          signatureUrl: null,
+          fontFamily: 'Helvetica',
+          pageOrientation: 'landscape',
+          headerText: 'Recipe Header',
+          footerText: 'Recipe Footer',
+          showLogo: false,
+          showSignature: true,
+          primaryColor: '#123456',
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
+      },
+    );
+
+    const sessionToken = signToken('link-1', 'the-link-token', new Date(Date.now() + 60_000));
+    const result = await useCase.execute({ token: 'the-link-token', sessionToken });
+
+    expect(result.templateConfig).not.toBeNull();
+    expect(result.templateConfig?.pageOrientation).toBe('landscape');
+    expect(result.templateConfig?.primaryColor).toBe('#123456');
   });
 });

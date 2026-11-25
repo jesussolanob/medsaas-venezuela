@@ -44,6 +44,7 @@ interface BackendDoctorTemplate {
   showLogo: boolean;
   showSignature: boolean;
   primaryColor: string;
+  pageOrientation: 'portrait' | 'landscape';
   createdAt: string;
   updatedAt: string;
 }
@@ -59,6 +60,7 @@ export interface TemplateConfigView {
   show_logo: boolean;
   show_signature: boolean;
   primary_color: string;
+  page_orientation: 'portrait' | 'landscape';
 }
 
 /** Input for upsert — mirrors UpsertDoctorTemplateDtoSchema from shared-types. */
@@ -71,6 +73,7 @@ export interface UpsertTemplateInput {
   show_logo?: boolean;
   show_signature?: boolean;
   primary_color?: string;
+  page_orientation?: 'portrait' | 'landscape';
 }
 
 export interface MutationResult {
@@ -93,6 +96,7 @@ function toView(t: BackendDoctorTemplate): TemplateConfigView {
     show_logo: t.showLogo,
     show_signature: t.showSignature,
     primary_color: t.primaryColor,
+    page_orientation: t.pageOrientation ?? 'portrait',
   };
 }
 
@@ -107,6 +111,7 @@ function toBackendDto(input: UpsertTemplateInput): Record<string, unknown> {
   if (input.show_logo !== undefined) dto.show_logo = input.show_logo;
   if (input.show_signature !== undefined) dto.show_signature = input.show_signature;
   if (input.primary_color !== undefined) dto.primary_color = input.primary_color;
+  if (input.page_orientation !== undefined) dto.page_orientation = input.page_orientation;
   return dto;
 }
 

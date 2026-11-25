@@ -1,4 +1,8 @@
 import type { TemplateTypeValue } from '../value-objects/template-type.vo';
+import {
+  type PageOrientationValue,
+  DEFAULT_PAGE_ORIENTATION,
+} from '../value-objects/page-orientation.vo';
 
 export interface DoctorTemplateCreateParams {
   id: string;
@@ -12,6 +16,7 @@ export interface DoctorTemplateCreateParams {
   showLogo: boolean;
   showSignature: boolean;
   primaryColor: string;
+  pageOrientation: PageOrientationValue;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -40,6 +45,7 @@ export class DoctorTemplate {
   readonly showLogo: boolean;
   readonly showSignature: boolean;
   readonly primaryColor: string;
+  readonly pageOrientation: PageOrientationValue;
   readonly createdAt: Date;
   readonly updatedAt: Date;
 
@@ -55,6 +61,7 @@ export class DoctorTemplate {
     this.showLogo = params.showLogo;
     this.showSignature = params.showSignature;
     this.primaryColor = params.primaryColor;
+    this.pageOrientation = params.pageOrientation;
     this.createdAt = params.createdAt;
     this.updatedAt = params.updatedAt;
   }
@@ -80,6 +87,7 @@ export class DoctorTemplate {
         | 'showLogo'
         | 'showSignature'
         | 'primaryColor'
+        | 'pageOrientation'
       >
     >,
   ): DoctorTemplate {
@@ -95,6 +103,7 @@ export class DoctorTemplate {
       showLogo: fields.showLogo ?? this.showLogo,
       showSignature: fields.showSignature ?? this.showSignature,
       primaryColor: fields.primaryColor ?? this.primaryColor,
+      pageOrientation: fields.pageOrientation ?? this.pageOrientation,
       createdAt: this.createdAt,
       updatedAt: new Date(),
     });
@@ -118,6 +127,7 @@ export class DoctorTemplate {
       showLogo: this.showLogo,
       showSignature: this.showSignature,
       primaryColor: this.primaryColor,
+      pageOrientation: this.pageOrientation,
       createdAt: this.createdAt,
       updatedAt: this.updatedAt,
     });
@@ -128,3 +138,5 @@ export class DoctorTemplate {
     return new DoctorTemplate(params);
   }
 }
+
+export { DEFAULT_PAGE_ORIENTATION };

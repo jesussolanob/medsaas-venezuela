@@ -28,6 +28,7 @@ function makeTemplate(
     showLogo: true,
     showSignature: true,
     primaryColor: '#0891b2',
+    pageOrientation: 'portrait',
     createdAt: now,
     updatedAt: now,
     ...overrides,

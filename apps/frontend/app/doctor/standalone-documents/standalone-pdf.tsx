@@ -100,6 +100,7 @@ export async function loadStandalonePdfDoctorData(): Promise<{
     signature_url: recipeTemplate?.signature_url ?? profileData.signatureUrl ?? null,
     show_logo: recipeTemplate?.show_logo !== false,
     show_signature: recipeTemplate?.show_signature !== false,
+    page_orientation: recipeTemplate?.page_orientation ?? 'portrait',
   };
 
   const doctor: DoctorInfoPdf = {
