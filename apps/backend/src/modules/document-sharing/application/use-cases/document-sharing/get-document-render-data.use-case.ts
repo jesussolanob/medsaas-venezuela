@@ -67,6 +67,8 @@ export interface RenderTemplateConfig {
   logoUrl: string | null;
   /** Usable URL (already resolved/signed) for the signature image. Null if not set. */
   signatureUrl: string | null;
+  /** PDF page orientation: 'portrait' (default) or 'landscape' (recipe split-view). */
+  pageOrientation: 'portrait' | 'landscape';
 }
 
 /** Doctor profile data returned for the render header. */
@@ -347,6 +349,7 @@ export class GetDocumentRenderDataUseCase {
           showSignature: informeTemplate.showSignature,
           logoUrl: templateLogoUrl,
           signatureUrl: templateSignatureUrl,
+          pageOrientation: informeTemplate.pageOrientation,
         }
       : null;
 
@@ -514,6 +517,7 @@ export class GetDocumentRenderDataUseCase {
           showSignature: informeTemplate.showSignature,
           logoUrl: templateLogoUrl,
           signatureUrl: templateSignatureUrl,
+          pageOrientation: informeTemplate.pageOrientation,
         }
       : null;
 

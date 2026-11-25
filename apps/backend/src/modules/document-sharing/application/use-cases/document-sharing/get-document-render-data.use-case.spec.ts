@@ -267,6 +267,7 @@ const makeTemplate = (): DoctorTemplate =>
     logoUrl: 'uploads/logos/doctor-1/logo.png',
     signatureUrl: 'uploads/signatures/doctor-1/sig.png',
     fontFamily: 'Helvetica',
+    pageOrientation: 'portrait',
     headerText: 'Delta Medical',
     footerText: 'Confidencial',
     showLogo: true,
@@ -392,6 +393,7 @@ describe('GetDocumentRenderDataUseCase', () => {
     expect(result.templateConfig).not.toBeNull();
     expect(result.templateConfig?.headerText).toBe('Delta Medical');
     expect(result.templateConfig?.primaryColor).toBe('#1A73E8');
+    expect(result.templateConfig?.pageOrientation).toBe('portrait');
     // Signed URLs should be resolved
     expect(result.templateConfig?.logoUrl).toBe('https://storage.example.com/signed?token=abc');
   });

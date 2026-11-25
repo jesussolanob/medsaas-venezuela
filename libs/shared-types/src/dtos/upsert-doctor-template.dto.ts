@@ -12,6 +12,7 @@ export const UpsertDoctorTemplateDtoSchema = z.object({
     .string()
     .regex(/^#[0-9a-fA-F]{6}$/, 'primary_color must be a valid hex color (e.g. #0891b2)')
     .optional(),
+  page_orientation: z.enum(['portrait', 'landscape']).optional(),
 });
 
 export type UpsertDoctorTemplateDto = z.infer<typeof UpsertDoctorTemplateDtoSchema>;

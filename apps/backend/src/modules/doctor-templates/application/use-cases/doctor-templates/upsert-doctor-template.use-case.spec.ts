@@ -8,7 +8,9 @@ const DOCTOR_ID = 'dddddddd-0000-0000-0000-000000000001';
 const TEMPLATE_ID = 'tttttttt-0000-0000-0000-000000000001';
 const now = new Date('2026-06-05T00:00:00Z');
 
-function makeExistingTemplate(overrides: Partial<Parameters<typeof DoctorTemplate.create>[0]> = {}): DoctorTemplate {
+function makeExistingTemplate(
+  overrides: Partial<Parameters<typeof DoctorTemplate.create>[0]> = {},
+): DoctorTemplate {
   return DoctorTemplate.create({
     id: TEMPLATE_ID,
     doctorId: DOCTOR_ID,
@@ -21,6 +23,7 @@ function makeExistingTemplate(overrides: Partial<Parameters<typeof DoctorTemplat
     showLogo: true,
     showSignature: true,
     primaryColor: '#0891b2',
+    pageOrientation: 'portrait',
     createdAt: now,
     updatedAt: now,
     ...overrides,
@@ -57,6 +60,19 @@ describe('UpsertDoctorTemplateUseCase', () => {
       expect(passedTemplate?.templateType).toBe('informe');
       expect(passedTemplate?.fontFamily).toBe('Inter');
       expect(passedTemplate?.primaryColor).toBe('#0891b2');
+      expect(passedTemplate?.pageOrientation).toBe('portrait');
+    });
+
+    it('creates with landscape orientation when specified', async () => {
+      mockRepo.findByDoctorAndType.mockResolvedValue(null);
+      const created = makeExistingTemplate({ pageOrientation: 'landscape' });
+      mockRepo.upsert.mockResolvedValue(created);
+
+      const dto: UpsertDoctorTemplateDto = { page_orientation: 'landscape' };
+      await useCase.execute('recipe', dto, DOCTOR_ID);
+
+      const passedTemplate = mockRepo.upsert.mock.calls[0]?.[0];
+      expect(passedTemplate?.pageOrientation).toBe('landscape');
     });
 
     it('creates with provided field values', async () => {
@@ -103,6 +119,18 @@ describe('UpsertDoctorTemplateUseCase', () => {
 
       const passedTemplate = mockRepo.upsert.mock.calls[0]?.[0];
       expect(passedTemplate?.id).toBe(TEMPLATE_ID);
+    });
+
+    it('can update pageOrientation to landscape on an existing template', async () => {
+      const existing = makeExistingTemplate({ pageOrientation: 'portrait' });
+      mockRepo.findByDoctorAndType.mockResolvedValue(existing);
+      mockRepo.upsert.mockImplementation(async (t) => t);
+
+      const dto: UpsertDoctorTemplateDto = { page_orientation: 'landscape' };
+      await useCase.execute('recipe', dto, DOCTOR_ID);
+
+      const passedTemplate = mockRepo.upsert.mock.calls[0]?.[0];
+      expect(passedTemplate?.pageOrientation).toBe('landscape');
     });
 
     it('can update logoUrl to null', async () => {
