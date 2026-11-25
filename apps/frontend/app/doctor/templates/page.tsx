@@ -794,7 +794,7 @@ export default function TemplatesPage() {
                   <div className="rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-xs text-sky-900">
                     Este diseño es el del <b>Informe médico</b>: se comparte con{' '}
                     {templateTabs
-                      .filter((t) => templateTypeForTab(t.key) === 'informe')
+                      .filter((t) => t.key !== 'informe' && templateTypeForTab(t.key) === 'informe')
                       .map((t) => t.label)
                       .join(', ')}
                     . Lo que cambies aquí se aplica a todas esas pestañas.
@@ -1134,7 +1134,7 @@ export default function TemplatesPage() {
                       <TemplatePdfPreview
                         key={activeTab}
                         onReady={() => setPreviewLoading(false)}
-                        docType={activeTab}
+                        docType={templateTypeForTab(activeTab)}
                         docTypeLabel={tabInfo.label}
                         enabledBlocks={enabledBlocks}
                         templateConfig={{
