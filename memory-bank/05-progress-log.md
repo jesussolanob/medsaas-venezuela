@@ -4,6 +4,37 @@
 > ⚠️ Orden: **la entrada más nueva va ARRIBA**. La del 2026-08-11 quedó al final
 > del archivo por error; no se movió para no ensuciar el diff.
 
+## 2026-11-25 — Récipe horizontal (en staging, sin promover)
+
+Rama `feature/recipe-horizontal` → `develop` → `staging`. Pedido por audio (24/11): hoja **carta apaisada** partida
+a la mitad, récipe a la izquierda e indicaciones a la derecha ("lo que hoy está en la segunda hoja, mitad y mitad").
+
+- **Opción por especialista** en Plantillas → Récipe ("Formato del récipe": Vertical · 2 hojas A4 / Horizontal ·
+  carta apaisada). Columna `doctor_templates.page_orientation` (`portrait|landscape`, default portrait, CHECK),
+  migración `20261125000002`. Solo vive en la fila `recipe`; "Aplicar a todos" no la propaga.
+- **PDF** (`components/pdf/RecipeLandscapeSheet.tsx`): cada mitad con encabezado, paciente, fecha, código y firma
+  (se puede cortar). `MEDS_PER_LANDSCAPE_SHEET = 7`: si hay más, otra hoja igual; ítem N alineado en ambas mitades.
+  En un PDF mixto, solo el par récipe+indicaciones sale apaisado; informe/reposo/etc. siguen A4 vertical.
+- Llega a: botón del récipe en la consulta, "Generar documento" (la orientación sale de la plantilla `recipe`, no
+  de la del informe), récipes sin consulta, vista previa de Plantillas y el PDF de Compartir documentos (el backend
+  `get-document-render-data` carga también la plantilla `recipe`; si el especialista no tiene la del informe, usa la
+  del récipe para el estilo — mismo criterio que la pantalla de consulta).
+- 🐞 **Bug previo destapado (probablemente también en prod):** las pestañas de Plantillas salen de los bloques de
+  consulta y su clave es la del bloque (`prescription`, `rest`, `paraclinical`), que el backend rechaza ("Invalid
+  template type: prescription", en inglés). **El récipe nunca se pudo personalizar desde Plantillas.** Ahora esas
+  tres se guardan como `recipe` / `reposo` / `prescripciones` (`BLOCK_KEY_TO_TEMPLATE_TYPE`). Las pestañas que son
+  secciones del informe (motivo, antecedentes, diagnóstico, examen físico…) siguen fallando al guardar: pendiente
+  de decisión (¿colapsarlas en una sola pestaña "Informe"?).
+- Texto "2 hojas (Récipe + Indicaciones)" de Generar/Compartir documentos → "Récipe + Indicaciones" (ya no es cierto
+  siempre).
+- **Revisión:** code-reviewer bloqueó la 1.ª versión (1 CRITICAL + 2 HIGH: compartir, Generar documento y vista
+  previa salían siempre verticales) → corregido. El caso "solo plantilla de récipe" lo encontró el lead.
+- **Verificado:** backend 5421/5421 (exit 0), tsc 0 back y front, lint sin errores nuevos. **QA en navegador en
+  staging** (cuenta especialista): guardar Horizontal → BD `recipe/landscape`; vista previa apaisada; Generar
+  documento y récipe sin consulta → PDF de 1 página 792×612; volver a Vertical → 2 páginas A4 (sin cambios). El PDF
+  de Compartir documentos NO se probó en navegador (enviar el enlace manda correo al paciente); cubierto por tests.
+- Pendiente al promover: novedad para especialistas ("Récipe horizontal").
+
 ## 2026-11-18 → 2026-11-24 — Sesión larga: QA de Marco, Documentos frecuentes, alergias, WhatsApp, webhooks, dependencias y edad
 
 Ramas: `feature/qa-marco-*`, `feature/documentos-frecuentes`, `feature/alerta-alergias`, `feature/correos-admin-adicionales`,

@@ -384,10 +384,11 @@ Controller `@Controller('doctor/templates')`, `DevAuthGuard`, doctor-scoped. Tab
 (UNIQUE doctor_id+template_type; types: informe|recipe|prescripciones|reposo; logo_url/signature_url solo string,
 uploads=Fase 5).
 
-| Endpoint                              | Método | Notas                                                                 |
-| ------------------------------------- | ------ | --------------------------------------------------------------------- |
-| `/api/doctor/templates`               | GET    | Todas las plantillas del doctor (puede ser []).                       |
-| `/api/doctor/templates/:templateType` | PUT    | Upsert por (doctor, type). Tipo inválido → 400 INVALID_TEMPLATE_TYPE. |
+| Endpoint                              | Método | Notas                                                                                                                                                                                                                                          |
+| ------------------------------------- | ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/api/doctor/templates`               | GET    | Todas las plantillas del doctor (puede ser []).                                                                                                                                                                                                |
+| `/api/doctor/templates/:templateType` | PUT    | Upsert por (doctor, type). Tipo inválido → 400 INVALID_TEMPLATE_TYPE.                                                                                                                                                                          |
+| (2026-11-25) `page_orientation`       | —      | Body opcional `page_orientation: 'portrait'\|'landscape'` (solo tiene efecto en `recipe`); respuesta `pageOrientation`. También en `GET /api/documents/:token/render-data` → `templateConfig.pageOrientation` (sale de la plantilla `recipe`). |
 
 ### `reminders` — recordatorios (mig 20260605000002) ✅ — envío=bloqueante Fase 6
 
