@@ -7,9 +7,9 @@ import { OfferablePaymentMethodSchema } from '../payment-method';
  */
 const isoDateString = z
   .string()
-  .regex(/^\d{4}-\d{2}-\d{2}$/, 'birth_date must be a valid date in YYYY-MM-DD format')
+  .regex(/^\d{4}-\d{2}-\d{2}$/, 'La fecha de nacimiento debe tener formato AAAA-MM-DD')
   .refine((val) => !Number.isNaN(Date.parse(val)), {
-    message: 'birth_date must be a real calendar date',
+    message: 'La fecha de nacimiento no es válida',
   });
 
 export const UpdateDoctorProfileDtoSchema = z

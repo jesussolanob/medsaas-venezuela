@@ -61,8 +61,8 @@ import type {
  */
 const CreateSellerBodySchema = z
   .object({
-    full_name: z.string().min(2, 'full_name is required').max(300),
-    email: z.string().email('email must be a valid email address').max(320),
+    full_name: z.string().min(2, 'El nombre completo es requerido').max(300),
+    email: z.string().email('El correo electrónico no es válido').max(320),
   })
   .strict();
 
@@ -74,8 +74,8 @@ type CreateSellerBody = z.infer<typeof CreateSellerBodySchema>;
  */
 const CreateSellerSpecialistBodySchema = z
   .object({
-    full_name: z.string().min(2, 'full_name is required').max(300),
-    email: z.string().email('email must be a valid email address').max(320),
+    full_name: z.string().min(2, 'El nombre completo es requerido').max(300),
+    email: z.string().email('El correo electrónico no es válido').max(320),
     specialty: z.string().min(1).max(200).nullable().optional(),
     cedula: z.string().max(50).nullable().optional(),
     phone: z.string().max(50).nullable().optional(),

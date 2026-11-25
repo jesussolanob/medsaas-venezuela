@@ -142,12 +142,15 @@ interface UpdateProfileResponse {
 
 const SendMessageBodySchema = z.object({
   doctor_id: z.string().uuid('doctor_id debe ser un UUID válido'),
-  body: z.string().min(1, 'body is required').max(5000, 'body must be at most 5000 characters'),
+  body: z
+    .string()
+    .min(1, 'El mensaje no puede estar vacío')
+    .max(5000, 'El mensaje no puede superar 5000 caracteres'),
 });
 type SendMessageBody = z.infer<typeof SendMessageBodySchema>;
 
 const UpdateProfileBodySchema = z.object({
-  patient_id: z.string().uuid('patient_id must be a valid UUID'),
+  patient_id: z.string().uuid('El paciente indicado no es válido'),
   address: z.string().max(500).nullish(),
   city: z.string().max(200).nullish(),
   notes: z.string().max(2000).nullish(),

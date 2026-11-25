@@ -85,7 +85,7 @@ export type PendingConsultationPublicInfo = z.infer<typeof PendingConsultationPu
 // ---------------------------------------------------------------------------
 
 export const SchedulePendingConsultationDtoSchema = z.object({
-  scheduled_at: z.string().datetime({ message: 'scheduled_at must be an ISO 8601 datetime' }),
+  scheduled_at: z.string().datetime({ message: 'La fecha de la cita no es válida' }),
   office_id: z.string().uuid().nullable().optional(),
   appointment_mode: z.enum(['presencial', 'online']).nullable().optional(),
 });

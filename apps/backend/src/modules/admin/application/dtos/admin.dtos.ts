@@ -15,7 +15,7 @@ export const UpdateSubscriptionBodySchema = z
      */
     expires_at: z
       .string()
-      .datetime({ offset: true, message: 'expires_at must be a valid ISO 8601 datetime' }),
+      .datetime({ offset: true, message: 'La fecha de vencimiento no es válida' }),
     notes: z.string().max(1000).nullable().optional(),
   })
   .strict();
@@ -28,7 +28,7 @@ export type UpdateSubscriptionBody = z.infer<typeof UpdateSubscriptionBodySchema
 
 export const TogglePlanBodySchema = z
   .object({
-    is_active: z.boolean({ error: 'is_active must be a boolean' }),
+    is_active: z.boolean({ error: 'El campo activo debe ser verdadero o falso' }),
   })
   .strict();
 
@@ -40,8 +40,8 @@ export type TogglePlanBody = z.infer<typeof TogglePlanBodySchema>;
 
 export const TogglePlanFeatureBodySchema = z
   .object({
-    feature_label: z.string().min(1, 'feature_label is required').max(200),
-    enabled: z.boolean({ error: 'enabled must be a boolean' }),
+    feature_label: z.string().min(1, 'El nombre del beneficio es requerido').max(200),
+    enabled: z.boolean({ error: 'El campo habilitado debe ser verdadero o falso' }),
   })
   .strict();
 
@@ -79,7 +79,7 @@ export type ExtendSubscriptionBody = z.infer<typeof ExtendSubscriptionBodySchema
 
 export const SuspendSubscriptionBodySchema = z
   .object({
-    doctor_id: z.string().uuid({ message: 'doctor_id must be a valid UUID' }),
+    doctor_id: z.string().uuid({ message: 'El especialista indicado no es válido' }),
     reason: z.string().max(500).nullable().optional(),
   })
   .strict();
@@ -87,7 +87,7 @@ export type SuspendSubscriptionBody = z.infer<typeof SuspendSubscriptionBodySche
 
 export const ReactivateSubscriptionBodySchema = z
   .object({
-    doctor_id: z.string().uuid({ message: 'doctor_id must be a valid UUID' }),
+    doctor_id: z.string().uuid({ message: 'El especialista indicado no es válido' }),
   })
   .strict();
 export type ReactivateSubscriptionBody = z.infer<typeof ReactivateSubscriptionBodySchema>;
@@ -120,7 +120,7 @@ export const VALID_SUBSCRIPTION_PLANS = [
 
 export const UpsertSettingBodySchema = z
   .object({
-    key: z.string().min(1, 'key is required').max(200),
+    key: z.string().min(1, 'La clave es requerida').max(200),
     /**
      * Value is accepted as string or any JSON-serialisable type.
      * Non-string values are coerced to JSON strings before reaching the repo.
@@ -159,7 +159,7 @@ export const UpdatePlanBodySchema = z
       body.description !== undefined,
     {
       message:
-        'At least one field (name, price, trial_days, sort_order, description) must be provided',
+        'Debés enviar al menos un campo (nombre, precio, días de prueba, orden o descripción)',
     },
   );
 
@@ -173,10 +173,13 @@ export const CreatePlanBodySchema = z
   .object({
     plan_key: z
       .string()
-      .min(1, 'plan_key is required')
+      .min(1, 'La clave del plan es requerida')
       .max(100)
-      .regex(/^[a-z0-9_]+$/, 'plan_key must be lowercase alphanumeric with underscores'),
-    name: z.string().min(1, 'name is required').max(200),
+      .regex(
+        /^[a-z0-9_]+$/,
+        'La clave del plan solo admite letras minúsculas, números y guiones bajos',
+      ),
+    name: z.string().min(1, 'El nombre es requerido').max(200),
     role_key: z.string().min(1).max(100).default('doctor'),
     is_permanent: z.boolean().default(false),
     is_active: z.boolean().default(true),
@@ -226,8 +229,8 @@ export const SetPlanFeaturesBodySchema = z
           enabled: z.boolean(),
         }),
       )
-      .min(1, 'features array must not be empty')
-      .max(50, 'features array must not exceed 50 entries'),
+      .min(1, 'La lista de beneficios no puede estar vacía')
+      .max(50, 'La lista de beneficios no puede superar 50 elementos'),
   })
   .strict();
 
@@ -257,8 +260,8 @@ export const SetPlanPricesBodySchema = z
           compare_at_price: z.number().positive().nullable().optional(),
         }),
       )
-      .min(1, 'prices array must not be empty')
-      .max(4, 'prices array must not exceed 4 entries'),
+      .min(1, 'La lista de precios no puede estar vacía')
+      .max(4, 'La lista de precios no puede superar 4 elementos'),
   })
   .strict();
 
@@ -270,7 +273,7 @@ export type SetPlanPricesBody = z.infer<typeof SetPlanPricesBodySchema>;
 
 export const SetDoctorAccessBodySchema = z
   .object({
-    is_active: z.boolean({ error: 'is_active must be a boolean' }),
+    is_active: z.boolean({ error: 'El campo activo debe ser verdadero o falso' }),
     reason: z.string().max(500).optional(),
   })
   .strict();
@@ -313,8 +316,8 @@ export type AdminAssignablePlan = (typeof ADMIN_ASSIGNABLE_PLANS)[number];
 
 export const CreateAdminDoctorBodySchema = z
   .object({
-    full_name: z.string().min(1, 'full_name is required').max(300),
-    email: z.string().email({ message: 'email must be a valid email address' }).max(320),
+    full_name: z.string().min(1, 'El nombre completo es requerido').max(300),
+    email: z.string().email({ message: 'El correo electrónico no es válido' }).max(320),
     specialty: z.string().min(1).max(200).nullable().optional(),
     /**
      * Doctor identity document in canonical form: "V-12345678", "E-987654", etc.

@@ -37,14 +37,14 @@ export class CronSecretGuard implements CanActivate {
 
     // Fail-closed: if the env var is not configured, never allow access.
     if (!cronSecret) {
-      throw new ForbiddenException('Cron secret is not configured');
+      throw new ForbiddenException('Acceso denegado.');
     }
 
     const request = context.switchToHttp().getRequest<Request>();
     const header = request.headers['x-cron-secret'];
 
     if (!header || header !== cronSecret) {
-      throw new ForbiddenException('Invalid cron secret');
+      throw new ForbiddenException('Acceso denegado.');
     }
 
     return true;

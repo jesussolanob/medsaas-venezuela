@@ -27,9 +27,9 @@ interface SuccessResponse<T> {
 /** Zod schema for the ?date= query param — strict YYYY-MM-DD format. */
 const DateQuerySchema = z
   .string()
-  .regex(/^\d{4}-\d{2}-\d{2}$/, 'date must be in YYYY-MM-DD format')
+  .regex(/^\d{4}-\d{2}-\d{2}$/, 'La fecha debe tener formato AAAA-MM-DD')
   .refine((s) => !isNaN(Date.parse(`${s}T00:00:00Z`)), {
-    message: 'date is not a valid calendar date',
+    message: 'La fecha indicada no es válida',
   });
 
 /**

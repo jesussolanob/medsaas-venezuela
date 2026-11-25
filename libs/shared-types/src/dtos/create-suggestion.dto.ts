@@ -10,8 +10,8 @@ export const SuggestionStatusSchema = z.enum([
 export type SuggestionStatusType = z.infer<typeof SuggestionStatusSchema>;
 
 export const CreateSuggestionDtoSchema = z.object({
-  subject: z.string().min(1, 'subject is required').max(500),
-  message: z.string().min(1, 'message is required').max(5000),
+  subject: z.string().min(1, 'El asunto es requerido').max(500),
+  message: z.string().min(1, 'El mensaje es requerido').max(5000),
   category: z.string().max(100).optional().default('general'),
 });
 export type CreateSuggestionDto = z.infer<typeof CreateSuggestionDtoSchema>;

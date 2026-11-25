@@ -25,7 +25,7 @@ Estado: Fase 0 ✅ · Fase 1 en-progreso.
   especialista en staging. Quedan dos cabos sueltos, solo si el dueño los pide: Cobros formatea la hora sin
   `America/Caracas` (`cobros/page.tsx` `formatTime`) y reagendar una cancelada (el backend la rechaza).
 
-## Récipe horizontal (pedido por audio, 2026-11-24) — pendiente
+## Récipe horizontal (pedido por audio, 2026-11-24) — completado (en staging 2026-11-25, sin promover)
 
 > Hoja **carta apaisada** partida a la mitad: izquierda = récipe (medicamento/principio activo + mg), derecha =
 > indicaciones (cómo tomarlo), alineados por medicamento. Es la hoja 1 + hoja 2 actuales, "mitad y mitad".

@@ -57,7 +57,7 @@ export class AdminWhatsAppTestController {
     @Body(new ZodValidationPipe(TestReminderSchema)) body: TestReminderInput,
   ): Promise<SuccessResponse<SendTestWhatsAppReminderResult>> {
     if (process.env.NODE_ENV === 'production') {
-      throw new ForbiddenException('This endpoint is not available in production');
+      throw new ForbiddenException('Este endpoint no está disponible en este entorno.');
     }
 
     const result = await this.sendTestReminder.execute(body);

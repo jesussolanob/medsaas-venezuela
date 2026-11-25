@@ -21,7 +21,7 @@ export const SetRateSourceDtoSchema = z
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['value'],
-        message: 'value is required when source is "manual"',
+        message: 'La tasa es requerida cuando la fuente es manual',
       });
     }
   });

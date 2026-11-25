@@ -55,7 +55,7 @@ function ok<T>(data: T): SuccessResponse<T> {
 // ---------------------------------------------------------------------------
 
 const PatientIdQuerySchema = z.object({
-  patientId: z.string().uuid('patientId must be a valid UUID'),
+  patientId: z.string().uuid('El paciente indicado no es válido'),
 });
 
 /**

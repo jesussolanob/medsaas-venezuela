@@ -12,7 +12,7 @@ export type QuickItemType = z.infer<typeof QuickItemTypeSchema>;
  */
 export const CreateQuickItemDtoSchema = z.object({
   item_type: QuickItemTypeSchema,
-  name: z.string().min(1, 'name is required').max(300),
+  name: z.string().min(1, 'El nombre es requerido').max(300),
   category: z.string().max(200).nullable().optional(),
   details: z.string().max(1000).nullable().optional(),
 });

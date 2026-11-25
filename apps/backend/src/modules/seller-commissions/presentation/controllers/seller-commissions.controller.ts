@@ -34,7 +34,7 @@ import type { SellerPayment } from '../../domain/entities/seller-payment.entity'
  */
 export const RegisterPaymentBodySchema = z
   .object({
-    seller_id: z.string().uuid('seller_id must be a UUID'),
+    seller_id: z.string().uuid('El vendedor indicado no es válido'),
     // El techo evita que un lote enorme arme un IN (...) gigante contra la BD.
     // 500 está muy por encima de cualquier pago real a un vendedor.
     commission_ids: z
@@ -76,7 +76,7 @@ type RegisterPaymentBody = z.infer<typeof RegisterPaymentBodySchema>;
  */
 export const ApproveCommissionsBodySchema = z
   .object({
-    seller_id: z.string().uuid('seller_id must be a UUID'),
+    seller_id: z.string().uuid('El vendedor indicado no es válido'),
     commission_ids: z
       .array(z.string().uuid())
       .min(1, 'Seleccioná al menos una comisión para aprobar.')
@@ -93,8 +93,8 @@ type ApproveCommissionsBody = z.infer<typeof ApproveCommissionsBodySchema>;
  */
 const AssignSpecialistBodySchema = z
   .object({
-    specialist_id: z.string().uuid('specialist_id must be a UUID'),
-    seller_id: z.string().uuid('seller_id must be a UUID'),
+    specialist_id: z.string().uuid('El especialista indicado no es válido'),
+    seller_id: z.string().uuid('El vendedor indicado no es válido'),
   })
   .strict();
 

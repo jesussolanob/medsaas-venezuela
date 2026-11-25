@@ -255,7 +255,7 @@ Es el editor completo de una consulta. Contiene:
 - **Encabezado:** codigo, paciente y fecha.
 - **Datos del paciente.**
 - **Ver ficha del paciente:** el boton **Ver ficha del paciente** abre una **ventana emergente (modal) de solo lectura** con la ficha del paciente, sin sacarte de la consulta. Es solo para consultar; para editar la ficha vas a Pacientes.
-- **Bloques dinamicos de la consulta:** son los campos clinicos (por ejemplo Motivo de consulta, Diagnostico, Tratamiento, Plan de tratamiento, Evaluacion actual, Observaciones, Reposo, etc.). Los bloques que aparecen los defines tu en Configuracion (ver seccion de bloques de consulta). Cada bloque es un area de texto editable. El bloque que antes se llamaba **'Indicaciones'** ahora se llama **'Evaluacion actual'**, y su contenido **se integra al informe** (ya no genera un documento aparte).
+- **Bloques dinamicos de la consulta:** son los campos clinicos (por ejemplo Motivo de consulta, Diagnostico, Tratamiento, Plan de tratamiento, Evaluacion actual, Observaciones, Reposo, etc.). Los bloques que aparecen los defines tu en **Bloques de consulta** (ver seccion 6.13). Cada bloque es un area de texto editable. El bloque que antes se llamaba **'Indicaciones'** ahora se llama **'Evaluacion actual'**, y su contenido **se integra al informe** (ya no genera un documento aparte).
 - **Botones de IA en cada bloque** (solo plan Delta Plus): **Mejorar con IA** (mejora la redaccion del bloque), **Resumen del informe** (genera un resumen) y **Resumir historial del paciente** / **Historial del paciente** (trae contexto de consultas anteriores). Tras usar la IA puedes **Copiar texto** o aplicar el resultado. Si no tienes plan Plus, estos botones no estan disponibles.
 - **Grabadora de voz / transcripcion** (solo plan Plus): boton **Grabar la consulta** (o 'Grabar consulta'). Mientras procesa veras 'Transcribiendo audio...' y 'Procesando con IA — no cierres esta pagina...'. La IA transcribe el audio y sugiere que bloques llenar. Puedes **Grabar otra vez**.
 - **Informacion del pago:** monto en USD y bolivares, metodo de pago y estado. Boton **Marcar pago como aprobado** (al aplicarlo se muestra como 'Pago aprobado'). El estado actual se indica como Pendiente o Aprobado.
@@ -395,7 +395,7 @@ Perfil, metodos de pago, notificaciones y mas. Incluye:
 
 ### 6.13 Bloques de consulta — /doctor/settings/consultation-blocks
 
-Aqui defines los bloques que apareceran al registrar una consulta. Puedes crear, editar, ordenar y eliminar bloques (por ejemplo Motivo de consulta, Diagnostico, Evaluacion actual, Plan de tratamiento). Cada bloque es un campo de texto que luego rellenas en el detalle de la consulta. Debes tener al menos un bloque y todos deben tener nombre.
+**Como se llega:** desde **Plantillas**, con el boton **'Ir a Bloques de consulta'** del aviso amarillo de arriba (no esta dentro de Configuracion). Aqui defines los bloques que apareceran al registrar una consulta. Puedes crear, editar, ordenar y eliminar bloques (por ejemplo Motivo de consulta, Diagnostico, Evaluacion actual, Plan de tratamiento). Cada bloque es un campo de texto que luego rellenas en el detalle de la consulta. Debes tener al menos un bloque y todos deben tener nombre.
 
 **Reordenar bloques (incluidos los fijos):** con las flechas **arriba/abajo (↑↓)** puedes reordenar **TODOS los bloques, incluidos los bloques fijos**. El orden que definas aqui es exactamente el orden en que apareceran las secciones dentro del **informe** de la consulta.
 
