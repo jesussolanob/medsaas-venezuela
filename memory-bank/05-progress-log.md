@@ -4,6 +4,29 @@
 > ⚠️ Orden: **la entrada más nueva va ARRIBA**. La del 2026-08-11 quedó al final
 > del archivo por error; no se movió para no ensuciar el diff.
 
+## 2026-11-25 — Plantillas del informe, errores en español y "Bloques de consulta" (en staging, sin promover)
+
+Rama `feature/plantillas-bloques-errores` → `develop` → `staging`.
+
+- **Plantillas — pestañas del informe (decisión del dueño, opción 1):** Motivo, Antecedentes, Diagnóstico, Examen
+  físico y los bloques personalizados mandaban su clave de bloque y el backend la rechazaba: **nada se guardaba y el
+  diseño del informe no era editable** (ningún especialista con bloques ve una pestaña "Informe"). Ahora todas leen y
+  escriben la plantilla `informe` (`templateTypeForTab`), con una nota que dice que el diseño es compartido; al editar
+  una, las demás se actualizan en pantalla. La vista previa de esas pestañas muestra el informe. "Aplicar a todos"
+  incluye el informe (antes lo descartaba en silencio) y ya no pisa la orientación del récipe. El dueño descartó
+  colapsarlas en una sola pestaña: el especialista puede querer generar un solo documento.
+- **Errores en español:** 6 errores de dominio + guards/controllers en inglés traducidos; ~92 mensajes de Zod en 26
+  archivos (backend + `libs/shared-types`); `GlobalExceptionFilter` traduce los mensajes por defecto de Nest
+  (`Forbidden resource`, `Not Found`…) y los de los Parse\*Pipe (`Validation failed (uuid is expected)`, encontrado en
+  el QA). Códigos y estados HTTP sin cambios. Tres mensajes dejaron de exponer detalles internos (nombre de variable
+  de entorno, comando openssl, profileId). Los `throw new Error` de arranque siguen en inglés (solo van a logs).
+- **"Bloques" → "Bloques de consulta"** (botón de Plantillas, "Bloques de consulta a incluir" en Generar/Compartir).
+  Se corrigieron tres textos que mandaban a "Configuración → Bloques de consulta", que NO existe en Configuración:
+  la pantalla se abre desde Plantillas (aviso amarillo). Guía del asistente actualizada.
+- **Verificado:** backend 5424/5424, tsc 0 back y front, lint sin errores nuevos; code-reviewer: 1 HIGH (vista previa)
+  corregido. **QA en navegador en staging:** guardar en Diagnóstico → fila `informe` en la BD; Antecedentes muestra el
+  mismo pie tras recargar; Récipe conserva el suyo; el PDF del informe sale con ese pie; textos nuevos visibles.
+
 ## 2026-11-25 — Récipe horizontal (en staging, sin promover)
 
 Rama `feature/recipe-horizontal` → `develop` → `staging`. Pedido por audio (24/11): hoja **carta apaisada** partida
