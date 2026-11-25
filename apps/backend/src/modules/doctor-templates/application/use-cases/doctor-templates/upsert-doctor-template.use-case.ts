@@ -7,6 +7,7 @@ import {
 import { DoctorTemplate } from '../../../domain/entities/doctor-template.entity';
 import { TemplateType } from '../../../domain/value-objects/template-type.vo';
 import { InvalidTemplateTypeError } from '../../../domain/errors/invalid-template-type.error';
+import { DEFAULT_PAGE_ORIENTATION } from '../../../domain/value-objects/page-orientation.vo';
 import type { UpsertDoctorTemplateDto } from '@delta/shared-types';
 
 @Injectable()
@@ -36,14 +37,15 @@ export class UpsertDoctorTemplateUseCase {
 
     if (existing) {
       template = existing.withUpdates({
-        logoUrl: dto.logo_url !== undefined ? dto.logo_url ?? null : undefined,
-        signatureUrl: dto.signature_url !== undefined ? dto.signature_url ?? null : undefined,
+        logoUrl: dto.logo_url !== undefined ? (dto.logo_url ?? null) : undefined,
+        signatureUrl: dto.signature_url !== undefined ? (dto.signature_url ?? null) : undefined,
         fontFamily: dto.font_family,
         headerText: dto.header_text,
         footerText: dto.footer_text,
         showLogo: dto.show_logo,
         showSignature: dto.show_signature,
         primaryColor: dto.primary_color,
+        pageOrientation: dto.page_orientation,
       });
     } else {
       template = DoctorTemplate.create({
@@ -58,6 +60,7 @@ export class UpsertDoctorTemplateUseCase {
         showLogo: dto.show_logo ?? true,
         showSignature: dto.show_signature ?? true,
         primaryColor: dto.primary_color ?? '#0891b2',
+        pageOrientation: dto.page_orientation ?? DEFAULT_PAGE_ORIENTATION,
         createdAt: now,
         updatedAt: now,
       });

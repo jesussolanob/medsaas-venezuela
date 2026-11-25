@@ -1155,6 +1155,7 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                 signature_url: recipeTemplate?.signature_url ?? profileData.signatureUrl ?? null,
                 show_logo: recipeTemplate?.show_logo !== false,
                 show_signature: recipeTemplate?.show_signature !== false,
+                page_orientation: recipeTemplate?.page_orientation ?? 'portrait',
               });
 
               // Plantilla específica para el informe: 'informe' tiene precedencia; fallback a
@@ -1170,6 +1171,9 @@ function ConsultationsPage({ initialConsultations, initialTotal }: Consultations
                 signature_url: informeTmpl?.signature_url ?? profileData.signatureUrl ?? null,
                 show_logo: informeTmpl?.show_logo !== false,
                 show_signature: informeTmpl?.show_signature !== false,
+                // Orientation is a récipe-only setting: GenerateDocumentModal renders the récipe
+                // pages with this config, so it must come from the 'recipe' template.
+                page_orientation: recipeTemplate?.page_orientation ?? 'portrait',
               });
             }
           },

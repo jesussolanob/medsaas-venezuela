@@ -5,7 +5,9 @@ const OTHER_ID = 'aaaaaaaa-0000-0000-0000-000000000002';
 const TEMPLATE_ID = 'tttttttt-0000-0000-0000-000000000001';
 const now = new Date('2026-06-05T00:00:00Z');
 
-function makeParams(overrides: Partial<DoctorTemplateCreateParams> = {}): DoctorTemplateCreateParams {
+function makeParams(
+  overrides: Partial<DoctorTemplateCreateParams> = {},
+): DoctorTemplateCreateParams {
   return {
     id: TEMPLATE_ID,
     doctorId: DOCTOR_ID,
@@ -18,6 +20,7 @@ function makeParams(overrides: Partial<DoctorTemplateCreateParams> = {}): Doctor
     showLogo: true,
     showSignature: true,
     primaryColor: '#0891b2',
+    pageOrientation: 'portrait',
     createdAt: now,
     updatedAt: now,
     ...overrides,
@@ -36,11 +39,20 @@ describe('DoctorTemplate entity', () => {
       expect(template.fontFamily).toBe('Inter');
       expect(template.showLogo).toBe(true);
       expect(template.primaryColor).toBe('#0891b2');
+      expect(template.pageOrientation).toBe('portrait');
+    });
+
+    it('accepts landscape pageOrientation', () => {
+      const template = DoctorTemplate.create(makeParams({ pageOrientation: 'landscape' }));
+      expect(template.pageOrientation).toBe('landscape');
     });
 
     it('accepts optional logoUrl and signatureUrl as strings', () => {
       const template = DoctorTemplate.create(
-        makeParams({ logoUrl: 'https://storage/logo.png', signatureUrl: 'https://storage/sig.png' }),
+        makeParams({
+          logoUrl: 'https://storage/logo.png',
+          signatureUrl: 'https://storage/sig.png',
+        }),
       );
       expect(template.logoUrl).toBe('https://storage/logo.png');
       expect(template.signatureUrl).toBe('https://storage/sig.png');
@@ -105,6 +117,30 @@ describe('DoctorTemplate entity', () => {
       const updated = original.withUpdates({ headerText: 'Hello' });
 
       expect(updated.createdAt).toBe(original.createdAt);
+    });
+
+    it('updates pageOrientation when specified', () => {
+      const original = DoctorTemplate.create(makeParams({ pageOrientation: 'portrait' }));
+      const updated = original.withUpdates({ pageOrientation: 'landscape' });
+
+      expect(updated.pageOrientation).toBe('landscape');
+      expect(original.pageOrientation).toBe('portrait'); // immutable
+    });
+
+    it('preserves pageOrientation when not specified', () => {
+      const original = DoctorTemplate.create(makeParams({ pageOrientation: 'landscape' }));
+      const updated = original.withUpdates({ fontFamily: 'Roboto' });
+
+      expect(updated.pageOrientation).toBe('landscape');
+    });
+  });
+
+  describe('withRefreshedImageUrls', () => {
+    it('preserves pageOrientation', () => {
+      const original = DoctorTemplate.create(makeParams({ pageOrientation: 'landscape' }));
+      const refreshed = original.withRefreshedImageUrls('https://new-logo.png', null);
+
+      expect(refreshed.pageOrientation).toBe('landscape');
     });
   });
 });

@@ -470,12 +470,18 @@ export function TemplatePdfPreview({
       </p>
 
       {/* Indicador de páginas para el récipe */}
-      {(docType === 'recipe' || docType === 'receta') && sampleDocuments.length > 1 && (
-        <p className="text-[11px] text-teal-600 font-semibold">
-          Este documento tiene {sampleDocuments.length} hojas — usa las flechas del visor para
-          navegar entre ellas.
-        </p>
-      )}
+      {(docType === 'recipe' || docType === 'receta') &&
+        (templateConfig.page_orientation === 'landscape' ? (
+          <p className="text-[11px] text-teal-600 font-semibold">
+            Formato horizontal: récipe e indicaciones en la misma hoja carta apaisada. Si hay más de
+            7 medicamentos, se generan hojas adicionales.
+          </p>
+        ) : sampleDocuments.length > 1 ? (
+          <p className="text-[11px] text-teal-600 font-semibold">
+            Este documento tiene {sampleDocuments.length} hojas — usa las flechas del visor para
+            navegar entre ellas.
+          </p>
+        ) : null)}
 
       {/* Viewer embebido */}
       <div className="rounded-xl overflow-hidden border border-slate-200 shadow-sm">

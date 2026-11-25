@@ -22,6 +22,7 @@ import type { IStoragePort } from '../../../../storage/application/ports/storage
 import type { IStandaloneDocumentRepository } from '../../../../standalone-documents/domain/repositories/istandalone-document.repository';
 import { SharedDocumentLink } from '../../../domain/entities/shared-document-link.entity';
 import { StandaloneDocument } from '../../../../standalone-documents/domain/entities/standalone-document.entity';
+import { DoctorTemplate } from '../../../../doctor-templates/domain/entities/doctor-template.entity';
 import { DocumentLinkNotFoundError } from '../../../domain/errors/document-link-not-found.error';
 import { DocumentLinkNotActiveError } from '../../../domain/errors/document-link-not-active.error';
 
@@ -629,6 +630,65 @@ describe('GetDocumentRenderDataUseCase — standalone document branch', () => {
     expect(result.consultationBlocks[0]?.key).toBe('paraclinical');
     expect(result.consultationBlocks[0]?.label).toBe('Exámenes solicitados');
     expect(result.consultationBlocks[0]?.printable).toBe(true);
+  });
+
+  // -----------------------------------------------------------------------
+  // pageOrientation — standalone path uses recipe template orientation
+  // -----------------------------------------------------------------------
+
+  it('(b) standalone path: returns landscape when recipe template is landscape and informe is portrait', async () => {
+    const informeTemplate = DoctorTemplate.create({
+      id: 'tmpl-informe',
+      doctorId: 'doctor-1',
+      templateType: 'informe',
+      logoUrl: null,
+      signatureUrl: null,
+      fontFamily: 'Helvetica',
+      pageOrientation: 'portrait',
+      headerText: 'Informe Header',
+      footerText: 'Informe Footer',
+      showLogo: false,
+      showSignature: false,
+      primaryColor: '#1A73E8',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    const recipeTemplate = DoctorTemplate.create({
+      id: 'tmpl-recipe',
+      doctorId: 'doctor-1',
+      templateType: 'recipe',
+      logoUrl: null,
+      signatureUrl: null,
+      fontFamily: 'Helvetica',
+      pageOrientation: 'landscape',
+      headerText: 'Recipe Header',
+      footerText: 'Recipe Footer',
+      showLogo: false,
+      showSignature: false,
+      primaryColor: '#000000',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    mockDoctorTemplateRepo.findByDoctorAndType.mockImplementation(
+      async (_doctorId: string, type: string) => {
+        if (type === 'recipe') return recipeTemplate;
+        return informeTemplate;
+      },
+    );
+
+    const sessionToken = signToken(
+      'link-standalone-1',
+      'standalone-token',
+      new Date(Date.now() + 60_000),
+    );
+    const result = await useCase.execute({ token: 'standalone-token', sessionToken });
+
+    expect(result.templateConfig).not.toBeNull();
+    // Colors and branding still come from informe template
+    expect(result.templateConfig?.primaryColor).toBe('#1A73E8');
+    // Orientation comes from recipe template
+    expect(result.templateConfig?.pageOrientation).toBe('landscape');
   });
 
   // -----------------------------------------------------------------------

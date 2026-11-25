@@ -54,6 +54,7 @@ export class SequelizeDoctorTemplateRepository implements IDoctorTemplateReposit
         showLogo: template.showLogo,
         showSignature: template.showSignature,
         primaryColor: template.primaryColor,
+        pageOrientation: template.pageOrientation,
       });
       // Reload to get DB-generated updatedAt
       await existing.reload();
@@ -72,6 +73,7 @@ export class SequelizeDoctorTemplateRepository implements IDoctorTemplateReposit
       showLogo: template.showLogo,
       showSignature: template.showSignature,
       primaryColor: template.primaryColor,
+      pageOrientation: template.pageOrientation,
     });
     return this.toDomain(row);
   }
@@ -93,6 +95,7 @@ export class SequelizeDoctorTemplateRepository implements IDoctorTemplateReposit
       showLogo: row.showLogo,
       showSignature: row.showSignature,
       primaryColor: row.primaryColor ?? '#0891b2',
+      pageOrientation: row.pageOrientation ?? 'portrait',
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
     });

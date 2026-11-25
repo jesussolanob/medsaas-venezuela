@@ -9,6 +9,7 @@ import {
   UpdatedAt,
 } from 'sequelize-typescript';
 import type { TemplateTypeValue } from '../../../domain/value-objects/template-type.vo';
+import type { PageOrientationValue } from '../../../domain/value-objects/page-orientation.vo';
 
 /**
  * Sequelize model for the `doctor_templates` table.
@@ -65,6 +66,10 @@ export class DoctorTemplateModel extends Model {
   @Default('#0891b2')
   @Column({ type: DataType.TEXT, allowNull: false, field: 'primary_color' })
   declare primaryColor: string;
+
+  @Default('portrait')
+  @Column({ type: DataType.TEXT, allowNull: false, field: 'page_orientation' })
+  declare pageOrientation: PageOrientationValue;
 
   @CreatedAt
   @Column({ field: 'created_at' })
