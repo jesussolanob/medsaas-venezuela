@@ -810,4 +810,36 @@ describe('GetDocumentRenderDataUseCase', () => {
     expect(result.templateConfig).not.toBeNull();
     expect(result.templateConfig?.pageOrientation).toBe('portrait');
   });
+
+  it('(d) consultation path: only a recipe template saved -> its styling and landscape are used', async () => {
+    // Doctor only configured Plantillas -> Récipe; no informe row exists.
+    mockDoctorTemplateRepo.findByDoctorAndType.mockImplementation(
+      async (_doctorId: string, type: string) => {
+        if (type === 'informe') return null;
+        return DoctorTemplate.create({
+          id: 'tmpl-recipe',
+          doctorId: 'doctor-1',
+          templateType: 'recipe',
+          logoUrl: null,
+          signatureUrl: null,
+          fontFamily: 'Helvetica',
+          pageOrientation: 'landscape',
+          headerText: 'Recipe Header',
+          footerText: 'Recipe Footer',
+          showLogo: false,
+          showSignature: true,
+          primaryColor: '#123456',
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
+      },
+    );
+
+    const sessionToken = signToken('link-1', 'the-link-token', new Date(Date.now() + 60_000));
+    const result = await useCase.execute({ token: 'the-link-token', sessionToken });
+
+    expect(result.templateConfig).not.toBeNull();
+    expect(result.templateConfig?.pageOrientation).toBe('landscape');
+    expect(result.templateConfig?.primaryColor).toBe('#123456');
+  });
 });

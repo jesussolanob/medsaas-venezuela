@@ -289,7 +289,7 @@ export class GetDocumentRenderDataUseCase {
       ehrRecords,
       patient,
       doctorProfile,
-      informeTemplate,
+      informeRow,
       recipeTemplate,
       blocksOutput,
     ] = await Promise.all([
@@ -305,6 +305,11 @@ export class GetDocumentRenderDataUseCase {
       this.doctorTemplateRepo.findByDoctorAndType(link.doctorId, 'recipe'),
       this.getConsultationBlocks.execute(link.doctorId),
     ]);
+
+    // Styling falls back to the recipe template when the doctor never saved an informe one
+    // (same rule as the consultation screen) — otherwise templateConfig is null and a
+    // landscape récipe shared by a doctor who only configured Récipe renders portrait.
+    const informeTemplate = informeRow ?? recipeTemplate;
 
     if (!consultation) {
       this.logger.warn('[render-data] consultation not found for active link');
@@ -462,12 +467,17 @@ export class GetDocumentRenderDataUseCase {
     // Fetch standalone doc + patient in parallel with doctor profile + templates.
     // recipeTemplate is fetched alongside informeTemplate because pageOrientation
     // is a recipe-only setting — it must come from the recipe row, not the informe row.
-    const [detail, doctorProfile, informeTemplate, recipeTemplate] = await Promise.all([
+    const [detail, doctorProfile, informeRow, recipeTemplate] = await Promise.all([
       this.standaloneDocRepo.findByIdWithPatient(link.standaloneDocumentId!, link.doctorId),
       this.doctorProfileRepo.findByDoctorId(link.doctorId),
       this.doctorTemplateRepo.findByDoctorAndType(link.doctorId, 'informe'),
       this.doctorTemplateRepo.findByDoctorAndType(link.doctorId, 'recipe'),
     ]);
+
+    // Styling falls back to the recipe template when the doctor never saved an informe one
+    // (same rule as the consultation screen) — otherwise templateConfig is null and a
+    // landscape récipe shared by a doctor who only configured Récipe renders portrait.
+    const informeTemplate = informeRow ?? recipeTemplate;
 
     if (!detail) {
       this.logger.warn('[render-data] standalone document not found for active link');
