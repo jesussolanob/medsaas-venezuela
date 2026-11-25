@@ -152,6 +152,17 @@ const BACKEND_VALID_TYPES = new Set([
  */
 const STANDALONE_TYPES = new Set(['recibo', 'presupuesto']);
 
+/**
+ * Consultation blocks that are documents of their own are stored under the backend template
+ * type, not the block key: the backend rejects 'prescription' ("Invalid template type") and the
+ * PDFs read templates['recipe'] / ['reposo'] / ['prescripciones'] (paraclínicos).
+ */
+const BLOCK_KEY_TO_TEMPLATE_TYPE: Record<string, string | undefined> = {
+  prescription: 'recipe',
+  rest: 'reposo',
+  paraclinical: 'prescripciones',
+};
+
 /** localStorage key for the recibo template config — legacy, only read once for migration. */
 const RECIBO_LOCALSTORAGE_KEY = 'delta_recibo_template_config';
 
@@ -314,7 +325,7 @@ export default function TemplatesPage() {
       if (result.length > 0) {
         result.sort((a, b) => a.order - b.order);
         dynamicTabs = result.map(({ key, label, icon, description }) => ({
-          key,
+          key: BLOCK_KEY_TO_TEMPLATE_TYPE[key] ?? key,
           label,
           icon,
           description,
