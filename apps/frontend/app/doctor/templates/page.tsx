@@ -163,6 +163,15 @@ const BLOCK_KEY_TO_TEMPLATE_TYPE: Record<string, string | undefined> = {
   paraclinical: 'prescripciones',
 };
 
+/**
+ * Backend template type a tab reads and writes. Blocks that are sections of the informe
+ * (chief_complaint, history, diagnosis, physical_exam, custom blocks…) have no template of
+ * their own: they all edit the 'informe' template, which is what their PDFs use.
+ */
+function templateTypeForTab(tabKey: string): string {
+  return BACKEND_VALID_TYPES.has(tabKey) ? tabKey : 'informe';
+}
+
 /** localStorage key for the recibo template config — legacy, only read once for migration. */
 const RECIBO_LOCALSTORAGE_KEY = 'delta_recibo_template_config';
 
@@ -394,7 +403,7 @@ export default function TemplatesPage() {
 
     const initialConfigs: Record<string, TemplateConfig> = {};
     for (const t of dynamicTabs) {
-      const saved = savedMap[t.key];
+      const saved = savedMap[templateTypeForTab(t.key)];
       initialConfigs[t.key] = saved
         ? {
             logo_url: saved.logo_url,
@@ -415,10 +424,17 @@ export default function TemplatesPage() {
   }
 
   function updateConfig(field: keyof TemplateConfig, value: TemplateConfig[typeof field]) {
-    setConfigs((prev) => ({
-      ...prev,
-      [activeTab]: { ...prev[activeTab], [field]: value },
-    }));
+    // Tabs that share a backend template (the informe sections) must show the same values.
+    const sharedType = templateTypeForTab(activeTab);
+    setConfigs((prev) => {
+      const next = { ...prev };
+      for (const tab of templateTabs) {
+        if (templateTypeForTab(tab.key) === sharedType) {
+          next[tab.key] = { ...prev[tab.key], [field]: value };
+        }
+      }
+      return next;
+    });
   }
 
   // NOTE: Per-template logo/signature upload removed in RONDA 17.
@@ -468,7 +484,7 @@ export default function TemplatesPage() {
         page_orientation: config.page_orientation,
       };
 
-      const result = await saveTemplateConfig(activeTab, input);
+      const result = await saveTemplateConfig(templateTypeForTab(activeTab), input);
       if (!result.ok) {
         showToast({ type: 'error', message: result.error ?? 'Error al guardar plantilla' });
         return;
@@ -498,10 +514,8 @@ export default function TemplatesPage() {
         // page_orientation is recipe-specific: not propagated to all templates
       };
 
-      // El backend solo acepta los tipos en BACKEND_VALID_TYPES; los demás
-      // tipos dinámicos (bloques de consulta que el backend no modela como
-      // documento, p. ej. 'paraclinical') se ignoran en esta iteración.
-      const backendTypes = templateTabs.map((t) => t.key).filter((k) => BACKEND_VALID_TYPES.has(k));
+      // Every tab maps to a backend template type (informe sections share 'informe').
+      const backendTypes = [...new Set(templateTabs.map((t) => templateTypeForTab(t.key)))];
       const result = await applyTemplateConfigToAll(input, backendTypes);
 
       if (!result.ok) {
@@ -515,7 +529,11 @@ export default function TemplatesPage() {
       // Mirror the applied config locally so the UI reflects the change immediately
       const newConfigs = { ...configs };
       for (const tab of templateTabs) {
-        newConfigs[tab.key] = { ...currentConfig };
+        // page_orientation is not applied to all: keep each tab's own value.
+        newConfigs[tab.key] = {
+          ...currentConfig,
+          page_orientation: configs[tab.key]?.page_orientation ?? 'portrait',
+        };
       }
       setConfigs(newConfigs);
 
@@ -770,6 +788,18 @@ export default function TemplatesPage() {
                     </div>
                   )}
                 </div>
+
+                {/* ── Informe sections share one template: say so ── */}
+                {templateTypeForTab(activeTab) === 'informe' && activeTab !== 'informe' && (
+                  <div className="rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-xs text-sky-900">
+                    Este diseño es el del <b>Informe médico</b>: se comparte con{' '}
+                    {templateTabs
+                      .filter((t) => templateTypeForTab(t.key) === 'informe')
+                      .map((t) => t.label)
+                      .join(', ')}
+                    . Lo que cambies aquí se aplica a todas esas pestañas.
+                  </div>
+                )}
 
                 {/* ── Formato del récipe — solo visible en la tab "recipe" ── */}
                 {activeTab === 'recipe' && (
