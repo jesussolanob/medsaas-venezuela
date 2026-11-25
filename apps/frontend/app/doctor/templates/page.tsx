@@ -85,6 +85,7 @@ type TemplateConfig = {
   show_logo: boolean;
   show_signature: boolean;
   primary_color: string;
+  page_orientation: 'portrait' | 'landscape';
 };
 
 const DEFAULT_CONFIG: TemplateConfig = {
@@ -96,6 +97,7 @@ const DEFAULT_CONFIG: TemplateConfig = {
   show_logo: true,
   show_signature: true,
   primary_color: '#0891b2',
+  page_orientation: 'portrait',
 };
 
 // Mapa de iconos por block_key canónico; fallback a FileText si no está mapeado
@@ -392,6 +394,7 @@ export default function TemplatesPage() {
             show_logo: saved.show_logo !== false,
             show_signature: saved.show_signature !== false,
             primary_color: saved.primary_color || '#0891b2',
+            page_orientation: saved.page_orientation ?? 'portrait',
           }
         : { ...DEFAULT_CONFIG };
     }
@@ -451,6 +454,7 @@ export default function TemplatesPage() {
         show_logo: config.show_logo,
         show_signature: config.show_signature,
         primary_color: config.primary_color,
+        page_orientation: config.page_orientation,
       };
 
       const result = await saveTemplateConfig(activeTab, input);
@@ -480,6 +484,7 @@ export default function TemplatesPage() {
         show_logo: currentConfig.show_logo,
         show_signature: currentConfig.show_signature,
         primary_color: currentConfig.primary_color,
+        // page_orientation is recipe-specific: not propagated to all templates
       };
 
       // El backend solo acepta los tipos en BACKEND_VALID_TYPES; los demás
@@ -754,6 +759,124 @@ export default function TemplatesPage() {
                     </div>
                   )}
                 </div>
+
+                {/* ── Formato del récipe — solo visible en la tab "recipe" ── */}
+                {activeTab === 'recipe' && (
+                  <div className="bg-white border border-slate-200 rounded-xl p-5 space-y-3">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Pill className="w-4 h-4 text-slate-400" />
+                      <p className="text-sm font-bold text-slate-800">Formato del récipe</p>
+                    </div>
+                    <p className="text-xs text-slate-500">
+                      Elige cómo se imprime el récipe. El formato horizontal imprime récipe e
+                      indicaciones en la misma hoja tamaño carta apaisada (se puede cortar por la
+                      mitad y cada parte es independiente).
+                    </p>
+                    <div className="grid grid-cols-2 gap-3 pt-1">
+                      {/* Portrait option */}
+                      <button
+                        type="button"
+                        onClick={() => updateConfig('page_orientation', 'portrait')}
+                        className={`flex flex-col items-center gap-2 p-3 rounded-xl border-2 transition-all ${
+                          config.page_orientation !== 'landscape'
+                            ? 'border-teal-500 bg-teal-50'
+                            : 'border-slate-200 hover:border-slate-300'
+                        }`}
+                      >
+                        {/* Portrait thumbnail */}
+                        <svg
+                          width="36"
+                          height="48"
+                          viewBox="0 0 36 48"
+                          fill="none"
+                          xmlns="http://www.w3.org/2000/svg"
+                          aria-hidden="true"
+                        >
+                          <rect
+                            x="1"
+                            y="1"
+                            width="34"
+                            height="46"
+                            rx="2"
+                            fill="white"
+                            stroke="#94a3b8"
+                            strokeWidth="1.5"
+                          />
+                          <rect x="5" y="6" width="20" height="2" rx="1" fill="#0891b2" />
+                          <rect x="5" y="10" width="14" height="1.5" rx="0.75" fill="#cbd5e1" />
+                          <rect x="5" y="16" width="26" height="1" rx="0.5" fill="#e2e8f0" />
+                          <rect x="5" y="20" width="22" height="1" rx="0.5" fill="#e2e8f0" />
+                          <rect x="5" y="24" width="24" height="1" rx="0.5" fill="#e2e8f0" />
+                          <rect x="5" y="28" width="18" height="1" rx="0.5" fill="#e2e8f0" />
+                          <rect x="5" y="34" width="1.5" height="8" rx="0.75" fill="#94a3b8" />
+                          <rect x="5" y="34" width="10" height="8" rx="0.5" fill="#f1f5f9" />
+                        </svg>
+                        <div className="text-center">
+                          <p className="text-xs font-bold text-slate-700">Vertical</p>
+                          <p className="text-[10px] text-slate-400">2 hojas A4</p>
+                        </div>
+                      </button>
+
+                      {/* Landscape option */}
+                      <button
+                        type="button"
+                        onClick={() => updateConfig('page_orientation', 'landscape')}
+                        className={`flex flex-col items-center gap-2 p-3 rounded-xl border-2 transition-all ${
+                          config.page_orientation === 'landscape'
+                            ? 'border-teal-500 bg-teal-50'
+                            : 'border-slate-200 hover:border-slate-300'
+                        }`}
+                      >
+                        {/* Landscape thumbnail — split in half */}
+                        <svg
+                          width="56"
+                          height="36"
+                          viewBox="0 0 56 36"
+                          fill="none"
+                          xmlns="http://www.w3.org/2000/svg"
+                          aria-hidden="true"
+                        >
+                          <rect
+                            x="1"
+                            y="1"
+                            width="54"
+                            height="34"
+                            rx="2"
+                            fill="white"
+                            stroke="#94a3b8"
+                            strokeWidth="1.5"
+                          />
+                          {/* Dashed divider */}
+                          <line
+                            x1="28"
+                            y1="4"
+                            x2="28"
+                            y2="32"
+                            stroke="#94a3b8"
+                            strokeWidth="1"
+                            strokeDasharray="2,2"
+                          />
+                          {/* Left half: récipe */}
+                          <rect x="4" y="5" width="12" height="1.5" rx="0.75" fill="#0891b2" />
+                          <rect x="4" y="8" width="10" height="1" rx="0.5" fill="#cbd5e1" />
+                          <rect x="4" y="12" width="20" height="0.8" rx="0.4" fill="#e2e8f0" />
+                          <rect x="4" y="15" width="18" height="0.8" rx="0.4" fill="#e2e8f0" />
+                          <rect x="4" y="18" width="20" height="0.8" rx="0.4" fill="#e2e8f0" />
+                          {/* Right half: indicaciones */}
+                          <rect x="31" y="5" width="12" height="1.5" rx="0.75" fill="#0891b2" />
+                          <rect x="31" y="8" width="10" height="1" rx="0.5" fill="#cbd5e1" />
+                          <rect x="31" y="12" width="20" height="0.8" rx="0.4" fill="#e2e8f0" />
+                          <rect x="31" y="15" width="18" height="0.8" rx="0.4" fill="#e2e8f0" />
+                          <rect x="31" y="18" width="20" height="0.8" rx="0.4" fill="#e2e8f0" />
+                        </svg>
+                        <div className="text-center">
+                          <p className="text-xs font-bold text-slate-700">Horizontal</p>
+                          <p className="text-[10px] text-slate-400">Carta apaisada</p>
+                        </div>
+                      </button>
+                    </div>
+                  </div>
+                )}
 
                 {/* Typography & Color */}
                 <div className="bg-white border border-slate-200 rounded-xl p-5 space-y-4">

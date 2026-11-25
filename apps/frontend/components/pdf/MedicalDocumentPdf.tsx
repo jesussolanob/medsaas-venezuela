@@ -20,6 +20,7 @@
 
 import { Document, Page, View, Text, Image, StyleSheet, Font } from '@react-pdf/renderer';
 import type { RichTextBlock, RichTextRun } from '@delta/shared-utils';
+import { RecipeLandscapeSheet, MEDS_PER_LANDSCAPE_SHEET } from './RecipeLandscapeSheet';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -37,6 +38,13 @@ export interface TemplateConfigPdf {
   signature_url: string | null;
   show_logo: boolean;
   show_signature: boolean;
+  /**
+   * PDF page orientation for the recipe document.
+   * 'portrait' (default): two A4 portrait pages (hoja 1 + hoja 2).
+   * 'landscape': one LETTER landscape page split in half — left = Récipe, right = Indicaciones.
+   * Only affects documents of docType 'recipe' / 'indications'. All other types stay portrait.
+   */
+  page_orientation?: 'portrait' | 'landscape';
 }
 
 export interface DoctorInfoPdf {
@@ -593,6 +601,99 @@ export function MedicalDocumentPdf({
 
   // ── MODO MULTI-PÁGINA: una Page por tipo de documento ──────────────────
   if (documents && documents.length > 0) {
+    const isLandscapeRecipe = templateConfig.page_orientation === 'landscape';
+
+    if (isLandscapeRecipe) {
+      // ── LANDSCAPE: pair recipe + indications into letter-landscape sheets ─
+      // All other docTypes (informe, paraclinical, rest, history…) stay A4 portrait.
+      const recipePage = documents.find((d) => d.docType === 'recipe');
+      const indicationsPage = documents.find((d) => d.docType === 'indications');
+      const otherPages = documents.filter(
+        (d) => d.docType !== 'recipe' && d.docType !== 'indications',
+      );
+
+      // Extract medication string[] from the first content block of each page.
+      // buildRecetasContent and buildRecipeHoja2Content always produce exactly one
+      // ContentBlock with value: string[] (one entry per medication).
+      function extractMedItems(page: DocumentPage | undefined): string[] {
+        if (!page) return [];
+        const block = page.content[0];
+        if (!block) return [];
+        return Array.isArray(block.value) ? (block.value as string[]) : [];
+      }
+
+      const recipeItems = extractMedItems(recipePage);
+      const indicationItems = extractMedItems(indicationsPage);
+
+      // Chunk into groups of MEDS_PER_LANDSCAPE_SHEET.
+      // If recipe has 0 items (fallback prescription block), show 1 sheet.
+      const totalItems = Math.max(recipeItems.length, indicationItems.length, 1);
+      const sheetCount = Math.ceil(totalItems / MEDS_PER_LANDSCAPE_SHEET);
+
+      const docTitleLandscape = ['Récipe', 'Indicaciones']
+        .concat(otherPages.map((d) => getDocLabel(d.docType)))
+        .join(' + ');
+
+      return (
+        <Document
+          title={`${docTitleLandscape} — ${patient.fullName}`}
+          author={doctor.fullName}
+          subject={docTitleLandscape}
+          creator="Delta Salud"
+        >
+          {/* Landscape sheets: recipe on left, indications on right */}
+          {Array.from({ length: sheetCount }, (_, sheetIdx) => {
+            const start = sheetIdx * MEDS_PER_LANDSCAPE_SHEET;
+            const recipeChunk =
+              recipeItems.length > 0
+                ? recipeItems.slice(start, start + MEDS_PER_LANDSCAPE_SHEET)
+                : [];
+            const indicationChunk =
+              indicationItems.length > 0
+                ? indicationItems.slice(start, start + MEDS_PER_LANDSCAPE_SHEET)
+                : [];
+
+            return (
+              <RecipeLandscapeSheet
+                key={`landscape-sheet-${sheetIdx}`}
+                templateConfig={templateConfig}
+                doctor={doctor}
+                patient={patient}
+                formattedDate={formattedDate}
+                consultationCode={consultationCode}
+                recipeItems={recipeChunk}
+                indicationItems={indicationChunk}
+                itemOffset={start}
+                hasNextSheet={sheetIdx < sheetCount - 1}
+              />
+            );
+          })}
+
+          {/* Non-recipe pages stay as A4 portrait */}
+          {otherPages.map((doc, idx) => {
+            const pageDocLabel = getDocLabel(doc.docType);
+            const visibleBlocks = filterVisible(doc.content);
+            return (
+              <Page key={`portrait-${doc.docType}-${idx}`} size="A4" style={styles.page}>
+                <PageContent
+                  styles={styles}
+                  headerTitle={headerTitle}
+                  docLabel={pageDocLabel}
+                  formattedDate={formattedDate}
+                  templateConfig={templateConfig}
+                  doctor={doctor}
+                  patient={patient}
+                  consultationCode={consultationCode}
+                  visibleBlocks={visibleBlocks}
+                />
+              </Page>
+            );
+          })}
+        </Document>
+      );
+    }
+
+    // ── PORTRAIT multi-page (default) ──────────────────────────────────────
     const docTitle = documents.map((d) => getDocLabel(d.docType)).join(' + ');
     return (
       <Document
@@ -627,6 +728,31 @@ export function MedicalDocumentPdf({
   // ── MODO SINGLE-PÁGINA: comportamiento original ─────────────────────────
   const docLabel = getDocLabel(docType);
   const visibleBlocks = filterVisible(content);
+
+  // Single-page landscape: recipe on left, empty right half.
+  if (templateConfig.page_orientation === 'landscape' && docType === 'recipe') {
+    const recipeItems = Array.isArray(content[0]?.value) ? (content[0].value as string[]) : [];
+    return (
+      <Document
+        title={`Récipe — ${patient.fullName}`}
+        author={doctor.fullName}
+        subject="Récipe"
+        creator="Delta Salud"
+      >
+        <RecipeLandscapeSheet
+          templateConfig={templateConfig}
+          doctor={doctor}
+          patient={patient}
+          formattedDate={formattedDate}
+          consultationCode={consultationCode}
+          recipeItems={recipeItems}
+          indicationItems={[]}
+          itemOffset={0}
+          hasNextSheet={false}
+        />
+      </Document>
+    );
+  }
 
   return (
     <Document
