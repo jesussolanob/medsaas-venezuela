@@ -72,8 +72,8 @@ export interface PublicTemplateConfig {
   logoUrl: string | null;
   /** Freshly re-signed signature URL from the template (null if not configured). */
   signatureUrl: string | null;
-  /** PDF page orientation: 'portrait' (default) or 'landscape' (recipe split-view). */
-  pageOrientation: 'portrait' | 'landscape';
+  // NOTE: pageOrientation is intentionally absent — quotes are never récipes
+  // and the landscape split-view does not apply to quote PDFs.
 }
 
 /** Full payload returned by GetPublicQuoteUseCase. */
@@ -188,7 +188,7 @@ export class GetPublicQuoteUseCase {
           showSignature: template.showSignature,
           logoUrl: templateLogoUrl,
           signatureUrl: templateSignatureUrl,
-          pageOrientation: template.pageOrientation,
+          // pageOrientation excluded — quotes are never récipes.
         }
       : null;
 

@@ -290,6 +290,7 @@ export class GetDocumentRenderDataUseCase {
       patient,
       doctorProfile,
       informeTemplate,
+      recipeTemplate,
       blocksOutput,
     ] = await Promise.all([
       this.consultationRepo.findById(consultationId, link.doctorId),
@@ -300,6 +301,8 @@ export class GetDocumentRenderDataUseCase {
       this.patientRepo.findById(link.patientId, link.doctorId),
       this.doctorProfileRepo.findByDoctorId(link.doctorId),
       this.doctorTemplateRepo.findByDoctorAndType(link.doctorId, 'informe'),
+      // pageOrientation is a recipe-only setting — always read from the recipe template.
+      this.doctorTemplateRepo.findByDoctorAndType(link.doctorId, 'recipe'),
       this.getConsultationBlocks.execute(link.doctorId),
     ]);
 
@@ -349,7 +352,9 @@ export class GetDocumentRenderDataUseCase {
           showSignature: informeTemplate.showSignature,
           logoUrl: templateLogoUrl,
           signatureUrl: templateSignatureUrl,
-          pageOrientation: informeTemplate.pageOrientation,
+          // pageOrientation is a recipe-only setting stored on the recipe template row.
+          // Colors, header, logo, etc. still come from the informe template.
+          pageOrientation: recipeTemplate?.pageOrientation ?? 'portrait',
         }
       : null;
 
@@ -454,11 +459,14 @@ export class GetDocumentRenderDataUseCase {
       throw new DocumentLinkNotFoundError();
     }
 
-    // Fetch standalone doc + patient in parallel with doctor profile + template
-    const [detail, doctorProfile, informeTemplate] = await Promise.all([
+    // Fetch standalone doc + patient in parallel with doctor profile + templates.
+    // recipeTemplate is fetched alongside informeTemplate because pageOrientation
+    // is a recipe-only setting — it must come from the recipe row, not the informe row.
+    const [detail, doctorProfile, informeTemplate, recipeTemplate] = await Promise.all([
       this.standaloneDocRepo.findByIdWithPatient(link.standaloneDocumentId!, link.doctorId),
       this.doctorProfileRepo.findByDoctorId(link.doctorId),
       this.doctorTemplateRepo.findByDoctorAndType(link.doctorId, 'informe'),
+      this.doctorTemplateRepo.findByDoctorAndType(link.doctorId, 'recipe'),
     ]);
 
     if (!detail) {
@@ -517,7 +525,9 @@ export class GetDocumentRenderDataUseCase {
           showSignature: informeTemplate.showSignature,
           logoUrl: templateLogoUrl,
           signatureUrl: templateSignatureUrl,
-          pageOrientation: informeTemplate.pageOrientation,
+          // pageOrientation is a recipe-only setting stored on the recipe template row.
+          // Colors, header, logo, etc. still come from the informe template.
+          pageOrientation: recipeTemplate?.pageOrientation ?? 'portrait',
         }
       : null;
 

@@ -753,4 +753,61 @@ describe('GetDocumentRenderDataUseCase', () => {
     expect(result.doctor.signatureUrl).toBe('https://storage.example.com/signed?token=abc');
     expect(result.doctor.signatureUrl).not.toBe(storedGcsUrl);
   });
+
+  // -----------------------------------------------------------------------
+  // pageOrientation — sourced from recipe template, not informe template
+  // -----------------------------------------------------------------------
+
+  it('(a) consultation path: returns landscape when recipe template is landscape and informe is portrait', async () => {
+    // informe template: portrait; recipe template: landscape
+    mockDoctorTemplateRepo.findByDoctorAndType.mockImplementation(
+      async (_doctorId: string, type: string) => {
+        if (type === 'recipe') {
+          return DoctorTemplate.create({
+            id: 'tmpl-recipe',
+            doctorId: 'doctor-1',
+            templateType: 'recipe',
+            logoUrl: null,
+            signatureUrl: null,
+            fontFamily: 'Helvetica',
+            pageOrientation: 'landscape',
+            headerText: 'Recipe Header',
+            footerText: 'Recipe Footer',
+            showLogo: false,
+            showSignature: true,
+            primaryColor: '#000000',
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          });
+        }
+        // informe template: portrait
+        return makeTemplate();
+      },
+    );
+
+    const sessionToken = signToken('link-1', 'the-link-token', new Date(Date.now() + 60_000));
+    const result = await useCase.execute({ token: 'the-link-token', sessionToken });
+
+    expect(result.templateConfig).not.toBeNull();
+    // Colors and branding still come from informe template
+    expect(result.templateConfig?.primaryColor).toBe('#1A73E8');
+    // Orientation comes from recipe template
+    expect(result.templateConfig?.pageOrientation).toBe('landscape');
+  });
+
+  it('(c) consultation path: defaults to portrait when no recipe template exists', async () => {
+    // informe template exists; recipe template absent
+    mockDoctorTemplateRepo.findByDoctorAndType.mockImplementation(
+      async (_doctorId: string, type: string) => {
+        if (type === 'recipe') return null;
+        return makeTemplate(); // informe: portrait
+      },
+    );
+
+    const sessionToken = signToken('link-1', 'the-link-token', new Date(Date.now() + 60_000));
+    const result = await useCase.execute({ token: 'the-link-token', sessionToken });
+
+    expect(result.templateConfig).not.toBeNull();
+    expect(result.templateConfig?.pageOrientation).toBe('portrait');
+  });
 });
