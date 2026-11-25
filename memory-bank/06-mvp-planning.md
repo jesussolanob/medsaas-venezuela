@@ -21,8 +21,23 @@ Estado: Fase 0 ✅ · Fase 1 en-progreso.
 - **Encender WhatsApp en prod (decisión del dueño):** antes, mapear `hooks.deltasalud.app`, registrar el webhook de
   Zernio de prod, separar definitivamente el número de ventas de Jesús (su webhook está desactivado) y que Jesús haga la
   verificación de negocio de Meta (límite de 250 destinatarios/día).
-- **Pendiente de la lista 13-11:** reagendar canceladas (C), modal y agenda del mockup, vista de especialista para el
-  vendedor, hora de Cobros en la zona del navegador.
+- **Lista 13-11 cerrada (revisado 2026-11-25):** la vista del vendedor ya está en prod y la demo es la cuenta de
+  especialista en staging. Quedan dos cabos sueltos, solo si el dueño los pide: Cobros formatea la hora sin
+  `America/Caracas` (`cobros/page.tsx` `formatTime`) y reagendar una cancelada (el backend la rechaza).
+
+## Récipe horizontal (pedido por audio, 2026-11-24) — pendiente
+
+> Hoja **carta apaisada** partida a la mitad: izquierda = récipe (medicamento/principio activo + mg), derecha =
+> indicaciones (cómo tomarlo), alineados por medicamento. Es la hoja 1 + hoja 2 actuales, "mitad y mitad".
+
+| Decisión (2026-11-25)                                                                                      |
+| ---------------------------------------------------------------------------------------------------------- |
+| **Opción por especialista** en Plantillas → Récipe; por defecto **vertical** (el formato actual no cambia) |
+| **Encabezado, paciente, fecha y firma en cada mitad**: la hoja se puede cortar y cada parte sigue valiendo |
+| Si los medicamentos no entran, continúa en otra hoja horizontal igual                                      |
+| Aplica a todos los lugares que generan el récipe (consulta, récipes sin consulta, Compartir documentos)    |
+
+Estimación: ~2,5 días de esfuerzo (backend 0,5 · selector 0,5 · diseño PDF 1 · cableo 0,5 · QA/guía/novedad 0,5).
 
 ## Onboarding mínimo + CSV de especialistas (pedido del dueño, 2026-11-12) — completado (en staging 2026-11-13, sin promover)
 
