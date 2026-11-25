@@ -435,6 +435,7 @@ Widget de ayuda con IA, disponible para los 3 perfiles. Patrón: panel global + 
   `/doctor/settings/exchange-rate` (eliminada). Las opciones de pago pasan a ser **colapsables** (acordeón).
 - **Tarjeta guía de plantillas** en el inicio del doctor (`app/doctor/page.tsx`): aparece si el doctor aún NO
   tiene logo/firma, invitándolo a configurar sus plantillas.
+- (2026-11-25) Récipe **horizontal** opcional: `components/pdf/RecipeLandscapeSheet.tsx` junta el par recipe+indications en una carta apaisada si `templateConfig.page_orientation === 'landscape'` (plantilla `recipe`). Plantillas mapea las pestañas de bloque `prescription/rest/paraclinical` → `recipe/reposo/prescripciones` (`BLOCK_KEY_TO_TEMPLATE_TYPE`).
 - Récipe = **PDF de 2 hojas** vía `buildDocumentPages` (`consultation-documents.ts`) → `MedicalDocumentPdf` en
   modo multi-página (`documents=[...]`): hoja 1 "Récipe" (medicamento + dosis), hoja 2 "Indicaciones"
   (+ indicaciones/frecuencia/duración/**presentación**). Bloque "Indicaciones" renombrado a **"Evaluación
