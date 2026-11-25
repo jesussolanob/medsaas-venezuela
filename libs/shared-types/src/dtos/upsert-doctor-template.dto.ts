@@ -10,7 +10,10 @@ export const UpsertDoctorTemplateDtoSchema = z.object({
   show_signature: z.boolean().optional(),
   primary_color: z
     .string()
-    .regex(/^#[0-9a-fA-F]{6}$/, 'primary_color must be a valid hex color (e.g. #0891b2)')
+    .regex(
+      /^#[0-9a-fA-F]{6}$/,
+      'El color principal debe ser un valor hexadecimal válido (ej. #0891b2)',
+    )
     .optional(),
   page_orientation: z.enum(['portrait', 'landscape']).optional(),
 });

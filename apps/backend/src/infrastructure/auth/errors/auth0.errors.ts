@@ -50,7 +50,7 @@ export class Auth0ConfigMissingError extends DomainError {
   readonly code = 'AUTH0_CONFIG_MISSING';
   override readonly httpStatus = 503;
 
-  constructor(missingVar: string) {
-    super(`Auth0 mode is active but required env var is not set: ${missingVar}`);
+  constructor(_missingVar: string) {
+    super('El servicio de autenticación no está disponible. Contacta al administrador.');
   }
 }

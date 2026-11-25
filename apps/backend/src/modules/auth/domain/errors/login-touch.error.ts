@@ -8,7 +8,7 @@ export class LoginTouchProfileNotFoundError extends DomainError {
   readonly code = 'LOGIN_TOUCH_PROFILE_NOT_FOUND';
   override readonly httpStatus = 404;
 
-  constructor(profileId: string) {
-    super(`Profile not found for login touch: ${profileId}`);
+  constructor(_profileId: string) {
+    super('No se encontró tu perfil. Intenta cerrar sesión y volver a entrar.');
   }
 }

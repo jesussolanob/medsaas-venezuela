@@ -18,6 +18,27 @@ interface ErrorBody {
 }
 
 /**
+ * Maps Nest's built-in default English HTTP status messages to Spanish.
+ * Only covers the well-known defaults; custom messages are passed through as-is.
+ */
+const NEST_DEFAULT_EN_TO_ES: Record<string, string> = {
+  'Not Found': 'Recurso no encontrado.',
+  Forbidden: 'No tienes permisos para realizar esta acción.',
+  'Forbidden resource': 'No tienes permisos para realizar esta acción.',
+  Unauthorized: 'Tu sesión no es válida. Vuelve a iniciar sesión.',
+  'Bad Request': 'La solicitud contiene datos inválidos.',
+  'Too Many Requests': 'Demasiadas solicitudes. Intenta de nuevo en unos momentos.',
+  'Payload Too Large': 'Los datos enviados superan el tamaño máximo permitido.',
+  'Internal Server Error': 'Ocurrió un error inesperado. Intenta de nuevo en unos minutos.',
+  'Service Unavailable': 'El servicio no está disponible en este momento. Intenta más tarde.',
+  'Unprocessable Entity': 'Los datos enviados no son válidos.',
+  Conflict: 'La operación no se puede completar por un conflicto con el estado actual.',
+  Gone: 'El recurso solicitado ya no está disponible.',
+  'Request Timeout': 'La solicitud tardó demasiado. Intenta de nuevo.',
+  'Method Not Allowed': 'Método no permitido para este recurso.',
+};
+
+/**
  * Catches every unhandled exception and maps it to a consistent error envelope.
  *
  * - HttpException  → its own status, code HTTP_ERROR
@@ -37,12 +58,14 @@ export class GlobalExceptionFilter implements ExceptionFilter {
 
     let status = HttpStatus.INTERNAL_SERVER_ERROR;
     let code = 'INTERNAL_ERROR';
-    let message = 'Ocurrió un error inesperado';
+    let message = 'Ocurrió un error inesperado. Intenta de nuevo en unos minutos.';
 
     if (exception instanceof HttpException) {
       status = exception.getStatus();
       const res = exception.getResponse();
-      message = typeof res === 'string' ? res : ((res as { message?: string }).message ?? message);
+      const rawMessage =
+        typeof res === 'string' ? res : ((res as { message?: string }).message ?? message);
+      message = NEST_DEFAULT_EN_TO_ES[rawMessage] ?? rawMessage;
       code = 'HTTP_ERROR';
     } else if (exception instanceof DomainError) {
       status = exception.httpStatus ?? HttpStatus.UNPROCESSABLE_ENTITY;

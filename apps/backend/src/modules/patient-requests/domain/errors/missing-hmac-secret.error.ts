@@ -11,6 +11,6 @@ export class MissingHmacSecretError extends DomainError {
   override readonly httpStatus = 500;
 
   constructor() {
-    super('AUTH_RESOLVE_SECRET is not configured. Generate one with: openssl rand -hex 32');
+    super('Error de configuración del servidor. Contacta al administrador.');
   }
 }

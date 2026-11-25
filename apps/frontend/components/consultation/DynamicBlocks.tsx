@@ -112,7 +112,7 @@ export default function DynamicBlocks({
               href="/doctor/settings/consultation-blocks"
               className="text-teal-600 font-semibold hover:underline"
             >
-              Configuración → Bloques de consulta
+              Bloques de consulta
             </a>
             .
           </>

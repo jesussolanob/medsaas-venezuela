@@ -2,13 +2,13 @@ import { z } from 'zod';
 
 export const CreateAvailabilityBlockDtoSchema = z
   .object({
-    starts_at: z.string().datetime({ message: 'starts_at must be a valid ISO 8601 datetime' }),
-    ends_at: z.string().datetime({ message: 'ends_at must be a valid ISO 8601 datetime' }),
+    starts_at: z.string().datetime({ message: 'La fecha de inicio no es válida' }),
+    ends_at: z.string().datetime({ message: 'La fecha de fin no es válida' }),
     reason: z.string().max(500).nullable().optional(),
   })
   .strict()
   .refine((data) => new Date(data.ends_at) > new Date(data.starts_at), {
-    message: 'ends_at must be after starts_at',
+    message: 'La fecha de fin debe ser posterior a la de inicio',
     path: ['ends_at'],
   });
 

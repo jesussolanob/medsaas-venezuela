@@ -21,8 +21,11 @@ export const SharedFileStatusSchema = z.enum(['pending', 'completed', 'reviewed'
 // ---------------------------------------------------------------------------
 
 export const CreateSharedFileDoctorSchema = z.object({
-  patientId: z.string().uuid('patientId must be a valid UUID'),
-  title: z.string().min(1, 'title is required').max(500, 'title must be at most 500 characters'),
+  patientId: z.string().uuid('El paciente indicado no es válido'),
+  title: z
+    .string()
+    .min(1, 'El título es requerido')
+    .max(500, 'El título no puede superar 500 caracteres'),
   description: z.string().max(5000).nullable().optional(),
   category: SharedFileCategorySchema,
   filePath: z.string().max(1000).nullable().optional(),
@@ -40,8 +43,8 @@ export type CreateSharedFileDoctorDto = z.infer<typeof CreateSharedFileDoctorSch
 export const UpdateSharedFileSchema = z.object({
   title: z
     .string()
-    .min(1, 'title cannot be empty')
-    .max(500, 'title must be at most 500 characters')
+    .min(1, 'El título no puede estar vacío')
+    .max(500, 'El título no puede superar 500 caracteres')
     .optional(),
   description: z.string().max(5000).nullable().optional(),
   status: SharedFileStatusSchema.optional(),
@@ -54,7 +57,7 @@ export type UpdateSharedFileDto = z.infer<typeof UpdateSharedFileSchema>;
 // ---------------------------------------------------------------------------
 
 export const MarkReadDoctorSchema = z.object({
-  patientId: z.string().uuid('patientId must be a valid UUID'),
+  patientId: z.string().uuid('El paciente indicado no es válido'),
 });
 
 export type MarkReadDoctorDto = z.infer<typeof MarkReadDoctorSchema>;
@@ -64,7 +67,10 @@ export type MarkReadDoctorDto = z.infer<typeof MarkReadDoctorSchema>;
 // ---------------------------------------------------------------------------
 
 export const CreateSharedFilePatientSchema = z.object({
-  title: z.string().min(1, 'title is required').max(500, 'title must be at most 500 characters'),
+  title: z
+    .string()
+    .min(1, 'El título es requerido')
+    .max(500, 'El título no puede superar 500 caracteres'),
   description: z.string().max(5000).nullable().optional(),
   category: SharedFileCategorySchema,
   filePath: z.string().max(1000).nullable().optional(),

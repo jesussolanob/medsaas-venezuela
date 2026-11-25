@@ -21,7 +21,7 @@ export const LeadChannelSchema = z.enum([
 export type LeadChannelType = z.infer<typeof LeadChannelSchema>;
 
 export const CreateLeadDtoSchema = z.object({
-  name: z.string().min(1, 'name is required').max(200),
+  name: z.string().min(1, 'El nombre es requerido').max(200),
   last_name: z.string().max(200).nullable().optional(),
   email: z.string().email('email inválido').max(300).nullable().optional(),
   phone: z.string().max(50).nullable().optional(),

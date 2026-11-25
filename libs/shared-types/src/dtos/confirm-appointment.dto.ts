@@ -7,7 +7,7 @@ import { z } from 'zod';
  * Validated server-side in AppointmentConfirmTokenService.verify().
  */
 export const ConfirmAppointmentSchema = z.object({
-  token: z.string().min(1, 'token is required'),
+  token: z.string().min(1, 'El token es requerido'),
 });
 
 export type ConfirmAppointmentDto = z.infer<typeof ConfirmAppointmentSchema>;
@@ -18,7 +18,7 @@ export type ConfirmAppointmentDto = z.infer<typeof ConfirmAppointmentSchema>;
  * Same token — used to fetch appointment info without confirming.
  */
 export const ConfirmAppointmentInfoQuerySchema = z.object({
-  token: z.string().min(1, 'token is required'),
+  token: z.string().min(1, 'El token es requerido'),
 });
 
 export type ConfirmAppointmentInfoQueryDto = z.infer<typeof ConfirmAppointmentInfoQuerySchema>;

@@ -184,7 +184,7 @@ function BlockSubSelector({ informeContent, checkedKeys, onToggle }: BlockSubSel
       <div className="flex items-center gap-1.5 mt-2 mb-2">
         <ChevronDown className="w-3 h-3 text-teal-500" />
         <p className="text-xs font-semibold text-teal-600 uppercase tracking-wide">
-          Bloques a incluir
+          Bloques de consulta a incluir
         </p>
       </div>
       <div className="grid grid-cols-1 gap-1">

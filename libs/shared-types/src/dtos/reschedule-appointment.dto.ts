@@ -16,7 +16,7 @@ import { z } from 'zod';
 export const RescheduleAppointmentDtoSchema = z.object({
   scheduled_at: z.string().datetime({
     offset: true,
-    message: 'scheduled_at must be a valid ISO 8601 datetime (UTC or with offset)',
+    message: 'La fecha y hora de la cita no es válida',
   }),
 });
 

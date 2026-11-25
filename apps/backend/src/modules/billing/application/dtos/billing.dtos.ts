@@ -34,8 +34,8 @@ export type RegisterManualPaymentBody = z.infer<typeof RegisterManualPaymentBody
 // ---------------------------------------------------------------------------
 
 export const CreateInvoiceBodySchema = z.object({
-  doctor_id: z.string().uuid({ message: 'doctor_id must be a valid UUID' }),
-  amount: z.number().positive({ message: 'amount must be positive' }),
+  doctor_id: z.string().uuid({ message: 'El especialista indicado no es válido' }),
+  amount: z.number().positive({ message: 'El monto debe ser mayor a cero' }),
   currency: z.string().length(3).optional().default('USD'),
   description: z.string().max(500).nullable().optional(),
 });
@@ -53,8 +53,8 @@ const BillingDocumentItemSchema = z.object({
 });
 
 export const CreateBillingDocumentBodySchema = z.object({
-  doc_type: z.string().min(1, { message: 'doc_type is required' }),
-  total: z.number().nonnegative({ message: 'total must be >= 0' }),
+  doc_type: z.string().min(1, { message: 'El tipo de documento es requerido' }),
+  total: z.number().nonnegative({ message: 'El total debe ser mayor o igual a cero' }),
   items: z.array(BillingDocumentItemSchema).default([]),
   subtotal: z.number().nonnegative().nullable().optional(),
   iva_amount: z.number().nonnegative().optional().default(0),

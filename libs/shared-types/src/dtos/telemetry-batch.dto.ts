@@ -12,13 +12,13 @@ export const TelemetryEventInputSchema = z
   .object({
     action: z
       .string()
-      .min(1, { message: 'action must not be empty' })
-      .max(200, { message: 'action max length is 200' }),
+      .min(1, { message: 'La acción no puede estar vacía' })
+      .max(200, { message: 'La acción no puede superar 200 caracteres' }),
     resource_type: z.string().max(100).nullable().optional(),
     resource_id: z.string().max(512).nullable().optional(),
     metadata: z.record(z.string(), z.unknown()).nullable().optional(),
     occurred_at: z.string().datetime({
-      message: 'occurred_at must be a valid ISO 8601 datetime',
+      message: 'La fecha del evento no es válida',
     }),
     session_id: z.string().max(200).nullable().optional(),
   })
@@ -35,9 +35,9 @@ export const IngestTelemetryBatchDtoSchema = z
   .object({
     events: z
       .array(TelemetryEventInputSchema)
-      .min(1, { message: 'events array must not be empty' })
+      .min(1, { message: 'El arreglo de eventos no puede estar vacío' })
       .max(TELEMETRY_BATCH_MAX, {
-        message: `Batch exceeds maximum of ${TELEMETRY_BATCH_MAX} events`,
+        message: `El lote supera el máximo de ${TELEMETRY_BATCH_MAX} eventos`,
       }),
   })
   .strict();
@@ -49,9 +49,9 @@ export type IngestTelemetryBatchDto = z.infer<typeof IngestTelemetryBatchDtoSche
  */
 export const QueryDoctorEventsDtoSchema = z
   .object({
-    doctorId: z.string().uuid({ message: 'doctorId must be a valid UUID' }),
-    from: z.string().datetime({ message: 'from must be a valid ISO 8601 datetime' }).optional(),
-    to: z.string().datetime({ message: 'to must be a valid ISO 8601 datetime' }).optional(),
+    doctorId: z.string().uuid({ message: 'El ID del especialista no es válido' }),
+    from: z.string().datetime({ message: 'La fecha de inicio no es válida' }).optional(),
+    to: z.string().datetime({ message: 'La fecha de fin no es válida' }).optional(),
     limit: z.coerce.number().int().min(1).max(500).default(50),
     offset: z.coerce.number().int().min(0).default(0),
   })

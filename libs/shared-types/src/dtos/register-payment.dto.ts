@@ -9,8 +9,8 @@ import { PaymentMethodSchema } from '../payment-method';
  */
 export const RegisterPaymentDtoSchema = z
   .object({
-    consultation_id: z.string().uuid({ message: 'consultation_id must be a valid UUID' }),
-    patient_id: z.string().uuid({ message: 'patient_id must be a valid UUID' }),
+    consultation_id: z.string().uuid({ message: 'La consulta indicada no es válida' }),
+    patient_id: z.string().uuid({ message: 'El paciente indicado no es válido' }),
     amount: z.number().positive({ message: 'El monto debe ser mayor a cero' }),
     currency: z.string().min(1).max(10).default('USD'),
     payment_method: PaymentMethodSchema,

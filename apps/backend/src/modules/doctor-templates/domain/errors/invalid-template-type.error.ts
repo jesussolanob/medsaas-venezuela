@@ -5,8 +5,6 @@ export class InvalidTemplateTypeError extends DomainError {
   override readonly httpStatus = 400;
 
   constructor(value: string) {
-    super(
-      `Invalid template type: "${value}". Must be one of: informe, recipe, prescripciones, reposo, presupuesto, recibo`,
-    );
+    super(`Tipo de plantilla inválido: "${value}". Revisa el tipo indicado.`);
   }
 }
