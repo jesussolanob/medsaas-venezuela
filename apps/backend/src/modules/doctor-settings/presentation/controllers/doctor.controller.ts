@@ -324,7 +324,7 @@ export class DoctorController {
     if (officeId !== undefined && officeId !== '') {
       const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
       if (!uuidPattern.test(officeId)) {
-        throw new BadRequestException('officeId must be a valid UUID');
+        throw new BadRequestException('El parámetro officeId debe ser un UUID válido.');
       }
     }
 

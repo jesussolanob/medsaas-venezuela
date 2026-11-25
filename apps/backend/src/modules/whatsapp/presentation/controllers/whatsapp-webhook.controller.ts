@@ -62,12 +62,12 @@ export class WhatsAppWebhookController {
 
     if (!secret) {
       // Fail-closed: if secret is not configured, reject all requests.
-      throw new UnauthorizedException('Webhook secret is not configured');
+      throw new UnauthorizedException('Error de configuración del servidor.');
     }
 
     const rawSignature = req.headers['x-zernio-signature'];
     if (!rawSignature || typeof rawSignature !== 'string') {
-      throw new UnauthorizedException('Missing webhook signature');
+      throw new UnauthorizedException('Firma del webhook no presente.');
     }
 
     // Raw body is captured by the verify callback in main.ts useBodyParser.
@@ -76,7 +76,7 @@ export class WhatsAppWebhookController {
     // silently compute the wrong HMAC and accept spoofed payloads.
     const rawBody = (req as Request & { rawBody?: Buffer }).rawBody;
     if (!rawBody) {
-      throw new UnauthorizedException('Raw body not available for signature verification');
+      throw new UnauthorizedException('No fue posible verificar la firma del webhook.');
     }
 
     const expectedHex = createHmac('sha256', secret).update(rawBody).digest('hex');
@@ -87,7 +87,7 @@ export class WhatsAppWebhookController {
     const received = Buffer.from(receivedHex, 'utf8');
 
     if (expected.length !== received.length || !timingSafeEqual(expected, received)) {
-      throw new UnauthorizedException('Invalid webhook signature');
+      throw new UnauthorizedException('Firma del webhook inválida.');
     }
   }
 }

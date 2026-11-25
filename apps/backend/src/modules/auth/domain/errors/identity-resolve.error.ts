@@ -22,6 +22,6 @@ export class ResolveSecretInvalidError extends DomainError {
   override readonly httpStatus = 401;
 
   constructor() {
-    super('Invalid or missing internal authentication secret');
+    super('No se pudo verificar tu identidad. Contacta al administrador.');
   }
 }
