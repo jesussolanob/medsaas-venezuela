@@ -39,6 +39,18 @@ const NEST_DEFAULT_EN_TO_ES: Record<string, string> = {
 };
 
 /**
+ * Nest's built-in Parse*Pipe messages, e.g. "Validation failed (uuid is expected)" from
+ * ParseUUIDPipe on a route param. Matched by prefix because the parenthesis varies.
+ */
+const NEST_PIPE_FAILED_PREFIX = 'Validation failed';
+const NEST_PIPE_FAILED_ES = 'El identificador o parámetro enviado no es válido.';
+
+function toSpanishHttpMessage(rawMessage: string): string {
+  if (rawMessage.startsWith(NEST_PIPE_FAILED_PREFIX)) return NEST_PIPE_FAILED_ES;
+  return NEST_DEFAULT_EN_TO_ES[rawMessage] ?? rawMessage;
+}
+
+/**
  * Catches every unhandled exception and maps it to a consistent error envelope.
  *
  * - HttpException  → its own status, code HTTP_ERROR
@@ -65,7 +77,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       const res = exception.getResponse();
       const rawMessage =
         typeof res === 'string' ? res : ((res as { message?: string }).message ?? message);
-      message = NEST_DEFAULT_EN_TO_ES[rawMessage] ?? rawMessage;
+      message = toSpanishHttpMessage(rawMessage);
       code = 'HTTP_ERROR';
     } else if (exception instanceof DomainError) {
       status = exception.httpStatus ?? HttpStatus.UNPROCESSABLE_ENTITY;
